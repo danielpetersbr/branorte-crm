@@ -110,7 +110,13 @@ export function PainelViagem(p: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    // w-full + min-w-0: o pai e um flex container de largura FIXA com
+    // overflow-hidden. Sem isto a raiz do painel usa flex-basis auto (largura
+    // do CONTEUDO) e, quando o min-content passa da largura do pai, o painel
+    // vaza pra direita e e cortado — sumindo justo com a coluna de botoes do
+    // card (engrenagem / cadeado / X de tirar da viagem). Foi o que acontecia
+    // em notebook: o X existia, mas estava fora da area visivel.
+    <div className="flex flex-col h-full min-h-0 w-full min-w-0 overflow-hidden">
       {/* cabeçalho */}
       <div className="shrink-0 px-3 pt-3 pb-2 border-b border-border">
         <div className="flex items-center gap-2">

@@ -252,7 +252,13 @@ const MOBILE_NAV: NavItem[] = [
 function useCollapsed(): [boolean, () => void] {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
-    return localStorage.getItem('sidebar-collapsed') === '1'
+    const salvo = localStorage.getItem('sidebar-collapsed')
+    // Sem preferencia gravada, decide pela tela: em notebook (<1280px) os 320px
+    // do menu sao o que faltava pro conteudo — telas de trabalho como o mapa de
+    // visitas abrem cortadas. Assim que a pessoa clicar no botao, a escolha
+    // dela manda e este chute nao roda mais.
+    if (salvo === null) return window.innerWidth < 1280
+    return salvo === '1'
   })
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -476,11 +482,30 @@ export function Layout() {
     return (
       <div className="min-h-screen flex bg-bg">
         {/* mesma largura da barra real (w-80): com md:w-56 a tela dava um pulo de 64px quando o perfil carregava */}
-        <aside className="w-14 md:w-80 shrink-0 sticky top-0 h-[100dvh] flex flex-col border-r border-border bg-surface">
-          <div className="h-14 shrink-0 flex items-center justify-center md:justify-start md:px-4 border-b border-border select-none">
+        <aside className={cn(
+          'shrink-0 sticky top-0 h-[100dvh] flex flex-col border-r border-border bg-surface transition-all duration-200',
+          collapsed ? 'w-14' : 'w-14 md:w-80',
+        )}>
+          <div className={cn(
+            'h-14 shrink-0 flex items-center border-b border-border select-none',
+            collapsed ? 'justify-center px-2' : 'justify-center md:justify-start md:px-4 md:gap-2',
+          )}>
             <span className="font-extrabold text-[18px] leading-none tracking-[-0.045em] whitespace-nowrap">
-              <span className="text-accent">B</span><span className="text-ink hidden md:inline">RANORTE</span>
+              <span className="text-accent">B</span>
+              <span className={cn('text-ink', collapsed ? 'hidden' : 'hidden md:inline')}>RANORTE</span>
             </span>
+            {/* Encolher o menu: em notebook os 320px daqui sao a diferenca entre
+                o painel da viagem caber ou ser cortado. So no md+ — no celular o
+                menu ja e um rail de icones. */}
+            {!collapsed && (
+              <button
+                onClick={toggleCollapsed}
+                title="Encolher menu"
+                className="hidden md:inline-flex ml-auto h-7 w-7 items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+              >
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
           <nav className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5 p-2">
             {MENU_MAPA.map(m => (
@@ -490,23 +515,36 @@ export function Layout() {
                 title={m.label}
                 className={({ isActive }) => cn(
                   'h-11 shrink-0 rounded-lg text-[13px] font-semibold flex items-center',
-                  'justify-center md:justify-start md:px-3 md:gap-2.5',
+                  collapsed ? 'justify-center' : 'justify-center md:justify-start md:px-3 md:gap-2.5',
                   isActive ? 'bg-accent text-white' : 'text-ink-muted hover:bg-bg hover:text-ink',
                 )}
               >
                 <m.icon className="h-5 w-5 shrink-0" />
-                <span className="hidden md:inline truncate">{m.label}</span>
+                <span className={cn('truncate', collapsed ? 'hidden' : 'hidden md:inline')}>{m.label}</span>
               </NavLink>
             ))}
           </nav>
+          {/* Expandir de volta — no modo estreito o botao do topo nao cabe */}
+          {collapsed && (
+            <button
+              onClick={toggleCollapsed}
+              title="Expandir menu"
+              className="hidden md:inline-flex mx-2 h-9 shrink-0 rounded-lg items-center justify-center text-ink-faint hover:text-ink hover:bg-bg"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </button>
+          )}
           {/* Sair no pé do menu, com confirmação — era flutuante antes */}
           <button
             onClick={() => setConfirmSair(true)}
             title="Sair"
-            className="m-2 h-11 shrink-0 rounded-lg text-[13px] font-semibold flex items-center justify-center md:justify-start md:px-3 md:gap-2.5 text-ink-muted hover:bg-bg hover:text-red-600"
+            className={cn(
+              'm-2 h-11 shrink-0 rounded-lg text-[13px] font-semibold flex items-center text-ink-muted hover:bg-bg hover:text-red-600',
+              collapsed ? 'justify-center' : 'justify-center md:justify-start md:px-3 md:gap-2.5',
+            )}
           >
             <LogOut className="h-5 w-5 shrink-0" />
-            <span className="hidden md:inline">Sair</span>
+            <span className={cn(collapsed ? 'hidden' : 'hidden md:inline')}>Sair</span>
           </button>
         </aside>
 
