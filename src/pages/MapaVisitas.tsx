@@ -471,6 +471,8 @@ export function MapaVisitas() {
   const [viagemSheet, setViagemSheet] = useState(false)
   const [salvandoViagem, setSalvandoViagem] = useState(false)
   const [viagemSalvaEm, setViagemSalvaEm] = useState<string | null>(null)
+  // erro do ultimo salvar, mostrado NO PAINEL (o alert do navegador pode ser silenciado)
+  const [erroSalvarViagem, setErroSalvarViagem] = useState<string | null>(null)
   const [gerandoPdf, setGerandoPdf] = useState(false)
   const [corrigirLocal, setCorrigirLocal] = useState<Parada | null>(null)
   const [viagemId, setViagemId] = useState<string | null>(null)
@@ -1172,6 +1174,7 @@ export function MapaVisitas() {
 
   async function salvarViagem() {
     if (!cfgViagem.nome.trim()) return
+    setErroSalvarViagem(null)
     setSalvandoViagem(true)
     try {
       // id presente = regrava por cima da mesma viagem (não cria uma cópia a cada salvar)
@@ -1185,11 +1188,24 @@ export function MapaVisitas() {
       // ("o fim da jornada precisa ser depois do início"). Mostrar ela, não um
       // genérico — senão o usuário não sabe o que corrigir.
       const msg = (e as Error)?.message || ''
-      window.alert(
-        msg && !/^\w+ error/i.test(msg)
-          ? `${msg}\n\nNada foi perdido — corrija e salve de novo.`
-          : 'Não consegui salvar a viagem. Nada foi perdido — tente de novo.',
-      )
+      const texto = msg && !/^\w+ error/i.test(msg)
+        ? `${msg} Nada foi perdido — corrija e salve de novo.`
+        : 'Não consegui salvar a viagem. Nada foi perdido — tente de novo.'
+
+      /* ⚠️ O ERRO NÃO PODE VIVER SÓ NO `alert`.
+       *
+       * 31/08/2026: o Daniel reportou "o botão de salvar não está funcionando" e o
+       * sintoma era NADA na tela — sem alerta, sem "Salvando…". O Chrome silencia
+       * `window.alert` depois que alguém marca "impedir que esta página crie caixas
+       * de diálogo adicionais", e a supressão dura o resto da vida da aba. Com o
+       * alerta como ÚNICO canal, todo erro daqui virava silêncio absoluto — o
+       * usuário não tinha como saber nem que falhou, quanto mais por quê.
+       *
+       * Agora são três canais: estado na tela (o que ele lê), console (o que dá pra
+       * pedir num print) e o alerta (que pode ou não aparecer). */
+      setErroSalvarViagem(texto)
+      console.error('[viagem] salvar falhou:', e)
+      window.alert(texto)
     } finally {
       setSalvandoViagem(false)
     }
@@ -2127,6 +2143,7 @@ export function MapaVisitas() {
               onSalvar={() => void salvarViagem()}
               salvando={salvandoViagem}
               salvoEm={viagemSalvaEm}
+              erroSalvar={erroSalvarViagem}
               onPDF={() => void gerarPdfViagem()}
               gerandoPdf={gerandoPdf}
               onConfirmarLocalizacao={setCorrigirLocal}
@@ -2344,6 +2361,7 @@ export function MapaVisitas() {
                 onSalvar={() => void salvarViagem()}
                 salvando={salvandoViagem}
                 salvoEm={viagemSalvaEm}
+                erroSalvar={erroSalvarViagem}
                 onPDF={() => void gerarPdfViagem()}
                 gerandoPdf={gerandoPdf}
                 onConfirmarLocalizacao={p => { setCorrigirLocal(p); setViagemSheet(false) }}

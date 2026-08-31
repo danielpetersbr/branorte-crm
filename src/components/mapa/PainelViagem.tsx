@@ -30,6 +30,10 @@ interface Props {
   onPedirOrigemNoMapa: () => void
   escolhendoOrigem: boolean
   onSalvar: () => void
+  /** Erro do último salvar. Vive aqui porque o `window.alert` do navegador pode
+   *  ser silenciado pelo usuário ("impedir que esta página crie caixas de diálogo")
+   *  — e aí o erro sumia por completo e o botão parecia não fazer nada. */
+  erroSalvar?: string | null
   salvando: boolean
   salvoEm: string | null
   onPDF: () => void
@@ -331,6 +335,12 @@ export function PainelViagem(p: Props) {
             {p.cfg.modo === 'otimizar' ? '🔀 Auto' : '✋ Minha ordem'}
           </button>
         </div>
+        {p.erroSalvar && (
+          <div role="alert"
+               className="mb-1.5 rounded-lg border border-red-300 bg-red-50 px-2.5 py-2 text-[12px] leading-snug text-red-700">
+            <span className="font-semibold">Não salvou.</span> {p.erroSalvar}
+          </div>
+        )}
         <div className="flex gap-1.5">
           <button onClick={p.onSalvar} disabled={p.salvando || !p.cfg.nome.trim()}
                   title={!p.cfg.nome.trim() ? 'Dê um nome à viagem primeiro' : 'Salvar no banco'}
