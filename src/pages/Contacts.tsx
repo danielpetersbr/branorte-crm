@@ -308,7 +308,7 @@ export function Contacts() {
   const orcamentoAnos = Array.from({ length: currentYear - 2011 }, (_, i) => String(currentYear - i))
 
   const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, sem_orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente', page: 0 })
+  const [filters, setFilters] = useState<ContactFilters>({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, sem_orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'interacao_recente', page: 0 })
   const [searchInput, setSearchInput] = useState('')
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
@@ -544,18 +544,22 @@ export function Contacts() {
   }, [searchInput])
 
   const clearFilters = () => {
-    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, sem_orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'orcamento_recente' as ContactSortKey, page: 0 })
+    setFilters({ search: '', estado: '', vendor_id: '', status: '', orcamento: false, sem_orcamento: false, orcamento_ano: '', orcamento_mes: '', temperatura: '', com_whatsapp: false, etiqueta: '', esperando_resposta: false, faixa: '', sort: 'interacao_recente' as ContactSortKey, page: 0 })
     setSearchInput('')
   }
 
-  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.sem_orcamento || filters.orcamento_ano || filters.temperatura || filters.com_whatsapp || filters.etiqueta || filters.esperando_resposta || filters.faixa
+  const hasFilters = filters.search || filters.estado || filters.vendor_id || filters.status || filters.orcamento || filters.sem_orcamento || filters.orcamento_ano || filters.orcamento_mes || filters.temperatura || filters.com_whatsapp || filters.etiqueta || filters.esperando_resposta || filters.faixa
 
   // Só pra MOSTRAR "N filtros" — o que liga/desliga o botão Limpar continua
   // sendo `hasFilters`, intocado.
+  // ⚠️ As duas listas tinham que ser a MESMA e nao eram: `hasFilters` esquecia
+  // `orcamento_mes` e o contador esquecia `faixa` — ligar a faixa de atividade
+  // recortava a lista sem o badge contar. Mesmos campos nas duas agora.
   const nFiltros = [
     filters.search, filters.estado, filters.vendor_id, filters.status,
     filters.orcamento, filters.sem_orcamento, filters.orcamento_ano, filters.orcamento_mes,
     filters.temperatura, filters.com_whatsapp, filters.etiqueta, filters.esperando_resposta,
+    filters.faixa,
   ].filter(Boolean).length
 
   /**
@@ -682,8 +686,16 @@ export function Contacts() {
             value={filters.estado} onChange={e => setFilters(f => ({ ...f, estado: e.target.value, page: 0 }))} className="w-full lg:w-[92px]" />
           <Select options={vendorSelectOptions} placeholder="Vendedor" aria-label="Vendedor"
             value={filters.vendor_id} onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))} className="w-full lg:w-40" />
-          <Select options={TEMPERATURA_OPTIONS.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))} placeholder="Temperatura" aria-label="Temperatura"
-            value={filters.temperatura} onChange={e => setFilters(f => ({ ...f, temperatura: e.target.value, page: 0 }))} className="w-full lg:w-36" />
+          {/* TEMPERATURA REMOVIDA (31/08/2026). Mesmo motivo do Status logo abaixo:
+              gaveta vazia num filtro e promessa que a lista nao cumpre.
+              A temperatura vive dentro do TEXTO LIVRE de `contacts.notes`
+              (`'%"temp":"X"%'`) e existem 6 registros em 211.951 na base inteira
+              (1 quente, 5 vendido) — ZERO visiveis ao ALVARO. As 5 opcoes
+              devolviam "Nenhum contato com esses filtros", 0 de 0, e ele lia isso
+              como tela quebrada.
+              O predicado `$9` continua na RPC de proposito: nao quebra nada, serve
+              admin, e volta de graca se alguem popular o campo. Pra reverter,
+              basta este <Select>. */}
           {/* Status: SO os 3 que a coluna do fim escreve. O STATUS_OPTIONS antigo
               oferece 6, mas 4 deles nao existem em contato nenhum do banco —
               gaveta vazia num filtro e promessa que a lista nao cumpre. */}
@@ -722,9 +734,19 @@ export function Contacts() {
               ORIGEM da importação, não o orçamento. Deixava de fora 1.300 contatos
               com orçamento de verdade e trazia 1.423 que não tinham arquivo nenhum.
               Hoje olha o vínculo real em orcamentos_files. */}
+          {/* ⚠️ O chip acende por DOIS filtros (`orcamento` e `orcamento_ano`) mas o
+              clique alternava so UM. Vindo do Ano, o onChange acima ja zerou
+              `orcamento`, entao clicar no chip ACESO pra apagar fazia ele LIGAR: o
+              ano sumia, o chip continuava aceso e a lista pulava de 202 pra 3.021
+              (15x). So o segundo clique desligava. Agora o toggle olha o mesmo
+              estado que a luz — se esta aceso por qualquer um dos dois, apaga os
+              dois. Idempotente, igual ao chip "Sem orcamento" logo abaixo. */}
           <ChipFiltro
             ativo={!!(filters.orcamento || filters.orcamento_ano)}
-            onClick={() => setFilters(f => ({ ...f, orcamento: !f.orcamento, sem_orcamento: false, orcamento_ano: '', page: 0 }))}
+            onClick={() => setFilters(f => {
+              const ligado = !!(f.orcamento || f.orcamento_ano)
+              return { ...f, orcamento: !ligado, sem_orcamento: false, orcamento_ano: '', orcamento_mes: '', page: 0 }
+            })}
             title="So contatos que tem orcamento vinculado."
           >
             <FileText className="h-4 w-4" aria-hidden />
@@ -1064,8 +1086,9 @@ export function Contacts() {
                       <span className="2xl:hidden">Equip.</span><span className="hidden 2xl:inline">Equipamento</span>
                     </th>
                     {/* `lg` e nao `xl`: entre 1024 e 1279 a data sumia da tabela E do card
-                        mobile — o dado nao existia em lugar nenhum, numa tela cuja
-                        ordenacao padrao e por orcamento. */}
+                        mobile — o dado nao existia em lugar nenhum.
+                        O title abaixo promete "mais recente" e agora CUMPRE: mostra o
+                        mesmo `ultimo_orcamento_em` por onde a RPC ordena. */}
                     <th className="hidden lg:table-cell w-[8%]" title="Data do orcamento mais recente deste contato.">
                       <span className="2xl:hidden">Data</span><span className="hidden 2xl:inline">Data orc.</span>
                     </th>
@@ -1225,7 +1248,17 @@ export function Contacts() {
                             todas as colunas entre 1024 e 1279. */}
                         <td className="hidden lg:table-cell px-2.5 py-3.5">
                           {(() => {
-                            const dateStr = orcsLinkados[0]?.mtime_iso || c.data_orcamento
+                            /* ⚠️ Era `orcsLinkados[0]?.mtime_iso || c.data_orcamento` — e a
+                               RPC ordenava por `c.data_orcamento`. A célula mostrava uma
+                               data e a lista era ordenada por outra: divergiam em 60% dos
+                               contatos com orçamento (média de 193 dias), o que dava 167
+                               inversões nas 500 primeiras linhas. Parecia lista embaralhada
+                               porque era.
+                               Pior: `orcsLinkados[0]` é o de maior (ano, numero), não o de
+                               maior data — número maior não é data maior, e em 131 casos
+                               mostrava o orçamento errado como "o mais novo".
+                               Agora lê o MESMO campo por onde a RPC ordenou. */
+                            const dateStr = c.ultimo_orcamento_em
                             if (!dateStr) return <Vazio />
                             const d = new Date(dateStr)
                             if (isNaN(d.getTime())) return <Vazio />

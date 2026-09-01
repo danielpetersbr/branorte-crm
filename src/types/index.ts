@@ -31,6 +31,22 @@ export interface Contact {
   updated_at: string
   proximo_followup: string | null
   data_orcamento: string | null
+  /**
+   * DATA DO ORÇAMENTO MAIS RECENTE — a fonte ÚNICA, mantida por trigger.
+   *
+   * `max(orcamentos_files.mtime_iso)`, caindo em `data_orcamento` quando o
+   * contato não tem arquivo ligado.
+   *
+   * ⚠️ Existe porque a tela ORDENAVA por `data_orcamento` e MOSTRAVA o
+   * `mtime_iso` do arquivo: duas fontes, divergindo em 60% dos contatos com
+   * orçamento (média de 193 dias). A lista parecia embaralhada — era. E 368
+   * contatos com orçamento real caíam no NULLS LAST: cliente com orçamento de
+   * agosto ia parar na página 155.
+   *
+   * A /contatos ordena E mostra ESTE campo. Não voltar a usar `data_orcamento`
+   * num dos dois lados sem mudar o outro junto.
+   */
+  ultimo_orcamento_em: string | null
   descricao_orcamento: string | null
   /**
    * ÚLTIMA MENSAGEM TROCADA NO WHATSAPP — não é coluna de `public.contacts`.
@@ -47,6 +63,8 @@ export interface Contact {
 export type ContactSortKey =
   | 'recente'
   | 'antigo'
+  | 'interacao_recente'
+  | 'interacao_antiga'
   | 'nome_az'
   | 'nome_za'
   | 'orcamento_recente'
@@ -98,8 +116,17 @@ export interface ContactFilters {
 }
 
 export const CONTACT_SORT_OPTIONS: { value: ContactSortKey; label: string }[] = [
-  { value: 'recente',           label: 'Mais recentes' },
-  { value: 'antigo',            label: 'Mais antigos' },
+  /* O PADRÃO da tela. Ordena por `ultima_interacao_em` — o mesmo campo da faixa
+     de atividade, já indexado.
+     Era 'orcamento_recente', e isso escondia o vendedor da própria carteira:
+     só 2.596 dos 7.830 contatos do ALVARO têm orçamento, então as 51 primeiras
+     páginas eram só quem tinha, e os outros 67% começavam na página 52. Os leads
+     VIVOS dele (172 com etiqueta de agosto, 555 de recuperação) estavam todos na
+     cauda. Era a queixa "só aparece cliente de orçamento meu". */
+  { value: 'interacao_recente', label: 'Movimentaram por último' },
+  { value: 'interacao_antiga',  label: 'Parados há mais tempo' },
+  { value: 'recente',           label: 'Cadastrados recentemente' },
+  { value: 'antigo',            label: 'Cadastrados há mais tempo' },
   { value: 'nome_az',           label: 'Nome A → Z' },
   { value: 'nome_za',           label: 'Nome Z → A' },
   { value: 'orcamento_recente', label: 'Orçamento mais novo' },
