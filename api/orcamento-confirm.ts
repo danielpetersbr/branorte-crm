@@ -101,6 +101,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           pdf_url: signed.signedUrl,
           filename: body.whatsapp_filename || `${base}.pdf`,
           cliente_nome: body.cliente_nome || '',
+          numero: (body as any).numero || null,
+          origem: 'confirm',
           caption: body.whatsapp_caption || `Orcamento ${base}`,
         },
       })
@@ -110,6 +112,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (e) {
       result.whatsapp = { ok: false, error: (e as Error).message }
     }
+  } else if (body.send_whatsapp) {
+    // Pediram WhatsApp mas falta insumo. Antes o bloco era pulado em SILENCIO: sem
+    // result.whatsapp, o front nao pinta nada e o vendedor acha que foi enviado.
+    const faltando = [
+      !body.whatsapp_envio_path ? 'PDF de envio nao subiu' : null,
+      !body.vendedor_nome ? 'vendedor nao identificado' : null,
+    ].filter(Boolean).join(' e ')
+    result.whatsapp = { ok: false, error: faltando || 'faltou insumo pro envio' }
+    // Registra a NAO-tentativa: sem isso ela nao existe em lugar nenhum.
+    try {
+      await supa.from('orcamento_envio_log').insert({
+        numero: (body as any).numero || null,
+        vendedor_recebido: body.vendedor_nome || null,
+        origem: 'confirm',
+        resultado: 'nao_tentou',
+        erro: faltando || 'faltou insumo pro envio',
+      })
+    } catch { /* log nunca derruba a resposta */ }
   }
 
   return res.status(200).json(result)
