@@ -2171,12 +2171,40 @@ export function OrcamentoMontar() {
       // Acessório só pode casar com pedido que também é acessório.
       const ACESSORIO_RE = /\b(ESCADA|PLATAFORMA|JOGO|ROSCA ENSACADEIRA)\b/
       const itemEhAcessorio = ACESSORIO_RE.test(norm)
+      // BUG FIX 2026-09-01: transportador casava pelo COMPRIMENTO ERRADO. normalizar()
+      // troca "3,20" por "3 20" e o filtro de tokens (>= 2 chars) descarta o "3" —
+      // sobra "20", que casa com "160 X 20,0 M". E "5,0" vira "5 0", os dois descartados:
+      // todo chupim de 160 empata em 0.75 e o primeiro da lista ganha (loteria).
+      // Caso real: o pacote Compacta 01 carregava "160 X 3,20 M" como o de 20 m e
+      // cobrava R$ 16.083 no lugar de R$ 5.795 (orçamento 2026-1643). Diâmetro e
+      // comprimento do nome agora são eliminatórios, antes do score.
+      const DIM_RE = /(\d{3})\s*[xX]\s*(\d+(?:[.,]\d+)?)\s*m\b/i
+      const dimItem = nomeItem.match(DIM_RE)
+      const diamItem = dimItem ? Number(dimItem[1]) : null
+      const compItem = dimItem ? Number(dimItem[2].replace(',', '.')) : null
+      // Mesmo problema com potência: "7,5 CV" vira "7 5 CV", os números caem e
+      // "TRITURADOR DE GRÃOS 7,5 CV" empata com todo triturador — saiu como 10 CV,
+      // R$ 14.708 no lugar de R$ 12.124 (orçamento 2026-2090).
+      const CV_RE = /(\d+(?:[.,]\d+)?)\s*CV\b/i
+      const cvItemM = nomeItem.match(CV_RE)
+      const cvItem = cvItemM ? Number(cvItemM[1].replace(',', '.')) : null
       let melhor: { ci: CatalogoItem; score: number } | null = null
       for (const ci of catalogoItems) {
         if (!ci.ativo) continue
         const ciNorm = normalizar(ci.nome_curto)
         if (!ciNorm) continue
         if (!itemEhAcessorio && (ci.categoria === 'ACESSORIO' || ACESSORIO_RE.test(ciNorm))) continue
+        if (diamItem != null && compItem != null) {
+          const d = ci.nome_curto.match(DIM_RE)
+          if (d) {
+            if (Number(d[1]) !== diamItem) continue
+            if (Math.abs(Number(d[2].replace(',', '.')) - compItem) > 0.3) continue
+          }
+        }
+        if (cvItem != null) {
+          const c = ci.nome_curto.match(CV_RE)
+          if (c && Math.abs(Number(c[1].replace(',', '.')) - cvItem) > 0.01) continue
+        }
         const ciSub = (ci.subcategoria || '').toUpperCase()
         const ciHorizontal = ciNorm.includes('HORIZONTAL') || ciSub.includes('HORIZONTAL')
         const ciVertical = ciNorm.includes('VERTICAL') || ciSub === 'VERTICAL'
