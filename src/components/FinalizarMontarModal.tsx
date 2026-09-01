@@ -17,7 +17,7 @@ import { gerarDocxViaHtml } from '@/lib/preview-to-docx-html'
 import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
-  resolverPastaDoMes, escreverArquivo,
+  resolverPastaDoMes, escreverArquivo, decidirDestinoPasta,
 } from '@/lib/orcamento-folder-scan'
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 import { montarNotaTxt } from '@/lib/orcamento-docx'
@@ -26,6 +26,7 @@ import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
 import { nomeBase, nomeBaseWhatsApp, sanitizeNomeArquivo, MAX_DESCRICAO } from '@/lib/orcamento-nome-arquivo'
+import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 
 // Envolve uma promise num timeout que REJEITA se estourar. Usado nas operações de
 // File System Access sobre o Z:\ (Google Drive File Stream): num PC com o drive
@@ -147,7 +148,7 @@ interface Props {
   open: boolean
   snapshot: CarrinhoSnapshot
   onClose: () => void
-  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null }) => void
+  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null }) => void
   /** Sprint 3: quando vem do copiloto IA com cliente pré-preenchido, dispara
    *  contagem regressiva de 3s e auto-clica Gerar (zero atrito).
    *  Vendedor vê o botão "Cancelar countdown" pra interromper se quiser editar. */
@@ -210,6 +211,10 @@ function baixarBlob(blob: Blob, nome: string) {
 export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen, saveMode = 'new', parentOrcamento }: Props) {
   const { profile } = useAuth()
   const { data: vendorsAtivos } = useVendors()
+  const vendedorResponsavel = useMemo(
+    () => resolverVendedorDoOrcamento(profile, vendorsAtivos),
+    [profile, vendorsAtivos],
+  )
   const vendedoresContato = useMemo(() => {
     if (!vendorsAtivos) return []
     return vendorsAtivos
@@ -389,7 +394,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
   // Reseta número quando modal abre (pra não reusar número de abertura anterior)
   useEffect(() => {
-    if (open) setNumeroAtual('')
+    if (open) {
+      setNumeroAtual('')
+      setTemPastaLocal(false)
+    }
   }, [open])
 
   // Carrega número quando abre o modal.
@@ -404,7 +412,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       ;(async () => {
         try {
           const handle = await getStoredFolderHandle()
-          if (handle) setTemPastaLocal(true)
+          const destino = decidirDestinoPasta((handle as any)?.name || '', new Date())
+          setTemPastaLocal(!!handle && destino.usarPastaLocal)
         } catch { /* sem pasta */ }
       })()
       return
@@ -416,7 +425,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       ;(async () => {
         try {
           const handle = await getStoredFolderHandle()
-          if (handle) setTemPastaLocal(true)
+          const destino = decidirDestinoPasta((handle as any)?.name || '', new Date())
+          setTemPastaLocal(!!handle && destino.usarPastaLocal)
         } catch { /* sem pasta */ }
       })()
       return
@@ -429,7 +439,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // A detecção de pasta (temPastaLocal) é só um queryPermission rápido, sem listar arquivos.
       try {
         const handle = await getStoredFolderHandle()
-        setTemPastaLocal(!!handle)
+        const destino = decidirDestinoPasta((handle as any)?.name || '', new Date())
+        setTemPastaLocal(!!handle && destino.usarPastaLocal)
       } catch {
         // Pasta configurada mas inacessível (Z:\ desconectado, vendedor mudou de PC)
         setTemPastaLocal(false)
@@ -450,8 +461,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   useEffect(() => {
     if (!open) { setPastaNome(''); return }
     ;(async () => {
-      try { const h = await getStoredFolderHandle(); setPastaNome((h as any)?.name || '') }
-      catch { setPastaNome('') }
+      try {
+        const h = await getStoredFolderHandle()
+        const destino = decidirDestinoPasta((h as any)?.name || '', new Date())
+        setPastaNome(destino.pastaNome + (h && !destino.usarPastaLocal ? ' (via servidor)' : ''))
+      } catch {
+        setPastaNome(decidirDestinoPasta('', new Date()).pastaNome + ' (via servidor)')
+      }
     })()
   }, [open])
 
@@ -538,8 +554,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       const handle = await pickOrcamentoFolder(true)
       if (!handle) return
       await ensureWritePermission(handle)
-      setTemPastaLocal(true)
-      setPastaNome((handle as any).name || '')
+      const destino = decidirDestinoPasta((handle as any).name || '', new Date())
+      setTemPastaLocal(destino.usarPastaLocal)
+      setPastaNome(destino.pastaNome + (destino.usarPastaLocal ? '' : ' (via servidor)'))
       // Em modo NEW, atualiza o número pela pasta. Em UPDATE/ALT mantém o número original.
       if (saveMode !== 'update' && saveMode !== 'alt') {
         try {
@@ -771,7 +788,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // Modo edição vs criação: 'update'+editingId → UPDATE (mantém numero/sequencial), 'alt' → ALT, senão INSERT
       // Modo alt: cria nova versão (ALT) vinculada ao pai
       const payloadComum = {
-        vendedor_nome: profile?.display_name?.toUpperCase() || 'DESCONHECIDO',
+        vendedor_nome: vendedorResponsavel.nome,
         cliente_nome: cliNome.trim(),
         cliente_dados: cliDados,
         // Data do cabeçalho escolhida na prévia (ou hoje). Sem isso o PDF saía
@@ -1038,6 +1055,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // Filename curto pro WhatsApp (sem descricao do produto)
       const baseWhatsApp = nomeBaseWhatsApp(orc.numero, cliNome)
       let baixouDocx = false, baixouPdf = false, salvouNaPasta = false
+      let whatsappEnviado = false
+      let whatsappMensagem: string | null = null
 
       // Salva no SERVIDOR (Storage + confirma status + dispara WhatsApp). É
       // máquina-independente. Serve como caminho primário (salvarNoServidor) E
@@ -1046,7 +1065,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // true se salvou. Mutamos baixouDocx/salvouNaPasta via closure.
       async function uploadServidor(): Promise<boolean> {
         setStep('Enviando pro servidor...', 75)
-        const vendedorNome = profile?.display_name || 'Vendedor'
+        const vendedorNome = vendedorResponsavel.nome
         const notaTxt = montarNotaTxt(vendedorNome, hoje)
         const txtBlob = new Blob([notaTxt], { type: 'text/plain;charset=utf-8' })
         const ano = String(hoje.getFullYear())
@@ -1074,11 +1093,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           salvouNaPasta = true
           if (pdfBlob) {
             if (upRes.whatsapp?.ok) {
+              whatsappEnviado = true
+              whatsappMensagem = upRes.whatsapp.msg || `PDF enviado ao WhatsApp de ${vendedorResponsavel.nome}.`
               setWaStatus('sent')
-              setWaMsg(upRes.whatsapp.msg || 'PDF enviado pro seu WhatsApp.')
+              setWaMsg(whatsappMensagem)
             } else if (upRes.whatsapp?.error) {
+              whatsappMensagem = `WhatsApp falhou: ${upRes.whatsapp.error}`
               setWaStatus('error')
-              setWaMsg(`WhatsApp falhou: ${upRes.whatsapp.error}`)
+              setWaMsg(whatsappMensagem)
             }
           }
           if (upRes.detalhes) console.warn('[salvar-servidor]', upRes.detalhes)
@@ -1113,7 +1135,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             // gravar concorrente corta o tempo vs sequencial (3 round-trips → 1 janela).
             // docx/pdf são críticos (se falharem, o catch externo cai pro servidor);
             // o .txt (data de envio, usado pra rastrear entrega) é best-effort.
-            const vendedorNome = profile?.display_name || 'Vendedor'
+            const vendedorNome = vendedorResponsavel.nome
             const txtBlob = new Blob([montarNotaTxt(vendedorNome, hoje)], { type: 'text/plain;charset=utf-8' })
             const writes: Promise<void>[] = [escreverArquivo(pastaMes, `${base}.docx`, docxBlob)]
             if (pdfBlob) writes.push(escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob))
@@ -1181,13 +1203,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
 
-      // 7) Enviar PDF pro WhatsApp do proprio vendedor (sempre automático)
+      // 7) Enviar PDF pro WhatsApp do vendedor responsável (sempre automático)
       // Se foi salvarNoServidor, o WhatsApp ja foi disparado pelo helper /api/orcamento-confirm.
       // Esse bloco serve so pros casos salvarNaPasta (FileSystem local) ou download direto.
-      if (pdfBlob && !opcoes.salvarNoServidor) {
-        setStep('Enviando pro seu WhatsApp...', 95)
+      if (pdfBlob && !opcoes.salvarNoServidor && !whatsappEnviado) {
+        setStep(`Enviando ao WhatsApp de ${vendedorResponsavel.nome}...`, 95)
         setWaStatus('sending')
-        setWaMsg('Enviando pro seu WhatsApp...')
+        setWaMsg(`Enviando ao WhatsApp de ${vendedorResponsavel.nome}...`)
         try {
           const ano = String(hoje.getFullYear())
           const mes = String(hoje.getMonth() + 1).padStart(2, '0')
@@ -1202,11 +1224,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             .createSignedUrl(envioPath, 60 * 60 * 24 * 7)
           if (sErr || !signed?.signedUrl) throw new Error('signed_url: ' + (sErr?.message ?? 'sem url'))
 
-          // Passa SÓ o primeiro nome em UPPERCASE (vendors.name eh 'DANIEL' nao 'DANIEL PETERS')
-          const primeiroNome = profile?.display_name?.trim().split(/\s+/)[0]?.toUpperCase() || undefined
           const { data: fnData, error: fnErr } = await supabase.functions.invoke('orcamento-enviar-meu-zap', {
             body: {
-              vendedor_nome: primeiroNome,
+              vendedor_nome: vendedorResponsavel.nome,
+              telefone_destino: vendedorResponsavel.telefone || undefined,
               pdf_url: signed.signedUrl,
               filename: `${baseWhatsApp}.pdf`,
               cliente_nome: cliNome.trim(),
@@ -1215,19 +1236,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           })
           if (fnErr) throw new Error(fnErr.message)
           if (fnData?.error) throw new Error(fnData.detail || fnData.error)
+          whatsappEnviado = true
+          whatsappMensagem = fnData?.msg || `PDF enviado ao WhatsApp de ${vendedorResponsavel.nome}. Chega em até 30s.`
           setWaStatus('sent')
-          setWaMsg(fnData?.msg || `PDF enviado pro seu WhatsApp. Chega em até 30s.`)
+          setWaMsg(whatsappMensagem)
         } catch (e) {
           const m = (e as Error).message
           console.warn('Falha enviar pro WhatsApp do vendedor:', m)
+          whatsappMensagem = `Não consegui enviar ao WhatsApp do vendedor: ${m}`
           setWaStatus('error')
-          setWaMsg(`Não consegui enviar pro seu WhatsApp: ${m}`)
+          setWaMsg(whatsappMensagem)
         }
       }
 
       setGerandoStep('Pronto!')
       setGerandoProgress(100)
-      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro, pdfErro })
+      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro, pdfErro, whatsappEnviado, whatsappMensagem })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
       setErro((e as Error).message)
@@ -1673,10 +1697,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           <div className="flex items-start gap-2 p-3 border border-emerald-300 rounded-md bg-emerald-50/40">
             <div className="flex-1">
               <div className="text-[12px] font-semibold text-emerald-700 flex items-center gap-1.5">
-                📲 PDF será enviado pro seu WhatsApp automaticamente
+                📲 PDF será enviado ao WhatsApp de {vendedorResponsavel.nome} automaticamente
               </div>
               <div className="text-[10px] text-emerald-600/70 mt-0.5">
-                Chega em até 30s após gerar. Você só encaminha pro cliente.
+                O sistema usa o telefone cadastrado do vendedor responsável. Chega em até 30s.
               </div>
             </div>
           </div>

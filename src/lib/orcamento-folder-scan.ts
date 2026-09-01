@@ -100,6 +100,24 @@ function normalizeName(s: string): string {
     .trim()
 }
 
+export function decidirDestinoPasta(handleName: string, dt: Date = new Date()): {
+  pastaNome: string
+  usarPastaLocal: boolean
+} {
+  const mes = dt.getMonth() + 1
+  const mesNome = MESES_NOMES[mes]
+  const pastaNome = `${mes} - ${mesNome}`
+  const nomeNormalizado = normalizeName(handleName || '')
+  const mesDoHandle = MESES_NOMES.slice(1).find((nome) =>
+    nomeNormalizado.includes(normalizeName(nome)),
+  )
+
+  return {
+    pastaNome,
+    usarPastaLocal: !mesDoHandle || mesDoHandle === mesNome,
+  }
+}
+
 // Detecta se um diretorio JA contem subpastas de meses (1 - Janeiro, etc.)
 async function temPastasDeMeses(dirHandle: any): Promise<boolean> {
   let count = 0

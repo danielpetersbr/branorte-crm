@@ -31,6 +31,8 @@ import {
   type MaterialChupim, type InclinacaoChupim,
 } from '@/lib/calcChupim'
 import { useTransportadorFuncoes, useCriarTransportadorFuncao, type TransportadorFuncao } from '@/hooks/useTransportadorFuncoes'
+import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
+import { decidirDestinoPasta } from '@/lib/orcamento-folder-scan'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -494,12 +496,9 @@ export function OrcamentoMontar() {
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false)
   // Sprint 3: marca true quando o copiloto IA dispara a finalização (auto-submit 3s)
   const [autoSubmitFromIA, setAutoSubmitFromIA] = useState(false)
-  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null } | null>(null)
+  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
-  const [waPromptOpen, setWaPromptOpen] = useState(false)
-  const [waPromptValue, setWaPromptValue] = useState('')
-  const [waPromptResolve, setWaPromptResolve] = useState<((v: string | null) => void) | null>(null)
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
   // Bloco "Observações" da proposta (opcional): texto livre + 1 foto/rascunho.
   // Editado inline na prévia, logo acima de "Nossas Redes Sociais".
@@ -3559,6 +3558,8 @@ export function OrcamentoMontar() {
         onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
         onSuccess={info => {
           setSucesso(info)
+          setEnviandoWA(info.whatsappEnviado ? 'enviado' : info.whatsappMensagem ? 'erro' : 'idle')
+          setEnviandoWAMsg(info.whatsappMensagem || '')
           setFinalizarOpen(false)
           setCarrinho([])
           setAcessorios(null)
@@ -3974,6 +3975,9 @@ export function OrcamentoMontar() {
       {/* Feedback de sucesso — toast premium. Fica VERMELHO se algo falhou. */}
       {sucesso && (() => {
         const algoFalhou = !!(sucesso.erro || sucesso.pdfErro || (!sucesso.salvouNaPasta && !sucesso.baixouDocx))
+        const agora = new Date()
+        const anoDestino = agora.getFullYear()
+        const pastaDestino = decidirDestinoPasta('', agora).pastaNome
         const corBg = algoFalhou ? 'bg-danger/15 border-danger/30' : 'bg-success/15 border-success/30'
         const corText = algoFalhou ? 'text-danger' : 'text-success'
         const corBorda = algoFalhou ? 'border-danger' : 'border-success'
@@ -4000,9 +4004,7 @@ export function OrcamentoMontar() {
               <div className="flex items-start gap-2 text-ink-muted">
                 <FolderOpen className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
                 <span>
-                  {typeof window !== 'undefined' && !('showDirectoryPicker' in window)
-                    ? <>Enviado pro servidor — vai aparecer em <code className="text-[10px] bg-surface-2 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\2026\Orçamentos 2026\</code> em até 30s.</>
-                    : <>Salvo na pasta Z:</>}
+                  Salvo em <code className="text-[10px] bg-surface-2 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\{anoDestino}\Orçamentos {anoDestino}\{pastaDestino}\</code>
                 </span>
               </div>
             )}
@@ -4097,35 +4099,9 @@ export function OrcamentoMontar() {
             <button
               onClick={async () => {
                 setEnviandoWA('enviando')
-                setEnviandoWAMsg('Detectando vendedor...')
+                const vendedor = resolverVendedorDoOrcamento(profile, vendorsAtivos)
+                setEnviandoWAMsg(`Preparando envio para ${vendedor.nome}...`)
                 try {
-                  // Pega telefone via postMessage da extensão (se aberto via popup)
-                  let telefone = await new Promise<string>((resolve) => {
-                    const onMsg = (ev: MessageEvent) => {
-                      if (ev.data?.type === 'branorte:vendor-info') {
-                        window.removeEventListener('message', onMsg)
-                        resolve(ev.data.telefone || '')
-                      }
-                    }
-                    window.addEventListener('message', onMsg)
-                    try { window.opener?.postMessage({ type: 'branorte:request-vendor-info' }, '*') } catch {}
-                    setTimeout(() => { window.removeEventListener('message', onMsg); resolve('') }, 3000)
-                  })
-                  if (!telefone) {
-                    const saved = localStorage.getItem('branorte_meu_telefone_wa') || ''
-                    setWaPromptValue(saved.replace(/^55/, ''))
-                    const tel = await new Promise<string | null>((resolve) => {
-                      setWaPromptResolve(() => resolve)
-                      setWaPromptOpen(true)
-                    })
-                    setWaPromptOpen(false)
-                    setWaPromptResolve(null)
-                    if (!tel) throw new Error('Cancelado')
-                    const d = tel.replace(/[^\d]/g, '')
-                    if (d.length < 10) throw new Error('Telefone inválido')
-                    telefone = d.startsWith('55') ? d : '55' + d
-                    localStorage.setItem('branorte_meu_telefone_wa', telefone)
-                  }
                   setEnviandoWAMsg('Fazendo upload do PDF...')
                   const filename = `${sucesso.numero}-${(sucesso.cliente || 'cliente').replace(/[^a-zA-Z0-9]+/g,'_')}.pdf`
                   const path = `orcamentos/${new Date().toISOString().slice(0,7)}/${filename}`
@@ -4136,7 +4112,13 @@ export function OrcamentoMontar() {
                   const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/orcamento-enviar-meu-zap', {
                     method: 'POST',
                     headers: { 'authorization': `Bearer ${session?.access_token ?? ''}`, 'content-type': 'application/json' },
-                    body: JSON.stringify({ telefone_destino: telefone, pdf_url: pub.publicUrl, filename, cliente_nome: sucesso.cliente }),
+                    body: JSON.stringify({
+                      vendedor_nome: vendedor.nome,
+                      telefone_destino: vendedor.telefone || undefined,
+                      pdf_url: pub.publicUrl,
+                      filename,
+                      cliente_nome: sucesso.cliente,
+                    }),
                   })
                   const j = await r.json()
                   if (!j.ok) throw new Error(j.error || 'erro')
@@ -4152,7 +4134,7 @@ export function OrcamentoMontar() {
             >
               {enviandoWA === 'enviando'
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> {enviandoWAMsg || 'Enviando...'}</>
-                : <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.31a7.85 7.85 0 0 0-13.4 5.6 7.85 7.85 0 0 0 1.05 3.94L4 20l4.27-1.12a7.85 7.85 0 0 0 3.74.95h.01a7.86 7.86 0 0 0 5.58-13.52zm-5.58 12.07h-.01a6.52 6.52 0 0 1-3.32-.91l-.24-.14-2.46.65.66-2.4-.16-.25a6.5 6.5 0 0 1-1-3.42 6.52 6.52 0 0 1 11.13-4.61 6.48 6.48 0 0 1 1.91 4.61 6.52 6.52 0 0 1-6.51 6.47z"/></svg> Enviar pro meu WhatsApp</>}
+                : <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.31a7.85 7.85 0 0 0-13.4 5.6 7.85 7.85 0 0 0 1.05 3.94L4 20l4.27-1.12a7.85 7.85 0 0 0 3.74.95h.01a7.86 7.86 0 0 0 5.58-13.52zm-5.58 12.07h-.01a6.52 6.52 0 0 1-3.32-.91l-.24-.14-2.46.65.66-2.4-.16-.25a6.5 6.5 0 0 1-1-3.42 6.52 6.52 0 0 1 11.13-4.61 6.48 6.48 0 0 1 1.91 4.61 6.52 6.52 0 0 1-6.51 6.47z"/></svg> Reenviar ao WhatsApp do vendedor</>}
             </button>
           )}
           {enviandoWA === 'enviado' && (
@@ -4170,62 +4152,6 @@ export function OrcamentoMontar() {
         </div>
         )
       })()}
-
-      {/* Modal estilizado pra pedir telefone WhatsApp (substitui prompt() feio) */}
-      {waPromptOpen && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
-          onClick={() => { waPromptResolve?.(null); setWaPromptOpen(false) }}
-        >
-          <div
-            className="bg-bg border border-border rounded-xl shadow-2xl max-w-md w-full overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="bg-emerald-600/15 border-b border-emerald-600/30 px-5 py-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center">
-                <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.31a7.85 7.85 0 0 0-13.4 5.6 7.85 7.85 0 0 0 1.05 3.94L4 20l4.27-1.12a7.85 7.85 0 0 0 3.74.95h.01a7.86 7.86 0 0 0 5.58-13.52z"/></svg>
-              </div>
-              <div>
-                <div className="text-[13px] font-bold text-ink">SEU WhatsApp</div>
-                <div className="text-[11px] text-ink-faint">Pra mandar o PDF pro seu próprio número</div>
-              </div>
-            </div>
-            <div className="p-5">
-              <label className="text-[11px] uppercase tracking-wider text-ink-muted font-semibold">Telefone (DDD + número)</label>
-              <input
-                autoFocus
-                type="tel"
-                value={waPromptValue}
-                onChange={(e) => setWaPromptValue(e.target.value.replace(/[^\d]/g, '').slice(0, 13))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && waPromptValue.replace(/\D/g, '').length >= 10) {
-                    waPromptResolve?.(waPromptValue)
-                  }
-                  if (e.key === 'Escape') { waPromptResolve?.(null); setWaPromptOpen(false) }
-                }}
-                placeholder="48984692860"
-                className="mt-1 w-full px-3 py-2.5 text-[15px] bg-surface-2 border border-border rounded-md focus:outline-none focus:border-emerald-500 text-ink"
-              />
-              <div className="text-[10px] text-ink-faint mt-1.5">Ex: 48984692860 (sem +55, sem espaços, sem traços)</div>
-            </div>
-            <div className="bg-surface-2 px-5 py-3 flex justify-end gap-2 border-t border-border">
-              <button
-                onClick={() => { waPromptResolve?.(null); setWaPromptOpen(false) }}
-                className="text-[12px] px-4 py-2 rounded text-ink-muted hover:bg-surface-3 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => waPromptResolve?.(waPromptValue)}
-                disabled={waPromptValue.replace(/\D/g, '').length < 10}
-                className="text-[12px] px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold transition"
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Copiloto IA — botão flutuante + drawer lateral. Faz consultas (leitura)
           e propõe ações de escrita (vendedor aprova clicando nos cards do chat).
