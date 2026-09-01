@@ -621,6 +621,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     setErro(null)
     setGerandoProgress(0)
     setStep('Preparando orçamento...', 3)
+    // Espelho LOCAL do erro. O `erro` lido la embaixo, na chamada do onSuccess, e a closure
+    // do render em que handleGerar foi criada — os setErro() daqui pra frente NAO o alteram.
+    // Medido: upload pro servidor falhava, setErro era chamado, e o pai recebia `erro: null`
+    // => toast VERDE "Orçamento gerado" com nada salvo e nenhum WhatsApp enviado.
+    let erroFluxo: string | null = null
     try {
       const hoje = new Date()
       // Data do cabeçalho: respeita a que o vendedor escolheu na prévia; se não
@@ -1002,7 +1007,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         } catch (e) {
           console.error('[gerar] ERRO docx (todos os tiers falharam):', e)
           docxBlob = new Blob([(e as Error).message], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
-          setErro(`Aviso: falha ao gerar Word (${(e as Error).message}).`)
+          erroFluxo = `Aviso: falha ao gerar Word (${(e as Error).message}).`
+          setErro(erroFluxo)
         }
       }
       console.log(`[gerar] docx fonte final: ${docxFonte}`)
@@ -1168,7 +1174,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // máquina-independente. Só baixa local se o servidor TAMBÉM falhar.
           const okServer = await uploadServidor()
           if (okServer) {
-            setErro(`✅ Orçamento salvo pelo servidor (o arquivo chega na pasta Z: pelo sincronizador). A gravação direta na pasta falhou — provável virada de mês. Pra voltar a gravar direto, clique em "Sincronizar com pasta" e escolha a pasta BASE "3 - Orçamento".`)
+            erroFluxo = `✅ Orçamento salvo pelo servidor (o arquivo chega na pasta Z: pelo sincronizador). A gravação direta na pasta falhou — provável virada de mês. Pra voltar a gravar direto, clique em "Sincronizar com pasta" e escolha a pasta BASE "3 - Orçamento".`
+            setErro(erroFluxo)
           } else {
             baixarBlob(docxBlob, `${base}.docx`)
             baixouDocx = true
@@ -1176,7 +1183,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               baixarBlob(pdfBlob, `${base}.pdf`)
               baixouPdf = true
             }
-            setErro(`Não consegui salvar na pasta (${(e as Error).message}) nem no servidor. Arquivos baixados localmente. Tente de novo.`)
+            erroFluxo = `Não consegui salvar na pasta (${(e as Error).message}) nem no servidor. Arquivos baixados localmente. Tente de novo.`
+            setErro(erroFluxo)
           }
         }
       } else if (opcoes.salvarNoServidor) {
@@ -1191,7 +1199,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
             baixarBlob(pdfBlob, `${base}.pdf`)
             baixouPdf = true
           }
-          setErro(`Upload pro servidor FALHOU. Arquivos baixados localmente como fallback. Tente de novo ou peça ajuda.`)
+          erroFluxo = `Upload pro servidor FALHOU. Arquivos baixados localmente como fallback. Tente de novo ou peça ajuda.`
+          setErro(erroFluxo)
         }
       } else {
         // 6b) Download direto
@@ -1251,7 +1260,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
       setGerandoStep('Pronto!')
       setGerandoProgress(100)
-      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro, pdfErro, whatsappEnviado, whatsappMensagem })
+      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro: erroFluxo, pdfErro, whatsappEnviado, whatsappMensagem })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
       setErro((e as Error).message)
