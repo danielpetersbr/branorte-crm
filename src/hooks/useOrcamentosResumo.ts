@@ -31,7 +31,8 @@ interface OrcRow {
   vendedor_nome: string | null
   total_proposta: number | null
   created_at: string
-  cliente_dados: { fone?: string | null; nome?: string | null } | null
+  fone_dados: string | null   // cliente_dados->>fone (só o campo, não o jsonb inteiro)
+  nome_dados: string | null   // cliente_dados->>nome
   cliente_nome: string | null
 }
 
@@ -58,7 +59,10 @@ export function useOrcamentosResumo(preset: DashboardPreset = '') {
       const desde = desdeFromPreset(preset)
       let q = supabase
         .from('orcamentos_gerados')
-        .select('vendedor_nome, total_proposta, created_at, cliente_dados, cliente_nome')
+        // cliente_dados é o jsonb do orçamento INTEIRO (equipamentos, endereço...) —
+        // só fone/nome interessam aqui. Extrair no select corta ~80% do payload,
+        // que este hook rebaixa a cada 60s.
+        .select('vendedor_nome, total_proposta, created_at, fone_dados:cliente_dados->>fone, nome_dados:cliente_dados->>nome, cliente_nome')
         .order('created_at', { ascending: false }) // mais recente primeiro → 1º visto = última proposta
         .limit(TETO)
       if (desde) q = q.gte('created_at', desde)
@@ -85,8 +89,8 @@ export function useOrcamentosResumo(preset: DashboardPreset = '') {
       const map = new Map<string, Acc>()
       rows.forEach((r, i) => {
         const nome = (r.vendedor_nome || '—').trim() || '—'
-        const fone = String(r.cliente_dados?.fone ?? '').replace(/\D/g, '')
-        const cli = String(r.cliente_dados?.nome ?? r.cliente_nome ?? '').trim().toLowerCase()
+        const fone = String(r.fone_dados ?? '').replace(/\D/g, '')
+        const cli = String(r.nome_dados ?? r.cliente_nome ?? '').trim().toLowerCase()
         // Sem fone E sem nome = não dá pra deduplicar: cada linha vira um "cliente"
         // novo, o que INFLA `geradas`/`valorTotalBRL` e DERRUBA o ticket médio.
         // Medido em 18/08/2026: 0 de 1.084 linhas caem aqui — hoje é inerte. Fica o

@@ -341,74 +341,119 @@ async function fetchCriativoNomes(): Promise<Map<string, string>> {
   return m
 }
 
+// Uma página da view, com retry próprio: um 57014 numa página não pode jogar fora as
+// outras — repetir o download inteiro rebaixava ~6 MB e empilhava carga justo quando o
+// banco estava saturado. Backoff curto; se as 3 tentativas falharem, sobe o erro.
+const PAGE = 2500
+const SEL = 'id, nome, telefone, responsavel, criativo_codigo, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, quando_investir, tocou_botao_em, o_que_precisa, data, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
+
+async function fetchPagina(from: number): Promise<RawRow[]> {
+  let ultimoErro: unknown = null
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    if (tentativa > 0) await new Promise(r => setTimeout(r, 1500 * tentativa))
+    const pageRes = await supabaseAuditoria
+      .from('atendimentos_por_cliente')
+      .select(SEL)
+      .eq('is_internal', false)
+      .order('data', { ascending: false, nullsFirst: false })
+      // Desempate ÚNICO: sem ele, linhas com o mesmo `data` podem trocar de página
+      // entre reads (pior ainda com páginas concorrentes) — linha some ou duplica.
+      .order('id', { ascending: false })
+      .range(from, from + PAGE - 1)
+    if (pageRes.error) { ultimoErro = pageRes.error; continue }
+    return (pageRes.data ?? []) as RawRow[]
+  }
+  throw ultimoErro
+}
+
+// Tudo que o agregador precisa e que vem da REDE. Fica num cache PRÓPRIO (sem o preset
+// na chave): trocar o filtro de período re-agrega em memória em vez de rebaixar ~8 MB —
+// antes cada troca refazia o download inteiro e, enquanto isso, o placeholder mostrava
+// os números do preset ANTIGO com o rótulo do novo (ex.: "Leads 9" carimbado "30 dias").
+interface DashboardRaw {
+  rows: RawRow[]
+  orcValorByCanon: Map<string, number>
+  fechados: Set<string>
+  criativoNomes: Map<string, string>
+}
+
+// Quantas páginas voam em paralelo. Sequencial levava ~13,5 s (7 páginas × ~1–4 s);
+// em ondas de 4 o teto vira ~2 ondas × página mais lenta. Não é maior porque cada
+// página materializa a view cara no banco — 7 simultâneas disputariam CPU do Postgres.
+const ONDA = 4
+
+async function fetchDashboardRaw(qc: ReturnType<typeof useQueryClient>): Promise<DashboardRaw> {
+  // Dispara JÁ o que não depende das linhas — antes esperava o download inteiro acabar.
+  // Criativo muda raramente: cache próprio de 30 min. fetchQuery dedupa entre telas.
+  const criativoNomesP = qc.fetchQuery({
+    queryKey: ['criativo-nomes'],
+    queryFn: fetchCriativoNomes,
+    staleTime: 30 * 60_000,
+  })
+  const sitP = (supabase as any).rpc('dashboard_fone_situacao')
+
+  // Read PAGINADO em ondas: a view (~16,5k linhas, ~8 MB) num read único estoura o
+  // statement_timeout de 8 s do role `authenticated` sob carga e volta 500 com `57014`.
+  const rows: RawRow[] = []
+  ondas: for (let base = 0; base < DASHBOARD_LIMIT; base += PAGE * ONDA) {
+    const offsets: number[] = []
+    for (let i = 0; i < ONDA && base + i * PAGE < DASHBOARD_LIMIT; i++) offsets.push(base + i * PAGE)
+    const chunks = await Promise.all(offsets.map(fetchPagina))
+    for (const chunk of chunks) {
+      rows.push(...chunk)
+      if (chunk.length < PAGE) break ondas   // página curta = acabou a view
+    }
+  }
+
+  // "Dinheiro parado" = valor do ÚLTIMO orçamento de cada lead (NÃO a soma das revisões,
+  // que infla: há telefone com 32 orçamentos → R$82M somado vs R$47M no último).
+  // Fonte: orcamentos_gerados.total_proposta via RPC orcamentos_por_telefone_canon,
+  // casado por fone_canon (espelhado em foneCanon()).
+  const canons = [...new Set(rows.map(r => foneCanon(r.telefone)).filter((x): x is string => !!x))]
+  const orcValorByCanon = new Map<string, number>()
+  const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
+  try {
+    const [orcRes, sitRes] = await Promise.all([
+      (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }),
+      sitP,
+    ])
+    if (!orcRes?.error) {
+      for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number }[]) {
+        if (o?.fone_canon) orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
+      }
+    }
+    if (!sitRes?.error) {
+      for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string }[]) {
+        if (s?.fone_canon && (s.situacao === 'vendido' || s.situacao === 'morto')) fechados.add(String(s.fone_canon))
+      }
+    }
+  } catch { /* maps vazios -> fallback; dashboard não quebra */ }
+
+  const criativoNomes = await criativoNomesP.catch(() => new Map<string, string>())
+  return { rows, orcValorByCanon, fechados, criativoNomes }
+}
+
 export function useDashboard(filters: DashboardFilters = { preset: '' }) {
   const qc = useQueryClient()
   return useQuery({
     queryKey: ['dashboard-data-v2', filters],
     queryFn: async (): Promise<DashboardData> => {
-      // Read PAGINADO: a view tem 10.4k linhas. Um único read (~7,8 MB) estoura o
-      // statement_timeout de 8 s do role `authenticated` sob carga (frota + crons) e volta
-      // 500 com `57014`. Em páginas de 2500 cada resposta é leve e sempre completa.
-      const PAGE = 2500
-      const SEL = 'id, nome, telefone, responsavel, criativo_codigo, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, quando_investir, tocou_botao_em, o_que_precisa, data, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
-      const rows: RawRow[] = []
-      for (let from = 0; from < DASHBOARD_LIMIT; from += PAGE) {
-        // Retry POR PÁGINA: um 57014 numa página não pode jogar fora as páginas que já
-        // vieram — repetir o loop inteiro rebaixava ~6 MB e empilhava carga justo quando o
-        // banco estava saturado. Backoff curto; se as 3 tentativas falharem, sobe o erro.
-        let chunk: RawRow[] | null = null
-        let ultimoErro: unknown = null
-        for (let tentativa = 0; tentativa < 3 && chunk === null; tentativa++) {
-          if (tentativa > 0) await new Promise(r => setTimeout(r, 1500 * tentativa))
-          const pageRes = await supabaseAuditoria
-            .from('atendimentos_por_cliente')
-            .select(SEL)
-            .eq('is_internal', false)
-            .order('data', { ascending: false, nullsFirst: false })
-            .range(from, from + PAGE - 1)
-          if (pageRes.error) { ultimoErro = pageRes.error; continue }
-          chunk = (pageRes.data ?? []) as RawRow[]
-        }
-        if (chunk === null) throw ultimoErro
-        rows.push(...chunk)
-        if (chunk.length < PAGE) break
-      }
-      // Criativo muda raramente: cache próprio de 30 min, fora do refetch de 3 min do read
-      // grande. fetchQuery dedupa entre abas/telas que já tenham buscado.
-      const criativoNomes = await qc.fetchQuery({
-        queryKey: ['criativo-nomes'],
-        queryFn: fetchCriativoNomes,
-        staleTime: 30 * 60_000,
+      // O download mora em ['dashboard-rows-v1'] (chave SEM preset): quem troca de
+      // período reaproveita as linhas do cache e só re-agrega (instantâneo). O refetch
+      // de 3 min do query externo reusa este fetchQuery, que respeita o staleTime.
+      const raw = await qc.fetchQuery({
+        queryKey: ['dashboard-rows-v1'],
+        queryFn: () => fetchDashboardRaw(qc),
+        // 300s > refetchInterval de 180s de propósito: o tick de 3min re-agrega, mas o
+        // download de 8MB só repete a cada 2 ticks (~6min) — antes eram 160MB/h por aba.
+        // Quem quiser mais fresco tem o botão Atualizar (invalidateQueries força).
+        staleTime: 300_000,
       })
-
-      // "Dinheiro parado" = valor do ÚLTIMO orçamento de cada lead (NÃO a soma das revisões,
-      // que infla: há telefone com 32 orçamentos → R$82M somado vs R$47M no último).
-      // Fonte: orcamentos_gerados.total_proposta via RPC orcamentos_por_telefone_canon,
-      // casado por fone_canon (espelhado em foneCanon()).
-      const canons = [...new Set(rows.map(r => foneCanon(r.telefone)).filter((x): x is string => !!x))]
-      const orcValorByCanon = new Map<string, number>()
-      const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
-      try {
-        const [orcRes, sitRes] = await Promise.all([
-          (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }),
-          (supabase as any).rpc('dashboard_fone_situacao'),
-        ])
-        if (!orcRes?.error) {
-          for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number }[]) {
-            if (o?.fone_canon) orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
-          }
-        }
-        if (!sitRes?.error) {
-          for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string }[]) {
-            if (s?.fone_canon && (s.situacao === 'vendido' || s.situacao === 'morto')) fechados.add(String(s.fone_canon))
-          }
-        }
-      } catch { /* maps vazios -> fallback; dashboard não quebra */ }
-      return aggregate(rows, filters.preset, orcValorByCanon, fechados, criativoNomes)
+      return aggregate(raw.rows, filters.preset, raw.orcValorByCanon, raw.fechados, raw.criativoNomes)
     },
     staleTime: 120_000,
     refetchInterval: 180_000,  // read pesado (~6MB) — refetch a cada 3min p/ não somar carga ao polling da frota
-    // O retry de verdade agora é POR PÁGINA (acima). Aqui fica 1 tentativa extra só pra
+    // O retry de verdade é POR PÁGINA (fetchPagina). Aqui fica 1 tentativa extra só pra
     // falha fora do loop (RPCs de orçamento) — antes eram 3, e cada uma rebaixava tudo.
     retry: 1,
     retryDelay: () => 3000,

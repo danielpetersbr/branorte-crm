@@ -972,6 +972,33 @@ export interface AtendimentoFunilContagem {
   comEtiquetaAberta: number
 }
 
+// SÓ o número do badge "Atendimentos" do menu lateral. O Layout montava
+// useAtendimentoKpis inteiro — 2 queries a cada 30s em TODAS as páginas, sendo uma
+// delas um count exact da view cara (~2s no banco) — pra usar um único campo (total).
+// O total muda devagar: aqui é 1 query head-only a cada 5 min, sem refetch no focus.
+export function useAtendimentoTotalBadge() {
+  return useQuery({
+    queryKey: ['atendimentos-total-badge'],
+    queryFn: async (): Promise<number> => {
+      const vendorFirst = await getCurrentVendorFirstName()
+      const q = applyBaseFilters(
+        supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_internal', false),
+        undefined, vendorFirst,
+      )
+      const { count, error } = await q
+      if (error) return 0   // badge é cosmético — nunca derruba o layout
+      return count ?? 0
+    },
+    staleTime: 4 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+  })
+}
+
 export function useAtendimentoFunilContagem() {
   return useQuery({
     queryKey: ['atendimentos-funil-contagem'],

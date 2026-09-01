@@ -120,8 +120,11 @@ export function useDashboardEtiquetas(preset: DashboardPreset = '') {
         alertas: x.alertas ?? { criativos_nao_fabricamos: 0, leads_orfaos: 0, vendedores_sem_orc: 0 },
       }
     },
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    // 180s alinhado ao useDashboard: a dashboard_etiquetas_extras custa ~3,2s de CPU
+    // do Postgres POR CHAMADA (a mais cara das 6 RPCs) — a 60s, cada usuário parado
+    // na tela queimava 60 execuções/hora dela. Etiqueta muda devagar; 3min basta.
+    staleTime: 180_000,
+    refetchInterval: 180_000,
     placeholderData: prev => prev,
     // Etiquetas são opcionais — se falhar, não derruba o dashboard.
     // Cards baseados em etiqueta simplesmente não aparecem (já têm `if (!etq)`).

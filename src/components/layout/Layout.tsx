@@ -5,7 +5,7 @@ import {
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
-import { useAtendimentoKpis } from '@/hooks/useAtendimentos'
+import { useAtendimentoTotalBadge } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useDarkMode } from '@/hooks/useDarkMode'
@@ -313,7 +313,7 @@ function useAiDrawerOpen(): boolean {
 }
 
 export function Layout() {
-  const { data: kpis } = useAtendimentoKpis()
+  const { data: totalAtendimentos } = useAtendimentoTotalBadge()
   const [dark, toggleDark] = useDarkMode()
   const [collapsed, toggleCollapsed] = useCollapsed()
   const { profile, signOut } = useAuth()
@@ -374,7 +374,7 @@ export function Layout() {
     .filter(g => g.items.length > 0)
 
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
-    atendimentos: kpis?.total,
+    atendimentos: totalAtendimentos,
   }
 
   const isItemActive = (it: NavItem) =>
