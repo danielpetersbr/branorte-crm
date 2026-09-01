@@ -1166,10 +1166,13 @@ function buildClausulaCancelamento(): Paragraph {
 }
 
 function buildGarantia(): Paragraph[] {
+  // keepNext encadeia garantia → espaçador → tabela de assinaturas: a assinatura
+  // nunca cai sozinha na página seguinte, órfã da garantia (roadmap #76).
   return [
     new Paragraph({
       alignment: AlignmentType.JUSTIFIED,
       spacing: { after: 100 },
+      keepNext: true,
       children: [
         r('Os equipamentos fornecidos pela metalúrgica BRANORTE estão garantidos pelo prazo de ', { size: 16, color: '374151' }),
         r('12 (doze) meses', { bold: true, size: 16, color: '374151' }),
@@ -1179,6 +1182,7 @@ function buildGarantia(): Paragraph[] {
     new Paragraph({
       alignment: AlignmentType.JUSTIFIED,
       spacing: { after: 100 },
+      keepNext: true,
       children: [r(
         'Componentes fabricados e/ou montados por terceiros, tais como: motores elétricos, redutores, chaves elétricas, quadro de comando elétrico, correias, rolamentos (tendo somente a garantia fornecida pelos respectivos fabricantes), bem como toda e qualquer obra civil que é de responsabilidade do cliente.',
         { size: 16, color: '374151' },
@@ -1335,8 +1339,8 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
     }
   }
 
-  // Assinaturas
-  blocos.push(paragrafoVazio(400))
+  // Assinaturas — espaçador com keepNext pra grudar na tabela (roadmap #76)
+  blocos.push(new Paragraph({ children: [r(' ')], spacing: { after: 400 }, keepNext: true }))
   blocos.push(buildAssinaturas(opts.cliente.nome))
 
   // ─── MONTA DOCUMENTO ────────────────────────────────────────────────

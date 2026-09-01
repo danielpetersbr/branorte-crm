@@ -2157,11 +2157,19 @@ export function OrcamentoMontar() {
       if (!norm) return null
       const itemHorizontal = norm.includes('HORIZONTAL')
       const itemVertical = norm.includes('VERTICAL')
+      // BUG FIX 2026-09-01 (roadmap #74): "MISTURADOR HORIZONTAL 1900 LITROS (1000 KG)"
+      // normaliza pra "MISTURADOR HORIZONTAL 1000 KG", que é SUBSTRING de
+      // "ESCADA COM PLATAFORMA PARA MISTURADOR HORIZONTAL 1000 KG" → o acessório
+      // ganhava o match (0.85+0.15=1.0) e a foto da escada aparecia no misturador.
+      // Acessório só pode casar com pedido que também é acessório.
+      const ACESSORIO_RE = /\b(ESCADA|PLATAFORMA|JOGO|ROSCA ENSACADEIRA)\b/
+      const itemEhAcessorio = ACESSORIO_RE.test(norm)
       let melhor: { ci: CatalogoItem; score: number } | null = null
       for (const ci of catalogoItems) {
         if (!ci.ativo) continue
         const ciNorm = normalizar(ci.nome_curto)
         if (!ciNorm) continue
+        if (!itemEhAcessorio && (ci.categoria === 'ACESSORIO' || ACESSORIO_RE.test(ciNorm))) continue
         const ciSub = (ci.subcategoria || '').toUpperCase()
         const ciHorizontal = ciNorm.includes('HORIZONTAL') || ciSub.includes('HORIZONTAL')
         const ciVertical = ciNorm.includes('VERTICAL') || ciSub === 'VERTICAL'
