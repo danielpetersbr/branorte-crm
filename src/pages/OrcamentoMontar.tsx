@@ -2065,10 +2065,17 @@ export function OrcamentoMontar() {
       if (!it.motor_cv || !it.motor_polos) return it
       // Item com inversor: cotar sempre como trifásico, polos não muda.
       const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : novaVoltagem
-      // Monofásico só existe em 4 polos. Se trocou pra mono e item tinha 6 polos,
-      // força 4 polos + atualiza specs/nome pra refletir. Tri mantém os polos atuais
-      // (pode ter sido escolhido por função de transportador 6 polos, etc.).
-      const polosFinais = (voltagemEfetiva === 'monofasico' && it.motor_polos !== 4) ? 4 : it.motor_polos
+      // Monofásico NÃO existe em 6 polos, mas existe em 2 e em 4 (10 motores ativos
+      // em cada, de 1 a 15 CV). Só cai pra 4 polos quando não há motor mono cadastrado
+      // no nº de polos do equipamento — antes forçava 4 sempre que polos !== 4, e isso
+      // trocava o motor de 2 polos do moinho martelo por um de 4, mais caro. Pior:
+      // motor_polos é persistido logo abaixo, então voltar pra trifásico MANTINHA os
+      // 4 polos e o motor caro (roadmap #75).
+      const temMonoNessesPolos = motores.some(m =>
+        Number(m.cv) === it.motor_cv && m.polos === it.motor_polos && m.voltagem === 'monofasico')
+      const polosFinais = (voltagemEfetiva === 'monofasico' && it.motor_polos !== 4 && !temMonoNessesPolos)
+        ? 4
+        : it.motor_polos
       const polosMudou = polosFinais !== it.motor_polos
       // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
       const incluso = motorJaInclusoNoItem(it.specs)
