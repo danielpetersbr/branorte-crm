@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
  * já sabe desenhar "(sem nome)".
  */
 export function CelulaEditavel({
-  valor, onSalvar, placeholder, className, inputClassName, titulo, ariaLabel, salvando, erro,
+  valor, onSalvar, placeholder, className, inputClassName, titulo, ariaLabel, salvando, erro, maxLength = 120,
 }: {
   valor: string | null
   onSalvar: (novo: string | null) => void
@@ -26,6 +26,8 @@ export function CelulaEditavel({
   ariaLabel: string
   salvando?: boolean
   erro?: boolean
+  /** 120 serve pra nome e cidade; a anotacao de negociacao pede mais. */
+  maxLength?: number
 }) {
   const [editando, setEditando] = useState(false)
   const [rascunho, setRascunho] = useState('')
@@ -57,7 +59,7 @@ export function CelulaEditavel({
           defaultValue={rascunho}
           onChange={e => setRascunho(e.target.value)}
           aria-label={ariaLabel}
-          maxLength={120}
+          maxLength={maxLength}
           onKeyDown={e => {
             e.stopPropagation()   // a linha escuta Enter/Espaço pra abrir a ficha
             if (e.key === 'Enter') { e.preventDefault(); confirmar() }

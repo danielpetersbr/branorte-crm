@@ -12,7 +12,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarConversa, formatarTelefone, nomeContato, canonico, ALIASES, ORDEM_FUNIL,
-  idCanonicoMsg, corpoVisivel, statusDaEtiqueta, statusDerivadoDaEtiqueta,
+  idCanonicoMsg, corpoVisivel, statusDaEtiqueta, statusDerivadoDaEtiqueta, comEtiquetasDoCrm,
   type MensagemLite,
 } from './wa-funil'
 
@@ -347,6 +347,62 @@ test('statusDerivadoDaEtiqueta: so avulsa (ou nenhuma) deixa pro vendedor marcar
   assert.equal(statusDerivadoDaEtiqueta([], 'EDER'), null)
   assert.equal(statusDerivadoDaEtiqueta(null, 'EDER'), null)
   assert.equal(statusDerivadoDaEtiqueta(undefined, null), null)
+})
+
+test('statusDaEtiqueta: acento da etiqueta digitada no CRM nao atrapalha', () => {
+  assert.equal(statusDaEtiqueta('Não tem interesse'), 'FECHADO')
+  assert.equal(statusDaEtiqueta('Orçamento enviado'), 'ABERTO')
+  assert.equal(statusDaEtiqueta('PROSPECÇÃO'), 'ABERTO')
+  assert.equal(statusDaEtiqueta('Só base de preço'), 'FECHADO')
+})
+
+test('statusDerivadoDaEtiqueta: empate total = encerramento vence (e nao a ordem do JSON)', () => {
+  // A extensao carimba todas as etiquetas da conversa com o MESMO `em`.
+  const em = '2026-08-31T10:20:14.007295+00:00'
+  const a = [
+    { etiqueta: 'ORCAMENTO ENVIADO', vendedor: 'ALVARO', em },
+    { etiqueta: 'NAO RESPONDEU MAIS', vendedor: 'ALVARO', em },
+  ]
+  const b = [a[1], a[0]]
+  assert.equal(statusDerivadoDaEtiqueta(a, 'ALVARO')?.status, 'FECHADO')
+  assert.equal(statusDerivadoDaEtiqueta(b, 'ALVARO')?.status, 'FECHADO', 'ordem invertida da o mesmo')
+  assert.equal(statusDerivadoDaEtiqueta(a, 'ALVARO')?.etiqueta, 'NAO RESPONDEU MAIS')
+  assert.equal(statusDerivadoDaEtiqueta(a, null)?.status, 'FECHADO', 'sem dono tambem')
+})
+
+test('statusDerivadoDaEtiqueta: data mais recente continua vencendo o empate de status', () => {
+  const etqs = [
+    { etiqueta: 'NAO RESPONDEU MAIS', vendedor: 'ALVARO', em: '2026-08-01T10:00:00Z' },
+    { etiqueta: 'ORCAMENTO ENVIADO', vendedor: 'ALVARO', em: '2026-08-05T10:00:00Z' },
+  ]
+  assert.equal(statusDerivadoDaEtiqueta(etqs, 'ALVARO')?.status, 'ABERTO')
+})
+
+test('comEtiquetasDoCrm: "Vendido" aplicado no CRM fecha o contato e diz que veio do CRM', () => {
+  const wa = [{ etiqueta: 'ORCAMENTO ENVIADO', vendedor: 'IGOR', em: '2026-08-20T10:00:00Z' }]
+  const crm = [{ nome: 'Vendido', aplicada_em: '2026-08-31T12:20:10Z' }]
+  const r = statusDerivadoDaEtiqueta(comEtiquetasDoCrm(wa, crm, 'IGOR'), 'IGOR')
+  assert.equal(r?.status, 'FECHADO')
+  assert.equal(r?.origem, 'crm')
+  assert.equal(r?.etiqueta, 'VENDIDO')
+  assert.equal(statusDerivadoDaEtiqueta(wa, 'IGOR')?.origem, 'wa')
+})
+
+test('comEtiquetasDoCrm: etiqueta do dono no WhatsApp mais recente que a do CRM manda', () => {
+  const wa = [{ etiqueta: 'NAO TEM INTERESSE', vendedor: 'IGOR', em: '2026-09-02T10:00:00Z' }]
+  const crm = [{ nome: '3a tentativa', aplicada_em: '2026-08-31T12:20:10Z' }]
+  const r = statusDerivadoDaEtiqueta(comEtiquetasDoCrm(wa, crm, 'IGOR'), 'IGOR')
+  assert.equal(r?.status, 'FECHADO')
+  assert.equal(r?.origem, 'wa')
+})
+
+test('comEtiquetasDoCrm: a do CRM vale como do DONO — vence a de outro vendedor no WhatsApp', () => {
+  const wa = [{ etiqueta: 'VENDIDO', vendedor: 'PEDRO', em: '2026-09-02T10:00:00Z' }]
+  const crm = [{ nome: '4a tentativa', aplicada_em: '2026-08-06T14:33:33Z' }]
+  assert.equal(statusDerivadoDaEtiqueta(comEtiquetasDoCrm(wa, crm, 'EDER'), 'EDER')?.status, 'ABERTO')
+  // sem dono, ela nao tem privilegio: vale a mais recente
+  assert.equal(statusDerivadoDaEtiqueta(comEtiquetasDoCrm(wa, crm, null), null)?.status, 'FECHADO')
+  assert.equal(statusDerivadoDaEtiqueta(comEtiquetasDoCrm([], [], 'EDER'), 'EDER'), null)
 })
 
 test('statusDerivadoDaEtiqueta: comparacao de vendedor ignora caixa e espaco', () => {

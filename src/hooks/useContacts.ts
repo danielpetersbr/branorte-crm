@@ -137,6 +137,10 @@ export function useUpdateContact() {
          173.725 sem dono estao FORA do pool (ter orcamento e justamente o que tira). */
       name?: string | null
       city?: string | null
+      /* Como ficou a negociacao (coluna nova, 01/09/2026). UPDATE em `contacts`
+         e concedido POR COLUNA pra authenticated — a coluna nasceu com o grant
+         proprio; sem ele o PostgREST devolve 42501 e a celula nunca salva. */
+      negociacao?: string | null
     }) => {
       /*
        * `.select('id')` NAO e decoracao — e o unico jeito de saber se a linha existiu.

@@ -51,12 +51,17 @@ export function BotoesStatus({
    * `recompute-contact-status-5min`, e um clique aqui seria desfeito em até 5
    * minutos — pior que não ter botão, porque parece que funcionou.
    */
-  derivadoDe?: { etiqueta: string; vendedor: string | null } | null
+  derivadoDe?: { etiqueta: string; vendedor: string | null; origem?: 'wa' | 'crm' } | null
 }) {
   const travado = !!derivadoDe
+  // A explicacao diz ONDE mudar: a etiqueta do CRM se tira no botao de etiquetar
+  // da coluna Etiqueta; a do WhatsApp so muda no WhatsApp.
   const explicacao = derivadoDe
-    ? `Definido pela etiqueta "${derivadoDe.etiqueta}"${derivadoDe.vendedor ? ` no WhatsApp do ${derivadoDe.vendedor}` : ''}. `
-      + `Pra mudar aqui, mude a etiqueta no WhatsApp — o CRM acompanha sozinho.`
+    ? derivadoDe.origem === 'crm'
+      ? `Definido pela etiqueta "${derivadoDe.etiqueta}" aplicada aqui no CRM. `
+        + `Pra mudar, tire a etiqueta na coluna Etiqueta — o status acompanha sozinho.`
+      : `Definido pela etiqueta "${derivadoDe.etiqueta}"${derivadoDe.vendedor ? ` no WhatsApp do ${derivadoDe.vendedor}` : ''}. `
+        + `Pra mudar aqui, mude a etiqueta no WhatsApp — o CRM acompanha sozinho.`
     : null
   return (
     <div
