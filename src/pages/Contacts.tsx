@@ -784,17 +784,11 @@ export function Contacts() {
         <div className="flex flex-col lg:flex-row lg:items-center gap-2 mt-3 pt-3 border-t border-border">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-faint shrink-0 lg:mr-1">WhatsApp</span>
 
-          {/* O filtro mais valioso da tela: o cliente falou e ninguém respondeu. */}
-          <ChipFiltro
-            ativo={!!filters.esperando_resposta}
-            tom="warning"
-            onClick={() => setFilters(f => ({ ...f, esperando_resposta: !f.esperando_resposta, page: 0 }))}
-            title="Contatos em que a ULTIMA mensagem foi do cliente — ninguem respondeu ainda."
-          >
-            <CornerDownLeft className="h-4 w-4" aria-hidden />
-            Esperando resposta
-          </ChipFiltro>
-
+          {/* CHIP "ESPERANDO RESPOSTA" REMOVIDO (01/09/2026, pedido do Daniel) —
+              mesmo dia em que o chip irmão saiu do painel da extensão. O recorte
+              continua vivo na RPC (p_esperando_resposta) e o sinal por linha
+              continua: o "aguardando resposta do vendedor" sob o último contato.
+              Pra reverter, é só recolocar o <ChipFiltro> aqui. */}
           <ChipFiltro
             ativo={!!filters.com_whatsapp}
             onClick={() => setFilters(f => ({ ...f, com_whatsapp: !f.com_whatsapp, page: 0 }))}
