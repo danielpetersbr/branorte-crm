@@ -87,10 +87,17 @@ export function estiloEtiqueta(hex: string): CSSProperties {
  *
  * `etiqueta` fica de fora de propósito — é o próprio facet. Se entrasse, escolher
  * um chip apagaria todos os outros e não daria pra trocar sem limpar antes.
+ *
+ * ⚠️ `faixa` FALTAVA aqui e na RPC. Com a faixa de atividade ligada, o chip contava
+ * a base inteira e a lista contava o recorte: "NÃO RESPONDEU MAIS" dizia 210 no chip
+ * e 104 na lista; "(sem etiqueta)" 4.661 vs 3.182. Eram três números discordando na
+ * mesma tela (card da faixa, "N contatos encontrados" e o chip). Tem que estar nos
+ * DOIS lugares — na chamada e na queryKey, senão o cache devolve o número velho.
  */
 export function useContatosEtiquetas(f: ContactFilters) {
   const chave = [f.search, f.estado, f.vendor_id, f.status, f.orcamento_ano, f.orcamento_mes,
-                 f.orcamento, f.sem_orcamento, f.temperatura, f.com_whatsapp, f.esperando_resposta]
+                 f.orcamento, f.sem_orcamento, f.temperatura, f.com_whatsapp, f.esperando_resposta,
+                 f.faixa]
   return useQuery({
     queryKey: ['contatos-etiquetas', ...chave],
     queryFn: async (): Promise<ChipEtiqueta[]> => {
@@ -106,6 +113,7 @@ export function useContatosEtiquetas(f: ContactFilters) {
         p_temperatura: f.temperatura || null,
         p_com_whatsapp: !!f.com_whatsapp,
         p_esperando_resposta: !!f.esperando_resposta,
+        p_faixa: f.faixa || null,
       })
       if (error) throw error
       return ((data ?? []) as any[]).map(r => ({
