@@ -449,6 +449,15 @@ export function MapaVisitas() {
   // (por telefone canônico) e visitas (pelas etiquetas que a extensão gravou).
   const [etiquetasSel, setEtiquetasSel] = useState<Set<string>>(() => new Set())
   const [etiqAberto, setEtiqAberto] = useState(false)
+  // Popover "Filtros" do desktop (02/09/2026): situação, valor mínimo, etiqueta,
+  // visita e estado saíram da barra e moram aqui. O celular segue com a folha.
+  const [filtrosAberto, setFiltrosAberto] = useState(false)
+  useEffect(() => {
+    if (!filtrosAberto) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setFiltrosAberto(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [filtrosAberto])
   const toggleEtiqueta = (v: string) => setEtiquetasSel(s => {
     const n = new Set(s)
     if (n.has(v)) n.delete(v); else n.add(v)
@@ -1870,6 +1879,32 @@ export function MapaVisitas() {
   // Com 'todos' a soma mistura orçado em aberto + vendido, então o rótulo não pode dizer "Orçado".
   const rotuloValor = vendFiltro === 'vendidos' ? 'Vendido' : vendFiltro === 'todos' ? 'Valor' : 'Orçado'
 
+  // O painel de filtros mostra "Situação" e "Valor mínimo" como duas perguntas,
+  // mas o estado continua UM (vendFiltro): ⭐/💎 já significam "orçado em aberto
+  // acima de X", então valor ≠ qualquer implica situação = só orçados. Nenhuma
+  // regra de filtro mudou — só a leitura.
+  const situacaoAtual: 'todos' | 'orcados' | 'vendidos' =
+    vendFiltro === 'vendidos' ? 'vendidos' : vendFiltro === 'todos' ? 'todos' : 'orcados'
+  const valorAtual: 'qualquer' | 'alto' | 'diamante' =
+    vendFiltro === 'alto' ? 'alto' : vendFiltro === 'diamante' ? 'diamante' : 'qualquer'
+  const escolherValor = (v: typeof valorAtual) =>
+    setVendFiltro(v === 'qualquer' ? (situacaoAtual === 'vendidos' ? 'vendidos' : situacaoAtual === 'todos' ? 'todos' : 'orcados') : v)
+  const nFiltros = (vendFiltro !== 'todos' ? 1 : 0) + (visitaFiltro !== 'todos' ? 1 : 0)
+    + (etiquetasSel.size > 0 ? 1 : 0) + (ufSel ? 1 : 0)
+  const limparFiltros = () => { setVendFiltro('todos'); setVisitaFiltro('todos'); setEtiquetasSel(new Set()); setUfSel('') }
+  const avisoFormaValor = showOrc && modo !== 'valor' && valorAtual !== 'qualquer'
+  // Chip de filtro ativo (linha embaixo do cabeçalho). Cada um com o seu ✕.
+  const chip = (texto: string, tirar: () => void, title?: string, tom: 'normal' | 'aviso' = 'normal') => (
+    <button onClick={tirar} title={title}
+      className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border text-[12px] font-medium transition-colors ${
+        tom === 'aviso' ? 'border-warning/50 bg-warning/10 text-warning hover:bg-warning/20'
+                        : 'border-border bg-surface-2 text-ink hover:border-accent/50'}`}>
+      {texto}<span className="text-ink-faint">✕</span>
+    </button>
+  )
+  const segBtn = (ativo: boolean, extra = '') =>
+    `flex-1 px-1.5 whitespace-nowrap transition-colors ${ativo ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'} ${extra}`
+
   // Lista "por estado" — barra proporcional ao valor; clicar filtra o mapa naquele estado.
   const listaUF = (cls: string, aoEscolher?: () => void) => (
     <ul className={`space-y-0.5 ${cls}`}>
@@ -1913,35 +1948,9 @@ export function MapaVisitas() {
               </span>
             )}
             {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
-            {/* ⭐/💎 são filtro de VALOR, mas a estrela e o diamante só são desenhados
-                no modo "por valor". Fora dele o filtro pega e o mapa não dá sinal —
-                a pessoa acha que não funcionou. Avisamos com atalho, sem sequestrar
-                a escolha de quem está lendo por idade ou por estado. */}
-            {showOrc && modo !== 'valor' && (vendFiltro === 'alto' || vendFiltro === 'diamante') && (
-              <> · <span className="text-warning">
-                filtrando {vendFiltro === 'alto' ? '≥100 mil' : '≥300 mil'} — a forma só aparece no{' '}
-                <button onClick={() => setModo('valor')} className="font-semibold underline">modo Por valor</button>
-              </span></>
-            )}
-            {showOrc && ocultos.total > 0 && (
-              <> · <button onClick={() => setPeriodo('tudo')} className="text-warning font-semibold hover:underline"
-                    title={`${ocultos.total} clientes estão fora da janela de ${rotuloPeriodo(periodo)}${ocultos.vendidos > 0 ? ` (${ocultos.vendidos} deles já compraram)` : ''}. Clique para ver o acervo inteiro.`}>
-                +{ocultos.total} fora do período ✕
-              </button></>
-            )}
             {showOrc && showVis && ' · '}
             {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
-            {ufSel && (
-              <> · <button onClick={() => setUfSel('')} className="text-accent font-semibold hover:underline" title="Mostrar o Brasil todo">
-                {ufSel === '—' ? 'sem estado' : ufSel} ✕
-              </button></>
-            )}
-            {etiquetasSel.size > 0 && (
-              <> · <button onClick={() => setEtiquetasSel(new Set())} className="text-accent font-semibold hover:underline" title="Tirar o filtro de etiqueta">
-                🏷️ {rotuloEtiquetas} ✕
-              </button></>
-            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
@@ -1980,78 +1989,108 @@ export function MapaVisitas() {
               </ul>
             )}
           </div>
-          {/* No celular os controles ficam numa faixa que ROLA na horizontal (não empilham
-              comendo a tela). md:contents remove o wrapper no desktop → volta ao flex-wrap original. */}
+          {/* BARRA ENXUTA (02/09/2026). Antes eram 24 controles em duas linhas misturando
+              quatro coisas: como o mapa PINTA (modo), o que ele MOSTRA (filtros), quais
+              CAMADAS estão ligadas e as FERRAMENTAS. Agora: busca · vendedor · período ·
+              Filtros (popover) | Ver como | camadas | Lista · Viagem. O Raio foi pra
+              sidebar, que é onde ele entrega a lista. O que está filtrando vira chip na
+              linha de baixo. O celular tem a própria faixa, mais abaixo, e não mudou. */}
           <div className="flex items-center gap-2 w-full overflow-x-auto flex-nowrap md:contents pb-1 [&>*]:shrink-0">
-          {/* MODO de visualização — muda como o mapa PINTA, não o que ele mostra.
-              Fica antes dos filtros porque é a decisão de leitura, não de recorte. */}
-          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
-            {MODOS.map(([v, label, ajuda]) => (
-              <button key={v} onClick={() => setModo(v)} title={ajuda}
-                className={`px-2.5 transition-colors ${modo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* filtro de período — o acervo tem 14 anos; sem ele a tela abre com tudo */}
-          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold"
-               title="Período pela data do orçamento. Registros sem data aparecem sempre.">
-            {PERIODO_LABEL.map(([v, label]) => (
-              <button key={v} onClick={() => setPeriodo(v)}
-                className={`px-2.5 transition-colors ${periodo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* filtro vendido / orçado */}
-          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
-            {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
-              <button key={v} onClick={() => setVendFiltro(v)}
-                className={`px-2.5 transition-colors ${vendFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* filtro de visita */}
-          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
-            {([['todos', 'Todas'], ['visitados', '✅ Visitadas'], ['pendentes', '⏳ A visitar']] as [VisitaFiltro, string][]).map(([v, label]) => (
-              <button key={v} onClick={() => setVisitaFiltro(v)}
-                className={`px-2.5 transition-colors ${visitaFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* filtro por ETIQUETA do WhatsApp — multi-escolha com contagem. O popover
-              fecha por um backdrop transparente; o `relative` no span ancora ele no botão. */}
+          <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)}
+            title="Vendedor do cliente (o do orçamento mais recente)"
+            className={`h-9 px-2.5 rounded-md border text-[13px] font-semibold ${vendedorSel ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink'}`}>
+            <option value="">Todos os vendedores</option>
+            {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select value={periodo} onChange={e => setPeriodo(e.target.value as PeriodoFiltro)}
+            title="Período pela data do orçamento. Registros sem data aparecem sempre."
+            className="h-9 px-2.5 rounded-md bg-surface border border-border text-[13px] font-semibold text-ink">
+            {PERIODO_LABEL.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
           <span className="relative">
-            <button className={togglePill(etiquetasSel.size > 0)} onClick={() => setEtiqAberto(v => !v)}
-              aria-expanded={etiqAberto}
-              title="Filtrar os pinos pela etiqueta do WhatsApp do cliente (orçamentos e visitas). Dá pra marcar várias.">
-              🏷️ {rotuloEtiquetas}
+            <button className={`${togglePill(nFiltros > 0)} inline-flex items-center gap-1.5`}
+              onClick={() => setFiltrosAberto(v => !v)} aria-expanded={filtrosAberto}
+              title="Situação, valor mínimo, etiqueta do WhatsApp, visita e estado">
+              Filtros
+              {nFiltros > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-white text-[11px] font-bold tabular-nums inline-flex items-center justify-center">{nFiltros}</span>}
+              <span className="text-ink-faint text-[11px]">▾</span>
             </button>
-            {etiqAberto && (
+            {filtrosAberto && (
               <>
-                <div className="fixed inset-0 z-[1190]" onClick={() => setEtiqAberto(false)} />
-                <div className="absolute left-0 top-full mt-1 z-[1200] w-72 rounded-lg border border-border bg-surface shadow-lg p-2">
+                <div className="fixed inset-0 z-[1190]" onClick={() => setFiltrosAberto(false)} />
+                <div className="absolute left-0 top-full mt-1 z-[1200] w-[26rem] rounded-lg border border-border bg-surface shadow-lg p-3 space-y-3 text-[12.5px]">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-1.5 px-1">Situação</div>
+                    <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+                      {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos']] as ['todos' | 'orcados' | 'vendidos', string][]).map(([v, label]) => (
+                        <button key={v} onClick={() => setVendFiltro(v)} className={segBtn(situacaoAtual === v)}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className={situacaoAtual === 'vendidos' ? 'opacity-50' : ''}
+                       title={situacaoAtual === 'vendidos' ? 'O valor mínimo vale pra orçado em aberto, não pra vendido' : undefined}>
+                    <div className="flex items-center gap-2 mb-1.5 px-1">
+                      <span className="text-[11px] uppercase tracking-wide text-ink-faint">Valor mínimo</span>
+                      {/* ⭐/💎 só são DESENHADOS no modo Por valor. O aviso mora ao lado da
+                          escolha, com atalho, em vez de na frase do cabeçalho. */}
+                      {avisoFormaValor && (
+                        <button onClick={() => setModo('valor')} className="ml-auto text-[11px] font-semibold text-warning hover:underline">
+                          formas só no modo Por valor ↗
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+                      {([['qualquer', 'Qualquer'], ['alto', '⭐ ≥ 100 mil'], ['diamante', '💎 ≥ 300 mil']] as ['qualquer' | 'alto' | 'diamante', string][]).map(([v, label]) => (
+                        <button key={v} disabled={situacaoAtual === 'vendidos'} onClick={() => escolherValor(v)}
+                          className={segBtn(valorAtual === v, 'disabled:cursor-not-allowed')}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
                   {painelEtiquetas}
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-1.5 px-1"
+                         title="Pela marcação de visita feita no WhatsApp (camada de orçamentos)">Visita</div>
+                    <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+                      {([['todos', 'Todas'], ['visitados', '✅ Visitadas'], ['pendentes', '⏳ A visitar']] as [VisitaFiltro, string][]).map(([v, label]) => (
+                        <button key={v} onClick={() => setVisitaFiltro(v)} className={segBtn(visitaFiltro === v)}>{label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-1.5 px-1">Estado</div>
+                    <select value={ufSel} onChange={e => setUfSel(e.target.value)}
+                      className="h-8 w-full px-2 rounded-md bg-surface border border-border text-[12.5px] text-ink">
+                      <option value="">Todos os estados</option>
+                      {porUF.map(u => <option key={u.uf} value={u.uf}>{u.uf === '—' ? 'sem estado' : u.uf} · {u.n}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border pt-2.5">
+                    <button onClick={limparFiltros} disabled={nFiltros === 0}
+                      className="text-[12px] font-semibold text-accent hover:underline disabled:text-ink-faint disabled:no-underline disabled:cursor-default">
+                      Limpar filtros
+                    </button>
+                    <button onClick={() => setFiltrosAberto(false)} className="h-8 px-3 rounded-md bg-accent text-white text-[12px] font-semibold">Fechar</button>
+                  </div>
                 </div>
               </>
             )}
           </span>
-          <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pinos a partir dos orçamentos">💰 Orçamentos</button>
-          <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp">📍 Visitas</button>
-          {/* O raio NÃO filtra os pinos: os marcadores saem de orcFiltrados, e `noRaio`
-              só alimenta a lista lateral e o contador. O title dizia "Filtrar clientes"
-              e prometia o que a ferramenta não faz. */}
-          {/* title num WRAPPER: navegador não despacha evento de mouse para controle
-              disabled, então tooltip em botão desabilitado nunca aparece. */}
-          <span title={modoViagem
-            ? 'Indisponível durante o planejamento de viagem — os dois usam o clique no mapa'
-            : 'Lista quem está perto de um ponto do mapa (não filtra os pinos)'}>
-            <button className={`${togglePill(modoRaio)} disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-muted`}
-              disabled={modoViagem}
-              onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }}>🎯 Raio</button>
-          </span>
+          <span className="w-px h-6 bg-border mx-0.5" aria-hidden="true" />
+          {/* MODO de visualização — muda como o mapa PINTA, não o que ele mostra. Só o
+              modo ativo mostra o nome; os outros ficam no ícone (o celular já era assim). */}
+          <span className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold">Ver como</span>
+          <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
+            {MODOS.map(([v, label, ajuda]) => (
+              <button key={v} onClick={() => setModo(v)} title={`${label} — ${ajuda}`}
+                className={`px-2.5 transition-colors ${modo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
+                {modo === v ? label : label.split(' ')[0]}
+              </button>
+            ))}
+          </div>
+          <span className="w-px h-6 bg-border mx-0.5" aria-hidden="true" />
+          <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Camada: pinos a partir dos orçamentos">💰 Orçamentos</button>
+          <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Camada: visitas anotadas no WhatsApp">📍 Visitas</button>
+          <span className="w-px h-6 bg-border mx-0.5" aria-hidden="true" />
           {/* NÃO é toggle: a lista abre um overlay `fixed inset-0` que cobre esta
               própria barra, então o botão fica inalcançável no estado ligado e o
               ramo "desligar" nunca rodaria. É AÇÃO — e agora tem cara de ação.
@@ -2067,26 +2106,26 @@ export function MapaVisitas() {
                 mostra a contagem — senão o trabalho fica invisível e parece perdido. */}
             🧭 {modoViagem || paradas.length > 0 ? `Viagem (${paradas.length})` : 'Planejar viagem'}
           </button>
-          <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)} className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink">
-            <option value="">Todos os vendedores</option>
-            {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
           </div>
         </div>
       </div>
 
-      {/* barra do modo raio */}
-      {modoRaio && (
-        <div className="shrink-0 rounded-md border border-sky-300 bg-sky-50 text-[12px] text-sky-900 px-3 py-2 hidden md:flex flex-wrap items-center gap-3">
-          <span className="font-semibold">🎯 Modo raio:</span>
-          {!centro ? <span>clique no mapa pra definir o ponto central (ex: Goiânia).</span>
-            : <span>Centro definido · <b>{noRaio.length}</b> clientes em até {raioKm} km.</span>}
-          <label className="flex items-center gap-1.5 ml-auto">
-            Raio
-            <input type="range" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="w-32" />
-            <input type="number" min={1} value={raioKm} onChange={e => setRaioKm(Math.max(1, Number(e.target.value) || 1))} className="h-7 w-16 px-1 rounded border border-border bg-surface text-ink" /> km
-          </label>
-          {centro && <button onClick={() => setCentro(null)} className="text-sky-700 underline">limpar ponto</button>}
+      {/* O QUE ESTÁ FILTRANDO — uma linha, cada chip com o seu ✕. Antes isso vivia
+          espalhado na frase do cabeçalho (UF, etiqueta, +N fora do período, aviso do
+          modo Por valor). Só no desktop: o celular tem os chips dele na faixa. */}
+      {(vendedorSel || nFiltros > 0 || (showOrc && ocultos.total > 0) || avisoFormaValor) && (
+        <div className="hidden md:flex flex-wrap items-center gap-1.5 shrink-0 text-[12px] text-ink-muted">
+          <span>Filtrando por</span>
+          {vendedorSel && chip(vendedorSel, () => setVendedorSel(''), 'Tirar o vendedor')}
+          {situacaoAtual !== 'todos' && chip(situacaoAtual === 'vendidos' ? 'Vendidos' : 'Só orçados', () => setVendFiltro('todos'), 'Tirar a situação')}
+          {valorAtual !== 'qualquer' && chip(valorAtual === 'alto' ? '⭐ ≥ 100 mil' : '💎 ≥ 300 mil', () => escolherValor('qualquer'), 'Tirar o valor mínimo')}
+          {visitaFiltro !== 'todos' && chip(visitaFiltro === 'visitados' ? '✅ Visitadas' : '⏳ A visitar', () => setVisitaFiltro('todos'), 'Tirar o filtro de visita')}
+          {etiquetasSel.size > 0 && chip(`🏷️ ${rotuloEtiquetas}`, () => setEtiquetasSel(new Set()), 'Tirar o filtro de etiqueta')}
+          {ufSel && chip(ufSel === '—' ? 'sem estado' : ufSel, () => setUfSel(''), 'Mostrar o Brasil todo')}
+          {showOrc && ocultos.total > 0 && chip(`+${ocultos.total} fora de ${rotuloPeriodo(periodo)} · ver tudo`, () => setPeriodo('tudo'),
+            `${ocultos.total} clientes estão fora da janela de ${rotuloPeriodo(periodo)}${ocultos.vendidos > 0 ? ` (${ocultos.vendidos} deles já compraram)` : ''}. Clique para ver o acervo inteiro.`, 'aviso')}
+          {avisoFormaValor && chip('formas ⭐💎 só no modo Por valor · trocar', () => setModo('valor'),
+            'O filtro de valor está ativo, mas estrela e diamante só são desenhados no modo Por valor', 'aviso')}
         </div>
       )}
 
@@ -2303,6 +2342,30 @@ export function MapaVisitas() {
 
         {/* sidebar (legenda / lista do raio) — só no desktop */}
         <div className={`${modoViagem ? 'hidden' : 'hidden md:block'} w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto`}>
+          {/* RAIO (02/09/2026): saiu da barra de cima. Ele não filtra os pinos — só
+              alimenta ESTA lista — então o botão fica aqui, ao lado do resultado.
+              Na viagem a sidebar some, e entrarNaViagem já desliga o raio. */}
+          {showOrc && (
+            <div className="mb-2 pb-2 border-b border-border">
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }}
+                  title="Lista quem está perto de um ponto do mapa (não filtra os pinos)"
+                  className={`h-7 px-2 rounded-md border text-[12px] font-semibold transition-colors ${modoRaio ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`}>
+                  🎯 Raio
+                </button>
+                {modoRaio && (!centro
+                  ? <span className="text-[11px] text-ink-muted leading-tight">clique no mapa pra centrar</span>
+                  : <button onClick={() => setCentro(null)} className="text-[11px] font-semibold text-accent hover:underline">limpar ponto</button>)}
+              </div>
+              {modoRaio && (
+                <label className="mt-2 flex items-center gap-1.5 text-[11px] text-ink-muted">
+                  <input type="range" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="flex-1 min-w-0" />
+                  <input type="number" min={1} value={raioKm} onChange={e => setRaioKm(Math.max(1, Number(e.target.value) || 1))}
+                    className="h-6 w-14 px-1 rounded border border-border bg-surface text-ink tabular-nums text-right" /> km
+                </label>
+              )}
+            </div>
+          )}
           {modoRaio && centro ? (
             <div>
               <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">{noRaio.length} clientes em {raioKm} km</div>
