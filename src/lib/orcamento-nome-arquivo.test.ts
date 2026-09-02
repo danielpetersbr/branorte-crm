@@ -37,6 +37,25 @@ test('acento e caractere proibido do Windows saem do nome', () => {
   assert.equal(sanitizeNomeArquivo('Fabrica 500/1000: "Master"'), 'Fabrica 5001000 Master')
 })
 
+// O Storage recusa a chave se sobrar QUALQUER não-ASCII (FST_ERR_BAD_URL), e aí o PDF
+// nunca sobe e o orçamento não chega no WhatsApp do vendedor. O 'm³' passava batido no
+// NFD porque expoente não é diacrítico combinante: 29 orçamentos perdidos em 60 dias.
+test('m³ vira m3 — nenhum não-ASCII sobrevive pro Storage', () => {
+  assert.equal(sanitizeNomeArquivo('Chupim e Silo 56,63 m³'), 'Chupim e Silo 56,63 m3')
+  assert.equal(sanitizeNomeArquivo('Moega 12 m² e 2ª etapa'), 'Moega 12 m2 e 2a etapa')
+  // emoji e travessão somem inteiros (deixam os espaços que os cercavam — inofensivo no nome)
+  assert.equal(sanitizeNomeArquivo('Silo 30 m³ \u{1F69C} — Master'), 'Silo 30 m3   Master')
+  for (const s of ['Chupim e Silo 56,63 m³', 'Fabrica de Ração GRÃOS 40t', 'Moinho 2ª linha 12 m²']) {
+    assert.ok(!/[^\x20-\x7E]/.test(sanitizeNomeArquivo(s, MAX_NOME_ARQUIVO)), `sobrou não-ASCII em: ${s}`)
+  }
+})
+
+test('nome completo com m³ sai limpo de ponta a ponta', () => {
+  const nome = nomeBase('2026 - 1966', 'Roberto', 'Fabrica Master com moega e silos 56,63 m³')
+  assert.equal(nome, '2026 - 1966 - Roberto (Fabrica Master com moega e silos 56,63 m3)')
+  assert.ok(!/[^\x20-\x7E]/.test(nome), nome)
+})
+
 test('descrição vazia vira Personalizado', () => {
   assert.equal(nomeBase('2026 - 0001', 'Fulano', ''), '2026 - 0001 - Fulano (Personalizado)')
 })

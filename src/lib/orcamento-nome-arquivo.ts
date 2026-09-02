@@ -18,9 +18,17 @@ export const MAX_DESCRICAO = 140
  * Por que normalizar acentos: o Supabase Storage rejeita URLs com unicode no
  * path (o fastify quebra com FST_ERR_BAD_URL). "GRÃOS" → "GRAOS". Isso afeta
  * só o NOME DO ARQUIVO — o nome do cliente segue legível no banco.
+ *
+ * NFKD, e nao NFD, por causa do "m³": o expoente NAO e diacritico combinante, entao o
+ * NFD deixava ele passar inteiro e o upload do PDF morria no Storage — o orcamento ia pra
+ * pasta Z: mas nunca chegava no WhatsApp do vendedor (medido: 29 orcamentos em 60 dias;
+ * ZERO dos 4.497 objetos do bucket tem nao-ASCII). NFKD decompoe "m³"->"m3" e "2ª"->"2a",
+ * preservando a informacao; o strip de nao-ASCII e o cinto de seguranca pro que o NFKD nao
+ * decompoe (emoji, travessao) — qualquer sobrevivente derruba o upload inteiro.
  */
 export function sanitizeNomeArquivo(s: string, max = 80): string {
-  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // tira diacríticos
+  return s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')  // tira diacríticos
+    .replace(/[^\x20-\x7E]/g, '')                            // nada fora do ASCII imprimivel
     .replace(/[<>:"/\\|?*]/g, '')                            // proibidos Windows/Storage
     .slice(0, max).trim()
 }

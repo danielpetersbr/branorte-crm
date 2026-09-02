@@ -3162,7 +3162,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             </div>
           </div>
 
+          {/* Garantia + Assinaturas num MESMO bloco no-break: a assinatura nunca
+              pode cair sozinha na página seguinte, órfã da garantia (roadmap #76).
+              Se o conjunto não couber, os dois descem juntos pra próxima página. */}
           <div data-no-break>
+          <div>
             <SectionHeader>Garantia</SectionHeader>
             <div className="text-[14px] text-gray-700 leading-snug space-y-1.5 text-justify">
               <p data-no-break>
@@ -3176,7 +3180,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
 
           {/* Assinaturas — pt-12 + mt-20 deixa espaco generoso pro pessoal
               assinar com caneta de verdade entre o texto anterior e a linha. */}
-          <div data-no-break className="mt-20 grid grid-cols-2 gap-8 px-2 pt-12">
+          <div className="mt-20 grid grid-cols-2 gap-8 px-2 pt-12">
             <div className="text-center">
               <div className="border-t border-gray-700 pt-1.5 text-[14.5px] font-bold text-gray-800">
                 Metalúrgica BBA LTDA
@@ -3189,6 +3193,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   : <span className="text-gray-400 italic">[Cliente]</span>}
               </div>
             </div>
+          </div>
           </div>
 
           {/* Footer — só aparece na PRÉVIA (renderMode=false). No PDF gerado

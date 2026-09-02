@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { todasAsLinhas, type PaginaRpc } from '@/lib/rpc-paginado'
 import type { Precisao } from '@/lib/viagem'
+import type { MapaEtiquetas } from '@/lib/mapa-etiquetas'
 
 export interface Visita {
   id: string
@@ -107,11 +109,33 @@ export function useUfsVisiveis() {
     queryKey: ['ufs-visiveis'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.from('usuario_ufs').select('uf')
+      // ⚠️ Filtrar pelo usuario e OBRIGATORIO: a policy de SELECT e
+      // `user_id = auth.uid() OR is_admin()`, entao o admin le as UFs de TODO
+      // MUNDO e o selo "seu acesso e limitado a MA · PI" aparecia pro Daniel com
+      // as UFs de um representante (02/09/2026). O banco nao restringe o admin
+      // (ufs_visiveis() olha so as linhas dele); era so o selo mentindo.
+      const { data: u } = await supabase.auth.getUser()
+      if (!u.user) return []
+      const { data, error } = await supabase.from('usuario_ufs').select('uf').eq('user_id', u.user.id)
       if (error) throw error
       return (data ?? []).map(r => String(r.uf).toUpperCase()).sort()
     },
   })
+}
+
+
+// ── RPCs grandes vêm PAGINADAS até o fim ─────────────────────────────────────
+// O PostgREST corta em max_rows (10.000) sem avisar. mapa_etiquetas_wa tem 17 mil
+// linhas e lista_orcamentos_mapa 11,8 mil: o mapa mostrava "Sem WhatsApp
+// sincronizado" pra cliente com conversa (02/09/2026). Ver lib/rpc-paginado.
+type RpcDoMapa = 'mapa_orcamentos_v2' | 'lista_orcamentos_mapa' | 'mapa_etiquetas_wa'
+async function paginaRpc<T>(fn: RpcDoMapa, de: number, ate: number): Promise<PaginaRpc<T>> {
+  const { data, error, count } = await supabase.rpc(fn, {}, { count: 'exact' }).range(de, ate)
+  if (error) throw error
+  return { linhas: (data ?? []) as T[], total: count ?? null }
+}
+export function rpcInteira<T>(fn: RpcDoMapa): Promise<T[]> {
+  return todasAsLinhas<T>((de, ate) => paginaRpc<T>(fn, de, ate))
 }
 
 export function useOrcamentosMapa(opts?: { enabled?: boolean }) {
@@ -119,9 +143,7 @@ export function useOrcamentosMapa(opts?: { enabled?: boolean }) {
     enabled: opts?.enabled ?? true,
     queryKey: ['orcamentos-mapa'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('mapa_orcamentos_v2')
-      if (error) throw error
-      return (data ?? []) as OrcamentoPonto[]
+      return rpcInteira<OrcamentoPonto>('mapa_orcamentos_v2')
     },
   })
 }
@@ -138,19 +160,17 @@ export interface OrcamentoLinha {
   vendido: boolean
   lat: number | null
   lng: number | null
-  // Só existe pra 1.371 das 3.911 linhas: orcamentos_gerados tem vendedor_nome em
-  // 100% delas e vendas_mapa em parte, mas orcamentos_legado NÃO TEM a coluna —
-  // os 811 orçamentos antigos vêm vazios e não há de onde tirar.
+  // orcamentos_gerados tem vendedor_nome em 100%; vendas_mapa em parte; e desde
+  // 02/09/2026 orcamentos_legado.vendedor_nome (2.689 preenchidos) também é lido.
+  // Ainda vem null pro legado que o parser não assinou.
   vendedor: string | null
 }
 
 export function useListaOrcamentos() {
   return useQuery<OrcamentoLinha[]>({
-    queryKey: ['lista-orcamentos-mapa'],
+    queryKey: ['lista-orcamentos-mapa', 'json'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('lista_orcamentos_mapa')
-      if (error) throw error
-      return (data ?? []) as OrcamentoLinha[]
+      return rpcInteira<OrcamentoLinha>('lista_orcamentos_mapa')
     },
   })
 }
@@ -212,6 +232,37 @@ export function useSalvarMarcacao() {
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['mapa-marcacoes'] }),
+  })
+}
+
+// ── Etiquetas do WhatsApp por telefone canônico (filtro/modo do /mapa-visitas) ──
+// Uma linha por conversa da matview: (fc, principal, todas[]) — ~17 mil linhas,
+// ~600 KB. A tela casa com o cliente do mapa por foneCanon(telefone), espelho
+// de fone_canon do banco (lib/fone-canon, testado). Papel restrito recebe lista
+// vazia — mesma porta da contatos_page.
+export function useEtiquetasMapa() {
+  return useQuery<MapaEtiquetas>({
+    queryKey: ['mapa-etiquetas-wa', 'v2'],
+    staleTime: 60_000,
+    queryFn: async () => {
+      // v2 = UMA linha jsonb. A v1 devolvia tabela e o PostgREST cortava em
+      // 10.000 linhas: 7.236 conversas nunca chegavam (medido em prod, 02/09).
+      const { data, error } = await supabase.rpc('mapa_etiquetas_wa_v2')
+      if (error) throw error
+      type Com = { f: string; p: string | null; v: string | null; e: [string, string][] | null }
+      const j = (data ?? {}) as { com?: Com[]; sem?: string[] }
+      const m: MapaEtiquetas = new Map()
+      for (const r of j.com ?? []) {
+        if (!r.f) continue
+        const pares = (r.e ?? []).filter(x => x && x[0]).map(([t, v]) => [t, (v ?? '').toUpperCase()] as [string, string])
+        m.set(r.f, {
+          principal: r.p, principalVendedor: r.v ? r.v.toUpperCase() : null,
+          todas: [...new Set(pares.map(x => x[0]))], porVendedor: pares,
+        })
+      }
+      for (const f of j.sem ?? []) if (f && !m.has(f)) m.set(f, { principal: null, principalVendedor: null, todas: [], porVendedor: [] })
+      return m
+    },
   })
 }
 

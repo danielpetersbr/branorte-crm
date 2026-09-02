@@ -2065,10 +2065,17 @@ export function OrcamentoMontar() {
       if (!it.motor_cv || !it.motor_polos) return it
       // Item com inversor: cotar sempre como trifásico, polos não muda.
       const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : novaVoltagem
-      // Monofásico só existe em 4 polos. Se trocou pra mono e item tinha 6 polos,
-      // força 4 polos + atualiza specs/nome pra refletir. Tri mantém os polos atuais
-      // (pode ter sido escolhido por função de transportador 6 polos, etc.).
-      const polosFinais = (voltagemEfetiva === 'monofasico' && it.motor_polos !== 4) ? 4 : it.motor_polos
+      // Monofásico NÃO existe em 6 polos, mas existe em 2 e em 4 (10 motores ativos
+      // em cada, de 1 a 15 CV). Só cai pra 4 polos quando não há motor mono cadastrado
+      // no nº de polos do equipamento — antes forçava 4 sempre que polos !== 4, e isso
+      // trocava o motor de 2 polos do moinho martelo por um de 4, mais caro. Pior:
+      // motor_polos é persistido logo abaixo, então voltar pra trifásico MANTINHA os
+      // 4 polos e o motor caro (roadmap #75).
+      const temMonoNessesPolos = motores.some(m =>
+        Number(m.cv) === it.motor_cv && m.polos === it.motor_polos && m.voltagem === 'monofasico')
+      const polosFinais = (voltagemEfetiva === 'monofasico' && it.motor_polos !== 4 && !temMonoNessesPolos)
+        ? 4
+        : it.motor_polos
       const polosMudou = polosFinais !== it.motor_polos
       // Motor incluso continua com valor 0 mesmo ao trocar voltagem.
       const incluso = motorJaInclusoNoItem(it.specs)
@@ -2157,11 +2164,47 @@ export function OrcamentoMontar() {
       if (!norm) return null
       const itemHorizontal = norm.includes('HORIZONTAL')
       const itemVertical = norm.includes('VERTICAL')
+      // BUG FIX 2026-09-01 (roadmap #74): "MISTURADOR HORIZONTAL 1900 LITROS (1000 KG)"
+      // normaliza pra "MISTURADOR HORIZONTAL 1000 KG", que é SUBSTRING de
+      // "ESCADA COM PLATAFORMA PARA MISTURADOR HORIZONTAL 1000 KG" → o acessório
+      // ganhava o match (0.85+0.15=1.0) e a foto da escada aparecia no misturador.
+      // Acessório só pode casar com pedido que também é acessório.
+      const ACESSORIO_RE = /\b(ESCADA|PLATAFORMA|JOGO|ROSCA ENSACADEIRA)\b/
+      const itemEhAcessorio = ACESSORIO_RE.test(norm)
+      // BUG FIX 2026-09-01: transportador casava pelo COMPRIMENTO ERRADO. normalizar()
+      // troca "3,20" por "3 20" e o filtro de tokens (>= 2 chars) descarta o "3" —
+      // sobra "20", que casa com "160 X 20,0 M". E "5,0" vira "5 0", os dois descartados:
+      // todo chupim de 160 empata em 0.75 e o primeiro da lista ganha (loteria).
+      // Caso real: o pacote Compacta 01 carregava "160 X 3,20 M" como o de 20 m e
+      // cobrava R$ 16.083 no lugar de R$ 5.795 (orçamento 2026-1643). Diâmetro e
+      // comprimento do nome agora são eliminatórios, antes do score.
+      const DIM_RE = /(\d{3})\s*[xX]\s*(\d+(?:[.,]\d+)?)\s*m\b/i
+      const dimItem = nomeItem.match(DIM_RE)
+      const diamItem = dimItem ? Number(dimItem[1]) : null
+      const compItem = dimItem ? Number(dimItem[2].replace(',', '.')) : null
+      // Mesmo problema com potência: "7,5 CV" vira "7 5 CV", os números caem e
+      // "TRITURADOR DE GRÃOS 7,5 CV" empata com todo triturador — saiu como 10 CV,
+      // R$ 14.708 no lugar de R$ 12.124 (orçamento 2026-2090).
+      const CV_RE = /(\d+(?:[.,]\d+)?)\s*CV\b/i
+      const cvItemM = nomeItem.match(CV_RE)
+      const cvItem = cvItemM ? Number(cvItemM[1].replace(',', '.')) : null
       let melhor: { ci: CatalogoItem; score: number } | null = null
       for (const ci of catalogoItems) {
         if (!ci.ativo) continue
         const ciNorm = normalizar(ci.nome_curto)
         if (!ciNorm) continue
+        if (!itemEhAcessorio && (ci.categoria === 'ACESSORIO' || ACESSORIO_RE.test(ciNorm))) continue
+        if (diamItem != null && compItem != null) {
+          const d = ci.nome_curto.match(DIM_RE)
+          if (d) {
+            if (Number(d[1]) !== diamItem) continue
+            if (Math.abs(Number(d[2].replace(',', '.')) - compItem) > 0.3) continue
+          }
+        }
+        if (cvItem != null) {
+          const c = ci.nome_curto.match(CV_RE)
+          if (c && Math.abs(Number(c[1].replace(',', '.')) - cvItem) > 0.01) continue
+        }
         const ciSub = (ci.subcategoria || '').toUpperCase()
         const ciHorizontal = ciNorm.includes('HORIZONTAL') || ciSub.includes('HORIZONTAL')
         const ciVertical = ciNorm.includes('VERTICAL') || ciSub === 'VERTICAL'
