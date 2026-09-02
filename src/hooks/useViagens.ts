@@ -18,6 +18,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { rpcInteira } from './useVisitas'
 import {
   hidratarParadas, indexarProgramacao, validarCfg, linhaDaCfg, linhaDaParada,
   paradaDaLinha, cfgDaLinha, praHora,
@@ -104,9 +105,8 @@ export function useOrcamentosMapaV2() {
   return useQuery<PontoMapa[]>({
     queryKey: ['orcamentos-mapa-v2'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('mapa_orcamentos_v2')
-      if (error) throw error
-      return (data ?? []) as PontoMapa[]
+      // paginada até o fim: o PostgREST corta em 10.000 linhas sem avisar (ver lib/rpc-paginado)
+      return rpcInteira<PontoMapa>('mapa_orcamentos_v2')
     },
   })
 }
