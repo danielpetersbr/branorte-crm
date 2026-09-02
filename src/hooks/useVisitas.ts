@@ -61,6 +61,10 @@ export interface OrcamentoPonto {
   n_orcamentos: number
   data_recente: string | null
   vendedor: string | null
+  // 02/09/2026 — de onde veio o vendedor do pino. 'orcamento' = assinatura/gerador
+  // do orçamento; 'whatsapp' = o orçamento não tinha vendedor e o pino herdou o do
+  // WhatsApp que etiquetou a conversa (ou falou por último). null = sem vendedor.
+  vendedor_fonte?: 'orcamento' | 'whatsapp' | null
   vendido: boolean
   n_vendas: number
   lat: number

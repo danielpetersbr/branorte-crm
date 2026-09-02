@@ -400,7 +400,7 @@ function popupOrcamento(
         ? `<div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(p.total)}</div>`
         : `<div style="font-size:12px;color:#94a3b8;font-style:italic;margin-top:3px">valor não informado</div>`}
       <div style="font-size:11px;color:#64748b;margin-top:2px">${p.n_orcamentos} orçamento${p.n_orcamentos === 1 ? '' : 's'}${p.data_recente ? ` · último ${dataBR(p.data_recente)} <b>(${idadeLabel(p.data_recente)})</b>` : ' · sem data'}</div>
-      <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:3px">Vendedor: ${esc(p.vendedor) || '—'}${p.vendedor && p.vendedor_fonte === 'whatsapp' ? ' <span title="O orçamento não tem vendedor; este é o WhatsApp que etiquetou a conversa (ou falou por último)" style="color:#94a3b8">· pelo WhatsApp</span>' : ''}</div>
       ${foneFmt ? `<div style="font-size:12px;color:#0f172a;margin-top:4px">📱 ${esc(foneFmt)}</div>` : ''}
       ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:4px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
       ${seloPrecisao(p)}
