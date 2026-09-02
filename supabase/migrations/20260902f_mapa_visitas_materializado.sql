@@ -1,0 +1,20 @@
+-- MAPA DE VISITAS materializado + vendedor do legado + procuracao do dono — 02/09/2026
+--
+-- APLICADA via MCP (apply_migration `mapa_visitas_materializado_vendedor_legado_procuracao`).
+-- Backup das RPCs anteriores: bkp_rpc.defs (proname mapa_orcamentos_v2 / lista_orcamentos_mapa,
+-- motivo 'antes de materializar ...', 02/09/2026 13:35 UTC). Reverter = executar o `def`.
+--
+-- 1) mv_mapa_orcamentos e mv_lista_orcamentos_mapa guardam o calculo pesado das RPCs
+--    (mesmo corpo, menos ufs_visiveis() e cliente_localizacao, que sao por usuario e
+--    ficam na RPC). Refresh concurrently a cada 5 min (cron refresh-mv-mapa-orcamentos-5min
+--    e refresh-mv-lista-orcamentos-mapa-5min). Antes: media 4,3 s / 4,5 s e maximo 7,97 s
+--    contra statement_timeout de 8 s do authenticated, as duas chamadas no load da pagina.
+--    Depois: milissegundos. Assinaturas e colunas identicas; front intocado. Orcamento
+--    novo ou venda nova aparece no mapa em ate 5 min; pino corrigido a mao e imediato.
+-- 2) orcamentos_legado.vendedor_nome passa a ser lido (2.689 preenchidos pela migration
+--    da outra sessao); "vendedor do cliente" = o do orcamento mais recente QUE TEM vendedor.
+-- 3) Orcamento do builder gerado pelo DONO pra cliente que outro vendedor orcou em +-60
+--    dias vale pro outro (orcamento_vendor_efetivo_proxy(), casado por ano+sequencial).
+--
+-- Texto completo das views/RPCs = o aplicado pelo MCP (ver historico de migrations do projeto).
+select 1;

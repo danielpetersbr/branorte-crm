@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { todasAsLinhas, type PaginaRpc } from '@/lib/rpc-paginado'
 import type { Precisao } from '@/lib/viagem'
 import type { MapaEtiquetas } from '@/lib/mapa-etiquetas'
 
@@ -115,14 +116,27 @@ export function useUfsVisiveis() {
   })
 }
 
+
+// ── RPCs grandes vêm PAGINADAS até o fim ─────────────────────────────────────
+// O PostgREST corta em max_rows (10.000) sem avisar. mapa_etiquetas_wa tem 17 mil
+// linhas e lista_orcamentos_mapa 11,8 mil: o mapa mostrava "Sem WhatsApp
+// sincronizado" pra cliente com conversa (02/09/2026). Ver lib/rpc-paginado.
+type RpcDoMapa = 'mapa_orcamentos_v2' | 'lista_orcamentos_mapa' | 'mapa_etiquetas_wa'
+async function paginaRpc<T>(fn: RpcDoMapa, de: number, ate: number): Promise<PaginaRpc<T>> {
+  const { data, error, count } = await supabase.rpc(fn, {}, { count: 'exact' }).range(de, ate)
+  if (error) throw error
+  return { linhas: (data ?? []) as T[], total: count ?? null }
+}
+export function rpcInteira<T>(fn: RpcDoMapa): Promise<T[]> {
+  return todasAsLinhas<T>((de, ate) => paginaRpc<T>(fn, de, ate))
+}
+
 export function useOrcamentosMapa(opts?: { enabled?: boolean }) {
   return useQuery<OrcamentoPonto[]>({
     enabled: opts?.enabled ?? true,
     queryKey: ['orcamentos-mapa'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('mapa_orcamentos_v2')
-      if (error) throw error
-      return (data ?? []) as OrcamentoPonto[]
+      return rpcInteira<OrcamentoPonto>('mapa_orcamentos_v2')
     },
   })
 }
@@ -139,9 +153,9 @@ export interface OrcamentoLinha {
   vendido: boolean
   lat: number | null
   lng: number | null
-  // Só existe pra 1.371 das 3.911 linhas: orcamentos_gerados tem vendedor_nome em
-  // 100% delas e vendas_mapa em parte, mas orcamentos_legado NÃO TEM a coluna —
-  // os 811 orçamentos antigos vêm vazios e não há de onde tirar.
+  // orcamentos_gerados tem vendedor_nome em 100%; vendas_mapa em parte; e desde
+  // 02/09/2026 orcamentos_legado.vendedor_nome (2.689 preenchidos) também é lido.
+  // Ainda vem null pro legado que o parser não assinou.
   vendedor: string | null
 }
 
@@ -149,9 +163,7 @@ export function useListaOrcamentos() {
   return useQuery<OrcamentoLinha[]>({
     queryKey: ['lista-orcamentos-mapa'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('lista_orcamentos_mapa')
-      if (error) throw error
-      return (data ?? []) as OrcamentoLinha[]
+      return rpcInteira<OrcamentoLinha>('lista_orcamentos_mapa')
     },
   })
 }
@@ -226,10 +238,9 @@ export function useEtiquetasMapa() {
     queryKey: ['mapa-etiquetas-wa'],
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('mapa_etiquetas_wa')
-      if (error) throw error
+      const linhas = await rpcInteira<{ fc: string; etiqueta_principal: string | null; etiquetas: string[] | null }>('mapa_etiquetas_wa')
       const m: MapaEtiquetas = new Map()
-      for (const r of (data ?? []) as { fc: string; etiqueta_principal: string | null; etiquetas: string[] | null }[]) {
+      for (const r of linhas) {
         if (!r.fc) continue
         m.set(r.fc, { principal: r.etiqueta_principal, todas: r.etiquetas ?? [] })
       }
