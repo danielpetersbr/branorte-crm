@@ -129,18 +129,34 @@ export function useUpdateContact() {
       status?: string
       vendor_id?: string | null
       notes?: string
-      /* name/city entraram pra edicao na linha da /contatos. A RLS ja permite:
-         contacts_vendor_update libera `vendor_id = current_vendor_id() OR
-         vendor_id IS NULL`, e o WITH CHECK identico impede o vendedor de passar
-         o contato pra outro. Nao precisou de policy nova. */
+      /* name/city entraram pra edicao na linha da /contatos.
+         ATENCAO: `contacts_vendor_update` NAO e mais `vendor_id = current_vendor_id()
+         OR vendor_id IS NULL` (o comentario antigo aqui descrevia a policy velha e
+         estava mentindo). Hoje ela exige, pro contato sem dono,
+         `contato_no_pool(id) AND NOT contato_tem_claim_de_outro(id)` — e 10.235 dos
+         173.725 sem dono estao FORA do pool (ter orcamento e justamente o que tira). */
       name?: string | null
       city?: string | null
     }) => {
-      const { error } = await supabase
+      /*
+       * `.select('id')` NAO e decoracao — e o unico jeito de saber se a linha existiu.
+       *
+       * Quando a RLS nao casa nenhuma linha, o UPDATE nao e um erro: o PostgREST
+       * devolve 204 com `error = null`. O `if (error) throw` nunca disparava, o
+       * `falhou[id]` da tela (Contacts.tsx:361/367) nunca acendia, e o vendedor via o
+       * campo simplesmente VOLTAR ao valor antigo — sem X vermelho, sem aviso. Ele
+       * concluia que "a tela nao salva". Pior no filtro "Sem vendedor (todos)": sob o
+       * sort padrao, as 50 linhas da primeira pagina sao todas bloqueadas.
+       */
+      const { data, error } = await supabase
         .from('contacts')
         .update({ ...updates, updated_at: new Date().toISOString() })
         .eq('id', id)
+        .select('id')
       if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error('Este contato nao e seu — use "Pegar pra mim" antes de editar.')
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['contacts'] })
@@ -154,11 +170,26 @@ export function useBulkAssign() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ contactIds, vendorId }: { contactIds: string[]; vendorId: string }) => {
-      const { error } = await supabase
+      /*
+       * Mesmo silencio do useUpdateContact, so que aqui o fracasso e PARCIAL: dos N
+       * selecionados a RLS pode casar so alguns, e sem `.select()` o 204 dizia "todos
+       * atribuidos". Quem selecionava 50 e via 12 mudarem de dono achava que a tela
+       * tinha bugado. Compara o que voltou com o que foi pedido e conta a diferenca.
+       */
+      const { data, error } = await supabase
         .from('contacts')
         .update({ vendor_id: vendorId, updated_at: new Date().toISOString() })
         .in('id', contactIds)
+        .select('id')
       if (error) throw error
+      const aplicados = data?.length ?? 0
+      if (aplicados < contactIds.length) {
+        const fora = contactIds.length - aplicados
+        throw new Error(
+          `${aplicados} de ${contactIds.length} atribuidos. ${fora} ficaram de fora ` +
+          `(ja tem dono, tem orcamento ou estao reservados por outro vendedor).`
+        )
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['contacts'] })
