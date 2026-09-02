@@ -10,7 +10,7 @@ import {
 import { useEtiquetas } from '@/hooks/useEtiquetas'
 import {
   etiquetasDoCliente, nomeCanonicoEtiqueta, passaEtiqueta, opcoesEtiqueta, etiquetaQuePinta,
-  corDoPinoEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao,
+  corDoPinoEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao, SEM_ETIQUETA, SEM_WHATSAPP,
   type EtiquetasDoFone, type MapaEtiquetas,
 } from '@/lib/mapa-etiquetas'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
@@ -1574,11 +1574,23 @@ export function MapaVisitas() {
         const arr = porCoord.get(k)
         if (arr) arr.push(p); else porCoord.set(k, [p])
       }
-      for (const p of orcFiltrados) {
+      // MODO POR ETIQUETA (02/09/2026, "esses ponto branco ruim de ver"): 3 mil clientes
+      // sem WhatsApp sincronizado viravam bolinhas claras com borda branca e, em cima
+      // do satélite, ofuscavam as etiquetas de verdade. Agora eles recuam: menores, sem
+      // borda, apagados, e desenhados PRIMEIRO pra ficarem atrás dos coloridos.
+      // 0 = sem WhatsApp · 1 = tem conversa, sem etiqueta · 2 = etiquetado.
+      const pesoEtq = (p: OrcamentoPonto): 0 | 1 | 2 => {
+        if (modo !== 'etiqueta') return 2
+        const k = etiquetaQuePinta(etiqDoPonto(p), p.vendedor, etiquetasSel)
+        return k === SEM_WHATSAPP ? 0 : k === SEM_ETIQUETA ? 1 : 2
+      }
+      const ordemDesenho = modo === 'etiqueta' ? [...orcFiltrados].sort((a, b) => pesoEtq(a) - pesoEtq(b)) : orcFiltrados
+      for (const p of ordemDesenho) {
         const mk = marc[chaveMarc(p.telefone, p.fone, p.cliente)]
         const visitado = !!mk?.visitado
         const forma = formaDoPino(p)
         const cor = corDoPino(p)
+        const peso = pesoEtq(p)
         const irmaos = porCoord.get(kCoord(p.lat, p.lng)) ?? [p]
         const [dx, dy, anelMax, limiteM] = proximo(p.lat, p.lng)
         const pos = posEspalhada(map, p.lat, p.lng, dx, dy, anelMax, limiteM)
@@ -1589,9 +1601,14 @@ export function MapaVisitas() {
             // visitado (comum) → ponto único com ✓ dentro
             ? L.marker(pos, { icon: iconeVisitado(cor) })
             // demais → círculo no canvas (rápido pra milhares de pontos)
-            : L.circleMarker(pos, {
-                renderer, radius: 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: 0.92,
-              })
+            : peso === 0
+              // sem WhatsApp no modo etiqueta: pontinho apagado, sem borda, atrás dos outros
+              ? L.circleMarker(pos, { renderer, radius: 3, fillColor: '#64748b', color: '#64748b', weight: 0, fillOpacity: 0.4 })
+              : peso === 1
+                ? L.circleMarker(pos, { renderer, radius: 4, fillColor: cor, color: '#fff', weight: 1, fillOpacity: 0.75 })
+                : L.circleMarker(pos, {
+                    renderer, radius: 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: 0.92,
+                  })
         m.bindPopup(() => {
           const ctx = ctxPopupRef.current
           return popupOrcamento(p, mk, undefined, ctx.ativo
@@ -2488,7 +2505,7 @@ export function MapaVisitas() {
                         {statsEtq.length === 0 && <li className="text-[12px] text-ink-muted">Nenhum pino no mapa.</li>}
                       </ul>
                       <p className="text-[10px] text-ink-faint mt-2 leading-snug">
-                        Cor: com filtro ligado, a etiqueta pedida; senao a que o vendedor do pino colocou; senao a principal da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
+                        Sem WhatsApp sincronizado fica menor, apagado e atrás dos outros — pra etiqueta de verdade aparecer. Cor: com filtro ligado, a etiqueta pedida; senao a que o vendedor do pino colocou; senao a principal da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
                       </p>
                     </>
                   )}
