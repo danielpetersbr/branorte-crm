@@ -10,12 +10,15 @@
  *   valor  — o modo antigo: ⭐ ≥100 mil, 💎 ≥300 mil, cor pela idade (3 faixas).
  */
 
-export type ModoMapa = 'estado' | 'idade' | 'valor'
+export type ModoMapa = 'estado' | 'idade' | 'valor' | 'etiqueta'
 
 export const MODOS: [ModoMapa, string, string][] = [
   ['estado', '🗺️ Por estado', 'Uma cor por estado. Bolinhas iguais, sem destaque de valor.'],
   ['idade', '⏱️ Por idade', 'Cor pela idade do orçamento: até 1 mês, 1–3 meses, até 1 ano, mais de 1 ano.'],
   ['valor', '⭐ Por valor', 'Destaca o valor orçado: estrela ≥100 mil, diamante ≥300 mil.'],
+  // 01/09/2026 — cor pela etiqueta do WhatsApp (a principal da conversa). É o
+  // modo que faz a legenda virar "todas as etiquetas" e cada linha dela, filtro.
+  ['etiqueta', '🏷️ Por etiqueta', 'Cor pela etiqueta do WhatsApp do cliente. Sem conversa sincronizada = cinza claro; com conversa e sem etiqueta = cinza escuro.'],
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { Precisao } from '@/lib/viagem'
+import type { MapaEtiquetas } from '@/lib/mapa-etiquetas'
 
 export interface Visita {
   id: string
@@ -212,6 +213,28 @@ export function useSalvarMarcacao() {
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['mapa-marcacoes'] }),
+  })
+}
+
+// ── Etiquetas do WhatsApp por telefone canônico (filtro/modo do /mapa-visitas) ──
+// Uma linha por conversa da matview: (fc, principal, todas[]) — ~17 mil linhas,
+// ~600 KB. A tela casa com o cliente do mapa por foneCanon(telefone), espelho
+// de fone_canon do banco (lib/fone-canon, testado). Papel restrito recebe lista
+// vazia — mesma porta da contatos_page.
+export function useEtiquetasMapa() {
+  return useQuery<MapaEtiquetas>({
+    queryKey: ['mapa-etiquetas-wa'],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('mapa_etiquetas_wa')
+      if (error) throw error
+      const m: MapaEtiquetas = new Map()
+      for (const r of (data ?? []) as { fc: string; etiqueta_principal: string | null; etiquetas: string[] | null }[]) {
+        if (!r.fc) continue
+        m.set(r.fc, { principal: r.etiqueta_principal, todas: r.etiquetas ?? [] })
+      }
+      return m
+    },
   })
 }
 
