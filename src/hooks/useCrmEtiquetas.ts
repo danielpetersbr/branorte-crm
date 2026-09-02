@@ -24,6 +24,12 @@ export interface CrmEtiqueta {
   ativa: boolean
   criada_por: string | null
   created_at: string
+  /**
+   * Quando foi aplicada NESTE contato (crm_contato_etiquetas.created_at).
+   * So vem por `useEtiquetasDeContatos` — e o que a etiqueta do CRM usa pra
+   * disputar o status do contato com as do WhatsApp (mais recente vence).
+   */
+  aplicada_em?: string
 }
 
 // Hex, e não classe Tailwind, porque é assim que as etiquetas do WhatsApp já são
@@ -187,7 +193,7 @@ export function useEtiquetasDeContatos(ids: string[]) {
     queryFn: async (): Promise<Map<string, CrmEtiqueta[]>> => {
       const { data, error } = await (supabase as any)
         .from('crm_contato_etiquetas')
-        .select('contact_id, crm_etiquetas(id, nome, cor, ativa, criada_por, created_at)')
+        .select('contact_id, created_at, crm_etiquetas(id, nome, cor, ativa, criada_por, created_at)')
         .in('contact_id', ids)
       if (error) throw error
       const m = new Map<string, CrmEtiqueta[]>()
@@ -195,7 +201,7 @@ export function useEtiquetasDeContatos(ids: string[]) {
         const e = r.crm_etiquetas
         if (!e || !e.ativa) continue
         const arr = m.get(r.contact_id) ?? []
-        arr.push(e as CrmEtiqueta)
+        arr.push({ ...(e as CrmEtiqueta), aplicada_em: r.created_at })
         m.set(r.contact_id, arr)
       }
       return m

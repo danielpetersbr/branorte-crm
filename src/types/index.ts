@@ -58,6 +58,13 @@ export interface Contact {
    * `contatos_page` o preenche.
    */
   ultimo_contato: string | null
+  /**
+   * Como ficou a negociacao — anotacao livre do vendedor, editada na propria
+   * linha da /contatos (01/09/2026). `negociacao_em` e mantido por trigger no
+   * banco: mudou o texto, muda o carimbo; apagou o texto, some o carimbo.
+   */
+  negociacao: string | null
+  negociacao_em: string | null
 }
 
 export type ContactSortKey =

@@ -563,11 +563,52 @@ export const STATUS_POR_ETIQUETA: Record<string, 'ABERTO' | 'FECHADO'> = {
  * diria "não decide" — a divergência exata que este espelho existe pra evitar.
  */
 export function statusDaEtiqueta(nome: string | null | undefined): 'ABERTO' | 'FECHADO' | null {
-  const bruto = (nome ?? '').trim().toUpperCase()
-  return STATUS_POR_ETIQUETA[ALIASES[bruto] ?? bruto] ?? null
+  return STATUS_POR_ETIQUETA[nomeParaStatus(nome)] ?? null
 }
 
-export interface EtiquetaBruta { etiqueta?: string | null; vendedor?: string | null; em?: string | null }
+const semAcento = (s: string): string => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+/**
+ * Nome da etiqueta como o mapa de status enxerga: sem acento, caixa alta, sem
+ * espaco nas pontas, aliases aplicados. ESPELHO de
+ * `wa_etiqueta_canonica(sem_acento(...))` no banco.
+ *
+ * O acento entrou em 01/09/2026 junto com as etiquetas do CRM: as do WhatsApp
+ * ja chegam sem acento, mas a do CRM e digitada pelo vendedor ("Não tem
+ * interesse") e sem isto nao decidia nada.
+ */
+function nomeParaStatus(nome: string | null | undefined): string {
+  const bruto = semAcento(nome ?? '').trim().toUpperCase()
+  return ALIASES[bruto] ?? bruto
+}
+
+export interface EtiquetaBruta {
+  etiqueta?: string | null
+  vendedor?: string | null
+  em?: string | null
+  /** De onde veio. Ausente = WhatsApp (o caso de sempre). */
+  origem?: 'wa' | 'crm'
+}
+
+/**
+ * Junta as etiquetas do WhatsApp com as que o vendedor aplicou AQUI no CRM,
+ * no formato que `statusDerivadoDaEtiqueta` entende.
+ *
+ * A do CRM entra como se fosse do DONO do contato (e o que o job
+ * `recompute_contact_status` faz: `vendedor = vendors.name` do contato), com
+ * `em` = quando foi aplicada. Assim ela disputa em pe de igualdade com a
+ * etiqueta que o dono pos no WhatsApp: a mais recente das duas manda.
+ */
+export function comEtiquetasDoCrm(
+  wa: EtiquetaBruta[] | null | undefined,
+  crm: { nome: string; aplicada_em?: string | null }[] | null | undefined,
+  vendedorDono: string | null,
+): EtiquetaBruta[] {
+  return [
+    ...(wa ?? []),
+    ...(crm ?? []).map(e => ({ etiqueta: e.nome, vendedor: vendedorDono, em: e.aplicada_em ?? '', origem: 'crm' as const })),
+  ]
+}
 
 /**
  * Qual etiqueta decide o status deste contato.
@@ -578,19 +619,27 @@ export interface EtiquetaBruta { etiqueta?: string | null; vendedor?: string | n
  * O mesmo telefone costuma estar etiquetado em até 10 WhatsApps, então: entre as
  * que DECIDEM, a do vendedor DONO do contato manda; empatando, a mais recente.
  * Sem nenhuma do dono, cai na mais recente de qualquer um.
+ *
+ * ⚠️ 3o desempate (01/09/2026): as etiquetas de UMA conversa chegam da extensao
+ * todas com o MESMO `em` (label_changed_at e por chat, nao por etiqueta). Entao
+ * "ORCAMENTO ENVIADO" + "NAO RESPONDEU MAIS" empatavam em tudo e o vencedor era
+ * a ordem em que o JSON veio — a tela dizia uma coisa e o job gravava outra, e
+ * o proprio job alternava a cada 5 min (215 telefones, medido). Em empate, o
+ * motivo de ENCERRAMENTO vence: e a mesma regra do `is_closed`.
  */
 export function statusDerivadoDaEtiqueta(
   etiquetas: EtiquetaBruta[] | null | undefined,
   vendedorDono: string | null,
-): { status: 'ABERTO' | 'FECHADO'; etiqueta: string; vendedor: string | null } | null {
+): { status: 'ABERTO' | 'FECHADO'; etiqueta: string; vendedor: string | null; origem: 'wa' | 'crm' } | null {
   const dono = (vendedorDono ?? '').trim().toUpperCase()
   const decidem = (etiquetas ?? [])
     .map(e => ({
       // mesma normalização de statusDaEtiqueta, pra o rótulo mostrado bater
       // com a etiqueta que de fato decidiu
-      nome: (() => { const b = (e.etiqueta ?? '').trim().toUpperCase(); return ALIASES[b] ?? b })(),
+      nome: nomeParaStatus(e.etiqueta),
       vendedor: e.vendedor ?? null,
       em: e.em ?? '',
+      origem: e.origem ?? 'wa',
       status: statusDaEtiqueta(e.etiqueta),
     }))
     .filter((e): e is typeof e & { status: 'ABERTO' | 'FECHADO' } => e.status !== null)
@@ -600,8 +649,10 @@ export function statusDerivadoDaEtiqueta(
     const da = dono && (a.vendedor ?? '').trim().toUpperCase() === dono ? 1 : 0
     const db = dono && (b.vendedor ?? '').trim().toUpperCase() === dono ? 1 : 0
     if (da !== db) return db - da
-    return b.em.localeCompare(a.em)
+    const porData = b.em.localeCompare(a.em)
+    if (porData !== 0) return porData
+    return Number(b.status === 'FECHADO') - Number(a.status === 'FECHADO')
   })
   const v = decidem[0]
-  return { status: v.status, etiqueta: v.nome, vendedor: v.vendedor }
+  return { status: v.status, etiqueta: v.nome, vendedor: v.vendedor, origem: v.origem }
 }

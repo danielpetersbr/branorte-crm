@@ -275,6 +275,27 @@ export function ContactDetail({ contact, onClose }: Props) {
             />
           </div>
 
+          {/* Como ficou a negociacao — o MESMO campo da coluna da lista (01/09/2026).
+              Salva no blur, e so se mudou; `negociacao_em` e carimbado pelo banco. */}
+          <div>
+            <label htmlFor="negociacao-ficha" className="text-sm font-medium text-text-primary mb-1.5 block">Como ficou a negociacao</label>
+            <textarea
+              id="negociacao-ficha"
+              rows={3}
+              maxLength={300}
+              defaultValue={contact.negociacao ?? ''}
+              placeholder="Ex.: fechou o misturador, falta o frete. Volta a falar em outubro."
+              onBlur={e => {
+                const v = e.target.value.trim() || null
+                if (v !== (contact.negociacao || null)) updateContact.mutate({ id: contact.id, negociacao: v })
+              }}
+              className="w-full rounded-lg border border-surface-border px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-500 resize-y"
+            />
+            {contact.negociacao_em && (
+              <p className="text-xs text-text-muted mt-1">Anotado {formatRelative(contact.negociacao_em)}</p>
+            )}
+          </div>
+
           {/* Motivo perda */}
           {(meta.funil === 'fechado_perdido' || meta.temp === 'perdido') && (
             <div>

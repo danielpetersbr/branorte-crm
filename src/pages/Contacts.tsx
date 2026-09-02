@@ -13,7 +13,7 @@ import { formatNumber, formatPhone, whatsappLink, formatDateTimeShort, cn } from
 import { useVendorMap } from '@/hooks/useVendorMap'
 import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
 import { useWaEtiquetasDisponiveis, type WaResumoCampos } from '@/hooks/useWaResumo'
-import { canonico, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, statusDerivadoDaEtiqueta, tempoRelativo, temperaturaDe, TEMP_META, type Temperatura } from '@/lib/wa-funil'
+import { canonico, comEtiquetasDoCrm, corDaEtiqueta, ETIQUETAS_OCULTAS, ordemDe, statusDerivadoDaEtiqueta, tempoRelativo, temperaturaDe, TEMP_META, type Temperatura } from '@/lib/wa-funil'
 import { useEtiquetasDeContatos, estiloEtiqueta } from '@/hooks/useCrmEtiquetas'
 import { BarraEtiquetas } from '@/components/contacts/BarraEtiquetas'
 import { FaixaAtividadeContatos } from '@/components/contacts/FaixaAtividade'
@@ -70,6 +70,21 @@ function getOrcDescricao(notes: string | null): string | null {
 function isPlaceholderPhone(phone: string | null | undefined): boolean {
   if (!phone) return false
   return phone.startsWith('ORC-') || phone.startsWith('AUTO-')
+}
+
+/**
+ * `title` da celula "Negociacao": o texto inteiro (a celula trunca) e QUANDO foi
+ * anotado — pra uma nota de 3 meses atras nao passar por novidade.
+ */
+function tituloNegociacao(c: { negociacao: string | null; negociacao_em: string | null }): string {
+  if (!c.negociacao) return 'Como ficou a negociacao — clique pra anotar.'
+  if (!c.negociacao_em) return c.negociacao
+  const d = new Date(c.negociacao_em)
+  const ano = d.getFullYear()
+  const quando = ano !== new Date().getFullYear()
+    ? `${formatDateTimeShort(c.negociacao_em)} · ${ano}`
+    : formatDateTimeShort(c.negociacao_em)
+  return `${c.negociacao}\n\nAnotado em ${quando}`
 }
 
 // Célula vazia — o comum nesta tela, já que só ~5% dos contatos têm chat sincronizado.
@@ -375,7 +390,7 @@ export function Contacts() {
    */
   const [gravando, setGravando] = useState<Record<string, true>>({})
   const [falhou, setFalhou] = useState<Record<string, true>>({})
-  const salvarCampo = useCallback((id: string, campo: 'name' | 'city' | 'status', valor: string | null) => {
+  const salvarCampo = useCallback((id: string, campo: 'name' | 'city' | 'status' | 'negociacao', valor: string | null) => {
     setGravando(g => ({ ...g, [id]: true }))
     setFalhou(({ [id]: _, ...resto }) => resto)
     updateContact.mutate({ id, [campo]: valor }, {
@@ -1059,36 +1074,54 @@ export function Contacts() {
                     {/* Em modo selecao o Nome cede os 3% da coluna de checkbox, pra
                         soma continuar em 100% — `table-fixed` com soma > 100 reescala
                         TODAS as colunas e desalinha o cabecalho medido acima. */}
-                    <th className={cn(modoAtribuir ? 'w-[10%]' : 'w-[13%] rounded-tl-[11px]')}>Nome</th>
+                    {/* Larguras REPARTIDAS em 01/09/2026 pra coluna Negociacao entrar (9%):
+                        Nome 13→12, Telefone 12→11, Cidade 7→6, UF 4→5, Etiqueta 10→9,
+                        Ult. msg 9→8, Orcamento 8→7, Equipamento 9→8, Data 8→7, Status 13→11.
+                        Soma = 100% (com o checkbox: 3 + Nome 9).
+                        Rotulos MEDIDOS de novo (th.scrollWidth > clientWidth, no build real)
+                        em 1920/1536/1366/1280/1024: os longos ("Ultimo contato", "Orcamento",
+                        "Equipamento") so cabem a partir de ~1900px — em 1536 (2xl) a tabela
+                        tem 1200px e eles truncavam; por isso `min-[1900px]:` e nao `2xl:`.
+                        Abaixo de xl a tabela tem ~750px: "Cidade" vira "Cid.", "Etiqueta"
+                        vira "Etiq.", "Ult. msg" vira "Msg". */}
+                    <th className={cn(modoAtribuir ? 'w-[9%]' : 'w-[12%] rounded-tl-[11px]')}>Nome</th>
                     {/* 14%: o telefone formatado ocupa 139px e so cabia inteiro em 1920. */}
-                    <th className="w-[12%]">Telefone</th>
-                    <th className="w-[7%]">Cidade</th>
+                    <th className="w-[11%]">Telefone</th>
+                    <th className="w-[6%]" title="Cidade"><span className="2xl:hidden">Cid.</span><span className="hidden 2xl:inline">Cidade</span></th>
                     {/* 5%: em 4% sobravam 9px de texto pra uma sigla de 2 letras (px-2.5 come 20). */}
-                    <th className="w-[4%]">UF</th>
+                    <th className="w-[5%]">UF</th>
                     <th className="w-[7%]" title="Vendedor dono do contato">
                       <span className="2xl:hidden">Vend.</span><span className="hidden 2xl:inline">Vendedor</span>
                     </th>
                     {/* 12%: sobravam 165px aqui em 1920 enquanto os vizinhos estouravam. */}
-                    <th className="w-[10%]" title="Etiqueta do contato no WhatsApp. Prioriza a etiqueta posta pelo vendedor dono do contato.">Etiqueta</th>
-                    <th className="w-[9%]" title="Ultima mensagem trocada no WhatsApp. O selo ambar marca que o cliente falou por ultimo (aguardando resposta).">
-                      <span className="2xl:hidden">Ult. msg</span><span className="hidden 2xl:inline">Ultimo contato</span>
+                    <th className="w-[9%]" title="Etiqueta do contato no WhatsApp. Prioriza a etiqueta posta pelo vendedor dono do contato.">
+                      <span className="xl:hidden">Etiq.</span><span className="hidden xl:inline">Etiqueta</span>
                     </th>
-                    <th className="w-[8%]" title="Numero do orcamento mais recente">
-                      <span className="2xl:hidden">Orc.</span><span className="hidden 2xl:inline">Orcamento</span>
+                    <th className="w-[8%]" title="Ultima mensagem trocada no WhatsApp. O selo ambar marca que o cliente falou por ultimo (aguardando resposta).">
+                      <span className="xl:hidden">Msg</span><span className="hidden xl:inline min-[1900px]:hidden">Ult. msg</span><span className="hidden min-[1900px]:inline">Ultimo contato</span>
                     </th>
-                    <th className="hidden xl:table-cell w-[9%]" title="Equipamento do orcamento">
-                      <span className="2xl:hidden">Equip.</span><span className="hidden 2xl:inline">Equipamento</span>
+                    <th className="w-[7%]" title="Numero do orcamento mais recente">
+                      <span className="min-[1900px]:hidden">Orc.</span><span className="hidden min-[1900px]:inline">Orcamento</span>
+                    </th>
+                    <th className="hidden xl:table-cell w-[8%]" title="Equipamento do orcamento">
+                      <span className="min-[1900px]:hidden">Equip.</span><span className="hidden min-[1900px]:inline">Equipamento</span>
                     </th>
                     {/* `lg` e nao `xl`: entre 1024 e 1279 a data sumia da tabela E do card
                         mobile — o dado nao existia em lugar nenhum.
                         O title abaixo promete "mais recente" e agora CUMPRE: mostra o
                         mesmo `ultimo_orcamento_em` por onde a RPC ordena. */}
-                    <th className="hidden lg:table-cell w-[8%]" title="Data do orcamento mais recente deste contato.">
+                    <th className="hidden lg:table-cell w-[7%]" title="Data do orcamento mais recente deste contato.">
                       <span className="2xl:hidden">Data</span><span className="hidden 2xl:inline">Data orc.</span>
                     </th>
-                    {/* Coluna nova (06/08). Grava so em `status`; `is_closed` continua
+                    {/* Coluna nova (01/09/2026), pedido do Daniel: o vendedor anota na
+                        propria linha como ficou a negociacao. Grava em `contacts.negociacao`
+                        (texto livre, 300 caracteres); o banco carimba `negociacao_em`. */}
+                    <th className="w-[9%]" title="Como ficou a negociacao — anotacao livre do vendedor. Clique na celula pra escrever.">
+                      <span className="2xl:hidden">Negoc.</span><span className="hidden 2xl:inline">Negociacao</span>
+                    </th>
+                    {/* Coluna de 06/08. Grava so em `status`; `is_closed` continua
                         vindo de etiqueta e nao e tocado aqui. Soma = 100%. */}
-                    <th className="w-[13%] rounded-tr-[11px]" title="Aberto ou Fechado. Clique pra mudar.">Status</th>
+                    <th className="w-[11%] rounded-tr-[11px]" title="Aberto ou Fechado. Clique pra mudar — quando uma etiqueta decide, o botao trava e explica.">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1100,11 +1133,13 @@ export function Contacts() {
                     const meta = parseCrmMeta(c.notes)
                     const tempOpt = TEMPERATURA_OPTIONS.find(t => t.value === meta.temp)
                     const funilOpt = FUNIL_OPTIONS.find(f => f.value === meta.funil)
-                    const etiquetaWa = etiquetaDoContato(c, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
-                    // Quem decide o status é a etiqueta (job recompute-contact-status-5min).
-                    // Aqui só descobrimos QUAL, pra travar o botão e explicar.
-                    const statusDerivado = statusDerivadoDaEtiqueta(c.etiquetas, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
+                    const dono = c.vendor_id ? vendorMap[c.vendor_id] ?? null : null
+                    const etiquetaWa = etiquetaDoContato(c, dono)
                     const etiquetasCrmDoContato = etiqCrmMap?.get(c.id) ?? []
+                    // Quem decide o status é a etiqueta (job recompute-contact-status-5min).
+                    // Aqui só descobrimos QUAL, pra travar o botão e explicar. As do CRM
+                    // entram na conta desde 01/09/2026: "Vendido" aplicado aqui fecha.
+                    const statusDerivado = statusDerivadoDaEtiqueta(comEtiquetasDoCrm(c.etiquetas, etiquetasCrmDoContato, dono), dono)
                     const equipamento = orcsLinkados[0]?.equipamento || c.descricao_orcamento || getOrcDescricao(c.notes)
                     return (
                       <tr
@@ -1262,6 +1297,22 @@ export function Contacts() {
                             return <span className="text-[12px] text-ink-muted font-mono tabular-nums whitespace-nowrap">{`${dd}/${mm}/${yy}`}</span>
                           })()}
                         </td>
+                        {/* Como ficou a negociacao: texto livre do vendedor, na propria
+                            linha (mesma CelulaEditavel de Nome e Cidade). A celula trunca,
+                            entao o `title` leva o texto inteiro e quando foi anotado. */}
+                        <td className="px-2.5 py-3.5">
+                          <CelulaEditavel
+                            valor={c.negociacao}
+                            placeholder="anotar..."
+                            maxLength={300}
+                            titulo={tituloNegociacao(c)}
+                            ariaLabel={`Como ficou a negociacao com ${c.name || 'contato sem nome'}`}
+                            className="text-[12.5px] text-ink"
+                            salvando={!!gravando[c.id]}
+                            erro={!!falhou[c.id]}
+                            onSalvar={v => salvarCampo(c.id, 'negociacao', v)}
+                          />
+                        </td>
                         <td className="px-2.5 py-3.5">
                           <BotoesStatus
                             valor={c.status}
@@ -1288,8 +1339,9 @@ export function Contacts() {
                 const mobileM = parseCrmMeta(c.notes)
                 const mobileTempOpt = TEMPERATURA_OPTIONS.find(t => t.value === mobileM.temp)
                 const mobileFunilOpt = FUNIL_OPTIONS.find(f => f.value === mobileM.funil)
-                const etiquetaWaM = etiquetaDoContato(c, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
-                const statusDerivadoM = statusDerivadoDaEtiqueta(c.etiquetas, c.vendor_id ? vendorMap[c.vendor_id] ?? null : null)
+                const donoM = c.vendor_id ? vendorMap[c.vendor_id] ?? null : null
+                const etiquetaWaM = etiquetaDoContato(c, donoM)
+                const statusDerivadoM = statusDerivadoDaEtiqueta(comEtiquetasDoCrm(c.etiquetas, etiqCrmMap?.get(c.id) ?? [], donoM), donoM)
                 return (
                   <Card key={c.id} hover onClick={() => modoAtribuir ? toggleSelect(c.id) : setSelectedContact(c)} className="p-3.5">
                     <div className="flex items-start justify-between gap-2">
@@ -1332,6 +1384,22 @@ export function Contacts() {
                             compacto
                             derivadoDe={statusDerivadoM}
                             onEscolher={(v: StatusContato) => salvarCampo(c.id, 'status', v)}
+                          />
+                        </div>
+
+                        {/* Paridade com a coluna Negociacao do desktop. */}
+                        <div className="mt-2 flex items-baseline gap-1.5 min-w-0">
+                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-faint">Negoc.</span>
+                          <CelulaEditavel
+                            valor={c.negociacao}
+                            placeholder="anotar..."
+                            maxLength={300}
+                            titulo={tituloNegociacao(c)}
+                            ariaLabel={`Como ficou a negociacao com ${c.name || 'contato sem nome'}`}
+                            className="text-[13px] text-ink"
+                            salvando={!!gravando[c.id]}
+                            erro={!!falhou[c.id]}
+                            onSalvar={v => salvarCampo(c.id, 'negociacao', v)}
                           />
                         </div>
 
