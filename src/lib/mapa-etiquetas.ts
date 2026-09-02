@@ -3,9 +3,16 @@
  *
  * A camada de orçamentos do mapa não sabia a etiqueta do cliente: o pino vinha
  * de `mapa_orcamentos_v2` (cliente, telefone, valor) e a etiqueta mora na
- * matview do WhatsApp, por telefone canônico. A RPC `mapa_etiquetas_wa` devolve
- * (fc, principal, todas[]) de cada conversa e aqui a gente casa com o cliente
- * pelo MESMO canônico (`foneCanon` espelha `fone_canon` do banco).
+ * matview do WhatsApp, por telefone canônico. A RPC `mapa_etiquetas_wa_v2`
+ * devolve TUDO numa linha JSON — `com` (conversas com etiqueta: fc, principal,
+ * vendedor da principal, pares [etiqueta, VENDEDOR]) e `sem` (fcs com conversa e
+ * sem etiqueta) — e aqui a gente casa com o cliente pelo MESMO canônico
+ * (`foneCanon` espelha `fone_canon` do banco).
+ *
+ * ⚠️ Por que UMA linha e não uma tabela: o PostgREST corta qualquer resposta em
+ * 10.000 linhas (db-max-rows) e a matview tem 17 mil conversas. A v1 devolvia
+ * tabela — 7.236 conversas nunca chegavam e cliente etiquetado aparecia como
+ * "Sem WhatsApp". Medido em produção em 02/09/2026.
  *
  * Medido em 01/09/2026: 5.354 clientes no mapa, 1.059 com conversa, 724 com
  * etiqueta. Então o filtro precisa de dois "sem": SEM_ETIQUETA (tem conversa,
@@ -25,8 +32,12 @@ export const SEM_WHATSAPP = '(sem whatsapp)'
 export interface EtiquetasDoFone {
   /** A que a matview elegeu principal (canônica). null = conversa sem etiqueta. */
   principal: string | null
+  /** Vendedor (CAIXA ALTA) que pôs a principal. */
+  principalVendedor: string | null
   /** Todas as etiquetas da conversa, canônicas, sem repetição. */
   todas: string[]
+  /** [etiqueta, VENDEDOR] — o mesmo número costuma estar etiquetado em vários WhatsApps. */
+  porVendedor: [string, string][]
 }
 export type MapaEtiquetas = Map<string, EtiquetasDoFone>
 
@@ -63,6 +74,46 @@ export function passaEtiqueta(sel: ReadonlySet<string>, e: EtiquetasDoFone | nul
   if (!e) return sel.has(SEM_WHATSAPP)
   if (e.todas.length === 0) return sel.has(SEM_ETIQUETA)
   return e.todas.some(t => sel.has(t))
+}
+
+// Estágio "mais adiantado" do funil vence: numa conversa com ORCAMENTO ENVIADO +
+// NAO RESPONDEU MAIS, o desfecho diz mais que a etapa. Etiqueta fora do funil
+// (ordem 900) só vale se não houver nenhuma do funil.
+function maisAdiantada(nomes: string[]): string {
+  const peso = (n: string) => { const o = ordemDe(n); return o === 900 ? -1 : o }
+  return nomes.slice().sort((a, b) => peso(b) - peso(a) || a.localeCompare(b))[0]
+}
+
+/**
+ * QUAL etiqueta pinta o pino (e entra na legenda do modo "por etiqueta").
+ * Devolve o nome, ou os sentinelas SEM_ETIQUETA / SEM_WHATSAPP.
+ *
+ * Ordem de preferência, medida em 02/09/2026 sobre 708 clientes com etiqueta:
+ *  1. Com filtro ligado, a etiqueta PEDIDA — quem filtrou VENDIDO quer ver
+ *     verde, não a cor de outra etiqueta que o cliente também tem.
+ *  2. A do VENDEDOR DO PINO, se ele etiquetou. 159 clientes estão etiquetados
+ *     por 2+ vendedores e em 41 a principal da conversa era de OUTRO vendedor
+ *     apesar do dono do orçamento ter etiquetado — mesma regra da /contatos: o
+ *     dono manda.
+ *  3. A principal da conversa (o que a matview elegeu).
+ */
+export function etiquetaQuePinta(
+  e: EtiquetasDoFone | null,
+  vendedorPino: string | null | undefined,
+  sel: ReadonlySet<string>,
+): string {
+  if (!e) return SEM_WHATSAPP
+  if (e.todas.length === 0) return SEM_ETIQUETA
+  if (sel.size > 0) {
+    const pedidas = e.todas.filter(t => sel.has(t))
+    if (pedidas.length) return maisAdiantada(pedidas)
+  }
+  const v = (vendedorPino ?? '').trim().toUpperCase()
+  if (v) {
+    const dele = e.porVendedor.filter(([, vend]) => vend === v).map(([t]) => t)
+    if (dele.length) return e.principal && dele.includes(e.principal) && e.principalVendedor === v ? e.principal : maisAdiantada(dele)
+  }
+  return e.principal ?? maisAdiantada(e.todas)
 }
 
 export interface OpcaoEtiqueta {
@@ -105,9 +156,12 @@ export function opcoesEtiqueta(clientes: Iterable<EtiquetasDoFone | null>): Opca
   return lista
 }
 
-// ── cores do modo "por etiqueta" ─────────────────────────────────────────────
-// ETIQUETA_COR foi calibrada como TEXTO sobre branco (escura). Sobre o mapa claro
-// serve como está; no tema escuro clareia um passo, senão o pino some no fundo.
+// ── cores ────────────────────────────────────────────────────────────────────
+// ETIQUETA_COR foi calibrada como TEXTO sobre branco (escura). Sobre o MAPA ela
+// serve como está — e o mapa é claro nos DOIS temas (os tiles do Google não
+// seguem o tema do app). Clarear só vale pro swatch da legenda/painel, que fica
+// sobre a superfície escura do app. A v1 clareava o PINO no tema escuro e ele
+// perdia contraste justamente sobre o tile claro.
 const SEM_WA_CLARO = '#cbd5e1', SEM_WA_ESCURO = '#4b5563'
 const SEM_ETQ_CLARO = '#6b7280', SEM_ETQ_ESCURO = '#a1a1aa'
 
@@ -119,16 +173,15 @@ function clarear(hex: string, k: number): string {
     .join('')
 }
 
-export function corPorEtiqueta(e: EtiquetasDoFone | null, escuro: boolean): string {
-  if (!e) return escuro ? SEM_WA_ESCURO : SEM_WA_CLARO
-  if (!e.principal) return escuro ? SEM_ETQ_ESCURO : SEM_ETQ_CLARO
-  const hex = corDaEtiqueta(e.principal)
+/** Cor de uma opção/valor (nome de etiqueta ou sentinela) — `escuro` = sobre superfície escura do app. */
+export function corDaOpcaoEtiqueta(valor: string, escuro: boolean): string {
+  if (valor === SEM_WHATSAPP) return escuro ? SEM_WA_ESCURO : SEM_WA_CLARO
+  if (valor === SEM_ETIQUETA) return escuro ? SEM_ETQ_ESCURO : SEM_ETQ_CLARO
+  const hex = corDaEtiqueta(valor)
   return escuro ? clarear(hex, 0.35) : hex
 }
 
-/** Cor do swatch de uma OPÇÃO do filtro/legenda (inclui os dois "sem"). */
-export function corDaOpcaoEtiqueta(valor: string, escuro: boolean): string {
-  if (valor === SEM_WHATSAPP) return corPorEtiqueta(null, escuro)
-  if (valor === SEM_ETIQUETA) return corPorEtiqueta({ principal: null, todas: [] }, escuro)
-  return corPorEtiqueta({ principal: valor, todas: [valor] }, escuro)
+/** Cor do PINO: sempre a paleta clara, porque o mapa é claro em qualquer tema. */
+export function corDoPinoEtiqueta(valor: string): string {
+  return corDaOpcaoEtiqueta(valor, false)
 }

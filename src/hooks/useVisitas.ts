@@ -108,7 +108,14 @@ export function useUfsVisiveis() {
     queryKey: ['ufs-visiveis'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.from('usuario_ufs').select('uf')
+      // ⚠️ Filtrar pelo usuario e OBRIGATORIO: a policy de SELECT e
+      // `user_id = auth.uid() OR is_admin()`, entao o admin le as UFs de TODO
+      // MUNDO e o selo "seu acesso e limitado a MA · PI" aparecia pro Daniel com
+      // as UFs de um representante (02/09/2026). O banco nao restringe o admin
+      // (ufs_visiveis() olha so as linhas dele); era so o selo mentindo.
+      const { data: u } = await supabase.auth.getUser()
+      if (!u.user) return []
+      const { data, error } = await supabase.from('usuario_ufs').select('uf').eq('user_id', u.user.id)
       if (error) throw error
       return (data ?? []).map(r => String(r.uf).toUpperCase()).sort()
     },
@@ -147,11 +154,14 @@ export interface OrcamentoLinha {
 
 export function useListaOrcamentos() {
   return useQuery<OrcamentoLinha[]>({
-    queryKey: ['lista-orcamentos-mapa'],
+    queryKey: ['lista-orcamentos-mapa', 'json'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('lista_orcamentos_mapa')
+      // `_json` = a mesma RPC embrulhada em UMA linha jsonb. A tabela tem 11.790
+      // orcamentos e o PostgREST corta em 10.000 (db-max-rows): a Lista e o
+      // /mapa-representantes perdiam 1.790 em silencio (medido em prod, 02/09).
+      const { data, error } = await supabase.rpc('lista_orcamentos_mapa_json')
       if (error) throw error
-      return (data ?? []) as OrcamentoLinha[]
+      return (Array.isArray(data) ? data : []) as OrcamentoLinha[]
     },
   })
 }
@@ -223,16 +233,25 @@ export function useSalvarMarcacao() {
 // vazia — mesma porta da contatos_page.
 export function useEtiquetasMapa() {
   return useQuery<MapaEtiquetas>({
-    queryKey: ['mapa-etiquetas-wa'],
+    queryKey: ['mapa-etiquetas-wa', 'v2'],
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('mapa_etiquetas_wa')
+      // v2 = UMA linha jsonb. A v1 devolvia tabela e o PostgREST cortava em
+      // 10.000 linhas: 7.236 conversas nunca chegavam (medido em prod, 02/09).
+      const { data, error } = await supabase.rpc('mapa_etiquetas_wa_v2')
       if (error) throw error
+      type Com = { f: string; p: string | null; v: string | null; e: [string, string][] | null }
+      const j = (data ?? {}) as { com?: Com[]; sem?: string[] }
       const m: MapaEtiquetas = new Map()
-      for (const r of (data ?? []) as { fc: string; etiqueta_principal: string | null; etiquetas: string[] | null }[]) {
-        if (!r.fc) continue
-        m.set(r.fc, { principal: r.etiqueta_principal, todas: r.etiquetas ?? [] })
+      for (const r of j.com ?? []) {
+        if (!r.f) continue
+        const pares = (r.e ?? []).filter(x => x && x[0]).map(([t, v]) => [t, (v ?? '').toUpperCase()] as [string, string])
+        m.set(r.f, {
+          principal: r.p, principalVendedor: r.v ? r.v.toUpperCase() : null,
+          todas: [...new Set(pares.map(x => x[0]))], porVendedor: pares,
+        })
       }
+      for (const f of j.sem ?? []) if (f && !m.has(f)) m.set(f, { principal: null, principalVendedor: null, todas: [], porVendedor: [] })
       return m
     },
   })

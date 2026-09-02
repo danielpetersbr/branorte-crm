@@ -9,8 +9,8 @@ import {
 } from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
 import {
-  SEM_ETIQUETA, SEM_WHATSAPP, etiquetasDoCliente, nomeCanonicoEtiqueta, passaEtiqueta, opcoesEtiqueta,
-  corPorEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao,
+  etiquetasDoCliente, nomeCanonicoEtiqueta, passaEtiqueta, opcoesEtiqueta, etiquetaQuePinta,
+  corDoPinoEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao,
   type EtiquetasDoFone, type MapaEtiquetas,
 } from '@/lib/mapa-etiquetas'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
@@ -454,6 +454,13 @@ export function MapaVisitas() {
     if (n.has(v)) n.delete(v); else n.add(v)
     return n
   })
+  // Esc fecha o painel de etiquetas (o backdrop so pega clique).
+  useEffect(() => {
+    if (!etiqAberto) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setEtiqAberto(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [etiqAberto])
   const [periodo, setPeriodo] = useState<PeriodoFiltro>('24m')
   // Modo de visualização — ortogonal aos filtros. Padrão: por estado.
   const [modo, setModo] = useState<ModoMapa>('estado')
@@ -622,7 +629,8 @@ export function MapaVisitas() {
   /** Etiquetas da VISITA no formato do filtro (nomes canônicos do funil). */
   function etiquetasDaVisita(v: Visita): EtiquetasDoFone {
     const todas = [...new Set(resolverEtiquetas(v).nomes.map(nomeCanonicoEtiqueta))]
-    return { principal: todas[0] ?? null, todas }
+    const vend = (v.vendedor_nome ?? '').toUpperCase()
+    return { principal: todas[0] ?? null, principalVendedor: vend || null, todas, porVendedor: todas.map(t => [t, vend]) }
   }
   // Etiquetas de cada cliente do mapa, casadas por telefone canônico — UMA vez
   // por carga, não a cada filtro (são 5 mil clientes × 2 telefones).
@@ -671,7 +679,10 @@ export function MapaVisitas() {
     // modo ETIQUETA: a cor é o que o WhatsApp diz do cliente — e só isso. Quem
     // comprou pelo sistema mas não tem etiqueta fica cinza de propósito: o modo
     // existe pra mostrar a classificação do vendedor, não o cadastro.
-    if (modo === 'etiqueta') return corPorEtiqueta(etiqDoPonto(p), temaEscuro)
+    // Qual etiqueta pinta: a pedida no filtro > a do vendedor do pino > a
+    // principal da conversa (regras e numeros em lib/mapa-etiquetas). Paleta
+    // CLARA em qualquer tema: o mapa nao escurece com o app.
+    if (modo === 'etiqueta') return corDoPinoEtiqueta(etiquetaQuePinta(etiqDoPonto(p), p.vendedor, etiquetasSel))
     if (modo === 'idade') {
       // no modo IDADE quem já comprou continua azul: é a informação que o
       // vendedor mais procura no mapa, e perdê-la ao trocar de modo seria regressão
@@ -770,7 +781,9 @@ export function MapaVisitas() {
           .some(x => (x || '').toLowerCase().includes(termo)))
       if (passa) base.push(etiqDoPonto(p))
     }
-    if (showVis) for (const v of comCoord) {
+    // Visitas so quando a camada de orcamentos esta DESLIGADA: com as duas
+    // ligadas o mesmo cliente contava duas vezes (visita + orcamento).
+    if (showVis && !showOrc) for (const v of comCoord) {
       const passa =
         (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
         (!ufSel || ufKey(v.estado) === ufSel) &&
@@ -876,8 +889,8 @@ export function MapaVisitas() {
   const statsEtq = useMemo(() => {
     const m = new Map<string, number>()
     for (const p of orcFiltrados) {
-      const e = etiqDoPonto(p)
-      const k = !e ? SEM_WHATSAPP : (e.principal ?? SEM_ETIQUETA)
+      // a MESMA funcao que pinta o pino — legenda e mapa nao podem divergir
+      const k = etiquetaQuePinta(etiqDoPonto(p), p.vendedor, etiquetasSel)
       m.set(k, (m.get(k) ?? 0) + 1)
     }
     return [...m.entries()].sort((a, b) =>
@@ -885,7 +898,7 @@ export function MapaVisitas() {
       || ordemDe(a[0]) - ordemDe(b[0])
       || b[1] - a[1])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orcFiltrados, etiqPorCliente])
+  }, [orcFiltrados, etiqPorCliente, etiquetasSel])
 
   // lista (tabela) filtrada
   const listaFiltrada = useMemo(() => {
@@ -2412,7 +2425,7 @@ export function MapaVisitas() {
                         {statsEtq.length === 0 && <li className="text-[12px] text-ink-muted">Nenhum pino no mapa.</li>}
                       </ul>
                       <p className="text-[10px] text-ink-faint mt-2 leading-snug">
-                        Cor da etiqueta PRINCIPAL da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
+                        Cor: com filtro ligado, a etiqueta pedida; senao a que o vendedor do pino colocou; senao a principal da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
                       </p>
                     </>
                   )}
