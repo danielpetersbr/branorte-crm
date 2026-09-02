@@ -127,7 +127,7 @@ async function paginaRpc<T>(fn: RpcDoMapa, de: number, ate: number): Promise<Pag
   if (error) throw error
   return { linhas: (data ?? []) as T[], total: count ?? null }
 }
-function rpcInteira<T>(fn: RpcDoMapa): Promise<T[]> {
+export function rpcInteira<T>(fn: RpcDoMapa): Promise<T[]> {
   return todasAsLinhas<T>((de, ate) => paginaRpc<T>(fn, de, ate))
 }
 
