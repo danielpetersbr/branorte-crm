@@ -1903,7 +1903,7 @@ export function MapaVisitas() {
     </button>
   )
   const segBtn = (ativo: boolean, extra = '') =>
-    `flex-1 px-2 transition-colors ${ativo ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'} ${extra}`
+    `flex-1 px-1.5 whitespace-nowrap transition-colors ${ativo ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'} ${extra}`
 
   // Lista "por estado" — barra proporcional ao valor; clicar filtra o mapa naquele estado.
   const listaUF = (cls: string, aoEscolher?: () => void) => (
@@ -2018,7 +2018,7 @@ export function MapaVisitas() {
             {filtrosAberto && (
               <>
                 <div className="fixed inset-0 z-[1190]" onClick={() => setFiltrosAberto(false)} />
-                <div className="absolute left-0 top-full mt-1 z-[1200] w-80 rounded-lg border border-border bg-surface shadow-lg p-3 space-y-3 text-[12.5px]">
+                <div className="absolute left-0 top-full mt-1 z-[1200] w-[26rem] rounded-lg border border-border bg-surface shadow-lg p-3 space-y-3 text-[12.5px]">
                   <div>
                     <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-1.5 px-1">Situação</div>
                     <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
