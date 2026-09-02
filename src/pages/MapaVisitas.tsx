@@ -4,10 +4,16 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
   useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount, useUfsVisiveis,
-  useMapaMarcacoes, useSalvarMarcacao,
+  useMapaMarcacoes, useSalvarMarcacao, useEtiquetasMapa,
   type Visita, type OrcamentoPonto, type OrcamentoLinha, type Marcacao,
 } from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
+import {
+  SEM_ETIQUETA, SEM_WHATSAPP, etiquetasDoCliente, nomeCanonicoEtiqueta, passaEtiqueta, opcoesEtiqueta,
+  corPorEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao,
+  type EtiquetasDoFone, type MapaEtiquetas,
+} from '@/lib/mapa-etiquetas'
+import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
@@ -37,6 +43,9 @@ import {
 // Geocoding por cidade/UF (Nominatim) com cache compartilhado.
 
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
+// Referência ESTÁVEL pro default do hook de etiquetas: `= new Map()` inline
+// criaria um Map novo a cada render e invalidaria todos os useMemo que dependem dele.
+const MAPA_ETIQ_VAZIO: MapaEtiquetas = new Map()
 
 const CORES = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4']
 const CINZA = '#9ca3af'
@@ -357,8 +366,14 @@ function popupOrcamento(
   dist?: number,
   viagem?: { vizinhos: OrcamentoPonto[]; jaNaViagem: Set<string> },
   vizinhos?: OrcamentoPonto[],
+  etq?: EtiquetasDoFone | null,
 ): string {
   const tel = (p.telefone || '').replace(/\D/g, '')
+  // Etiquetas do WhatsApp do cliente (todas, não só a principal). O popup do
+  // Leaflet é branco, então ETIQUETA_COR (calibrada como texto sobre branco) serve.
+  const etqSelos = etq && etq.todas.length
+    ? etq.todas.map(t => `<span style="display:inline-block;margin:3px 4px 0 0;font-size:10px;padding:1px 6px;border-radius:999px;background:${corDaEtiqueta(t)}1f;color:${corDaEtiqueta(t)};font-weight:700">${esc(t)}</span>`).join('')
+    : ''
   const foneFmt = p.fone || p.telefone || ''
   const loc = [esc(p.cidade), esc(p.uf)].filter(Boolean).join(' - ')
   const compras = p.vendido && p.n_vendas > 0 ? ` · ${p.n_vendas} compra${p.n_vendas > 1 ? 's' : ''}` : ''
@@ -379,6 +394,7 @@ function popupOrcamento(
       <div style="font-weight:600;font-size:13px">${esc(p.cliente) || 'Sem nome'}</div>
       ${loc ? `<div style="font-size:12px;color:#64748b">${loc}${dist != null ? ` · <b>${dist.toFixed(0)} km</b>` : ''}</div>` : ''}
       <div style="margin-top:4px">${vendBadge}</div>
+      ${etqSelos ? `<div style="margin-top:1px">${etqSelos}</div>` : ''}
       ${p.numeros ? `<div style="font-size:11px;color:#475569;margin-top:3px">🧾 Nº ${esc(p.numeros)}</div>` : ''}
       ${temValor(p.total)
         ? `<div style="font-size:14px;font-weight:700;color:#10b981;margin-top:3px">${brl(p.total)}</div>`
@@ -412,6 +428,7 @@ export function MapaVisitas() {
   const { data: lista = [] } = useListaOrcamentos()
   const { data: vendasCount = 0 } = useVendasMapaCount()
   const { data: etiquetasWa = [] } = useEtiquetas()
+  const { data: etiqMap = MAPA_ETIQ_VAZIO } = useEtiquetasMapa()
   const { data: marc = {} } = useMapaMarcacoes()
   const { data: ufsVisiveis = [] } = useUfsVisiveis()
   const salvarMarc = useSalvarMarcacao()
@@ -426,6 +443,17 @@ export function MapaVisitas() {
   const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
   const [visitaFiltro, setVisitaFiltro] = useState<VisitaFiltro>('todos')
+  // Filtro por ETIQUETA do WhatsApp (pedido do Daniel, 01/09/2026). Multi: dá pra
+  // pedir "ORCAMENTO ENVIADO + INTERESSE FUTURO" de uma vez, que é o recorte de
+  // quem vai montar viagem. Vazio = desligado. Vale pras DUAS camadas: orçamentos
+  // (por telefone canônico) e visitas (pelas etiquetas que a extensão gravou).
+  const [etiquetasSel, setEtiquetasSel] = useState<Set<string>>(() => new Set())
+  const [etiqAberto, setEtiqAberto] = useState(false)
+  const toggleEtiqueta = (v: string) => setEtiquetasSel(s => {
+    const n = new Set(s)
+    if (n.has(v)) n.delete(v); else n.add(v)
+    return n
+  })
   const [periodo, setPeriodo] = useState<PeriodoFiltro>('24m')
   // Modo de visualização — ortogonal aos filtros. Padrão: por estado.
   const [modo, setModo] = useState<ModoMapa>('estado')
@@ -591,6 +619,20 @@ export function MapaVisitas() {
     }
     return { nomes, isFollowUp: nomes.some(n => FOLLOWUP_NOMES.has(n.toUpperCase())) }
   }
+  /** Etiquetas da VISITA no formato do filtro (nomes canônicos do funil). */
+  function etiquetasDaVisita(v: Visita): EtiquetasDoFone {
+    const todas = [...new Set(resolverEtiquetas(v).nomes.map(nomeCanonicoEtiqueta))]
+    return { principal: todas[0] ?? null, todas }
+  }
+  // Etiquetas de cada cliente do mapa, casadas por telefone canônico — UMA vez
+  // por carga, não a cada filtro (são 5 mil clientes × 2 telefones).
+  const etiqPorCliente = useMemo(() => {
+    const m = new Map<string, EtiquetasDoFone | null>()
+    for (const p of orcPontos) m.set(p.cli_key, etiquetasDoCliente(etiqMap, [p.telefone, p.fone]))
+    return m
+  }, [orcPontos, etiqMap])
+  const etiqDoPonto = (p: OrcamentoPonto): EtiquetasDoFone | null => etiqPorCliente.get(p.cli_key) ?? null
+  const passaEtq = (p: OrcamentoPonto) => passaEtiqueta(etiquetasSel, etiqDoPonto(p))
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
   const canvasRef = useRef<L.Canvas | null>(null) // renderer canvas (pontos rápidos)
@@ -626,6 +668,10 @@ export function MapaVisitas() {
   // quem aparece. Quem altera a leitura é o seletor de modo.
   const corDoPino = (p: OrcamentoPonto): string => {
     if (modo === 'estado') return corDoEstado(p.uf, temaEscuro)
+    // modo ETIQUETA: a cor é o que o WhatsApp diz do cliente — e só isso. Quem
+    // comprou pelo sistema mas não tem etiqueta fica cinza de propósito: o modo
+    // existe pra mostrar a classificação do vendedor, não o cadastro.
+    if (modo === 'etiqueta') return corPorEtiqueta(etiqDoPonto(p), temaEscuro)
     if (modo === 'idade') {
       // no modo IDADE quem já comprou continua azul: é a informação que o
       // vendedor mais procura no mapa, e perdê-la ao trocar de modo seria regressão
@@ -653,10 +699,12 @@ export function MapaVisitas() {
     () => comCoord.filter(v =>
       (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
       (!ufSel || ufKey(v.estado) === ufSel) &&
+      passaEtiqueta(etiquetasSel, etiquetasDaVisita(v)) &&
       (!termo || [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]
         .some(x => (x || '').toLowerCase().includes(termo)))
     ),
-    [comCoord, vendedorSel, termo, ufSel]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [comCoord, vendedorSel, termo, ufSel, etiquetasSel, byVendId, globId]
   )
   // Base = todos os filtros MENOS o de estado. É dela que sai o painel "por estado"
   // (se saísse de orcFiltrados, ao escolher um estado os outros sumiriam da lista).
@@ -665,12 +713,13 @@ export function MapaVisitas() {
       (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
       passaFiltro(p.vendido, p.total) &&
       passaVisita(p) &&
+      passaEtq(p) &&
       passaPeriodo(p.data_recente) &&
       (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
         .some(x => (x || '').toLowerCase().includes(termo)))
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, marc]
+    [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, marc, etiquetasSel, etiqPorCliente]
   )
   const orcFiltrados = useMemo(
     () => (ufSel ? orcBase.filter(p => ufKey(p.uf) === ufSel) : orcBase),
@@ -693,6 +742,7 @@ export function MapaVisitas() {
         (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
         passaFiltro(p.vendido, p.total) &&
         passaVisita(p) &&
+        passaEtq(p) &&
         (!ufSel || ufKey(p.uf) === ufSel) &&
         (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
           .some(x => (x || '').toLowerCase().includes(termo)))
@@ -702,7 +752,35 @@ export function MapaVisitas() {
     }
     return { total, vendidos }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, ufSel, periodo, marc])
+  }, [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, ufSel, periodo, marc, etiquetasSel, etiqPorCliente])
+
+  // Opções do filtro de etiqueta COM contagem, respeitando os outros filtros —
+  // mesma regra da soma por estado: tudo, menos o próprio facet. Entram as
+  // camadas LIGADAS: se só as visitas estão ligadas, a contagem é das visitas.
+  const opcoesEtq = useMemo(() => {
+    const base: (EtiquetasDoFone | null)[] = []
+    if (showOrc) for (const p of orcPontos) {
+      const passa =
+        (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
+        passaFiltro(p.vendido, p.total) &&
+        passaVisita(p) &&
+        passaPeriodo(p.data_recente) &&
+        (!ufSel || ufKey(p.uf) === ufSel) &&
+        (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
+          .some(x => (x || '').toLowerCase().includes(termo)))
+      if (passa) base.push(etiqDoPonto(p))
+    }
+    if (showVis) for (const v of comCoord) {
+      const passa =
+        (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
+        (!ufSel || ufKey(v.estado) === ufSel) &&
+        (!termo || [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]
+          .some(x => (x || '').toLowerCase().includes(termo)))
+      if (passa) base.push(etiquetasDaVisita(v))
+    }
+    return opcoesEtiqueta(base)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orcPontos, comCoord, showOrc, showVis, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, ufSel, marc, etiqPorCliente, byVendId, globId])
 
   // Soma por ESTADO do que está no mapa. 1 valor por cliente: orçamento mais recente
   // (ou, se já comprou, a soma das vendas dele) — mesmo valor que decide ⭐/💎 no pino.
@@ -792,6 +870,22 @@ export function MapaVisitas() {
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [orcFiltrados])
+
+  // Legenda do modo POR ETIQUETA: quantos pinos de cada etiqueta PRINCIPAL (é a
+  // que pinta). Funil na ordem oficial; os dois "sem" no fim.
+  const statsEtq = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of orcFiltrados) {
+      const e = etiqDoPonto(p)
+      const k = !e ? SEM_WHATSAPP : (e.principal ?? SEM_ETIQUETA)
+      m.set(k, (m.get(k) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) =>
+      Number(a[0].startsWith('(')) - Number(b[0].startsWith('('))
+      || ordemDe(a[0]) - ordemDe(b[0])
+      || b[1] - a[1])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orcFiltrados, etiqPorCliente])
 
   // lista (tabela) filtrada
   const listaFiltrada = useMemo(() => {
@@ -1434,11 +1528,14 @@ export function MapaVisitas() {
     if (showVis) {
       for (const v of visFiltradas) {
         const { nomes, isFollowUp } = resolverEtiquetas(v)
-        const cor = isFollowUp ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
+        // Com filtro de etiqueta ligado, TODA visita que passou é a que a pessoa
+        // pediu — ganha a cor do vendedor. Sem filtro, só o follow-up se destaca.
+        const destaque = isFollowUp || etiquetasSel.size > 0
+        const cor = destaque ? corDoVendedor(v.vendedor_nome, vendedores) : CINZA
         const lat = v.lat as number, lng = v.lng as number
         const [dx, dy, anelMax, limiteM] = proximo(lat, lng)
         const m = L.circleMarker(posEspalhada(map, lat, lng, dx, dy, anelMax, limiteM), {
-          renderer, radius: isFollowUp ? 6 : 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: isFollowUp ? 0.95 : 0.7,
+          renderer, radius: destaque ? 6 : 5, fillColor: cor, color: '#fff', weight: 1, fillOpacity: destaque ? 0.95 : 0.7,
         })
         // popup lazy: só monta o HTML quando abre
         m.bindPopup(() => popupVisita(v, isFollowUp, nomes))
@@ -1477,7 +1574,7 @@ export function MapaVisitas() {
           const ctx = ctxPopupRef.current
           return popupOrcamento(p, mk, undefined, ctx.ativo
             ? { vizinhos: ctx.porCoord.get(kCoord(p.lat, p.lng)) ?? [p], jaNaViagem: ctx.dentro }
-            : undefined, irmaos)
+            : undefined, irmaos, etiqDoPonto(p))
         })
         m.addTo(layer)
         marcadorPorKeyRef.current.set(p.cli_key, m)
@@ -1498,7 +1595,7 @@ export function MapaVisitas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId, marc,
-      modo, temaEscuro])   // trocar de modo ou de tema repinta os pinos
+      modo, temaEscuro, etiqPorCliente, etiquetasSel])   // trocar de modo ou de tema repinta os pinos
 
   // Mantém o contexto do popup atual sem forçar repintura da camada de pinos.
   useEffect(() => {
@@ -1679,7 +1776,7 @@ export function MapaVisitas() {
     // solto se o cliente estiver escondido pelos filtros da tela.
     const pino = marcadorPorKeyRef.current.get(p.cli_key)
     if (pino) { pino.openPopup(); return }
-    L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p, marc[chaveMarc(p.telefone, p.fone, p.cliente)])).openOn(map)
+    L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p, marc[chaveMarc(p.telefone, p.fone, p.cliente)], undefined, undefined, undefined, etiqDoPonto(p))).openOn(map)
   }
 
   function focarLinha(r: OrcamentoLinha) {
@@ -1731,6 +1828,44 @@ export function MapaVisitas() {
   // ligado/desligado, e dar cara de toggle a quem só abre é o que confundia.
   const acaoPill =
     'h-9 px-3 rounded-md border border-border bg-surface text-[13px] font-semibold text-ink-muted hover:text-ink transition-colors'
+
+  // Rótulo do botão de etiqueta: o nome quando é uma só, a contagem quando são várias.
+  const rotuloEtiquetas = etiquetasSel.size === 0 ? 'Etiquetas'
+    : etiquetasSel.size === 1 ? rotuloEtiquetaOpcao([...etiquetasSel][0])
+    : `${etiquetasSel.size} etiquetas`
+  // O MESMO painel no popover do desktop e na folha do celular — uma lista só,
+  // senão as duas divergem na primeira mexida.
+  const painelEtiquetas = (
+    <div>
+      <div className="flex items-center gap-2 mb-1.5 px-1">
+        <span className="text-[11px] uppercase tracking-wide text-ink-faint">Etiqueta do WhatsApp</span>
+        {etiquetasSel.size > 0 && (
+          <button onClick={() => setEtiquetasSel(new Set())} className="ml-auto text-[11px] font-semibold text-accent hover:underline">limpar</button>
+        )}
+      </div>
+      {opcoesEtq.length === 0 ? (
+        <p className="text-[12px] text-ink-muted px-1 py-2">Nenhum cliente com conversa no WhatsApp nos filtros atuais.</p>
+      ) : (
+        <ul className="max-h-[52vh] overflow-y-auto space-y-0.5">
+          {opcoesEtq.map(o => (
+            <li key={o.valor}>
+              <label className={`flex items-center gap-2 px-1.5 py-1.5 rounded-md cursor-pointer hover:bg-surface-2 ${o.interna ? 'opacity-70' : ''}`}
+                     title={o.interna ? 'Etiqueta interna (não é cliente)' : undefined}>
+                <input type="checkbox" checked={etiquetasSel.has(o.valor)} onChange={() => toggleEtiqueta(o.valor)}
+                       className="h-4 w-4 cursor-pointer accent-[hsl(var(--accent))]" />
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: corDaOpcaoEtiqueta(o.valor, temaEscuro) }} />
+                <span className="flex-1 truncate text-[12.5px] text-ink">{o.rotulo}</span>
+                <span className="text-[11px] tabular-nums text-ink-faint">{o.n}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-[10px] text-ink-faint mt-1.5 px-1 leading-snug">
+        Marcar várias SOMA. Cliente com mais de uma etiqueta conta em todas.
+      </p>
+    </div>
+  )
 
   // Com 'todos' a soma mistura orçado em aberto + vendido, então o rótulo não pode dizer "Orçado".
   const rotuloValor = vendFiltro === 'vendidos' ? 'Vendido' : vendFiltro === 'todos' ? 'Valor' : 'Orçado'
@@ -1800,6 +1935,11 @@ export function MapaVisitas() {
             {ufSel && (
               <> · <button onClick={() => setUfSel('')} className="text-accent font-semibold hover:underline" title="Mostrar o Brasil todo">
                 {ufSel === '—' ? 'sem estado' : ufSel} ✕
+              </button></>
+            )}
+            {etiquetasSel.size > 0 && (
+              <> · <button onClick={() => setEtiquetasSel(new Set())} className="text-accent font-semibold hover:underline" title="Tirar o filtro de etiqueta">
+                🏷️ {rotuloEtiquetas} ✕
               </button></>
             )}
           </p>
@@ -1881,6 +2021,23 @@ export function MapaVisitas() {
               </button>
             ))}
           </div>
+          {/* filtro por ETIQUETA do WhatsApp — multi-escolha com contagem. O popover
+              fecha por um backdrop transparente; o `relative` no span ancora ele no botão. */}
+          <span className="relative">
+            <button className={togglePill(etiquetasSel.size > 0)} onClick={() => setEtiqAberto(v => !v)}
+              aria-expanded={etiqAberto}
+              title="Filtrar os pinos pela etiqueta do WhatsApp do cliente (orçamentos e visitas). Dá pra marcar várias.">
+              🏷️ {rotuloEtiquetas}
+            </button>
+            {etiqAberto && (
+              <>
+                <div className="fixed inset-0 z-[1190]" onClick={() => setEtiqAberto(false)} />
+                <div className="absolute left-0 top-full mt-1 z-[1200] w-72 rounded-lg border border-border bg-surface shadow-lg p-2">
+                  {painelEtiquetas}
+                </div>
+              </>
+            )}
+          </span>
           <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Pinos a partir dos orçamentos">💰 Orçamentos</button>
           <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Visitas anotadas no WhatsApp">📍 Visitas</button>
           {/* O raio NÃO filtra os pinos: os marcadores saem de orcFiltrados, e `noRaio`
@@ -2018,6 +2175,10 @@ export function MapaVisitas() {
                 <button key={v} onClick={() => setVisitaFiltro(v)} className={`px-3 ${visitaFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`} title={v === 'visitados' ? 'Visitadas' : v === 'pendentes' ? 'A visitar' : 'Todas'}>{label}</button>
               ))}
             </div>
+            <button onClick={() => setEtiqAberto(true)}
+              className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${etiquetasSel.size ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>
+              🏷️ {rotuloEtiquetas}
+            </button>
             {/* mesmo tratamento do desktop: title no wrapper (controle disabled não
                 despacha evento de mouse) e cursor coerente com o estado */}
             <span title={modoViagem ? 'Indisponível durante a viagem' : 'Lista quem está perto de um ponto (não filtra os pinos)'}>
@@ -2229,6 +2390,32 @@ export function MapaVisitas() {
                     </>
                   )}
                   </>)}
+                  {modo === 'etiqueta' && (
+                    <>
+                      <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Cor · etiqueta do WhatsApp</div>
+                      {/* Cada linha é FILTRO: clica, fica só ela; clica de novo, tira.
+                          Mesma ideia da soma por estado logo abaixo. */}
+                      <ul className="space-y-0.5 max-h-72 overflow-y-auto pr-1">
+                        {statsEtq.map(([k, n]) => (
+                          <li key={k}>
+                            <button onClick={() => toggleEtiqueta(k)}
+                              aria-pressed={etiquetasSel.has(k)}
+                              className={`w-full flex items-center gap-2 text-[12px] text-ink rounded-md px-1 py-0.5 hover:bg-surface-2 ${etiquetasSel.has(k) ? 'bg-accent-bg font-semibold' : ''}`}
+                              /* o nome inteiro vai no title: a sidebar tem 224px e "COMPROU DO CONCORRENTE" trunca */
+                              title={`${rotuloEtiquetaOpcao(k)} — ${etiquetasSel.has(k) ? 'tirar do filtro' : 'filtrar por esta etiqueta'}`}>
+                              <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDaOpcaoEtiqueta(k, temaEscuro) }} />
+                              <span className="truncate">{rotuloEtiquetaOpcao(k)}</span>
+                              <span className="ml-auto tabular-nums text-ink-faint">{n}</span>
+                            </button>
+                          </li>
+                        ))}
+                        {statsEtq.length === 0 && <li className="text-[12px] text-ink-muted">Nenhum pino no mapa.</li>}
+                      </ul>
+                      <p className="text-[10px] text-ink-faint mt-2 leading-snug">
+                        Cor da etiqueta PRINCIPAL da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
+                      </p>
+                    </>
+                  )}
                   {vendasCount > 0 && (
                     <div className="text-[10px] text-ink-faint mt-1.5 leading-snug">
                       {orcStats.vendido} clientes vendidos · {vendasCount.toLocaleString('pt-BR')} vendas no total
@@ -2273,9 +2460,11 @@ export function MapaVisitas() {
               )}
               {showVis && vendedores.length > 1 && (
                 <div className={showOrc ? 'pt-3 border-t border-border' : ''}>
-                  <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">Visitas · em follow-up</div>
+                  <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">
+                    {etiquetasSel.size > 0 ? 'Visitas · filtradas por etiqueta' : 'Visitas · em follow-up'}
+                  </div>
                   <ul className="space-y-1.5">
-                    {vendedores.filter(v => visFiltradas.some(x => resolverEtiquetas(x).isFollowUp && (x.vendedor_nome || '—') === v)).map(v => (
+                    {vendedores.filter(v => visFiltradas.some(x => (etiquetasSel.size > 0 || resolverEtiquetas(x).isFollowUp) && (x.vendedor_nome || '—') === v)).map(v => (
                       <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
                         <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
                         <span className="truncate">{v}</span>
@@ -2303,6 +2492,19 @@ export function MapaVisitas() {
               Total <b className="text-ink-muted tabular-nums">{brl(ufSomaGeral)}</b> · 1 valor por cliente · toque num estado pra filtrar o mapa
             </div>
             {listaUF('flex-1 overflow-y-auto -mx-1 px-1', () => setUfSheet(false))}
+          </div>
+        </div>
+      )}
+
+      {/* Celular: folha de ETIQUETAS (o mesmo painel do popover do desktop) */}
+      {etiqAberto && (
+        <div className="md:hidden fixed inset-0 z-[1300] bg-black/40 flex items-end" onClick={() => setEtiqAberto(false)}>
+          <div className="bg-surface w-full rounded-t-2xl border-t border-border p-4 pb-safe max-h-[78vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="text-[15px] font-semibold text-ink">Filtrar por etiqueta</div>
+              <button onClick={() => setEtiqAberto(false)} className="ml-auto h-8 w-8 rounded-md text-ink-muted">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">{painelEtiquetas}</div>
           </div>
         </div>
       )}
