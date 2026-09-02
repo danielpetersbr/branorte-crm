@@ -38,7 +38,8 @@ export async function todasAsLinhas<T>(
   if (total != null) {
     if (tudo.length >= total) return tudo
     const faixas: [number, number][] = []
-    for (let de = tudo.length; de < total && faixas.length < maxPaginas; de += tamanho) {
+    // a 1ª página já conta em maxPaginas
+    for (let de = tudo.length; de < total && faixas.length < maxPaginas - 1; de += tamanho) {
       faixas.push([de, Math.min(de + tamanho, total) - 1])
     }
     const paginas = await Promise.all(faixas.map(([de, ate]) => buscar(de, ate)))
@@ -49,8 +50,8 @@ export async function todasAsLinhas<T>(
     }
   }
 
-  // Sem total, ou faixa curta: uma página por vez, até vir curta ou vazia.
-  for (let i = 0; i < maxPaginas; i++) {
+  // Sem total, ou faixa curta: uma página por vez, até vir curta ou vazia (a 1ª já conta).
+  for (let i = 1; i < maxPaginas; i++) {
     const de = tudo.length
     const { linhas, total: t } = await buscar(de, de + tamanho - 1)
     tudo.push(...linhas)
