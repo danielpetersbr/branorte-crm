@@ -14,23 +14,44 @@ function servidor(total: number, teto: number, informaTotal = true) {
   return { buscar, chamadas }
 }
 
-test('junta as 17.249 conversas mesmo com o teto de 10.000 do PostgREST', async () => {
+test('junta as 17.249 conversas mesmo com o teto de 10.000 do PostgREST, em ordem', async () => {
   const s = servidor(17_249, 10_000)
   const tudo = await todasAsLinhas(s.buscar, 5000)
   assert.equal(tudo.length, 17_249)
   assert.deepEqual(tudo.slice(0, 3), [0, 1, 2])
   assert.equal(tudo[17_248], 17_248)
+  assert.ok(tudo.every((v, i) => v === i), 'linhas na ordem do servidor, sem buraco nem repetição')
   assert.equal(s.chamadas.length, 4)
   assert.deepEqual(s.chamadas[0], [0, 4999])
-  assert.deepEqual(s.chamadas[3], [15_000, 19_999])
+  assert.deepEqual(s.chamadas[3], [15_000, 17_248])
 })
 
-test('teto MENOR que a página (1.000): a página vem curta, mas o total diz que falta — continua', async () => {
+test('com o total conhecido, as páginas que faltam saem em PARALELO (não em fila)', async () => {
+  // As 3 faixas restantes só resolvem quando as 3 foram PEDIDAS. Em fila, travaria.
+  let pendentes: (() => void)[] = []
+  const buscar = (de: number, ate: number): Promise<PaginaRpc<number>> => {
+    const pagina = { linhas: Array.from({ length: ate - de + 1 }, (_, i) => de + i), total: 20_000 }
+    if (de === 0) return Promise.resolve(pagina)
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('faixa pedida em fila, não em paralelo')), 500)
+      pendentes.push(() => { clearTimeout(t); resolve(pagina) })
+      if (pendentes.length === 3) { const p = pendentes; pendentes = []; p.forEach(f => f()) }
+    })
+  }
+  const tudo = await todasAsLinhas(buscar, 5000)
+  assert.equal(tudo.length, 20_000)
+  assert.ok(tudo.every((v, i) => v === i))
+})
+
+test('teto MENOR que a página (1.000): a faixa vem curta, descarta e completa em sequência', async () => {
   const s = servidor(2_500, 1_000)
   const tudo = await todasAsLinhas(s.buscar, 5000)
   assert.equal(tudo.length, 2_500)
-  assert.equal(s.chamadas.length, 3)
-  assert.deepEqual(s.chamadas[1], [1_000, 5_999])
+  assert.ok(tudo.every((v, i) => v === i), 'sem buraco no meio')
+  // 1ª página (1000) + faixa paralela curta (descartada) + 2 em sequência
+  assert.equal(s.chamadas.length, 4)
+  assert.deepEqual(s.chamadas[1], [1_000, 2_499])
+  assert.deepEqual(s.chamadas[2], [1_000, 5_999])
 })
 
 test('sem total informado: página curta é o fim', async () => {
@@ -53,11 +74,21 @@ test('conjunto vazio: uma chamada, lista vazia', async () => {
   assert.equal(s.chamadas.length, 1)
 })
 
+test('cabe numa página só: uma chamada', async () => {
+  const s = servidor(5_355, 10_000)
+  const tudo = await todasAsLinhas(s.buscar, 5000)
+  assert.equal(tudo.length, 5_355)
+  assert.equal(s.chamadas.length, 2)
+  const s2 = servidor(4_000, 10_000)
+  assert.equal((await todasAsLinhas(s2.buscar, 5000)).length, 4_000)
+  assert.equal(s2.chamadas.length, 1)
+})
+
 test('servidor que mente o total (diz mais do que tem) não vira laço infinito', async () => {
   let n = 0
   const buscar = async (): Promise<PaginaRpc<number>> => { n++; return { linhas: n === 1 ? [1, 2, 3] : [], total: 999 } }
   assert.deepEqual(await todasAsLinhas(buscar, 5000), [1, 2, 3])
-  assert.equal(n, 2)
+  assert.equal(n, 3)
 })
 
 test('maxPaginas segura um servidor que devolve sempre página cheia', async () => {
