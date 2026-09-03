@@ -1,9 +1,20 @@
 // Geocodifica registros de cliente_dados_visita que ainda não têm lat/lng.
-// - Tem cidade: Nominatim (centro da cidade, OpenStreetMap grátis, ~1 req/s).
-// - Só tem estado (sem cidade): cai pro CENTRO DO ESTADO (UF) — assim o cliente
-//   aparece no mapa mesmo sem cidade, em vez de ficar preso em "sem localização".
-// - Cidade não encontrada mas UF conhecida: fallback pro centro do estado.
-// Atualiza o banco via service role.
+//
+// ⚠️ A UF digitada NÃO é confiável — e confiar nela plantava cliente no estado
+// errado. Medido em 03/09/2026 sobre os 167 pinos de visita: "Brasília/SC" caiu em
+// Criciúma (-28,67), "Fortaleza/SC" no vale do Itajaí, "Lagarto/SC" (Lagarto é SE)
+// no planalto catarinense. A busca era `cidade, UF, Brasil` e aceitava o primeiro
+// resultado sem conferir nada: pedindo Fortaleza dentro de SC, o Nominatim acha
+// *alguma* Fortaleza em SC e devolve com cara de acerto.
+//
+// Agora quem manda é o NOME da cidade, conferido no IBGE (municipios_tom_ibge):
+//  1. cidade existe na UF digitada  -> busca nessa UF e exige `address.state` igual
+//  2. existe em exatamente 1 outra UF -> busca lá e CORRIGE o estado do registro
+//     (vendedor errar a UF é muito mais comum que existir homônimo no estado dele)
+//  3. existe em várias outras UFs     -> ambíguo, fica no centro do estado digitado
+//  4. não existe no IBGE (distrito, typo) -> busca "cidade, Brasil" e aceita o que
+//     vier, alinhando o estado ao resultado ("Espigão do Oeste" -> RO)
+//  5. nada disso -> centro do estado, como antes (pino aproximado é melhor que sumir)
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -27,14 +38,68 @@ const UF_CENTRO: Record<string, { lat: number; lng: number }> = {
   SE: { lat: -10.57, lng: -37.45 }, SP: { lat: -22.19, lng: -48.79 }, TO: { lat: -10.17, lng: -48.30 },
 }
 
-async function geocodarCidade(cidade: string, uf: string): Promise<{ lat: number; lng: number } | null> {
-  const q = encodeURIComponent(`${cidade}, ${uf}, Brasil`)
-  const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&countrycodes=br`
+/** Nome do estado como o Nominatim devolve em `address.state`. */
+const UF_NOME: Record<string, string> = {
+  AC: 'Acre', AL: 'Alagoas', AM: 'Amazonas', AP: 'Amapá', BA: 'Bahia', CE: 'Ceará',
+  DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão',
+  MG: 'Minas Gerais', MS: 'Mato Grosso do Sul', MT: 'Mato Grosso', PA: 'Pará',
+  PB: 'Paraíba', PE: 'Pernambuco', PI: 'Piauí', PR: 'Paraná', RJ: 'Rio de Janeiro',
+  RN: 'Rio Grande do Norte', RO: 'Rondônia', RR: 'Roraima', RS: 'Rio Grande do Sul',
+  SC: 'Santa Catarina', SE: 'Sergipe', SP: 'São Paulo', TO: 'Tocantins',
+}
+const NOME_UF: Record<string, string> = Object.fromEntries(
+  Object.entries(UF_NOME).map(([uf, nome]) => [norm(nome), uf]))
+
+function norm(s: string): string {
+  return (s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+}
+
+/**
+ * Distância de edição, com teto: quem passa de `max` não interessa e sai cedo.
+ * Existe pra pegar o typo do vendedor — "Rolin de Moura", "Bruritis", "Brasilai",
+ * "Luiz Eduardo Magalhães" (o município é "Luís", com S) — antes de o Nominatim
+ * devolver um homônimo qualquer. O caso do "Luiz" custou 700 km: o pino foi parar
+ * no litoral sul da Bahia, e o município fica no oeste.
+ */
+function distancia(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1
+  let ant = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const atual = [i]
+    let melhor = i
+    for (let j = 1; j <= b.length; j++) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1
+      const v = Math.min(atual[j - 1] + 1, ant[j] + 1, ant[j - 1] + custo)
+      atual.push(v)
+      if (v < melhor) melhor = v
+    }
+    if (melhor > max) return max + 1
+    ant = atual
+  }
+  return ant[b.length]
+}
+
+interface Hit { lat: string; lon: string; address?: { state?: string } }
+
+async function buscar(q: string): Promise<Hit[]> {
+  const url = 'https://nominatim.openstreetmap.org/search?'
+    + new URLSearchParams({ q, format: 'json', limit: '5', countrycodes: 'br', addressdetails: '1' })
   const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'pt-BR' } })
-  if (!r.ok) return null
-  const arr = (await r.json()) as Array<{ lat: string; lon: string }>
-  if (!arr?.length) return null
-  return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) }
+  if (!r.ok) return []
+  return (await r.json()) as Hit[]
+}
+
+interface Achado { lat: number; lng: number; uf: string }
+
+/** Primeiro hit dentro da UF pedida (ou, se `ufPedida` for null, o primeiro em qualquer UF conhecida). */
+function escolher(hits: Hit[], ufPedida: string | null): Achado | null {
+  for (const h of hits) {
+    const uf = NOME_UF[norm(h.address?.state || '')]
+    if (!uf) continue
+    if (ufPedida && uf !== ufPedida) continue
+    return { lat: parseFloat(h.lat), lng: parseFloat(h.lon), uf }
+  }
+  return null
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -54,37 +119,106 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (error) return res.status(502).json({ error: error.message })
   if (!pend?.length) return res.status(200).json({ atualizados: 0, pendentes: 0 })
 
-  const cache = new Map<string, { lat: number; lng: number } | null>()
+  // Municípios do IBGE (5.571) pra decidir a UF pelo NOME da cidade. 11 mil linhas
+  // cabem no corte do PostgREST; metade não tem UF e é descartada aqui.
+  const { data: mun } = await db.from('municipios_tom_ibge').select('municipio, UF').not('UF', 'is', null)
+  const ufsDoNome = new Map<string, Set<string>>()
+  for (const m of (mun ?? []) as { municipio: string | null; UF: string | null }[]) {
+    const nome = norm(m.municipio || '')
+    const uf = (m.UF || '').toUpperCase()
+    if (!nome || !uf) continue
+    if (!ufsDoNome.has(nome)) ufsDoNome.set(nome, new Set())
+    ufsDoNome.get(nome)!.add(uf)
+  }
+
+  const cache = new Map<string, Achado | null>()
   let atualizados = 0
+  let ufCorrigida = 0
   const falhas: string[] = []
+  const corrigidos: string[] = []
 
   for (const row of pend) {
     const cidade = (row.cidade || '').trim()
     const uf = (row.estado || '').trim().toUpperCase()
-    let coord: { lat: number; lng: number } | null | undefined
+
+    let achado: Achado | null = null
 
     if (cidade) {
-      const chave = `c:${cidade.toLowerCase()}|${uf.toLowerCase()}`
-      coord = cache.get(chave)
-      if (coord === undefined) {
-        coord = await geocodarCidade(cidade, uf)
-        cache.set(chave, coord)
-        await sleep(1100) // política do Nominatim: máx ~1 req/s
+      const chave = `${norm(cidade)}|${uf}`
+      const emCache = cache.get(chave)
+      if (emCache !== undefined) {
+        achado = emCache
+      } else {
+        let nome = cidade
+        let ufsIbge = ufsDoNome.get(norm(cidade))
+
+        // Não bateu exato? Tenta o município mais parecido antes de sair perguntando
+        // ao Nominatim — na UF digitada primeiro, que é onde o typo costuma estar.
+        if (!ufsIbge) {
+          const alvo = norm(cidade)
+          const max = alvo.length <= 6 ? 1 : 2
+          let melhor: { nome: string; uf: string; d: number } | null = null
+          let empate = false
+          for (const [n, ufs] of ufsDoNome) {
+            const d = distancia(alvo, n, max)
+            if (d > max) continue
+            for (const u of ufs) {
+              const cand = { nome: n, uf: u, d }
+              const ganha = !melhor || d < melhor.d || (d === melhor.d && u === uf && melhor.uf !== uf)
+              if (ganha) { empate = false; melhor = cand }
+              // Só é empate de verdade quando NENHUM dos candidatos está na UF que o
+              // vendedor digitou. "Bruritis"/RO casa com Buritis, que existe em MG e
+              // RO: o RO desempata sozinho, e sem isto o registro caía no centro do
+              // estado por "ambiguidade" que o próprio cadastro já resolvia.
+              else if (melhor && d === melhor.d && u !== melhor.uf && melhor.uf !== uf) empate = true
+            }
+          }
+          if (melhor && !empate) {
+            nome = melhor.nome
+            ufsIbge = new Set([melhor.uf])
+          }
+        }
+
+        const outras = ufsIbge ? [...ufsIbge].filter(u => u !== uf) : []
+
+        if (ufsIbge?.has(uf)) {
+          // 1. cidade existe na UF digitada: exige que o resultado seja dessa UF
+          achado = escolher(await buscar(`${nome}, ${UF_NOME[uf] || uf}, Brasil`), uf)
+          await sleep(1100)
+        } else if (outras.length === 1) {
+          // 2. existe em exatamente uma outra UF: a UF digitada é que está errada
+          const certa = outras[0]
+          achado = escolher(await buscar(`${nome}, ${UF_NOME[certa]}, Brasil`), certa)
+          await sleep(1100)
+        } else if (outras.length === 0 || !uf) {
+          // 4. não é município do IBGE (distrito, "entorno de Brasília"), OU é
+          //    ambíguo mas o vendedor não disse a UF: aí não há o que contrariar —
+          //    o ranking do Nominatim decide ("Campo Grande" -> MS) e o estado do
+          //    registro passa a ser o de onde o pino caiu.
+          achado = escolher(await buscar(`${nome}, Brasil`), null)
+          await sleep(1100)
+        }
+        // 3. (existe em várias outras UFs e o vendedor digitou uma delas errada)
+        //    fica sem achado -> centro do estado digitado
+        cache.set(chave, achado)
       }
-      // Cidade não achada mas UF conhecida → centro do estado (não deixa "sem localização")
-      if (!coord && UF_CENTRO[uf]) coord = UF_CENTRO[uf]
-    } else if (uf && UF_CENTRO[uf]) {
-      coord = UF_CENTRO[uf] // só tem estado → centro do estado (sem chamar Nominatim)
     }
 
+    const coord = achado ?? (UF_CENTRO[uf] ? { ...UF_CENTRO[uf], uf } : null)
     if (!coord) { falhas.push(`${cidade || '(sem cidade)'}/${uf || '?'}`); continue }
 
-    const { error: upErr } = await db
-      .from('cliente_dados_visita')
-      .update({ lat: coord.lat, lng: coord.lng })
-      .eq('id', row.id)
-    if (!upErr) atualizados++
+    // A UF do registro acompanha onde o pino caiu — senão o filtro de estado do mapa
+    // continua mostrando o cliente no estado errado, mesmo com o pino no lugar certo.
+    const mudouUf = !!coord.uf && coord.uf !== uf
+    const patch: Record<string, unknown> = { lat: coord.lat, lng: coord.lng }
+    if (mudouUf) patch.estado = coord.uf
+
+    const { error: upErr } = await db.from('cliente_dados_visita').update(patch).eq('id', row.id)
+    if (!upErr) {
+      atualizados++
+      if (mudouUf) { ufCorrigida++; corrigidos.push(`${cidade}: ${uf || '?'} -> ${coord.uf}`) }
+    }
   }
 
-  return res.status(200).json({ atualizados, pendentes: pend.length, falhas })
+  return res.status(200).json({ atualizados, pendentes: pend.length, ufCorrigida, corrigidos, falhas })
 }
