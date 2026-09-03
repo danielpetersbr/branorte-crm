@@ -745,6 +745,16 @@ export function useCriarAlteracao() {
       // Extrai ano do numero base (ex: "2026 - 0844" → 2026)
       const anoMatch = numeroBase.match(/^(\d{4})/)
       const ano = anoMatch ? Number(anoMatch[1]) : new Date().getFullYear()
+      // ...e o SEQUENCIAL do pai (ex: "2026 - 0844" → 844). Sai do próprio número
+      // base, não de uma consulta: se o pai já for uma ALT, ele carrega o número
+      // do original. Isto estava fixo em 0 e o vigia da pasta Z casa POR
+      // sequencial — resultado: 20 revisões de 2026 (desde 22/05, de 3
+      // vendedores) constavam como nunca entregues, embora o .docx e o .pdf
+      // estivessem na pasta. Não há índice único em (ano, sequencial), e as duas
+      // rotinas de numeração (MAX+1 e "próximo livre") olham o pai, que já ocupa
+      // esse número — então repetir o sequencial aqui não desloca nada.
+      const seqMatch = numeroBase.match(/^\d{4}\s*-\s*(\d+)/)
+      const sequencialBase = seqMatch ? Number(seqMatch[1]) : 0
 
       // Fix #21: sufixa voltagem nos nomes dos itens (quando há motores).
       const itensComVoltagemAlt = suffixVoltagemNosItens(rest.itens, rest.voltagem, rest.motores)
@@ -752,7 +762,7 @@ export function useCriarAlteracao() {
       const payload = {
         numero,
         ano,
-        sequencial: 0, // ALTs não usam sequencial real
+        sequencial: sequencialBase, // o do pai: a ALT não consome número novo, mas precisa do dele pra pasta Z reconhecê-la
         data_emissao: dataEmissaoPedido,
         vendedor_nome: rest.vendedor_nome,
         vendedor_id: rest.vendedor_id ?? null,
