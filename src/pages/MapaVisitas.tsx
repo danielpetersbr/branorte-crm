@@ -9,11 +9,12 @@ import {
 } from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
 import {
-  etiquetasDoCliente, nomeCanonicoEtiqueta, passaEtiqueta, opcoesEtiqueta, etiquetaQuePinta,
+  etiquetasDoCliente, nomeCanonicoEtiqueta, passaEtiqueta, opcoesEtiquetaDeCamadas, etiquetaQuePinta,
   corDoPinoEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao,
   SEM_ETIQUETA, SEM_WHATSAPP, SEM_TELEFONE, SEM_CONVERSA,
-  type EtiquetasDoFone, type MapaEtiquetas, type ConversaDoCliente,
+  type EtiquetasDoFone, type MapaEtiquetas, type ConversaDoCliente, type ClienteDeCamada,
 } from '@/lib/mapa-etiquetas'
+import { foneCanon } from '@/lib/fone-canon'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -778,9 +779,9 @@ export function MapaVisitas() {
 
   // Opções do filtro de etiqueta COM contagem, respeitando os outros filtros —
   // mesma regra da soma por estado: tudo, menos o próprio facet. Entram as
-  // camadas LIGADAS: se só as visitas estão ligadas, a contagem é das visitas.
+  // camadas LIGADAS, cada cliente uma vez só (dedup por telefone canônico).
   const opcoesEtq = useMemo(() => {
-    const base: ConversaDoCliente[] = []
+    const base: ClienteDeCamada[] = []
     if (showOrc) for (const p of orcPontos) {
       const passa =
         (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
@@ -790,19 +791,22 @@ export function MapaVisitas() {
         (!ufSel || ufKey(p.uf) === ufSel) &&
         (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
           .some(x => (x || '').toLowerCase().includes(termo)))
-      if (passa) base.push(etiqDoPonto(p))
+      if (passa) base.push({ chave: foneCanon(p.telefone) || foneCanon(p.fone), conversa: etiqDoPonto(p) })
     }
-    // Visitas so quando a camada de orcamentos esta DESLIGADA: com as duas
-    // ligadas o mesmo cliente contava duas vezes (visita + orcamento).
-    if (showVis && !showOrc) for (const v of comCoord) {
+    // As duas camadas contam, deduplicadas pelo telefone canônico. Descartar as
+    // visitas quando a camada de orçamentos estava ligada (que é o padrão)
+    // escondia do painel a etiqueta de 78 pinos em FOLLOW UP, 62 em ORCAMENTO
+    // ENVIADO e 12 em LEAD QUENTE — pinos que o filtro de etiqueta continuava
+    // sumindo do mapa sem oferecer como marcar de volta.
+    if (showVis) for (const v of comCoord) {
       const passa =
         (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
         (!ufSel || ufKey(v.estado) === ufSel) &&
         (!termo || [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]
           .some(x => (x || '').toLowerCase().includes(termo)))
-      if (passa) base.push(etiquetasDaVisita(v))
+      if (passa) base.push({ chave: foneCanon(v.telefone), conversa: etiquetasDaVisita(v) })
     }
-    return opcoesEtiqueta(base)
+    return opcoesEtiquetaDeCamadas(base)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orcPontos, comCoord, showOrc, showVis, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, ufSel, marc, etiqPorCliente, byVendId, globId])
 

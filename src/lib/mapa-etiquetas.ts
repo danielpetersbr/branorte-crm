@@ -60,9 +60,25 @@ export interface ConversaDoCliente {
 /** Cliente sem conversa e com telefone válido — usado como padrão seguro. */
 export const SEM_CONVERSA: ConversaDoCliente = { etiquetas: null, semFone: false }
 
-/** Nome como o funil enxerga: caixa alta, sem espaço nas pontas, aliases. */
+/**
+ * Nome como o funil enxerga: SEM ACENTO, caixa alta, sem espaço nas pontas, aliases.
+ *
+ * ⚠️ O acento não é detalhe de exibição, é o que parte a opção em duas. As
+ * etiquetas que chegam pela matview do WhatsApp já vêm sem acento (medido em
+ * 03/09/2026: zero acentuadas em 17.295 conversas), mas as da VISITA são
+ * resolvidas no catálogo `wascript_etiquetas`, onde o vendedor digitou como quis
+ * — "ORÇAMENTO ENVIADO" (3 vendedores, 183 contatos), "PROSPECÇÃO" (5
+ * vendedores), "SÓ BASE DE PREÇO", "NÃO TEM INTERESSE", "2º TENTATIVA". Sem tirar
+ * o acento o painel listaria PROSPECCAO e PROSPECÇÃO como duas etiquetas
+ * diferentes, cada uma com metade dos clientes, e a acentuada cairia fora do
+ * funil (ordem 900, cor cinza de fallback).
+ *
+ * NFKD e não NFD porque é o que converte o ordinal "2º" em "2O" e deixa o alias
+ * `'2O TENTATIVA' -> '2A TENTATIVA'` pegar.
+ */
 export function nomeCanonicoEtiqueta(nome: string): string {
-  return canonico((nome ?? '').trim().toUpperCase())
+  const semAcento = (nome ?? '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  return canonico(semAcento.trim().toUpperCase())
 }
 
 /**
@@ -181,6 +197,54 @@ export function opcoesEtiqueta(clientes: Iterable<ConversaDoCliente>): OpcaoEtiq
   if (semWa > 0) lista.push({ valor: SEM_WHATSAPP, rotulo: rotuloEtiquetaOpcao(SEM_WHATSAPP), n: semWa, interna: false })
   if (semFone > 0) lista.push({ valor: SEM_TELEFONE, rotulo: rotuloEtiquetaOpcao(SEM_TELEFONE), n: semFone, interna: false })
   return lista
+}
+
+/** Um cliente vindo de UMA camada do mapa (orçamentos ou visitas). */
+export interface ClienteDeCamada {
+  /** Identidade entre camadas — telefone canônico. null = não tem par possível. */
+  chave: string | null
+  conversa: ConversaDoCliente
+}
+
+/** O que as duas camadas sabem do MESMO cliente, somado. */
+function fundirConversas(a: ConversaDoCliente, b: ConversaDoCliente): ConversaDoCliente {
+  if (!a.etiquetas) return b.etiquetas ? b : { etiquetas: null, semFone: a.semFone && b.semFone }
+  if (!b.etiquetas) return a
+  return {
+    etiquetas: {
+      principal: a.etiquetas.principal ?? b.etiquetas.principal,
+      principalVendedor: a.etiquetas.principal ? a.etiquetas.principalVendedor : b.etiquetas.principalVendedor,
+      todas: [...new Set([...a.etiquetas.todas, ...b.etiquetas.todas])],
+      porVendedor: [...a.etiquetas.porVendedor, ...b.etiquetas.porVendedor],
+    },
+    semFone: false,
+  }
+}
+
+/**
+ * Opções do filtro considerando as DUAS camadas do mapa, sem contar em dobro.
+ *
+ * ⚠️ Antes de 03/09/2026 as visitas só entravam na lista quando a camada de
+ * orçamentos estava DESLIGADA — e ela vem ligada. Efeito medido: 78 pinos de
+ * visita em FOLLOW UP (7 vendedores), 62 em ORCAMENTO ENVIADO e 12 em LEAD
+ * QUENTE estavam no mapa sem nenhuma opção correspondente no painel. Pior que
+ * invisível: `visFiltradas` FILTRA a visita por etiqueta, então marcar qualquer
+ * etiqueta sumia com esses pinos e não havia como trazê-los de volta.
+ *
+ * O medo que gerou a regra antiga era real (o mesmo cliente contado duas vezes),
+ * mas a resposta é deduplicar pelo telefone canônico, não descartar a camada.
+ * Quando o cliente está nas duas, as etiquetas se somam: marcar a da visita ou a
+ * do orçamento mostra o cliente, porque existe um pino em cada camada.
+ */
+export function opcoesEtiquetaDeCamadas(itens: Iterable<ClienteDeCamada>): OpcaoEtiqueta[] {
+  const porChave = new Map<string, ConversaDoCliente>()
+  const semChave: ConversaDoCliente[] = []
+  for (const { chave, conversa } of itens) {
+    if (!chave) { semChave.push(conversa); continue }
+    const atual = porChave.get(chave)
+    porChave.set(chave, atual ? fundirConversas(atual, conversa) : conversa)
+  }
+  return opcoesEtiqueta([...porChave.values(), ...semChave])
 }
 
 // ── cores ────────────────────────────────────────────────────────────────────
