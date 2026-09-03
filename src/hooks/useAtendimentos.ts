@@ -580,24 +580,35 @@ export function useSemRespostaTelefones(enabled = true, filters?: Partial<Atendi
       const range = dateRangeFromPreset((filters?.data as DataPreset) ?? '')
       if (!range.from || todos.length === 0) return todos
 
-      // .in() vai na URL; acima de ~800 itens o PostgREST estoura. Nesse caso devolve o global
-      // (mesmo comportamento de antes) em vez de quebrar o card — degradar > sumir.
-      if (todos.length > 800) {
-        console.warn('[sem-resposta] lista global com', todos.length, '— sem recorte por período')
-        return todos
+      // (03/09) O `.in()` vai na URL e estoura acima de ~800 telefones. O código antigo
+      // DESISTIA do recorte nesse caso e devolvia a lista global — e como a lista já passou
+      // de 3.200, ele desistia SEMPRE. Com "Hoje" o card mostrava 3.207 ao lado de 16 leads,
+      // exatamente o bug de 29/07 de volta, agora permanente e com o rodapé dizendo
+      // "no período". A saída não é mandar 3.200 telefones na URL: é inverter o lado da
+      // interseção. Os telefones do PERÍODO são poucos, então buscamos ELES e cruzamos aqui.
+      const dentroDoPeriodo = new Set<string>()
+      const PAGINA = 1000
+      // ⚠️ O PostgREST corta em 10.000 linhas sem erro. Paginar é o que garante que um
+      // período largo ("Este mês") não volte truncado passando por completo.
+      const MAX_PAGINAS = 40
+      for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+        let q = supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('telefone_norm')
+          .eq('is_internal', false)
+          .gte('last_message_at', range.from)
+          .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1)
+        if (range.to) q = q.lte('last_message_at', range.to)
+
+        const { data: pag, error: errPag } = await q
+        if (errPag) throw errPag
+        for (const r of (pag ?? []) as { telefone_norm: string | null }[]) {
+          if (r.telefone_norm) dentroDoPeriodo.add(String(r.telefone_norm))
+        }
+        if ((pag?.length ?? 0) < PAGINA) break
       }
 
-      let q = supabaseAuditoria
-        .from('atendimentos_por_cliente')
-        .select('telefone_norm')
-        .eq('is_internal', false)
-        .in('telefone_norm', todos)
-        .gte('last_message_at', range.from)
-      if (range.to) q = q.lte('last_message_at', range.to)
-
-      const { data: rows, error: err2 } = await q
-      if (err2) throw err2
-      return [...new Set((rows ?? []).map((r: any) => String(r.telefone_norm)).filter(Boolean))]
+      return [...new Set(todos.map(String).filter(t => t && dentroDoPeriodo.has(t)))]
     },
     staleTime: 30_000,
     refetchInterval: 45_000,

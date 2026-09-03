@@ -17,6 +17,7 @@ import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
+import { resumoUtil, limparEquipamento } from '@/lib/atendimentos-texto'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
 import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
@@ -537,11 +538,18 @@ export function Atendimentos() {
         //
         // ⚠️ "Nunca respondeu" vem de outra fonte (marca do bot, recortada por
         // last_message_at). Em período curto pode haver lead marcado cuja entrada ficou
-        // fora da janela, e a fração passaria de 100% — por isso o clamp. Sem "Hoje":
-        // ele É o universo, 100% não informa nada.
+        // fora da janela, e a fração passa de 100%.
+        //
+        // (03/09) Isso ERA um clamp em 100, e o clamp escondeu um bug de verdade: o hook
+        // devolvia a lista global de 3.207 telefones com o filtro em "Hoje", a conta dava
+        // 20.044% e o card exibia "100%" com cara de número legítimo. O hook foi corrigido,
+        // mas o clamp sai junto: quando o numerador passa da base, as duas fontes estão
+        // incompatíveis e a resposta honesta é NÃO mostrar porcentagem nenhuma.
         const pctBase = acao?.total ?? 0
         const pctDe = (n: number | undefined) =>
-          pctBase > 0 && n !== undefined ? Math.min(100, Math.round((n / pctBase) * 100)) : undefined
+          pctBase > 0 && n !== undefined && n <= pctBase
+            ? Math.round((n / pctBase) * 100)
+            : undefined
         return (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* I.A — régua do Daniel (18/08): sem vendedor e ainda não marcado como "nunca
@@ -1168,14 +1176,24 @@ export function Atendimentos() {
                             const motivo = humanizeMotivo(r.motivo_contato)
                             if (!motivo) return <EmptyCell />
                             const tone = MOTIVO_TONE[r.motivo_contato!] ?? MOTIVO_TONE[motivo] ?? 'neutral'
-                            // Quando motivo='equipamento', mostra o equipamento específico:
-                            // Prioridade 1: o_que_precisa (Ana V16.24 grava 'misturador 150 kg')
-                            // Prioridade 2: nome do criativo do anúncio (fallback)
+                            // Nome do equipamento que o CLIENTE declarou. Vale pros dois motivos:
+                            // quem vai montar fábrica também nomeia peça ("preciso do moinho e do
+                            // misturador"), e antes esse dado era descartado porque a linha só
+                            // mostrava equipamento quando motivo='equipamento'.
                             const ehUmEquipamento = /equipamento/i.test(motivo)
-                            const equipamento = ehUmEquipamento ? (r.o_que_precisa || lookupDadosIa(dadosIaMap, r.telefone)?.equipamento || criativoNome) : null
-                            // Contexto do que o lead quer (resumo IA ou última mensagem) — já vem
-                            // no payload e ficava invisível; dá pra triar sem abrir o WhatsApp.
-                            const resumo = (r.ai_context_summary || r.last_message_text || '').trim()
+                            const equipDeclarado = limparEquipamento(r.o_que_precisa)
+                              ?? limparEquipamento(lookupDadosIa(dadosIaMap, r.telefone)?.equipamento)
+                            // Fallback: o equipamento do ANÚNCIO. É palpite, não fala do cliente,
+                            // então só entra quando o motivo já disse que é peça avulsa, e vai
+                            // rotulado — sem o rótulo, o nome do criativo lia como pedido dele.
+                            const equipDoAnuncio = !equipDeclarado && ehUmEquipamento
+                              ? limparEquipamento(criativoNome)
+                              : null
+                            const equipamento = equipDeclarado ?? equipDoAnuncio
+                            // Contexto do que o lead quer. `last_message_text` só carrega texto de
+                            // sistema ("Lead chegou via webhook" em 100% dos leads), então passa
+                            // pelo filtro antes de ocupar espaço na célula.
+                            const resumo = resumoUtil(r.ai_context_summary) ?? resumoUtil(r.last_message_text)
                             return (
                               <div className="flex flex-col gap-0.5 min-w-0 w-full">
                                 <Badge style={{
@@ -1185,7 +1203,11 @@ export function Atendimentos() {
                                   <span className="truncate">{motivo}</span>
                                 </Badge>
                                 {equipamento && (
-                                  <span className="text-[10.5px] text-ink-faint truncate capitalize" title={equipamento}>
+                                  <span className="text-[10.5px] text-ink-faint truncate capitalize"
+                                        title={equipDoAnuncio
+                                          ? `${equipamento} — equipamento do anúncio que ele clicou, não o que ele pediu`
+                                          : equipamento}>
+                                    {equipDoAnuncio && <span className="not-italic opacity-60">anúncio: </span>}
                                     {equipamento}
                                   </span>
                                 )}
