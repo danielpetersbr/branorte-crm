@@ -282,3 +282,64 @@ export function useGeocodarCidades() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] }),
   })
 }
+
+// ── Completar a cidade do cliente salvo pelo card da extensão ────────────────
+
+export interface Municipio { nome: string; uf: string }
+
+/**
+ * Os 5.571 municípios do IBGE, de uma vez. É a mesma base que o autocomplete da
+ * extensão carrega (`cidades-br.js`) e cabe folgado no corte de 10.000 linhas do
+ * PostgREST. Filtrar no cliente é o que permite achar "Criciúma" digitando
+ * "criciuma" — `ilike` no servidor não tira acento.
+ */
+export function useMunicipios() {
+  return useQuery<Municipio[]>({
+    queryKey: ['municipios-ibge'],
+    staleTime: Infinity,
+    gcTime: Infinity,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('municipios_tom_ibge')
+        .select('municipio, UF')
+        .not('UF', 'is', null)
+      if (error) throw error
+      const vistos = new Set<string>()
+      const lista: Municipio[] = []
+      for (const r of (data ?? []) as { municipio: string | null; UF: string | null }[]) {
+        const nome = (r.municipio || '').trim()
+        const uf = (r.UF || '').trim().toUpperCase()
+        if (!nome || !uf) continue
+        const k = `${nome.toLowerCase()}|${uf}`
+        if (vistos.has(k)) continue // a tabela tem 11 mil linhas, metade sem UF/duplicada
+        vistos.add(k)
+        lista.push({ nome, uf })
+      }
+      return lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    },
+  })
+}
+
+/**
+ * Grava cidade/UF de um cliente do card "Dados pra visita".
+ *
+ * Vai por RPC porque `cliente_dados_visita` não tem policy de UPDATE pra
+ * `authenticated` — e abrir a tabela inteira pra escrita só pra isso seria demais.
+ * A RPC recusa município que não existe no IBGE, grava a grafia OFICIAL (o join do
+ * mapa com o cache de coordenada é por texto) e zera lat/lng pro geocode refazer.
+ */
+export function useDefinirCidadeVisita() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (v: { telefone: string; cidade: string; uf: string }) => {
+      const { data, error } = await supabase.rpc('visita_definir_cidade', {
+        p_telefone: v.telefone, p_cidade: v.cidade, p_uf: v.uf,
+      })
+      if (error) throw new Error(error.message)
+      const linhas = (data ?? []) as { telefone: string; nome: string | null; cidade: string; estado: string }[]
+      if (!linhas.length) throw new Error('não achei esse telefone no cadastro de visitas')
+      return linhas[0]
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['visitas'] }),
+  })
+}

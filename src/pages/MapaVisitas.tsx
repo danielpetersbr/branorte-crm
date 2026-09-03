@@ -19,6 +19,7 @@ import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
+import { CompletarCidade } from '@/components/mapa/CompletarCidade'
 import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemStatus } from '@/hooks/useViagens'
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
@@ -446,6 +447,8 @@ export function MapaVisitas() {
   // aparecer. Com ela desligada, preencher não mostrava nada e parecia que o
   // cadastro não tinha funcionado.
   const [showVis, setShowVis] = useState(true)
+  // Fila de completar cidade dos clientes salvos pelo card da extensão.
+  const [cidadeAberta, setCidadeAberta] = useState(false)
   const [busca, setBusca] = useState('')
   const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
@@ -2000,9 +2003,11 @@ export function MapaVisitas() {
             {/* "sem localização" dava a entender falha de geocode. Medido em 03/09/2026:
                 os 857 registros sem coordenada estão TODOS sem cidade E sem UF — ninguém
                 preencheu. O que falta é cadastro, e é isso que o rótulo tem que dizer. */}
-            {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning"
-              title="Cliente salvo pelo card 📍 Dados pra visita da extensão, mas sem cidade/UF — sem isso não há onde plotar. Preencha cidade e estado no perfil do contato no WhatsApp.">
-              {semCoord} sem cidade preenchida</span></>}</>}
+            {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <button
+              onClick={() => setCidadeAberta(true)}
+              className="text-warning underline underline-offset-2 hover:opacity-80 font-semibold"
+              title="Cliente salvo pelo card 📍 Dados pra visita da extensão, mas sem cidade/UF — sem isso não há onde plotar. Clique pra completar aqui mesmo.">
+              {semCoord} sem cidade preenchida</button></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
           </p>
         </div>
@@ -2756,6 +2761,9 @@ export function MapaVisitas() {
           </div>
         </div>
       )}
+
+      {/* Fila de completar cidade — o que falta pro cliente sem orçamento virar pino */}
+      <CompletarCidade visitas={visitas} aberto={cidadeAberta} onFechar={() => setCidadeAberta(false)} />
 
       {/* Overlay: lista (tabela) */}
       {showLista && (
