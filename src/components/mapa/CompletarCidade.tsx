@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { MapPin, Search, X, Check, Loader2 } from 'lucide-react'
-import { useMunicipios, useDefinirCidadeVisita, type Visita, type Municipio } from '@/hooks/useVisitas'
+import { useMunicipios, useDefinirCidadeVisita, useGeocodarVisitas, type Visita, type Municipio } from '@/hooks/useVisitas'
 
 /**
  * Fila de "completar cidade" dos clientes salvos pelo card 📍 Dados pra visita.
@@ -140,9 +140,20 @@ export function CompletarCidade({ visitas, aberto, onFechar }: {
   onFechar: () => void
 }) {
   const { data: municipios = [], isLoading } = useMunicipios()
+  const geocodar = useGeocodarVisitas()
   const [termo, setTermo] = useState('')
   const [vendSel, setVendSel] = useState('')
   const [prontos, setProntos] = useState<Set<string>>(new Set())
+
+  /**
+   * Ao fechar, manda geocodificar quem acabou de ganhar cidade — sem isso o pino
+   * só apareceria na PRÓXIMA vez que alguém abrisse o mapa (o auto-geocode roda
+   * uma vez por montagem). Quem preencheu quer ver o resultado agora.
+   */
+  const fechar = () => {
+    if (prontos.size > 0 && !geocodar.isPending) geocodar.mutate()
+    onFechar()
+  }
 
   const semCidade = useMemo(
     () => visitas.filter(v => !(v.cidade || '').trim() || !(v.estado || '').trim()),
@@ -164,7 +175,7 @@ export function CompletarCidade({ visitas, aberto, onFechar }: {
 
   return (
     <div className="fixed inset-0 z-[1200] flex items-end md:items-center justify-center bg-black/40 p-0 md:p-6"
-         onClick={onFechar}>
+         onClick={fechar}>
       <div className="w-full md:max-w-3xl max-h-[85vh] flex flex-col rounded-t-2xl md:rounded-2xl border border-border bg-bg shadow-2xl"
            onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
@@ -175,7 +186,7 @@ export function CompletarCidade({ visitas, aberto, onFechar }: {
               Salvos no WhatsApp pelo card 📍 Dados pra visita. Sem cidade não há pino no mapa.
             </div>
           </div>
-          <button onClick={onFechar} className="h-8 w-8 rounded-md hover:bg-surface flex items-center justify-center">
+          <button onClick={fechar} className="h-8 w-8 rounded-md hover:bg-surface flex items-center justify-center">
             <X className="w-4 h-4 text-ink-muted" />
           </button>
         </div>
