@@ -5,19 +5,22 @@ import { Badge } from '@/components/ui/Badge'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   useControleFinanceiro, useControleFinanceiroPedido, useAcaoFinanceiro, lerArquivo, FinanceiroErro,
+  LIMITE_UPLOAD_BYTES,
   type PedidoFinanceiro, type StatusPedido, type StatusParcela, type Parcela, type Recebimento,
-  type ArquivoUpload, type ResumoVendedor, type EventoAuditoria,
+  type ArquivoUpload, type ResumoVendedor, type EventoAuditoria, type EtapaFabrica,
 } from '@/hooks/useControleFinanceiro'
 import {
   Wallet, TrendingDown, CheckCircle2, Search, AlertTriangle, FileWarning,
   CalendarClock, X, Paperclip, Receipt, ShieldAlert, Clock, Upload, Send,
   ThumbsUp, ThumbsDown, History, Users, Plus, Loader2, Pencil, Trash2,
+  Factory, Truck, PackageCheck, HelpCircle, Camera, Archive, HandCoins,
 } from 'lucide-react'
 
 const PAGE_SIZE = 60
 
 type Atalho = 'todos' | 'vencidos' | 'receber' | 'quitados' | 'sem_comprovante'
   | 'a_conferir' | 'boleto_pendente' | 'sem_plano' | 'divergente'
+  | 'falta_lancar' | 'na_fabrica' | 'carregado_devendo' | 'regularizar'
 
 function brl(v: number, casas = 0): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: casas })
@@ -40,6 +43,7 @@ const PEDIDO_ROTULO: Record<StatusPedido, string> = {
   QUITADO: 'Quitado', EM_DIA: 'Em dia', PARCIAL: 'Pagamento parcial',
   AGUARDANDO_CONFERENCIA: 'Aguardando conferência',
   VENCIDO: 'Com parcela vencida', SEM_PLANO: 'Sem condição de pagamento', CANCELADO: 'Cancelado',
+  REGULARIZADO: 'Regularizado (histórico)',
 }
 const PEDIDO_COR: Record<StatusPedido, string> = {
   QUITADO: 'bg-success-bg text-success',
@@ -49,6 +53,44 @@ const PEDIDO_COR: Record<StatusPedido, string> = {
   VENCIDO: 'bg-danger-bg text-danger',
   SEM_PLANO: 'bg-surface-2 text-text-muted',
   CANCELADO: 'bg-surface-2 text-text-muted',
+  REGULARIZADO: 'bg-surface-2 text-text-secondary',
+}
+
+// ── fábrica: onde o equipamento está ────────────────────────────────────────
+// Vem do kanban do Controle de Produção. O financeiro só LÊ — quem move o card
+// é a produção. O que o vendedor marca aqui é outra coisa: a entrega ao cliente.
+
+const FABRICA_ROTULO: Record<EtapaFabrica, string> = {
+  ANTES_DO_CHAO: 'Em projeto',
+  FABRICANDO: 'Em fabricação',
+  PRONTO: 'Pronto, esperando sair',
+  CARREGADO: 'Já carregou',
+  CANCELADO: 'Produção cancelada',
+  SEM_CARD: 'Sem card',
+}
+const FABRICA_COR: Record<EtapaFabrica, string> = {
+  ANTES_DO_CHAO: 'bg-surface-2 text-text-secondary',
+  FABRICANDO: 'bg-info-bg text-info',
+  PRONTO: 'bg-warning-bg text-warning',
+  CARREGADO: 'bg-success-bg text-success',
+  CANCELADO: 'bg-surface-2 text-text-muted',
+  SEM_CARD: 'bg-surface-2 text-text-muted',
+}
+const FABRICA_ICONE: Record<EtapaFabrica, typeof Wallet> = {
+  ANTES_DO_CHAO: Factory, FABRICANDO: Factory, PRONTO: Archive,
+  CARREGADO: Truck, CANCELADO: X, SEM_CARD: HelpCircle,
+}
+
+function EtiquetaFabrica({ etapa, desde }: { etapa: EtapaFabrica; desde: string | null }) {
+  const Icone = FABRICA_ICONE[etapa]
+  const dica = etapa === 'SEM_CARD'
+    ? 'Este pedido não tem card no Controle de Produção — não dá pra saber onde está.'
+    : `Etapa no Controle de Produção${desde ? ` desde ${dataBR(desde)}` : ''}`
+  return (
+    <Badge className={FABRICA_COR[etapa]} title={dica}>
+      <Icone className="h-3 w-3" /> {FABRICA_ROTULO[etapa]}
+    </Badge>
+  )
 }
 const PARCELA_ROTULO: Record<StatusParcela, string> = {
   PAGO: 'Pago', AGUARDANDO_CONFERENCIA: 'Aguardando conferência',
@@ -76,6 +118,10 @@ const ACAO_ROTULO: Record<string, string> = {
   boleto_enviado: 'confirmou o envio do boleto',
   pagamento_editado: 'alterou um pagamento',
   pagamento_excluido: 'excluiu um pagamento',
+  regularizacao_proposta: 'marcou como já pago e mandou pro gestor confirmar',
+  regularizacao_confirmada: 'confirmou a regularização do pedido antigo',
+  regularizacao_recusada: 'recusou a regularização',
+  entrega_confirmada: 'confirmou que o cliente recebeu',
 }
 
 const ACEITA = '.pdf,.jpg,.jpeg,.png,.webp'
@@ -124,27 +170,69 @@ function Modal({ titulo, children, onClose }: { titulo: string; children: React.
   )
 }
 
+/**
+ * Comprovante: da câmera, do arquivo, ou colado (Ctrl+V do print do PIX).
+ *
+ * Foto de celular passa de 4 MB fácil e a Vercel corta o corpo em 4,5 MB — por
+ * isso `lerArquivo` reduz a imagem no navegador antes de enviar. O aviso de
+ * tamanho só aparece para o que não dá pra reduzir (PDF).
+ */
 function EscolherArquivo({ arquivo, onArquivo, obrigatorio }: {
   arquivo: ArquivoUpload | null; onArquivo: (a: ArquivoUpload | null) => void; obrigatorio?: boolean
 }) {
-  const ref = useRef<HTMLInputElement>(null)
+  const refArquivo = useRef<HTMLInputElement>(null)
+  const refCamera = useRef<HTMLInputElement>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const [lendo, setLendo] = useState(false)
+
+  const aceitar = async (f: File | null | undefined) => {
+    if (!f) return
+    setErro(null)
+    if (!MIMES_OK.includes(f.type)) { setErro('Formato não aceito. Use PDF, JPG, PNG ou WEBP.'); return }
+    setLendo(true)
+    try {
+      const lido = await lerArquivo(f)
+      // A imagem já veio reduzida daqui; se ainda está grande, é PDF.
+      const bytes = Math.floor(lido.base64.length * 0.75)
+      if (bytes > LIMITE_UPLOAD_BYTES) {
+        setErro('Esse arquivo é grande demais para enviar. Se for PDF, mande um menor; se for foto, tire de novo.')
+        return
+      }
+      onArquivo(lido)
+    } catch (x) {
+      setErro((x as Error).message)
+    } finally {
+      setLendo(false)
+    }
+  }
+
+  // Colar print direto do WhatsApp/banco. Ouve na janela porque o modal não tem
+  // um campo de texto focado quando o vendedor dá Ctrl+V.
+  useEffect(() => {
+    const h = (e: ClipboardEvent) => {
+      const item = [...(e.clipboardData?.items ?? [])].find(i => i.type.startsWith('image/'))
+      if (item) { e.preventDefault(); void aceitar(item.getAsFile()) }
+    }
+    window.addEventListener('paste', h)
+    return () => window.removeEventListener('paste', h)
+  }, [])
+
   return (
     <div>
       <label className="mb-1 block text-xs font-medium text-text-secondary">
-        Comprovante {obrigatorio ? '' : '(opcional)'} — PDF, JPG, PNG ou WEBP até 8 MB
+        Comprovante {obrigatorio ? '' : '(opcional)'} — foto, PDF ou print colado com Ctrl+V
       </label>
-      <input ref={ref} type="file" accept={ACEITA} className="hidden"
-        onChange={async e => {
-          const f = e.target.files?.[0]
-          if (!f) return
-          setErro(null)
-          if (!MIMES_OK.includes(f.type)) { setErro('Formato não aceito. Use PDF, JPG, PNG ou WEBP.'); return }
-          if (f.size > 8 * 1024 * 1024) { setErro('Arquivo maior que 8 MB.'); return }
-          try { onArquivo(await lerArquivo(f)) } catch (x) { setErro((x as Error).message) }
-        }} />
-      <div className="flex items-center gap-2">
-        <Botao onClick={() => ref.current?.click()}><Upload className="h-3.5 w-3.5" /> Escolher arquivo</Botao>
+      <input ref={refArquivo} type="file" accept={ACEITA} className="hidden"
+        onChange={e => void aceitar(e.target.files?.[0])} />
+      <input ref={refCamera} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={e => void aceitar(e.target.files?.[0])} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Botao onClick={() => refCamera.current?.click()} disabled={lendo}>
+          <Camera className="h-3.5 w-3.5" /> Tirar foto
+        </Botao>
+        <Botao onClick={() => refArquivo.current?.click()} disabled={lendo}>
+          {lendo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Escolher arquivo
+        </Botao>
         {arquivo && (
           <span className="flex items-center gap-1 text-xs text-text-secondary truncate">
             <Paperclip className="h-3 w-3 shrink-0" />
@@ -558,6 +646,231 @@ function LinhaParcela({ p, orderId, gestor, onErro }: {
   )
 }
 
+// ── lançar pagamento direto da lista ─────────────────────────────────────────
+//
+// Antes só dava pra lançar abrindo o pedido, rolando até a parcela e clicando
+// no modal dela — três telas antes de digitar o primeiro número. Aqui o pedido
+// é carregado por baixo e a parcela em aberto mais próxima já vem escolhida e
+// preenchida, que é o caso normal: o cliente pagou a que estava vencendo.
+
+function LancarRapidoModal({ pedido, onClose, onErro }: {
+  pedido: PedidoFinanceiro; onClose: () => void; onErro: (m: string) => void
+}) {
+  const { data, isLoading } = useControleFinanceiroPedido(pedido.id)
+  const acao = useAcaoFinanceiro()
+  const [parcelaId, setParcelaId] = useState<string | null>(null)
+  const [valor, setValor] = useState('')
+  const [pagoEm, setPagoEm] = useState(() => new Date().toISOString().slice(0, 10))
+  const [meio, setMeio] = useState('PIX')
+  const [obs, setObs] = useState('')
+  const [arq, setArq] = useState<ArquivoUpload | null>(null)
+  const [tocouValor, setTocouValor] = useState(false)
+
+  const abertas = useMemo(
+    () => (data?.pedido.parcelas ?? []).filter(p => !p.cancelada && p.saldo > 0.01),
+    [data],
+  )
+
+  // Sugestão: a parcela em aberto que vence primeiro (vencida ou a vencer).
+  useEffect(() => {
+    if (parcelaId || abertas.length === 0) return
+    const alvo = [...abertas].sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0]
+    setParcelaId(alvo.id)
+    setValor(alvo.saldo.toFixed(2))
+  }, [abertas, parcelaId])
+
+  const escolhida = abertas.find(p => p.id === parcelaId) ?? null
+
+  const trocarParcela = (id: string) => {
+    setParcelaId(id)
+    const p = abertas.find(x => x.id === id)
+    if (p && !tocouValor) setValor(p.saldo.toFixed(2))
+  }
+
+  const semPlano = !isLoading && abertas.length === 0
+
+  return (
+    <Modal titulo={`Lançar pagamento — ${pedido.cliente || 'pedido ' + (pedido.pedidoNumero || '')}`} onClose={onClose}>
+      {isLoading ? (
+        <div className="py-6"><PageLoading /></div>
+      ) : semPlano ? (
+        <div className="space-y-3">
+          <p className="text-sm text-text-secondary">
+            Este pedido não tem parcela em aberto para receber.
+          </p>
+          <p className="text-xs text-text-muted">
+            Se ainda falta dinheiro, a condição de pagamento precisa ser cadastrada no
+            controle.branorte.com, na tela do pedido.
+          </p>
+          <div className="flex justify-end"><Botao onClick={onClose}>Fechar</Botao></div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Qual parcela</label>
+            <select value={parcelaId ?? ''} onChange={e => trocarParcela(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-surface px-2 text-sm text-text-primary">
+              {abertas.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.numero}/{p.totalParcelas} · vence {dataBR(p.vencimento)} · falta {brl(p.saldo, 2)}
+                  {p.status === 'VENCIDO' ? ' · VENCIDA' : ''}
+                </option>
+              ))}
+            </select>
+            {escolhida?.descricao && (
+              <p className="mt-1 text-xs text-text-muted">{escolhida.descricao}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">Valor recebido</label>
+              <Input value={valor} inputMode="decimal"
+                onChange={e => { setTocouValor(true); setValor(e.target.value) }} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-secondary">Data do recebimento</label>
+              <Input type="date" value={pagoEm} onChange={e => setPagoEm(e.target.value)} />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Forma</label>
+            <select value={meio} onChange={e => setMeio(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-surface px-2 text-sm text-text-primary">
+              {['PIX', 'BOLETO', 'TRANSFERENCIA', 'CARTAO', 'DINHEIRO', 'OUTRO'].map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Observação (opcional)</label>
+            <Input value={obs} onChange={e => setObs(e.target.value)} />
+          </div>
+
+          <EscolherArquivo arquivo={arq} onArquivo={setArq} />
+
+          <p className="rounded border border-warning/30 bg-warning-bg p-2 text-[11px] text-warning">
+            Lançar o valor não quita a parcela. Ela fica aguardando a conferência do gestor.
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <Botao onClick={onClose}>Cancelar</Botao>
+            <Botao tone="accent"
+              disabled={acao.isPending || !parcelaId || !(Number(valor.replace(',', '.')) > 0) || !pagoEm}
+              onClick={() => acao.mutate({
+                acao: 'lancar_pagamento', order_id: pedido.id, installment_id: parcelaId,
+                valor: Number(valor.replace(',', '.')), pago_em: pagoEm, meio,
+                observacao: obs || undefined, arquivo: arq || undefined,
+              }, { onError: e => onErro((e as FinanceiroErro).message), onSuccess: onClose })}>
+              {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Lançar
+            </Botao>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+// ── mutirão: pedido antigo que já foi pago fora do sistema ──────────────────
+
+function RegularizarModal({ pedido, gestor, onClose, onErro }: {
+  pedido: PedidoFinanceiro; gestor: boolean; onClose: () => void; onErro: (m: string) => void
+}) {
+  const acao = useAcaoFinanceiro()
+  const [motivo, setMotivo] = useState('')
+
+  const prontas = [
+    'Pedido antigo, pago integralmente antes deste controle existir.',
+    'Cliente pagou em dinheiro na entrega, sem comprovante guardado.',
+    'Acerto feito direto com a fábrica, fora do sistema.',
+  ]
+
+  return (
+    <Modal titulo="Marcar como já pago" onClose={onClose}>
+      <div className="space-y-3">
+        <div className="rounded border border-border bg-surface-2 p-2 text-xs text-text-secondary">
+          <p className="font-medium text-text-primary">{pedido.cliente || '(sem nome)'}</p>
+          <p className="mt-0.5">
+            Pedido {pedido.pedidoNumero || '—'} · venda em {dataBR(pedido.dataVenda)} · {brl(pedido.valorTotal)}
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-text-secondary">
+            O que aconteceu com esse pedido?
+          </label>
+          <Input value={motivo} onChange={e => setMotivo(e.target.value)}
+            placeholder="Fica no histórico, com seu nome e a data" />
+          <div className="mt-1 flex flex-wrap gap-1">
+            {prontas.map(s => (
+              <button key={s} onClick={() => setMotivo(s)}
+                className="rounded border border-border px-2 py-0.5 text-left text-[11px] text-text-muted hover:bg-surface-2">
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className={`rounded border p-2 text-[11px] ${gestor
+          ? 'border-warning/30 bg-warning-bg text-warning'
+          : 'border-info/30 bg-info-bg text-info'}`}>
+          {gestor
+            ? 'Como gestor, isso já vale na hora: o pedido sai da cobrança e fica marcado como regularizado — separado do dinheiro que tem comprovante.'
+            : 'Isso não some com a dívida sozinho: vai para o gestor confirmar. Enquanto isso o pedido fica marcado como esperando confirmação.'}
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <Botao onClick={onClose}>Cancelar</Botao>
+          <Botao tone="accent" disabled={acao.isPending || motivo.trim().length < 5}
+            onClick={() => acao.mutate({ acao: 'propor_regularizacao', order_id: pedido.id, motivo: motivo.trim() },
+              { onError: e => onErro((e as FinanceiroErro).message), onSuccess: onClose })}>
+            {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HandCoins className="h-3.5 w-3.5" />}
+            {gestor ? 'Regularizar' : 'Mandar pro gestor'}
+          </Botao>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ── o elo que faltava: o cliente recebeu ────────────────────────────────────
+
+function ConfirmarEntregaModal({ pedido, onClose, onErro }: {
+  pedido: PedidoFinanceiro; onClose: () => void; onErro: (m: string) => void
+}) {
+  const acao = useAcaoFinanceiro()
+  const [data, setData] = useState(() => new Date().toISOString().slice(0, 10))
+  const [obs, setObs] = useState('')
+
+  return (
+    <Modal titulo="Cliente recebeu o equipamento" onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-text-muted">
+          A produção marca quando o equipamento <b>saiu da fábrica</b>. Quem sabe quando ele
+          <b> chegou no cliente</b> é o senhor.
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-text-secondary">Data em que o cliente recebeu</label>
+          <Input type="date" value={data} onChange={e => setData(e.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-text-secondary">Observação (opcional)</label>
+          <Input value={obs} onChange={e => setObs(e.target.value)}
+            placeholder="Ex.: recebido pelo filho, faltou o painel..." />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Botao onClick={onClose}>Cancelar</Botao>
+          <Botao tone="accent" disabled={acao.isPending || !data}
+            onClick={() => acao.mutate({ acao: 'confirmar_entrega', order_id: pedido.id, entregue_em: data, observacao: obs || undefined },
+              { onError: e => onErro((e as FinanceiroErro).message), onSuccess: onClose })}>
+            {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PackageCheck className="h-3.5 w-3.5" />} Confirmar
+          </Botao>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ── painel do pedido ─────────────────────────────────────────────────────────
 
 function LinhaDoTempo({ eventos }: { eventos: EventoAuditoria[] }) {
@@ -583,8 +896,13 @@ function LinhaDoTempo({ eventos }: { eventos: EventoAuditoria[] }) {
 
 function PainelPedido({ pedidoId, onClose }: { pedidoId: string; onClose: () => void }) {
   const { data, isLoading, error } = useControleFinanceiroPedido(pedidoId)
+  const acaoPedido = useAcaoFinanceiro()
   const [erroAcao, setErroAcao] = useState<string | null>(null)
   const [verHistorico, setVerHistorico] = useState(false)
+  const [lancando, setLancando] = useState(false)
+  const [regularizando, setRegularizando] = useState(false)
+  const [confirmandoEntrega, setConfirmandoEntrega] = useState(false)
+  const [motivoRecusaReg, setMotivoRecusaReg] = useState('')
   const p = data?.pedido
   const gestor = !!data?.escopo.gestor
 
@@ -639,6 +957,12 @@ function PainelPedido({ pedidoId, onClose }: { pedidoId: string; onClose: () => 
 
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className={PEDIDO_COR[p.status]}>{PEDIDO_ROTULO[p.status]}</Badge>
+                <EtiquetaFabrica etapa={p.producao.etapa} desde={p.producao.desde} />
+                {p.entrega && (
+                  <Badge className="bg-success-bg text-success" title={p.entrega.observacao || undefined}>
+                    <PackageCheck className="h-3 w-3" /> cliente recebeu em {dataBR(p.entrega.entregueEm)}
+                  </Badge>
+                )}
                 {p.proximoVencimento && (
                   <Badge className="bg-surface-2 text-text-secondary">próximo vencimento {dataBR(p.proximoVencimento)}</Badge>
                 )}
@@ -647,6 +971,67 @@ function PainelPedido({ pedidoId, onClose }: { pedidoId: string; onClose: () => 
                   <History className="h-3.5 w-3.5" /> {verHistorico ? 'ocultar' : 'ver'} histórico
                 </button>
               </div>
+
+              <div className="flex flex-wrap gap-2">
+                {p.aReceber > 0.01 && p.status !== 'REGULARIZADO' && (
+                  <Botao tone="accent" onClick={() => setLancando(true)}>
+                    <Plus className="h-3.5 w-3.5" /> Lançar pagamento
+                  </Botao>
+                )}
+                {!p.entrega && (
+                  <Botao onClick={() => setConfirmandoEntrega(true)}>
+                    <PackageCheck className="h-3.5 w-3.5" /> Cliente recebeu
+                  </Botao>
+                )}
+                {p.aReceber > 0.01 && !p.regularizacao && p.status !== 'REGULARIZADO' && (
+                  <Botao onClick={() => setRegularizando(true)}
+                    title="Pedido antigo que já foi pago fora do sistema">
+                    <HandCoins className="h-3.5 w-3.5" /> Já foi pago, é histórico
+                  </Botao>
+                )}
+              </div>
+
+              {p.regularizacao && (
+                <div className={`rounded-md border p-3 ${p.regularizacao.status === 'PROPOSTA'
+                  ? 'border-warning/30 bg-warning-bg'
+                  : p.regularizacao.status === 'RECUSADA'
+                    ? 'border-danger/30 bg-danger-bg'
+                    : 'border-border bg-surface-2'}`}>
+                  <p className={`text-xs font-semibold ${p.regularizacao.status === 'PROPOSTA' ? 'text-warning'
+                    : p.regularizacao.status === 'RECUSADA' ? 'text-danger' : 'text-text-primary'}`}>
+                    {p.regularizacao.status === 'PROPOSTA' ? 'Esperando o gestor confirmar que já foi pago'
+                      : p.regularizacao.status === 'RECUSADA' ? 'Regularização recusada — o pedido continua em aberto'
+                        : 'Pedido regularizado — dado como pago sem comprovante'}
+                  </p>
+                  {p.regularizacao.motivo && (
+                    <p className="mt-1 text-xs text-text-secondary">{p.regularizacao.motivo}</p>
+                  )}
+                  <p className="mt-0.5 text-[11px] text-text-muted">
+                    proposto por {p.regularizacao.propostoPor || 'alguém'} em {dataHoraBR(p.regularizacao.propostoEm)}
+                    {p.regularizacao.decididoPor && ` · decidido por ${p.regularizacao.decididoPor} em ${dataHoraBR(p.regularizacao.decididoEm)}`}
+                  </p>
+                  {p.regularizacao.motivoRecusa && (
+                    <p className="mt-1 text-xs text-danger">Motivo da recusa: {p.regularizacao.motivoRecusa}</p>
+                  )}
+                  {gestor && p.regularizacao.status === 'PROPOSTA' && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Botao tone="success" disabled={acaoPedido.isPending}
+                        onClick={() => acaoPedido.mutate({ acao: 'decidir_regularizacao', order_id: p.id, status: 'CONFIRMADA' },
+                          { onError: e => setErroAcao((e as FinanceiroErro).message) })}>
+                        <ThumbsUp className="h-3.5 w-3.5" /> Confirmar
+                      </Botao>
+                      <Input value={motivoRecusaReg} onChange={e => setMotivoRecusaReg(e.target.value)}
+                        placeholder="Motivo, se for recusar" className="h-8 max-w-[240px] text-xs" />
+                      <Botao tone="danger" disabled={acaoPedido.isPending || !motivoRecusaReg.trim()}
+                        onClick={() => acaoPedido.mutate({
+                          acao: 'decidir_regularizacao', order_id: p.id, status: 'RECUSADA', motivo: motivoRecusaReg.trim(),
+                        }, { onError: e => setErroAcao((e as FinanceiroErro).message), onSuccess: () => setMotivoRecusaReg('') })}>
+                        <ThumbsDown className="h-3.5 w-3.5" /> Recusar
+                      </Botao>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {verHistorico && (
                 <Card className="p-3"><LinhaDoTempo eventos={data.historico} /></Card>
@@ -688,6 +1073,16 @@ function PainelPedido({ pedidoId, onClose }: { pedidoId: string; onClose: () => 
             </>
           )}
         </div>
+
+        {p && lancando && (
+          <LancarRapidoModal pedido={p} onClose={() => setLancando(false)} onErro={setErroAcao} />
+        )}
+        {p && regularizando && (
+          <RegularizarModal pedido={p} gestor={gestor} onClose={() => setRegularizando(false)} onErro={setErroAcao} />
+        )}
+        {p && confirmandoEntrega && (
+          <ConfirmarEntregaModal pedido={p} onClose={() => setConfirmandoEntrega(false)} onErro={setErroAcao} />
+        )}
       </aside>
     </div>
   )
@@ -702,7 +1097,7 @@ function PorVendedor({ linhas, onEscolher }: { linhas: ResumoVendedor[]; onEscol
         <table className="w-full">
           <thead>
             <tr className="border-b border-border bg-surface-2">
-              {['Vendedor', 'Pedidos', 'Vendido', 'Recebido', 'A receber', 'Vencido', 'Parc. venc.', 'S/ compr.', 'A conferir', 'Boletos', 'S/ plano'].map((h, i) => (
+              {['Vendedor', 'Pedidos', 'Vendido', 'Recebido', 'Carregou e deve', 'Nada lançado', 'A receber', 'Vencido', 'S/ compr.', 'A conferir', 'Boletos', 'S/ plano'].map((h, i) => (
                 <th key={h} className={`px-3 py-2.5 text-xs font-medium text-text-muted ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
               ))}
             </tr>
@@ -715,11 +1110,18 @@ function PorVendedor({ linhas, onEscolher }: { linhas: ResumoVendedor[]; onEscol
                 <td className="px-3 py-2.5 text-right text-sm tabular-nums text-text-secondary">{v.pedidos}</td>
                 <td className="px-3 py-2.5 text-right text-sm tabular-nums text-text-primary">{brl(v.vendido)}</td>
                 <td className="px-3 py-2.5 text-right text-sm tabular-nums text-success">{brl(v.recebido)}</td>
+                <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${v.carregadoAReceber > 0.01 ? 'font-semibold text-danger' : 'text-text-muted'}`}
+                  title="equipamento já saiu da fábrica e o cliente ainda deve">
+                  {v.carregadoAReceber > 0.01 ? brl(v.carregadoAReceber) : '—'}
+                </td>
+                <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${v.semLancamento ? 'text-warning' : 'text-text-muted'}`}
+                  title="pedidos sem nenhum pagamento registrado">
+                  {v.semLancamento || '—'}
+                </td>
                 <td className="px-3 py-2.5 text-right text-sm tabular-nums text-text-primary">{brl(v.aReceber)}</td>
                 <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${v.vencido > 0.01 ? 'font-semibold text-danger' : 'text-text-muted'}`}>
                   {v.vencido > 0.01 ? brl(v.vencido) : '—'}
                 </td>
-                <td className="px-3 py-2.5 text-right text-sm tabular-nums text-text-secondary">{v.parcelasVencidas || '—'}</td>
                 <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${v.semComprovante ? 'text-warning' : 'text-text-muted'}`}>{v.semComprovante || '—'}</td>
                 <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${v.aConferir ? 'text-warning' : 'text-text-muted'}`}>{v.aConferir || '—'}</td>
                 <td className={`px-3 py-2.5 text-right text-sm tabular-nums ${v.boletosPendentes ? 'text-info' : 'text-text-muted'}`}>{v.boletosPendentes || '—'}</td>
@@ -737,22 +1139,40 @@ function PorVendedor({ linhas, onEscolher }: { linhas: ResumoVendedor[]; onEscol
 
 export function ControleFinanceiro() {
   const { data, isLoading, error } = useControleFinanceiro()
-  const [atalho, setAtalho] = useState<Atalho>('vencidos')
+  // O vendedor abre na fila DELE (o que falta registrar); o gestor abre na
+  // cobrança. Antes todo mundo caía em "vencidos" — tela de bronca pra quem
+  // entrou pra alimentar.
+  const [atalho, setAtalho] = useState<Atalho | null>(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const [aberto, setAberto] = useState<string | null>(null)
+  const [lancandoNa, setLancandoNa] = useState<PedidoFinanceiro | null>(null)
+  const [erroLista, setErroLista] = useState<string | null>(null)
   const [aba, setAba] = useState<'pedidos' | 'vendedores'>('pedidos')
 
+  const gestor = !!data?.escopo.gestor
+  const escopado = data?.escopo.vendedores != null
+  const atual: Atalho = atalho ?? (escopado ? 'falta_lancar' : 'vencidos')
+
   const filtra = (r: PedidoFinanceiro): boolean => {
-    switch (atalho) {
+    switch (atual) {
       case 'vencidos': return r.vencido > 0.01
-      case 'receber': return r.aReceber > 0.01 && r.status !== 'CANCELADO'
+      case 'receber': return r.aReceber > 0.01 && r.status !== 'CANCELADO' && r.status !== 'REGULARIZADO'
       case 'quitados': return r.status === 'QUITADO'
       case 'sem_comprovante': return r.pagamentosSemComprovante > 0
       case 'a_conferir': return r.comprovantesAConferir > 0
       case 'boleto_pendente': return r.boletosPendentes > 0
       case 'sem_plano': return r.status === 'SEM_PLANO'
       case 'divergente': return Math.abs(r.divergenciaPlano) > 0.01
+      // fila de quem alimenta: nada lançado e ainda tem saldo
+      case 'falta_lancar': return r.semLancamento && r.aReceber > 0.01 && r.status !== 'CANCELADO'
+      case 'na_fabrica':
+        return ['ANTES_DO_CHAO', 'FABRICANDO', 'PRONTO'].includes(r.producao.etapa)
+          && r.aReceber > 0.01 && r.status !== 'CANCELADO'
+      case 'carregado_devendo':
+        return r.producao.etapa === 'CARREGADO' && r.aReceber > 0.01
+          && r.status !== 'CANCELADO' && r.status !== 'REGULARIZADO'
+      case 'regularizar': return r.regularizacao?.status === 'PROPOSTA'
       default: return true
     }
   }
@@ -765,14 +1185,23 @@ export function ControleFinanceiro() {
         || (x.pedidoNumero || '').toLowerCase().includes(q)
         || (x.vendedor || '').toLowerCase().includes(q))
     }
+    // Nas filas de trabalho, o mais recente primeiro: é o que o vendedor lembra.
+    if (atual === 'falta_lancar' || atual === 'na_fabrica') {
+      r = [...r].sort((a, b) => (b.dataVenda || '').localeCompare(a.dataVenda || ''))
+    }
     return r
-  }, [data, atalho, search])
+  }, [data, atual, search])
 
   const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
   const totalPages = Math.ceil(rows.length / PAGE_SIZE)
   const k = data?.kpis
-  const escopado = data?.escopo.vendedores != null
   const ir = (a: Atalho) => { setAtalho(a); setPage(0); setAba('pedidos') }
+
+  // Quantos pedidos meus ainda não têm nenhum pagamento registrado — o número
+  // que o vendedor precisa ver encolher.
+  const faltaLancar = (data?.pedidos ?? [])
+    .filter(r => r.semLancamento && r.aReceber > 0.01 && r.status !== 'CANCELADO').length
+  const meusPedidos = (data?.pedidos ?? []).filter(r => r.status !== 'CANCELADO').length
 
   return (
     <div className="space-y-4 p-4 lg:p-8">
@@ -781,9 +1210,17 @@ export function ControleFinanceiro() {
           <Wallet className="h-7 w-7 text-accent" /> Financeiro · Recebíveis
         </h1>
         <p className="mt-1 text-sm text-text-muted">
-          Parcelas e recebimentos ao vivo do controle.branorte.com
+          Parcelas e recebimentos ao vivo do controle.branorte.com, com a etapa de fábrica do Controle de Produção
           {escopado && data && <> · mostrando <strong>{data.escopo.vendedores?.join(', ')}</strong></>}
         </p>
+        {escopado && faltaLancar > 0 && (
+          <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning-bg px-3 py-1.5 text-sm text-warning">
+            <FileWarning className="h-4 w-4 shrink-0" />
+            <span>
+              <strong>{faltaLancar}</strong> dos seus {meusPedidos} pedidos ainda não têm nenhum pagamento registrado.
+            </span>
+          </p>
+        )}
       </div>
 
       {error && (
@@ -805,33 +1242,54 @@ export function ControleFinanceiro() {
               sub={`${data.pedidos.length} pedido${data.pedidos.length !== 1 ? 's' : ''}`} />
             <KpiCard title="Recebido" value={brl(k.totalRecebido)} icon={CheckCircle2} tone="accent"
               sub={`${k.pedidosQuitados} quitado${k.pedidosQuitados !== 1 ? 's' : ''} · ${k.pedidosAguardandoConferencia} a conferir`} />
-            <KpiCard title="A Receber" value={brl(k.totalAReceber)} icon={TrendingDown} />
+            <KpiCard title="Já carregou e não pagou" value={brl(k.carregadoAReceber)} icon={Truck} tone="danger"
+              sub={`saiu da fábrica · ${k.pedidosCarregadosEmAberto} pedido${k.pedidosCarregadosEmAberto !== 1 ? 's' : ''}`} />
+            <KpiCard title="Ainda na fábrica" value={brl(k.naFabricaAReceber)} icon={Factory}
+              sub={`em aberto · ${k.pedidosNaFabrica} pedido${k.pedidosNaFabrica !== 1 ? 's' : ''}`} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiCard title="A Receber (total)" value={brl(k.totalAReceber)} icon={TrendingDown} />
             <KpiCard title="Vencido" value={brl(k.totalVencido)} icon={Clock} tone="danger"
               sub={`em ${k.pedidosComVencido} pedido${k.pedidosComVencido !== 1 ? 's' : ''}`} />
+            <KpiCard title="Regularizado" value={brl(k.valorRegularizado)} icon={HandCoins}
+              sub={`${k.pedidosRegularizados} pedido${k.pedidosRegularizados !== 1 ? 's' : ''} antigo${k.pedidosRegularizados !== 1 ? 's' : ''} · sem comprovante`} />
+            <KpiCard title="Sem card de produção" value={String(k.pedidosSemCard)} icon={HelpCircle} tone="warning"
+              sub="não dá pra saber se já carregou" />
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <ChipPendencia n={faltaLancar} label="sem nenhum pagamento lançado" tone="warning"
+              icon={FileWarning} ativo={atual === 'falta_lancar'} onClick={() => ir('falta_lancar')} />
+            <ChipPendencia n={k.pedidosCarregadosEmAberto} label="carregou e ainda deve" tone="danger"
+              icon={Truck} ativo={atual === 'carregado_devendo'} onClick={() => ir('carregado_devendo')} />
+            <ChipPendencia n={k.pedidosNaFabrica} label="ainda está na fábrica" tone="info"
+              icon={Factory} ativo={atual === 'na_fabrica'} onClick={() => ir('na_fabrica')} />
             <ChipPendencia n={k.pedidosComVencido} label="com parcela vencida" tone="danger"
-              icon={Clock} ativo={atalho === 'vencidos'} onClick={() => ir('vencidos')} />
+              icon={Clock} ativo={atual === 'vencidos'} onClick={() => ir('vencidos')} />
+            {gestor && k.regularizacoesAConfirmar > 0 && (
+              <ChipPendencia n={k.regularizacoesAConfirmar} label="esperando você confirmar" tone="warning"
+                icon={HandCoins} ativo={atual === 'regularizar'} onClick={() => ir('regularizar')} />
+            )}
             <ChipPendencia n={k.comprovantesAConferir} label="comprovantes a conferir" tone="warning"
-              icon={ShieldAlert} ativo={atalho === 'a_conferir'} onClick={() => ir('a_conferir')} />
+              icon={ShieldAlert} ativo={atual === 'a_conferir'} onClick={() => ir('a_conferir')} />
             <ChipPendencia n={k.pagamentosSemComprovante} label="pagamentos sem comprovante" tone="warning"
-              icon={FileWarning} ativo={atalho === 'sem_comprovante'} onClick={() => ir('sem_comprovante')} />
+              icon={FileWarning} ativo={atual === 'sem_comprovante'} onClick={() => ir('sem_comprovante')} />
             <ChipPendencia n={k.boletosPendentes} label="boletos a enviar" tone="info"
-              icon={Send} ativo={atalho === 'boleto_pendente'} onClick={() => ir('boleto_pendente')} />
+              icon={Send} ativo={atual === 'boleto_pendente'} onClick={() => ir('boleto_pendente')} />
             <ChipPendencia n={k.pedidosSemPlano} label="sem condição de pagamento" tone="muted"
-              icon={FileWarning} ativo={atalho === 'sem_plano'} onClick={() => ir('sem_plano')} />
+              icon={FileWarning} ativo={atual === 'sem_plano'} onClick={() => ir('sem_plano')} />
             <ChipPendencia n={k.planosDivergentes} label="plano ≠ valor do pedido" tone="warning"
-              icon={AlertTriangle} ativo={atalho === 'divergente'} onClick={() => ir('divergente')} />
+              icon={AlertTriangle} ativo={atual === 'divergente'} onClick={() => ir('divergente')} />
           </div>
 
           <Card className="p-4">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
-                {([['receber', 'A Receber'], ['quitados', 'Quitados'], ['todos', 'Todos']] as [Atalho, string][]).map(([key, label]) => (
+                {([['falta_lancar', 'Falta lançar'], ['receber', 'A Receber'], ['quitados', 'Quitados'], ['todos', 'Todos']] as [Atalho, string][]).map(([key, label]) => (
                   <button key={key} onClick={() => ir(key)}
                     className={`h-7 rounded px-3 text-xs font-medium transition-colors ${
-                      atalho === key && aba === 'pedidos' ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary'}`}>
+                      atual === key && aba === 'pedidos' ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary'}`}>
                     {label}
                   </button>
                 ))}
@@ -867,9 +1325,10 @@ export function ControleFinanceiro() {
                         <th className="px-4 py-3 text-right text-xs font-medium text-text-muted">Recebido</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-text-muted">A Receber</th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-text-muted">Vencido</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-text-muted">Parc.</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Fábrica</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Próx. venc.</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Situação</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-text-muted">Ação</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -883,11 +1342,21 @@ export function ControleFinanceiro() {
                           <td className="px-4 py-3 text-right"><span className={`text-sm tabular-nums ${r.recebido > 0.01 ? 'text-success' : 'text-text-muted'}`}>{brl(r.recebido)}</span></td>
                           <td className="px-4 py-3 text-right"><span className="text-sm font-semibold tabular-nums text-text-primary">{brl(r.aReceber)}</span></td>
                           <td className="px-4 py-3 text-right"><span className={`text-sm tabular-nums ${r.vencido > 0.01 ? 'font-semibold text-danger' : 'text-text-muted'}`}>{r.vencido > 0.01 ? brl(r.vencido) : '—'}</span></td>
-                          <td className="px-4 py-3 text-center"><span className="text-sm tabular-nums text-text-secondary">{r.qtdParcelas || '—'}</span></td>
+                          <td className="px-4 py-3"><EtiquetaFabrica etapa={r.producao.etapa} desde={r.producao.desde} /></td>
                           <td className="px-4 py-3"><span className="text-sm text-text-secondary">{dataBR(r.proximoVencimento)}</span></td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap items-center gap-1">
                               <Badge className={PEDIDO_COR[r.status]}>{PEDIDO_ROTULO[r.status]}</Badge>
+                              {r.semLancamento && r.aReceber > 0.01 && r.status !== 'CANCELADO' && (
+                                <Badge className="bg-warning-bg text-warning" title="nenhum pagamento registrado neste pedido">
+                                  nada lançado
+                                </Badge>
+                              )}
+                              {r.regularizacao?.status === 'PROPOSTA' && (
+                                <Badge className="bg-warning-bg text-warning" title="esperando o gestor confirmar que já foi pago">
+                                  <HandCoins className="h-3 w-3" /> a confirmar
+                                </Badge>
+                              )}
                               {r.comprovantesAConferir > 0 && (
                                 <Badge className="bg-warning-bg text-warning" title="comprovante esperando conferência">
                                   <ShieldAlert className="h-3 w-3" />{r.comprovantesAConferir}
@@ -900,10 +1369,22 @@ export function ControleFinanceiro() {
                               )}
                             </div>
                           </td>
+                          {/* o clique aqui não pode abrir o painel do pedido por baixo */}
+                          <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                            {r.aReceber > 0.01 && r.status !== 'CANCELADO' && r.status !== 'REGULARIZADO' && (
+                              <Botao tone="accent" onClick={() => setLancandoNa(r)}>
+                                <Plus className="h-3.5 w-3.5" /> Lançar
+                              </Botao>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {pageRows.length === 0 && (
-                        <tr><td colSpan={10} className="px-4 py-8 text-center text-text-muted">Nenhum pedido neste filtro.</td></tr>
+                        <tr><td colSpan={11} className="px-4 py-8 text-center text-text-muted">
+                          {atual === 'falta_lancar'
+                            ? 'Nenhum pedido esperando lançamento. Fila zerada.'
+                            : 'Nenhum pedido neste filtro.'}
+                        </td></tr>
                       )}
                     </tbody>
                   </table>
@@ -912,8 +1393,8 @@ export function ControleFinanceiro() {
 
               <div className="space-y-2 lg:hidden">
                 {pageRows.map(r => (
-                  <Card key={r.id} hover onClick={() => setAberto(r.id)} className="p-3">
-                    <div className="flex items-start justify-between gap-2">
+                  <Card key={r.id} className="p-3">
+                    <div className="flex items-start justify-between gap-2" onClick={() => setAberto(r.id)}>
                       <div className="min-w-0">
                         <p className="font-mono text-xs text-text-muted">{r.pedidoNumero || '—'}</p>
                         <p className="truncate text-sm font-medium text-text-primary">{r.cliente || '(sem nome)'}</p>
@@ -921,7 +1402,14 @@ export function ControleFinanceiro() {
                       </div>
                       <Badge className={PEDIDO_COR[r.status]}>{PEDIDO_ROTULO[r.status]}</Badge>
                     </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 border-t border-border pt-2 text-center">
+                    <div className="mt-2 flex flex-wrap gap-1" onClick={() => setAberto(r.id)}>
+                      <EtiquetaFabrica etapa={r.producao.etapa} desde={r.producao.desde} />
+                      {r.semLancamento && r.aReceber > 0.01 && r.status !== 'CANCELADO' && (
+                        <Badge className="bg-warning-bg text-warning">nada lançado</Badge>
+                      )}
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 border-t border-border pt-2 text-center"
+                      onClick={() => setAberto(r.id)}>
                       <div><p className="text-[10px] uppercase text-text-muted">Total</p>
                         <p className="text-xs font-semibold tabular-nums text-text-primary">{brl(r.valorTotal)}</p></div>
                       <div><p className="text-[10px] uppercase text-text-muted">Recebido</p>
@@ -930,6 +1418,13 @@ export function ControleFinanceiro() {
                         <p className={`text-xs font-semibold tabular-nums ${r.vencido > 0.01 ? 'text-danger' : 'text-text-muted'}`}>
                           {r.vencido > 0.01 ? brl(r.vencido) : '—'}</p></div>
                     </div>
+                    {r.aReceber > 0.01 && r.status !== 'CANCELADO' && r.status !== 'REGULARIZADO' && (
+                      <div className="mt-2 border-t border-border pt-2">
+                        <Botao tone="accent" onClick={() => setLancandoNa(r)}>
+                          <Plus className="h-3.5 w-3.5" /> Lançar pagamento
+                        </Botao>
+                      </div>
+                    )}
                   </Card>
                 ))}
                 {pageRows.length === 0 && (
@@ -952,6 +1447,18 @@ export function ControleFinanceiro() {
       )}
 
       {aberto && <PainelPedido pedidoId={aberto} onClose={() => setAberto(null)} />}
+
+      {lancandoNa && (
+        <LancarRapidoModal pedido={lancandoNa} onClose={() => setLancandoNa(null)} onErro={setErroLista} />
+      )}
+      {erroLista && (
+        <div className="fixed bottom-4 left-1/2 z-[70] flex max-w-md -translate-x-1/2 items-start gap-2
+          rounded-md border border-danger/30 bg-danger-bg p-3 text-sm text-danger shadow-lg">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="flex-1">{erroLista}</div>
+          <button onClick={() => setErroLista(null)} aria-label="Fechar aviso"><X className="h-4 w-4" /></button>
+        </div>
+      )}
     </div>
   )
 }

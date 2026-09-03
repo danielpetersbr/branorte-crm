@@ -39,7 +39,11 @@ const TIPOS: Record<string, string> = {
   'image/png': 'png',
   'image/webp': 'webp',
 }
-const MAX_BYTES = 8 * 1024 * 1024
+// A Vercel corta o CORPO da requisição em 4,5 MB — o `sizeLimit: '10mb'` acima
+// nunca valeu. Como o arquivo viaja em base64 (+33%), o binário útil para em
+// ~3,3 MB. O limite aqui é 4 MB só para dar erro claro em vez de 413 mudo; o
+// navegador já comprime foto grande antes de enviar (ver lerArquivo no hook).
+const MAX_BYTES = 4 * 1024 * 1024
 
 interface Arquivo { nome?: string; tipo?: string; base64?: string }
 
@@ -408,6 +412,125 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ ok: true, comprovante_orfao: rec.receipt_url })
       }
 
+      // ───────────────────────────────────────────────────────────────────
+      // Mutirão da dívida velha. O vendedor PROPÕE que o pedido antigo já foi
+      // pago; quem confirma é o gestor. Se quem propõe já é gestor, nasce
+      // confirmada — não faz sentido ele pedir aprovação a si mesmo.
+      //
+      // Isto NÃO cria receipt: não é dinheiro conferido, e a tela mostra os dois
+      // separados. Só tira o pedido da fila de cobrança.
+      case 'propor_regularizacao': {
+        const motivo = String(b.motivo || '').trim()
+        if (motivo.length < 5) {
+          return res.status(400).json({ error: 'motivo_obrigatorio', detail: 'Escreva o que aconteceu com esse pedido — fica no histórico.' })
+        }
+
+        const { data: jaTem } = await crm.from('fin_regularizacoes')
+          .select('status').eq('order_id', orderId).maybeSingle()
+        if (jaTem?.status === 'CONFIRMADA') {
+          return res.status(400).json({ error: 'ja_regularizado', detail: 'Este pedido já foi regularizado.' })
+        }
+
+        const agora = new Date().toISOString()
+        const status = gestor ? 'CONFIRMADA' : 'PROPOSTA'
+        await crm.from('fin_regularizacoes').upsert({
+          order_id: orderId, status, motivo,
+          valor_referencia: Number(pedido.valor_total) || null,
+          proposto_por: esc.userId, proposto_por_nome: esc.displayName, proposto_em: agora,
+          decidido_por: gestor ? esc.userId : null,
+          decidido_por_nome: gestor ? esc.displayName : null,
+          decidido_em: gestor ? agora : null,
+          motivo_recusa: null,
+          updated_at: agora,
+        })
+
+        await auditar({ order_id: orderId, acao: gestor ? 'regularizacao_confirmada' : 'regularizacao_proposta',
+          motivo, depois: { status }, ...ator })
+
+        if (!gestor) {
+          await notificar({
+            destinatarios: await idsDosGestores(), tipo: 'regularizacao_a_confirmar',
+            titulo: 'Pedido antigo esperando regularização',
+            corpo: `${esc.displayName || 'Alguém'} marcou o pedido ${pedido.pedido_numero} (${pedido.cliente || 'sem nome'}) como já pago. Motivo: ${motivo}`,
+            order_id: orderId, chave: `reg:${orderId}`,
+          })
+        }
+
+        return res.status(200).json({ ok: true, status })
+      }
+
+      // ───────────────────────────────────────────────────────────────────
+      case 'decidir_regularizacao': {
+        if (!gestor) {
+          return res.status(403).json({ error: 'so_gestor', detail: 'Só o gestor confirma a regularização de um pedido antigo.' })
+        }
+        const decisao = String(b.status || '').toUpperCase()
+        if (decisao !== 'CONFIRMADA' && decisao !== 'RECUSADA') {
+          return res.status(400).json({ error: 'status_invalido' })
+        }
+        const motivoRecusa = String(b.motivo || '').trim()
+        if (decisao === 'RECUSADA' && !motivoRecusa) {
+          return res.status(400).json({ error: 'motivo_obrigatorio', detail: 'Diga por que está recusando — o vendedor vai ler.' })
+        }
+
+        const { data: reg } = await crm.from('fin_regularizacoes')
+          .select('status, proposto_por, motivo').eq('order_id', orderId).maybeSingle()
+        if (!reg) return res.status(404).json({ error: 'regularizacao_nao_encontrada' })
+
+        const agora = new Date().toISOString()
+        await crm.from('fin_regularizacoes').update({
+          status: decisao, decidido_por: esc.userId, decidido_por_nome: esc.displayName,
+          decidido_em: agora, motivo_recusa: decisao === 'RECUSADA' ? motivoRecusa : null,
+          updated_at: agora,
+        }).eq('order_id', orderId)
+
+        await auditar({ order_id: orderId,
+          acao: decisao === 'CONFIRMADA' ? 'regularizacao_confirmada' : 'regularizacao_recusada',
+          motivo: decisao === 'RECUSADA' ? motivoRecusa : reg.motivo,
+          antes: { status: reg.status }, depois: { status: decisao }, ...ator })
+
+        if (reg.proposto_por) {
+          await notificar({
+            destinatarios: [reg.proposto_por as string],
+            tipo: 'regularizacao_decidida',
+            titulo: decisao === 'CONFIRMADA' ? 'Regularização confirmada' : 'Regularização recusada',
+            corpo: decisao === 'CONFIRMADA'
+              ? `O pedido ${pedido.pedido_numero} foi regularizado e saiu da sua fila.`
+              : `O pedido ${pedido.pedido_numero} continua em aberto. Motivo: ${motivoRecusa}`,
+            order_id: orderId, chave: `regdec:${orderId}:${decisao}`,
+          })
+        }
+
+        return res.status(200).json({ ok: true, status: decisao })
+      }
+
+      // ───────────────────────────────────────────────────────────────────
+      // O elo que faltava: a produção sabe quando o equipamento SAIU; só o
+      // vendedor sabe quando o cliente RECEBEU. Marca dele, não briga com o
+      // kanban da produção.
+      case 'confirmar_entrega': {
+        const entregueEm = String(b.entregue_em || '').slice(0, 10)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(entregueEm)) {
+          return res.status(400).json({ error: 'data_invalida', detail: 'Informe a data em que o cliente recebeu.' })
+        }
+        if (entregueEm > hojeSP()) {
+          return res.status(400).json({ error: 'data_futura', detail: 'A data da entrega não pode estar no futuro.' })
+        }
+
+        const agora = new Date().toISOString()
+        await crm.from('fin_entregas').upsert({
+          order_id: orderId, entregue_em: entregueEm,
+          observacao: (b.observacao as string) || null,
+          confirmado_por: esc.userId, confirmado_por_nome: esc.displayName,
+          updated_at: agora,
+        })
+
+        await auditar({ order_id: orderId, acao: 'entrega_confirmada',
+          depois: { entregue_em: entregueEm }, ...ator })
+
+        return res.status(200).json({ ok: true, entregue_em: entregueEm })
+      }
+
       default:
         return res.status(400).json({ error: 'acao_desconhecida' })
     }
@@ -415,7 +538,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const msg = (e as Error).message
     const mapa: Record<string, [number, string]> = {
       formato_nao_aceito: [400, 'Aceito apenas PDF, JPG, PNG ou WEBP.'],
-      arquivo_grande: [400, 'O arquivo passa de 8 MB.'],
+      arquivo_grande: [400, 'O arquivo é grande demais. Tire a foto de novo ou mande um PDF menor que 3 MB.'],
       arquivo_vazio: [400, 'O arquivo chegou vazio.'],
     }
     const [status, detail] = mapa[msg] ?? [500, msg]

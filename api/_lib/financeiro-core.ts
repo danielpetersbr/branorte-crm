@@ -102,6 +102,7 @@ export type StatusPedido =
   | 'CANCELADO'
   | 'SEM_PLANO'
   | 'QUITADO'
+  | 'REGULARIZADO'
   | 'VENCIDO'
   | 'AGUARDANDO_CONFERENCIA'
   | 'PARCIAL'
@@ -169,6 +170,190 @@ export interface PedidoFinanceiro {
   /** soma das parcelas ≠ valor do pedido (item 1 do spec) */
   divergenciaPlano: number
   somaParcelas: number
+  /** em que etapa da fábrica está — ver lerProducao() */
+  producao: Producao
+  /** nenhum recebimento lançado: a fila que o vendedor precisa zerar */
+  semLancamento: boolean
+  /** pedido antigo dado como pago sem comprovante — ver fin_regularizacoes */
+  regularizacao: Regularizacao | null
+  /** o cliente confirmou o recebimento (marca do vendedor) */
+  entrega: Entrega | null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Produção — em que etapa o equipamento está na fábrica.
+//
+// Vem do app Controle de Produção (projeto yyfosrvlpsaycjnxcnkj), tabela
+// `producao_cards`, via a view `vw_producao_status` — que expõe SÓ pedido_id,
+// status e data. Sem nome de cliente, sem valor: é o mínimo pra dizer "ainda
+// está aqui" ou "já carregou", e por isso a anon key basta.
+//
+// ⚠️ NÃO usar `mirror_producao_pedidos` do CRM: ela sincroniza todo dia, mas os
+// 500 pedidos estão parados em "EM PROJETO" — é o espelho de um kanban antigo
+// que ninguém move. Conferido em 03/09/2026.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const PRODUCAO_URL =
+  process.env.PRODUCAO_SUPABASE_URL || 'https://yyfosrvlpsaycjnxcnkj.supabase.co'
+
+// anon key PÚBLICA do controle-producao (role=anon, exp 2099) — já exposta no
+// bundle de controledeproducao.mbranorte.com.br. Não é segredo.
+const PRODUCAO_PUBLIC_ANON =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5Zm9zcnZscHNheWNqbnhjbmtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDk2NzEsImV4cCI6MjA5OTg4NTY3MX0.P1Qkii4H-IymxTDeIR4iApOrcRCdlm5Cy9eYr7YQ4Yo'
+
+const PRODUCAO_KEY = process.env.PRODUCAO_ANON_KEY || PRODUCAO_PUBLIC_ANON
+
+/** Onde o equipamento está, do ponto de vista de quem cobra. */
+export type EtapaFabrica =
+  | 'ANTES_DO_CHAO'   // PPCP, ordem de produção, projeto
+  | 'FABRICANDO'      // solda, montagem
+  | 'PRONTO'          // expedição, organizando transporte
+  | 'CARREGADO'       // entregue — saiu da fábrica
+  | 'CANCELADO'
+  | 'SEM_CARD'        // pedido sem card de produção: 29% da carteira em 09/2026
+
+const ETAPA_POR_STATUS: Record<string, EtapaFabrica> = {
+  PPCP: 'ANTES_DO_CHAO',
+  ORDEM_PRODUCAO: 'ANTES_DO_CHAO',
+  PROJETOS_PADROES: 'ANTES_DO_CHAO',
+  EM_PROJETO: 'ANTES_DO_CHAO',
+  PROJETO_CONCLUIDO: 'ANTES_DO_CHAO',
+  SOLDA: 'FABRICANDO',
+  MONTAGEM: 'FABRICANDO',
+  EXPEDICAO: 'PRONTO',
+  ORGANIZANDO_TRANSPORTE: 'PRONTO',
+  ENTREGUE: 'CARREGADO',
+  CANCELADO: 'CANCELADO',
+}
+
+export interface ProducaoRaw {
+  pedido_id: string
+  status: string
+  atualizado_em: string | null
+}
+
+export interface Producao {
+  etapa: EtapaFabrica
+  /** status cru do kanban, pra tooltip e pra não esconder informação */
+  statusCru: string | null
+  /** quando o card entrou nessa etapa (updated_at do card) */
+  desde: string | null
+}
+
+export const SEM_PRODUCAO: Producao = { etapa: 'SEM_CARD', statusCru: null, desde: null }
+
+/**
+ * Lê a etapa de fábrica de todos os pedidos. Uma chamada só — a view é pequena
+ * (≈500 linhas) e o join é feito aqui por pedido_id.
+ *
+ * Cards criados à mão no kanban têm pedido_id tipo "MANUAL-1770667896654": não
+ * casam com nenhum pedido de venda e simplesmente não entram no mapa.
+ *
+ * Falha aqui NÃO derruba o financeiro: sem produção, todo pedido vira SEM_CARD
+ * e a tela continua servindo pra cobrar. Era assim antes desta feature existir.
+ */
+export async function lerProducao(): Promise<Map<string, Producao>> {
+  const mapa = new Map<string, Producao>()
+  try {
+    const url = `${PRODUCAO_URL}/rest/v1/vw_producao_status?select=pedido_id,status,atualizado_em&limit=5000`
+    const resp = await fetch(url, {
+      headers: { apikey: PRODUCAO_KEY, Authorization: `Bearer ${PRODUCAO_KEY}` },
+    })
+    if (!resp.ok) return mapa
+    const linhas = (await resp.json()) as ProducaoRaw[]
+    for (const l of linhas) {
+      if (!l.pedido_id) continue
+      const etapa = ETAPA_POR_STATUS[l.status] ?? 'ANTES_DO_CHAO'
+      const anterior = mapa.get(l.pedido_id)
+      // Um pedido pode ter mais de um card (equipamentos separados). Quem manda
+      // é o card MENOS adiantado: se uma peça ainda está na solda, o pedido não
+      // carregou. Cancelado não conta como atraso de ninguém.
+      if (!anterior || (PESO_ETAPA[etapa] < PESO_ETAPA[anterior.etapa] && etapa !== 'CANCELADO')) {
+        mapa.set(l.pedido_id, { etapa, statusCru: l.status, desde: l.atualizado_em })
+      }
+    }
+  } catch {
+    /* produção fora do ar não pode derrubar a cobrança */
+  }
+  return mapa
+}
+
+const PESO_ETAPA: Record<EtapaFabrica, number> = {
+  ANTES_DO_CHAO: 0, FABRICANDO: 1, PRONTO: 2, CARREGADO: 3, CANCELADO: 4, SEM_CARD: 5,
+}
+
+/** Etapas em que o equipamento ainda está dentro da Branorte. */
+export const NA_FABRICA = new Set<EtapaFabrica>(['ANTES_DO_CHAO', 'FABRICANDO', 'PRONTO'])
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marcas do CRM sobre o pedido: regularização histórica e entrega ao cliente.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type StatusRegularizacao = 'PROPOSTA' | 'CONFIRMADA' | 'RECUSADA'
+
+export interface Regularizacao {
+  status: StatusRegularizacao
+  motivo: string | null
+  propostoPor: string | null
+  propostoEm: string | null
+  decididoPor: string | null
+  decididoEm: string | null
+  motivoRecusa: string | null
+}
+
+export interface Entrega {
+  entregueEm: string
+  observacao: string | null
+  confirmadoPor: string | null
+}
+
+export interface MarcasPedido {
+  regularizacao: Regularizacao | null
+  entrega: Entrega | null
+}
+
+export const SEM_MARCAS: MarcasPedido = { regularizacao: null, entrega: null }
+
+/**
+ * Lê fin_regularizacoes e fin_entregas de uma vez. Sem filtro por pedido: as
+ * duas tabelas são pequenas (uma linha por pedido marcado) e o join sai aqui.
+ */
+export async function lerMarcas(): Promise<Map<string, MarcasPedido>> {
+  const mapa = new Map<string, MarcasPedido>()
+  const pegar = (id: string): MarcasPedido => {
+    let m = mapa.get(id)
+    if (!m) { m = { regularizacao: null, entrega: null }; mapa.set(id, m) }
+    return m
+  }
+  try {
+    const crm = crmAdmin()
+    const [regs, ents] = await Promise.all([
+      crm.from('fin_regularizacoes')
+        .select('order_id, status, motivo, proposto_por_nome, proposto_em, decidido_por_nome, decidido_em, motivo_recusa'),
+      crm.from('fin_entregas').select('order_id, entregue_em, observacao, confirmado_por_nome'),
+    ])
+    for (const r of regs.data ?? []) {
+      pegar(r.order_id as string).regularizacao = {
+        status: r.status as StatusRegularizacao,
+        motivo: (r.motivo as string) ?? null,
+        propostoPor: (r.proposto_por_nome as string) ?? null,
+        propostoEm: (r.proposto_em as string) ?? null,
+        decididoPor: (r.decidido_por_nome as string) ?? null,
+        decididoEm: (r.decidido_em as string) ?? null,
+        motivoRecusa: (r.motivo_recusa as string) ?? null,
+      }
+    }
+    for (const e of ents.data ?? []) {
+      pegar(e.order_id as string).entrega = {
+        entregueEm: e.entregue_em as string,
+        observacao: (e.observacao as string) ?? null,
+        confirmadoPor: (e.confirmado_por_nome as string) ?? null,
+      }
+    }
+  } catch {
+    /* marca é enfeite em cima da cobrança: se falhar, a tela segue funcionando */
+  }
+  return mapa
 }
 
 export interface Kpis {
@@ -176,6 +361,20 @@ export interface Kpis {
   totalRecebido: number
   totalAReceber: number
   totalVencido: number
+  /** saiu da fábrica e ainda tem saldo — o que mais aperta o caixa */
+  carregadoAReceber: number
+  pedidosCarregadosEmAberto: number
+  /** ainda está aqui dentro */
+  naFabricaAReceber: number
+  pedidosNaFabrica: number
+  /** entregue sem um centavo lançado — a fila do mutirão */
+  pedidosCarregadosSemLancamento: number
+  valorCarregadoSemLancamento: number
+  pedidosSemCard: number
+  /** mutirão: pedidos antigos dados como pagos, e o que espera o gestor */
+  pedidosRegularizados: number
+  valorRegularizado: number
+  regularizacoesAConfirmar: number
   pedidosQuitados: number
   pedidosParciais: number
   pedidosSemPlano: number
@@ -276,6 +475,8 @@ export function agregarPedido(
   receiptsRaw: ReceiptRaw[],
   hoje: string,
   conferencias: Map<string, ConferenciaRaw> = new Map(),
+  producao: Producao = SEM_PRODUCAO,
+  marcas: MarcasPedido = SEM_MARCAS,
 ): PedidoFinanceiro & { parcelas: Parcela[] } {
   const valorTotal = devidoDe(pedido)
 
@@ -366,17 +567,24 @@ export function agregarPedido(
   // presa em "aguardando comprovante/conferência".
   const pendenteComprovacao = ativas.some(p => p.aguardandoComprovante || p.aguardandoConferencia)
 
+  // Regularização CONFIRMADA é terminal e vem antes de tudo, menos cancelamento:
+  // é o gestor dizendo "esse aqui já estava pago antes do sistema existir".
+  // Fica com nome próprio pra nunca se confundir com QUITADO, que tem comprovante.
+  const regularizado = marcas.regularizacao?.status === 'CONFIRMADA'
+
   const status: StatusPedido = cancelado
     ? 'CANCELADO'
-    : ativas.length === 0
-      ? 'SEM_PLANO'
-      : coberto
-        ? (pendenteComprovacao ? 'AGUARDANDO_CONFERENCIA' : 'QUITADO')
-        : temVencida
-          ? 'VENCIDO'
-          : recebido > CENT
-            ? 'PARCIAL'
-            : 'EM_DIA'
+    : regularizado
+      ? 'REGULARIZADO'
+      : ativas.length === 0
+        ? 'SEM_PLANO'
+        : coberto
+          ? (pendenteComprovacao ? 'AGUARDANDO_CONFERENCIA' : 'QUITADO')
+          : temVencida
+            ? 'VENCIDO'
+            : recebido > CENT
+              ? 'PARCIAL'
+              : 'EM_DIA'
 
   return {
     id: pedido.id,
@@ -399,6 +607,13 @@ export function agregarPedido(
     status,
     somaParcelas,
     divergenciaPlano: ativas.length > 0 ? somaParcelas - valorTotal : 0,
+    producao,
+    // "Nada lançado" é sobre o dinheiro, não sobre a parcela: pedido sem plano
+    // e sem recebimento também entra na fila de quem precisa registrar. Pedido
+    // já regularizado sai da fila — foi resolvido, mesmo que sem receipt.
+    semLancamento: receiptsRaw.length === 0 && !regularizado,
+    regularizacao: marcas.regularizacao,
+    entrega: marcas.entrega,
     parcelas,
   }
 }
@@ -409,9 +624,37 @@ export function resumoKpis(rows: PedidoFinanceiro[]): Kpis {
     pedidosQuitados: 0, pedidosParciais: 0, pedidosSemPlano: 0, pedidosComVencido: 0,
     pedidosAguardandoConferencia: 0, boletosPendentes: 0, pagamentosSemComprovante: 0,
     comprovantesAConferir: 0, comprovantesRejeitados: 0, planosDivergentes: 0,
+    carregadoAReceber: 0, pedidosCarregadosEmAberto: 0,
+    naFabricaAReceber: 0, pedidosNaFabrica: 0,
+    pedidosCarregadosSemLancamento: 0, valorCarregadoSemLancamento: 0, pedidosSemCard: 0,
+    pedidosRegularizados: 0, valorRegularizado: 0, regularizacoesAConfirmar: 0,
   }
   for (const r of rows) {
     if (r.status === 'CANCELADO') continue
+
+    // Pedido regularizado sai da COBRANÇA (não é dívida viva) mas continua no
+    // vendido — o faturamento aconteceu. Fica contado à parte pra ninguém
+    // confundir "regularizado no mutirão" com "recebido com comprovante".
+    if (r.status === 'REGULARIZADO') {
+      k.totalVendido += r.valorTotal
+      k.totalRecebido += r.recebido
+      k.pedidosRegularizados++
+      k.valorRegularizado += Math.max(0, r.valorTotal - r.recebido)
+      continue
+    }
+
+    const emAberto = r.aReceber > CENT
+    if (r.producao.etapa === 'CARREGADO') {
+      if (emAberto) { k.carregadoAReceber += r.aReceber; k.pedidosCarregadosEmAberto++ }
+      if (r.semLancamento) {
+        k.pedidosCarregadosSemLancamento++
+        k.valorCarregadoSemLancamento += r.valorTotal
+      }
+    } else if (NA_FABRICA.has(r.producao.etapa)) {
+      if (emAberto) { k.naFabricaAReceber += r.aReceber; k.pedidosNaFabrica++ }
+    } else if (r.producao.etapa === 'SEM_CARD') {
+      k.pedidosSemCard++
+    }
     k.totalVendido += r.valorTotal
     k.totalRecebido += r.recebido
     k.totalAReceber += r.aReceber
@@ -426,6 +669,7 @@ export function resumoKpis(rows: PedidoFinanceiro[]): Kpis {
     if (r.status === 'VENCIDO') k.pedidosComVencido++
     if (r.status === 'AGUARDANDO_CONFERENCIA') k.pedidosAguardandoConferencia++
     if (Math.abs(r.divergenciaPlano) > CENT) k.planosDivergentes++
+    if (r.regularizacao?.status === 'PROPOSTA') k.regularizacoesAConfirmar++
   }
   return k
 }

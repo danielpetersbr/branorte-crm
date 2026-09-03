@@ -18,7 +18,36 @@ import { supabase } from '@/lib/supabase'
 // ───────────────────────────────────────────────────────────────────────────
 
 export type StatusPedido =
-  | 'CANCELADO' | 'SEM_PLANO' | 'QUITADO' | 'VENCIDO' | 'AGUARDANDO_CONFERENCIA' | 'PARCIAL' | 'EM_DIA'
+  | 'CANCELADO' | 'SEM_PLANO' | 'QUITADO' | 'REGULARIZADO' | 'VENCIDO'
+  | 'AGUARDANDO_CONFERENCIA' | 'PARCIAL' | 'EM_DIA'
+
+/** Onde o equipamento está na fábrica. Vem de producao_cards (Controle de Produção). */
+export type EtapaFabrica =
+  | 'ANTES_DO_CHAO' | 'FABRICANDO' | 'PRONTO' | 'CARREGADO' | 'CANCELADO' | 'SEM_CARD'
+
+export interface Producao {
+  etapa: EtapaFabrica
+  statusCru: string | null
+  desde: string | null
+}
+
+export type StatusRegularizacao = 'PROPOSTA' | 'CONFIRMADA' | 'RECUSADA'
+
+export interface Regularizacao {
+  status: StatusRegularizacao
+  motivo: string | null
+  propostoPor: string | null
+  propostoEm: string | null
+  decididoPor: string | null
+  decididoEm: string | null
+  motivoRecusa: string | null
+}
+
+export interface Entrega {
+  entregueEm: string
+  observacao: string | null
+  confirmadoPor: string | null
+}
 
 export type StatusParcela =
   | 'CANCELADA' | 'PAGO' | 'AGUARDANDO_CONFERENCIA' | 'AGUARDANDO_COMPROVANTE'
@@ -82,6 +111,10 @@ export interface PedidoFinanceiro {
   status: StatusPedido
   divergenciaPlano: number
   somaParcelas: number
+  producao: Producao
+  semLancamento: boolean
+  regularizacao: Regularizacao | null
+  entrega: Entrega | null
 }
 
 export interface Kpis {
@@ -99,6 +132,16 @@ export interface Kpis {
   comprovantesAConferir: number
   comprovantesRejeitados: number
   planosDivergentes: number
+  carregadoAReceber: number
+  pedidosCarregadosEmAberto: number
+  naFabricaAReceber: number
+  pedidosNaFabrica: number
+  pedidosCarregadosSemLancamento: number
+  valorCarregadoSemLancamento: number
+  pedidosSemCard: number
+  pedidosRegularizados: number
+  valorRegularizado: number
+  regularizacoesAConfirmar: number
 }
 
 export interface ResumoVendedor {
@@ -114,6 +157,8 @@ export interface ResumoVendedor {
   boletosPendentes: number
   semPlano: number
   divergentes: number
+  carregadoAReceber: number
+  semLancamento: number
 }
 
 export interface Escopo { role: string; vendedores: string[] | null; gestor: boolean }
@@ -202,18 +247,57 @@ export type AcaoFinanceiro =
   | { acao: 'editar_pagamento'; order_id: string; receipt_id: string; valor?: number
       pago_em?: string; meio?: string; observacao?: string; motivo?: string }
   | { acao: 'excluir_pagamento'; order_id: string; receipt_id: string; motivo?: string }
+  | { acao: 'propor_regularizacao'; order_id: string; motivo: string }
+  | { acao: 'decidir_regularizacao'; order_id: string; status: 'CONFIRMADA' | 'RECUSADA'; motivo?: string }
+  | { acao: 'confirmar_entrega'; order_id: string; entregue_em: string; observacao?: string }
 
-/** Lê um File como base64, do jeito que o endpoint espera. */
-export function lerArquivo(file: File): Promise<ArquivoUpload> {
+/**
+ * Teto REAL de upload: a Vercel corta o corpo da requisição em 4,5 MB, e base64
+ * ainda engorda o arquivo em ~33%. A tela dizia "até 8 MB" e a foto de celular
+ * simplesmente falhava. Aqui o limite é honesto — e imagem grande é reduzida
+ * antes de sair do navegador, então na prática o vendedor não esbarra nele.
+ */
+export const LIMITE_UPLOAD_BYTES = 3 * 1024 * 1024
+
+const LADO_MAXIMO = 2000    // px: legível pra ler um comprovante, leve pra subir
+const ALVO_COMPRESSAO = 900 * 1024
+
+/** Reduz foto grande no próprio navegador. PDF passa direto — não dá pra redimensionar. */
+async function comprimirImagem(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || file.size <= ALVO_COMPRESSAO) return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const escala = Math.min(1, LADO_MAXIMO / Math.max(bitmap.width, bitmap.height))
+    const w = Math.round(bitmap.width * escala)
+    const h = Math.round(bitmap.height * escala)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, w, h)
+    bitmap.close?.()
+    const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/jpeg', 0.82))
+    // Se comprimir não ajudou (já era JPEG otimizado), fica com o original.
+    if (!blob || blob.size >= file.size) return file
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })
+  } catch {
+    return file   // navegador sem createImageBitmap: segue com o arquivo original
+  }
+}
+
+/** Lê um File como base64, do jeito que o endpoint espera — comprimindo antes se for foto. */
+export async function lerArquivo(file: File): Promise<ArquivoUpload> {
+  const pronto = await comprimirImagem(file)
   return new Promise((resolve, reject) => {
     const fr = new FileReader()
     fr.onerror = () => reject(new Error('Não consegui ler o arquivo.'))
     fr.onload = () => resolve({
-      nome: file.name,
-      tipo: file.type,
+      nome: pronto.name,
+      tipo: pronto.type,
       base64: String(fr.result).replace(/^data:[^,]+,/, ''),
     })
-    fr.readAsDataURL(file)
+    fr.readAsDataURL(pronto)
   })
 }
 
