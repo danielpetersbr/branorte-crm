@@ -2,10 +2,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   SEM_ETIQUETA, SEM_WHATSAPP, SEM_TELEFONE, etiquetasDoCliente, passaEtiqueta, opcoesEtiqueta,
-  etiquetaQuePinta, rotuloEtiquetaOpcao,
+  opcoesEtiquetaDeCamadas, etiquetaQuePinta, rotuloEtiquetaOpcao,
   nomeCanonicoEtiqueta, corDoPinoEtiqueta, corDaOpcaoEtiqueta,
   type EtiquetasDoFone, type MapaEtiquetas, type ConversaDoCliente,
 } from './mapa-etiquetas'
+import { ordemDe } from './wa-funil'
 
 /** Fixture: conversa etiquetada; `pares` = [etiqueta, VENDEDOR]. */
 const ef = (principal: string | null, pares: [string, string][], principalVendedor: string | null = pares[0]?.[1] ?? null): EtiquetasDoFone => ({
@@ -148,6 +149,54 @@ test('rótulos dos "sem" dizem o que fazer com cada um', () => {
 test('nomeCanonicoEtiqueta: caixa e alias iguais aos do funil', () => {
   assert.equal(nomeCanonicoEtiqueta(' fallow up '), 'FOLLOW UP')
   assert.equal(nomeCanonicoEtiqueta('Vendidos'), 'VENDIDO')
+})
+
+// O catálogo do vendedor (wascript_etiquetas) tem as duas grafias; sem tirar o
+// acento o painel listava a mesma etiqueta duas vezes, e a acentuada caía fora
+// do funil (ordem 900, cor cinza).
+test('nomeCanonicoEtiqueta: acento não parte a etiqueta em duas', () => {
+  assert.equal(nomeCanonicoEtiqueta('Orçamento enviado'), 'ORCAMENTO ENVIADO')
+  assert.equal(nomeCanonicoEtiqueta('PROSPECÇÃO'), 'PROSPECCAO')
+  assert.equal(nomeCanonicoEtiqueta('Só base de preço'), 'SO BASE DE PRECO')
+  assert.equal(nomeCanonicoEtiqueta('Não tem interesse'), 'NAO TEM INTERESSE')
+  // o ordinal "º" só vira "O" com NFKD — é o que faz o alias de 2ª tentativa pegar
+  assert.equal(nomeCanonicoEtiqueta('2º tentativa'), '2A TENTATIVA')
+  assert.equal(ordemDe(nomeCanonicoEtiqueta('Prospecção')), 0, 'entra no funil, não em 900')
+})
+
+test('opcoesEtiquetaDeCamadas: a visita entra na lista mesmo com a camada de orçamentos ligada', () => {
+  const orc = cv(ef('VENDIDO', [['VENDIDO', 'A']]))
+  const visita = cv(ef('FOLLOW UP', [['FOLLOW UP', 'B']]))
+  const ops = opcoesEtiquetaDeCamadas([
+    { chave: '4899990001', conversa: orc },
+    { chave: '4899990002', conversa: visita },
+  ])
+  assert.deepEqual(ops.map(o => `${o.valor}:${o.n}`), ['FOLLOW UP:1', 'VENDIDO:1'])
+})
+
+test('opcoesEtiquetaDeCamadas: mesmo telefone nas duas camadas conta UMA vez, somando as etiquetas', () => {
+  const ops = opcoesEtiquetaDeCamadas([
+    { chave: '4899990001', conversa: cv(ef('VENDIDO', [['VENDIDO', 'A']])) },
+    { chave: '4899990001', conversa: cv(ef('FOLLOW UP', [['FOLLOW UP', 'B']])) },
+  ])
+  // um cliente só, mas marcar qualquer uma das duas etiquetas mostra o pino dele
+  assert.deepEqual(ops.map(o => `${o.valor}:${o.n}`), ['FOLLOW UP:1', 'VENDIDO:1'])
+})
+
+test('opcoesEtiquetaDeCamadas: sem telefone não vira o mesmo cliente', () => {
+  const ops = opcoesEtiquetaDeCamadas([
+    { chave: null, conversa: cv(ef('FOLLOW UP', [['FOLLOW UP', 'A']])) },
+    { chave: null, conversa: cv(ef('FOLLOW UP', [['FOLLOW UP', 'B']])) },
+  ])
+  assert.deepEqual(ops.map(o => `${o.valor}:${o.n}`), ['FOLLOW UP:2'])
+})
+
+test('opcoesEtiquetaDeCamadas: cliente sem conversa numa camada e etiquetado na outra conta como etiquetado', () => {
+  const ops = opcoesEtiquetaDeCamadas([
+    { chave: '4899990001', conversa: SEM_CONV },
+    { chave: '4899990001', conversa: cv(ef('FOLLOW UP', [['FOLLOW UP', 'B']])) },
+  ])
+  assert.deepEqual(ops.map(o => `${o.valor}:${o.n}`), ['FOLLOW UP:1'])
 })
 
 test('cores: os três "sem" e uma etiqueta são quatro cores distintas nos dois temas', () => {
