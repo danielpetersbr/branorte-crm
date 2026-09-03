@@ -10,8 +10,9 @@ import {
 import { useEtiquetas } from '@/hooks/useEtiquetas'
 import {
   etiquetasDoCliente, nomeCanonicoEtiqueta, passaEtiqueta, opcoesEtiqueta, etiquetaQuePinta,
-  corDoPinoEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao, SEM_ETIQUETA, SEM_WHATSAPP,
-  type EtiquetasDoFone, type MapaEtiquetas,
+  corDoPinoEtiqueta, corDaOpcaoEtiqueta, rotuloEtiquetaOpcao,
+  SEM_ETIQUETA, SEM_WHATSAPP, SEM_TELEFONE, SEM_CONVERSA,
+  type EtiquetasDoFone, type MapaEtiquetas, type ConversaDoCliente,
 } from '@/lib/mapa-etiquetas'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
@@ -636,19 +637,20 @@ export function MapaVisitas() {
     return { nomes, isFollowUp: nomes.some(n => FOLLOWUP_NOMES.has(n.toUpperCase())) }
   }
   /** Etiquetas da VISITA no formato do filtro (nomes canônicos do funil). */
-  function etiquetasDaVisita(v: Visita): EtiquetasDoFone {
+  function etiquetasDaVisita(v: Visita): ConversaDoCliente {
     const todas = [...new Set(resolverEtiquetas(v).nomes.map(nomeCanonicoEtiqueta))]
     const vend = (v.vendedor_nome ?? '').toUpperCase()
-    return { principal: todas[0] ?? null, principalVendedor: vend || null, todas, porVendedor: todas.map(t => [t, vend]) }
+    // A visita nasce DENTRO de uma conversa do WhatsApp, então nunca é "sem telefone".
+    return { etiquetas: { principal: todas[0] ?? null, principalVendedor: vend || null, todas, porVendedor: todas.map(t => [t, vend]) }, semFone: false }
   }
   // Etiquetas de cada cliente do mapa, casadas por telefone canônico — UMA vez
   // por carga, não a cada filtro (são 5 mil clientes × 2 telefones).
   const etiqPorCliente = useMemo(() => {
-    const m = new Map<string, EtiquetasDoFone | null>()
+    const m = new Map<string, ConversaDoCliente>()
     for (const p of orcPontos) m.set(p.cli_key, etiquetasDoCliente(etiqMap, [p.telefone, p.fone]))
     return m
   }, [orcPontos, etiqMap])
-  const etiqDoPonto = (p: OrcamentoPonto): EtiquetasDoFone | null => etiqPorCliente.get(p.cli_key) ?? null
+  const etiqDoPonto = (p: OrcamentoPonto): ConversaDoCliente => etiqPorCliente.get(p.cli_key) ?? SEM_CONVERSA
   const passaEtq = (p: OrcamentoPonto) => passaEtiqueta(etiquetasSel, etiqDoPonto(p))
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.LayerGroup | null>(null)
@@ -778,7 +780,7 @@ export function MapaVisitas() {
   // mesma regra da soma por estado: tudo, menos o próprio facet. Entram as
   // camadas LIGADAS: se só as visitas estão ligadas, a contagem é das visitas.
   const opcoesEtq = useMemo(() => {
-    const base: (EtiquetasDoFone | null)[] = []
+    const base: ConversaDoCliente[] = []
     if (showOrc) for (const p of orcPontos) {
       const passa =
         (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
@@ -1579,11 +1581,18 @@ export function MapaVisitas() {
       // do satélite, ofuscavam as etiquetas de verdade. Agora eles recuam: menores, sem
       // borda, apagados, e desenhados PRIMEIRO pra ficarem atrás dos coloridos.
       // 0 = sem WhatsApp · 1 = tem conversa, sem etiqueta · 2 = etiquetado.
-      const pesoEtq = (p: OrcamentoPonto): 0 | 1 | 2 => {
-        if (modo !== 'etiqueta') return 2
-        const k = etiquetaQuePinta(etiqDoPonto(p), p.vendedor, etiquetasSel)
-        return k === SEM_WHATSAPP ? 0 : k === SEM_ETIQUETA ? 1 : 2
+      // O peso é calculado UMA vez por pino, não dentro do comparador: `sort` chama o
+      // comparador ~n·log n vezes (5.358 pinos ≈ 66 mil), e cada chamada custava dois
+      // etiquetaQuePinta + dois lookups no Map — 130 mil a cada redesenho do mapa.
+      const pesoPorKey = new Map<string, 0 | 1 | 2>()
+      if (modo === 'etiqueta') {
+        for (const p of orcFiltrados) {
+          const k = etiquetaQuePinta(etiqDoPonto(p), p.vendedor, etiquetasSel)
+          pesoPorKey.set(p.cli_key, k === SEM_WHATSAPP || k === SEM_TELEFONE ? 0 : k === SEM_ETIQUETA ? 1 : 2)
+        }
       }
+      const pesoEtq = (p: OrcamentoPonto): 0 | 1 | 2 => pesoPorKey.get(p.cli_key) ?? 2
+      // sort estável (ES2019): pinos de mesmo peso mantêm a ordem original
       const ordemDesenho = modo === 'etiqueta' ? [...orcFiltrados].sort((a, b) => pesoEtq(a) - pesoEtq(b)) : orcFiltrados
       for (const p of ordemDesenho) {
         const mk = marc[chaveMarc(p.telefone, p.fone, p.cliente)]
@@ -1613,7 +1622,7 @@ export function MapaVisitas() {
           const ctx = ctxPopupRef.current
           return popupOrcamento(p, mk, undefined, ctx.ativo
             ? { vizinhos: ctx.porCoord.get(kCoord(p.lat, p.lng)) ?? [p], jaNaViagem: ctx.dentro }
-            : undefined, irmaos, etiqDoPonto(p))
+            : undefined, irmaos, etiqDoPonto(p).etiquetas)
         })
         m.addTo(layer)
         marcadorPorKeyRef.current.set(p.cli_key, m)
@@ -1815,7 +1824,7 @@ export function MapaVisitas() {
     // solto se o cliente estiver escondido pelos filtros da tela.
     const pino = marcadorPorKeyRef.current.get(p.cli_key)
     if (pino) { pino.openPopup(); return }
-    L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p, marc[chaveMarc(p.telefone, p.fone, p.cliente)], undefined, undefined, undefined, etiqDoPonto(p))).openOn(map)
+    L.popup().setLatLng([p.lat, p.lng]).setContent(popupOrcamento(p, marc[chaveMarc(p.telefone, p.fone, p.cliente)], undefined, undefined, undefined, etiqDoPonto(p).etiquetas)).openOn(map)
   }
 
   function focarLinha(r: OrcamentoLinha) {
@@ -2505,7 +2514,7 @@ export function MapaVisitas() {
                         {statsEtq.length === 0 && <li className="text-[12px] text-ink-muted">Nenhum pino no mapa.</li>}
                       </ul>
                       <p className="text-[10px] text-ink-faint mt-2 leading-snug">
-                        Sem WhatsApp sincronizado fica menor, apagado e atrás dos outros — pra etiqueta de verdade aparecer. Cor: com filtro ligado, a etiqueta pedida; senao a que o vendedor do pino colocou; senao a principal da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
+                        Sem conversa (com ou sem telefone) fica menor, apagado e atrás dos outros — pra etiqueta de verdade aparecer. Cor: com filtro ligado, a etiqueta pedida; senao a que o vendedor do pino colocou; senao a principal da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
                       </p>
                     </>
                   )}
