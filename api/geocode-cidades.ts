@@ -59,6 +59,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .filter(c => !ehCentroDoEstado(c.uf || '', c.lat, c.lng))
       .map(c => `${(c.cidade || '').toLowerCase()}|${c.uf || ''}`))
   const faltam = (cidades || []).filter(c => c.cidade && !resolvidas.has(`${c.cidade.toLowerCase()}|${c.uf || ''}`))
+
+  // ⚠️ Cidade NOVA primeiro; retentativa de centro-do-estado depois.
+  //
+  // Sem esta ordem o lote de 30 era comido inteiro pelas MESMAS cidades a cada
+  // chamada: nome digitado errado ("Senhor do Bonfm", "Fortaleça", "Colinas dos
+  // Sul") nunca resolve no Nominatim, cai no centro do estado, e o centro do
+  // estado é justamente o que marca a linha pra ser tentada de novo. Resultado
+  // medido em 03/09/2026: 30 linhas impossíveis giravam eternamente e a cidade
+  // recém-cadastrada NUNCA era geocodificada — 70 orçamentos de 2026,
+  // R$ 6,9 milhões, ficaram fora do mapa (a matview descarta quem não tem
+  // coordenada, então o cliente não aparecia nem como "sem localização").
+  // Uma retornou 200 com `atualizados: 0, aproximados: 26`: nenhuma cidade nova
+  // no lote, só as impossíveis de novo.
+  const noCache = new Set((cache || []).map(c => `${(c.cidade || '').toLowerCase()}|${c.uf || ''}`))
+  const nuncaTentada = (c: { cidade: string | null; uf: string | null }) =>
+    !noCache.has(`${(c.cidade || '').toLowerCase()}|${c.uf || ''}`)
+  faltam.sort((a, b) => Number(nuncaTentada(b)) - Number(nuncaTentada(a)))
+
   const lote = faltam.slice(0, 30) // teto por chamada (rate-limit Nominatim + timeout)
 
   let atualizados = 0
