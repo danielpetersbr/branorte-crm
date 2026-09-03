@@ -55,8 +55,31 @@ function normalizePhoneBR(raw: string): string {
   return digits;
 }
 
+// UFs aceitas como sufixo regional do código do criativo (ex.: "&8 RO").
+// ⚠️ MTS é como o gestor escreveu Mato Grosso do Sul no nome do anúncio
+// (`AD - &8 MTS`, conjunto segmentado para a região 446 = Mato Grosso do Sul).
+// Normalizamos aqui em vez de exigir que ele renomeie o anúncio no Meta.
+const UF_SUFIXO =
+  "AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO";
+const UF_ALIAS: Record<string, string> = { MTS: "MS" };
+const RE_COD_UF = new RegExp(`&(\\d+)\\s+(${UF_SUFIXO}|MTS)\\b`, "i");
+
+// (03/09/2026) Campanhas regionais: o Fabrício passou a rodar o MESMO criativo em
+// conjuntos separados por estado, marcando só no NOME DO ANÚNCIO ("AD - &8 RO",
+// "AD - &8 MTS"). Os dois conjuntos têm nome idêntico, então o nome do anúncio é a
+// única marca que existe. A regex antiga devolvia apenas os dígitos e as duas campanhas
+// caíam no CRM como "&8" — em 30 dias isso fundiu R$ 2.043,71, que é 96% de tudo que o
+// "&8" gastou. Agora o sufixo sobrevive.
+//
+// Compatibilidade: quem agrupa por `substring(criativo_codigo from '^&[0-9]+')`
+// continua vendo "&8" e não muda de resultado.
 function extractAdCode(text: string): string | null {
   if (!text) return null;
+  const mUf = text.match(RE_COD_UF);
+  if (mUf) {
+    const uf = mUf[2].toUpperCase();
+    return `&${mUf[1]} ${UF_ALIAS[uf] ?? uf}`;
+  }
   const m1 = text.match(/&(\d+)/);
   if (m1) return `&${m1[1]}`;
   const m2 = text.match(/#LP(\w+)/i);

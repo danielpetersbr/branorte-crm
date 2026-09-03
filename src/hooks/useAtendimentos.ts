@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabaseAuditoria, supabase } from '@/lib/supabase'
 import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal, type StatusVendedor } from '@/types/atendimento'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
+import { codigosParaFiltro } from '@/lib/criativo-codigo'
 
 /**
  * Pega primeiro nome do vendedor logado. NULL se admin (sem filtro)
@@ -776,10 +777,12 @@ export function useAtendimentos(filters: AtendimentoFilters) {
           query = query.eq('origem', filters.origem)
         }
       }
-      // #17: filtro por criativo. Match exato em criativo_codigo (M0023, F1234).
-      if (filters.criativo) {
-        query = query.eq('criativo_codigo', filters.criativo.trim().toUpperCase())
-      }
+      // #17: filtro por criativo. (03/09) Deixou de ser `.eq` porque o código passou a
+      // aceitar sufixo de estado ("&8 RO"): digitar "&8" tem que trazer as regionais
+      // junto, senão o filtro esconde 96% da verba daquele criativo. Ver codigosParaFiltro.
+      const codsCriativo = codigosParaFiltro(filters.criativo)
+      if (codsCriativo.length === 1) query = query.eq('criativo_codigo', codsCriativo[0])
+      else if (codsCriativo.length > 1) query = query.in('criativo_codigo', codsCriativo)
 
       const from = filters.page * ATENDIMENTO_PAGE_SIZE
       query = query.range(from, from + ATENDIMENTO_PAGE_SIZE - 1)
@@ -874,10 +877,11 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
       q = q.eq('origem', filters.origem)
     }
   }
-  // #17: filtro por criativo aplicado também no KPI/total
-  if (filters?.criativo) {
-    q = q.eq('criativo_codigo', filters.criativo.trim().toUpperCase())
-  }
+  // #17: filtro por criativo aplicado também no KPI/total (mesma regra da listagem —
+  // se divergir, o card conta uma coisa e a lista mostra outra).
+  const codsCriativo = codigosParaFiltro(filters?.criativo)
+  if (codsCriativo.length === 1) q = q.eq('criativo_codigo', codsCriativo[0])
+  else if (codsCriativo.length > 1) q = q.in('criativo_codigo', codsCriativo)
   return q
 }
 
