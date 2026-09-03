@@ -395,6 +395,60 @@ export function lookupDadosIa(map: DadosIaMap | undefined, phone: string | null 
   return c ? (map[c] ?? null) : null
 }
 
+// ─── O que o VENDEDOR digitou na extensão (1ª fonte da coluna Equipamento) ───
+// Por que existe: a coluna de perfil era alimentada por leads_webhook (o formulário
+// do anúncio — 355 de 11.143 leads, 3%) com fallback no palpite da IA. O vendedor
+// fala com TODOS os clientes; é a única fonte capaz de encher a coluna.
+// Precedência na tela: vendedor > formulário do anúncio > IA. Quem falou com o
+// cliente ganha do palpite.
+export interface QualifVendedor {
+  produto: string | null       // "Compacta 02" | "Esteira de sacaria" | texto livre legado
+  especie: string | null
+  cabecas: string | null
+  finalidade: string | null    // 'consumo' | 'venda'
+  sobra: boolean               // consumo + sobra = o botão "os dois" da extensão
+  venda_qtd: string | null     // só no caminho de VENDA (lá não se pergunta cabeça)
+  venda_un: string | null
+}
+export type QualifVendedorMap = Record<string, QualifVendedor>
+
+export function useQualificacaoPorTelefone(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['qualificacao-por-telefone', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<QualifVendedorMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('qualificacao_por_telefone_canon', { p_canons: canons })
+      if (error) throw error
+      const map: QualifVendedorMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.fone_canon) continue
+        map[String(row.fone_canon)] = {
+          produto: row.produto ?? null,
+          especie: row.especie ?? null,
+          cabecas: row.cabecas ?? null,
+          finalidade: row.finalidade ?? null,
+          sobra: row.sobra === true,
+          venda_qtd: row.venda_qtd ?? null,
+          venda_un: row.venda_un ?? null,
+        }
+      }
+      return map
+    },
+    // o vendedor preenche durante a conversa: 30 s é o mesmo ritmo do dados-ia
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
+  })
+}
+
+export function lookupQualificacao(map: QualifVendedorMap | undefined, phone: string | null | undefined): QualifVendedor | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
+}
+
 // ─── Finalidade DEDUZIDA da conversa (3º fallback da coluna Finalidade) ──────
 // Por que existe: finalidade_fabrica é campo do QUIZ DA LP e vive vazio — 453 de 3.775
 // leads em 30 dias (12%). Por origem: Facebook 0,6%, Meta ADS 12,4% — quem entra por

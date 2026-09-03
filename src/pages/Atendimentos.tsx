@@ -20,7 +20,7 @@ import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { resumoUtil, limparEquipamento } from '@/lib/atendimentos-texto'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useQualificacaoPorTelefone, lookupQualificacao, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -416,6 +416,9 @@ export function Atendimentos() {
   // Dados que a IA atendente coletou (animal/qtd/uso/equipamento/kg-h), cruzados por telefone —
   // preenche as colunas que a view auditoria deixou vazias (ReplyAgent descontinuado).
   const { data: dadosIaMap } = useDadosIaPorTelefone(phonesAtuais)
+  // 1ª fonte da coluna Equipamento: o que o vendedor marcou na extensão. Mesmos
+  // telefones da página, então não acrescenta round-trip por linha.
+  const { data: qualifMap } = useQualificacaoPorTelefone(phonesAtuais)
   // 3º fallback da coluna Finalidade — ver comentário do hook. Só os telefones da página.
   const { data: finalidadeInferidaMap } = useFinalidadeInferida(phonesAtuais)
   // Card "I.A" (KPI do topo): sem vendedor e ainda não marcado como "nunca respondeu".
@@ -1000,6 +1003,7 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[78px]">Animal</th>
                     <th className="hidden 2xl:table-cell w-[50px]" title="Cabeças (consumo) — vazio se for venda (ver Produção/h)">Qtd</th>
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
+                    <th className="hidden 2xl:table-cell w-[124px]" title="O que o cliente quer: modelo de fábrica ou equipamento avulso. Vem do que o VENDEDOR marcou na extensão (bloco O QUE PERGUNTAR); o palpite da IA só entra quando o vendedor não preencheu.">Equipamento</th>
                     <th className="w-[88px]">Vendedor</th>
                     <th className="w-[86px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
                     <th className="hidden xl:table-cell w-[140px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
@@ -1276,6 +1280,31 @@ export function Atendimentos() {
                           {(() => {
                             const kgh = r.capacidade_producao || lookupDadosIa(dadosIaMap, r.telefone)?.kg_h
                             return kgh ? <span className="text-[12px] text-ink-muted tabular-nums block truncate" title={String(kgh)}>{kgh}</span> : <EmptyCell />
+                          })()}
+                        </td>
+                        {/* EQUIPAMENTO (03/09/2026) — o que o cliente quer, em uma linha.
+                            Precedência: o que o VENDEDOR marcou na extensão > o palpite da IA.
+                            Quem falou com o cliente ganha do que a IA deduziu da conversa. */}
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 max-w-[124px]">
+                          {(() => {
+                            const q = lookupQualificacao(qualifMap, r.telefone)
+                            const daIa = lookupDadosIa(dadosIaMap, r.telefone)?.equipamento
+                            const nome = q?.produto || daIa
+                            if (!nome) return <EmptyCell />
+                            const doVendedor = !!q?.produto
+                            return (
+                              <span
+                                className="text-[12px] block truncate"
+                                style={{ color: doVendedor ? 'hsl(var(--ink))' : 'hsl(var(--ink-faint))' }}
+                                title={doVendedor
+                                  ? `${nome} — marcado pelo vendedor na extensão`
+                                  : `${nome} — deduzido pela IA da conversa (o vendedor ainda não confirmou)`}
+                              >
+                                {nome}
+                                {/* "os dois" = consumo + sobra. Sem isso ele fica igual a consumo puro. */}
+                                {q?.sobra && <span className="text-ink-faint"> · vende sobra</span>}
+                              </span>
+                            )
                           })()}
                         </td>
                         {/* VENDEDOR — só primeiro nome (sem avatar) + selo da IA atendente */}
