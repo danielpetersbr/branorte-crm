@@ -440,7 +440,12 @@ export function MapaVisitas() {
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>('')
   const [showOrc, setShowOrc] = useState(true)
-  const [showVis, setShowVis] = useState(false)
+  // Visitas LIGADA por padrão (03/09/2026, pedido do Daniel): é a única camada
+  // onde entra o cliente que ainda NÃO tem orçamento — o vendedor preenche
+  // cidade/UF no card "📍 Dados pra visita" da extensão e o pino tem que
+  // aparecer. Com ela desligada, preencher não mostrava nada e parecia que o
+  // cadastro não tinha funcionado.
+  const [showVis, setShowVis] = useState(true)
   const [busca, setBusca] = useState('')
   const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
@@ -1992,7 +1997,12 @@ export function MapaVisitas() {
             )}
             {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
             {showOrc && showVis && ' · '}
-            {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning">{semCoord} sem localização</span></>}</>}
+            {/* "sem localização" dava a entender falha de geocode. Medido em 03/09/2026:
+                os 857 registros sem coordenada estão TODOS sem cidade E sem UF — ninguém
+                preencheu. O que falta é cadastro, e é isso que o rótulo tem que dizer. */}
+            {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <span className="text-warning"
+              title="Cliente salvo pelo card 📍 Dados pra visita da extensão, mas sem cidade/UF — sem isso não há onde plotar. Preencha cidade e estado no perfil do contato no WhatsApp.">
+              {semCoord} sem cidade preenchida</span></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
           </p>
         </div>
