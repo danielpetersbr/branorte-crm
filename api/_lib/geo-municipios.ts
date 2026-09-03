@@ -122,7 +122,12 @@ export function resolverMunicipio(cidade: string, ufDigitada: string, idx: Indic
         else if (melhor && d === melhor.d && u !== melhor.uf && melhor.uf !== uf) empate = true
       }
     }
-    if (melhor && !empate) { nome = melhor.nome; ufs = new Set([melhor.uf]) }
+    // ⚠️ Trocar de ESTADO por semelhança só com typo de UMA letra. "Cristsilna"/GO
+    // está a 2 de "Cristina"/MG e a 3 de "Cristalina"/GO — o mais parecido levava o
+    // cliente de Goiás pra Minas. Com distância 2+ e UF diferente, a resposta certa é
+    // não adivinhar: fica no centro do estado que o cadastro afirma.
+    const trocaDeUf = !!melhor && !!uf && melhor.uf !== uf
+    if (melhor && !empate && (!trocaDeUf || melhor.d <= 1)) { nome = melhor.nome; ufs = new Set([melhor.uf]) }
   }
 
   const outras = ufs ? [...ufs].filter(u => u !== uf) : []
