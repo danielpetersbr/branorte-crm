@@ -25,8 +25,6 @@ const COLORS = {
   border: 'hsl(240 6% 90%)',
 }
 
-const WEEKDAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-
 function fmtN(n: number): string {
   return new Intl.NumberFormat('pt-BR').format(n)
 }
@@ -125,13 +123,6 @@ export function Analytics() {
         </div>
       </Card>
 
-      {/* Heatmap dia x hora */}
-      <Card>
-        <CardHeader title="Quando chegam os leads" subtitle="Heatmap dia da semana × hora — define escala de plantão" />
-        <div className="overflow-x-auto pb-2">
-          <DiaHoraHeatmap data={data.diaXHora} />
-        </div>
-      </Card>
 
       {/* Qualidade */}
       <Card>
@@ -173,56 +164,6 @@ export function Analytics() {
           </div>
         </div>
       </Card>
-    </div>
-  )
-}
-
-function DiaHoraHeatmap({ data }: { data: { weekday: number; hour: number; valor: number }[] }) {
-  const max = Math.max(1, ...data.map(d => d.valor))
-  const grid: Record<number, Record<number, number>> = {}
-  for (const d of data) {
-    grid[d.weekday] = grid[d.weekday] ?? {}
-    grid[d.weekday][d.hour] = d.valor
-  }
-  const hours = Array.from({ length: 24 }, (_, i) => i)
-  const days = [0, 1, 2, 3, 4, 5, 6]
-
-  return (
-    <div className="text-[10px] min-w-[700px]">
-      <div className="flex">
-        <div className="w-9 shrink-0" />
-        {hours.map(h => (
-          <div key={h} className="flex-1 min-w-[24px] text-center text-ink-faint tabular-nums">
-            {h % 3 === 0 ? h : ''}
-          </div>
-        ))}
-      </div>
-      {days.map(wd => (
-        <div key={wd} className="flex items-center gap-0.5 mt-0.5">
-          <div className="w-9 shrink-0 text-ink-muted font-medium">{WEEKDAY_SHORT[wd]}</div>
-          {hours.map(h => {
-            const v = grid[wd]?.[h] ?? 0
-            const intensity = v === 0 ? 0 : 0.15 + (v / max) * 0.85
-            return (
-              <div
-                key={h}
-                title={`${WEEKDAY_SHORT[wd]} ${h}h — ${v} leads`}
-                className="flex-1 min-w-[24px] aspect-square rounded-[2px] border border-border/30"
-                style={{
-                  background: v === 0 ? 'hsl(var(--surface-2))' : `hsl(152 60% 40% / ${intensity})`,
-                }}
-              />
-            )
-          })}
-        </div>
-      ))}
-      <div className="flex items-center gap-2 mt-3 text-[10px] text-ink-faint">
-        <span>Menos</span>
-        {[0, 0.25, 0.5, 0.75, 1].map(i => (
-          <div key={i} className="w-4 h-3 rounded-[2px] border border-border/30" style={{ background: i === 0 ? 'hsl(var(--surface-2))' : `hsl(152 60% 40% / ${0.15 + i * 0.85})` }} />
-        ))}
-        <span>Mais</span>
-      </div>
     </div>
   )
 }
