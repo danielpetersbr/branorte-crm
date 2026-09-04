@@ -6,6 +6,7 @@ import {
   criarResumoGestor,
   escolherVendedorInicial,
   formatarMetricaGestor,
+  normalizarFatorCotaGestor,
   ordenarVendedoresGestor,
   resolverSelecaoGestor,
   resolverVisaoTabelaGestor,
@@ -55,6 +56,12 @@ test('preserva ausência de fonte como null em vez de zero', () => {
   assert.equal(resumo.atendimentos, null)
   assert.equal(resumo.leads, null)
   assert.equal(resumo.orcamentos, null)
+})
+
+test('cota desativada neutraliza fator bruto sem alterar o fator da cota ativa', () => {
+  assert.equal(normalizarFatorCotaGestor(false, 0.52), null)
+  assert.equal(normalizarFatorCotaGestor(true, 0.52), 0.52)
+  assert.equal(normalizarFatorCotaGestor(true, null), null)
 })
 
 test('gera primeiro o bloqueio por cota e depois a queda operacional', () => {

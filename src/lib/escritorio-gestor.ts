@@ -94,6 +94,10 @@ export function formatarMetricaGestor(valor: number | null): string {
   return valor == null ? '—' : new Intl.NumberFormat('pt-BR').format(valor)
 }
 
+export function normalizarFatorCotaGestor(cotaAtiva: boolean, fator: number | null | undefined): number | null {
+  return cotaAtiva && fator != null ? Number(fator) : null
+}
+
 const somaOuNull = (valores: Array<number | null>) => valores.every(valor => valor == null)
   ? null
   : valores.reduce<number>((total, valor) => total + (valor ?? 0), 0)

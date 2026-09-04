@@ -8,6 +8,7 @@ import {
   criarResumoGestor,
   escolherVendedorInicial,
   formatarMetricaGestor,
+  normalizarFatorCotaGestor,
   type VendedorGestor,
 } from '@/lib/escritorio-gestor'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -527,7 +528,7 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
         carteiraAberta: funilFetched ? (f?.aberto ?? 0) : null,
         carteiraTotal: funilFetched ? (f?.totalChats ?? 0) : null,
         parados: quota ? quota.parados_topo : null,
-        fatorCota: quota ? Number(quota.fator_cota) : null,
+        fatorCota: normalizarFatorCotaGestor(cotaAtiva, quota?.fator_cota),
         cortadoPorCota: cotaAtiva && !!quota?.cortado_por_cota,
       }
     }), [vendedores, infoDe, live, funil, funilFetched, ligProsp, ligProspFetched, efetivo, cotaAtiva, leadsHoje, leadsHojeFetched, orcHoje, orcHojeFetched])
@@ -942,26 +943,20 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
           const top = pct(p.y - DESK_H / 2, VB.h)
           const width = pct(DESK_W, VB.w)
           const height = pct(DESK_H, VB.h)
+          const superficieClicavel = modo === 'normal' && (!!selected || (!!nome && !isOutro))
+          const rotacaoMesa = { transform: `rotate(${rotDe(m.id)}deg)`, transition: girando === m.id ? 'none' : 'transform .12s' }
+          const conteudoMesa = (
+            <div className="w-full h-full" style={rotacaoMesa}>
+              <Workstation tipo={isOutro ? 'outro' : 'vendedor'} empty={!nome} name={nome ?? m.id} ativo={ls?.status === 'ativo'} />
+            </div>
+          )
           return (
             <div
               key={m.id}
               onDragOver={editLayout ? undefined : e => { e.preventDefault(); setOverMesa(m.id) }}
               onDragLeave={editLayout ? undefined : () => setOverMesa(o => (o === m.id ? null : o))}
               onDrop={editLayout ? undefined : e => { e.preventDefault(); soltarNaMesa(m.id, e.dataTransfer.getData('text/plain') || dragging) }}
-              onClick={editLayout ? undefined : () => clicarMesa(m.id)}
-              onKeyDown={!editLayout && nome && !isOutro ? e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  clicarMesa(m.id)
-                }
-              } : undefined}
               onPointerDown={editLayout ? e => iniciarMover(e, m.id) : undefined}
-              role={!editLayout && nome && !isOutro ? 'button' : undefined}
-              tabIndex={!editLayout && nome && !isOutro ? 0 : undefined}
-              aria-pressed={!editLayout && nome && !isOutro ? selecionadoMesa : undefined}
-              aria-label={nome && !isOutro
-                ? `${nome}; status ${gestor?.statusLabel ?? 'desligado'}; Atendimentos hoje: ${formatarMetricaGestor(gestor?.atendimentos ?? null)}; Leads recebidos hoje: ${formatarMetricaGestor(gestor?.leads ?? null)}; Orçamentos hoje: ${formatarMetricaGestor(gestor?.orcamentos ?? null)}`
-                : undefined}
               title={nome
                 ? (isOutro
                     ? `${nome}${info?.setor ? ' · ' + info.setor : ''} — mesa ${idx + 1}`
@@ -975,15 +970,33 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
               } ${alerta ? 'ring-2 ring-red-500/70 animate-pulse' : ''} ${selecionadoMesa ? 'outline outline-2 outline-accent outline-offset-2' : ''}`}
               style={{ left, top, width, height, touchAction: editLayout ? 'none' : undefined, pointerEvents: modo === 'paredes' ? 'none' : undefined }}
             >
-              <div
-                draggable={!!nome && !editLayout}
-                onDragStart={e => { if (nome && !editLayout) { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
-                onDragEnd={() => setDragging(null)}
-                className={`w-full h-full transition-opacity ${nome && !editLayout ? 'cursor-grab active:cursor-grabbing' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
-                style={{ transform: `rotate(${rotDe(m.id)}deg)`, transition: girando === m.id ? 'none' : 'transform .12s' }}
-              >
-                <Workstation tipo={isOutro ? 'outro' : 'vendedor'} empty={!nome} name={nome ?? m.id} ativo={ls?.status === 'ativo'} />
-              </div>
+              {superficieClicavel ? (
+                <button
+                  type="button"
+                  draggable={!!nome}
+                  onDragStart={e => { if (nome) { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
+                  onDragEnd={() => setDragging(null)}
+                  onClick={() => clicarMesa(m.id)}
+                  aria-pressed={nome && !isOutro ? selecionadoMesa : undefined}
+                  aria-label={nome && !isOutro
+                    ? `${nome}; status ${gestor?.statusLabel ?? 'desligado'}; Atendimentos hoje: ${formatarMetricaGestor(gestor?.atendimentos ?? null)}; Leads recebidos hoje: ${formatarMetricaGestor(gestor?.leads ?? null)}; Orçamentos hoje: ${formatarMetricaGestor(gestor?.orcamentos ?? null)}`
+                    : nome
+                      ? `Mesa ${idx + 1}, ocupada por ${nome}${info?.setor ? `, setor ${info.setor}` : ''}`
+                      : `Mesa ${idx + 1}, vazia`}
+                  className={`w-full h-full border-0 bg-transparent p-0 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${nome ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${fade ? 'opacity-40 grayscale' : ''}`}
+                >
+                  {conteudoMesa}
+                </button>
+              ) : (
+                <div
+                  draggable={!!nome && modo === 'normal'}
+                  onDragStart={e => { if (nome && modo === 'normal') { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
+                  onDragEnd={() => setDragging(null)}
+                  className={`w-full h-full transition-opacity ${nome && modo === 'normal' ? 'cursor-grab active:cursor-grabbing' : ''} ${editLayout ? 'pointer-events-none' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
+                >
+                  {conteudoMesa}
+                </div>
+              )}
 
               {/* Handle de girar (só no modo posicionar) */}
               {editLayout && (
@@ -1003,17 +1016,17 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
                 <>
                   {/* status (vendedor) ou setor (outro) no topo-direito */}
                   {isOutro ? (
-                    <span className="absolute -top-1.5 right-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/50 ring-1 ring-purple-300/40 text-purple-50 leading-none">
+                    <span className="pointer-events-none absolute -top-1.5 right-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/50 ring-1 ring-purple-300/40 text-purple-50 leading-none">
                       {abreviaSetor(info?.setor ?? null)}
                     </span>
                   ) : (
                     <span
-                      className={`absolute top-1 right-1 h-3 w-3 rounded-full ring-2 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
+                      className={`pointer-events-none absolute top-1 right-1 h-3 w-3 rounded-full ring-2 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
                       title={cfg?.label ?? 'sem sinal'}
                     />
                   )}
                   {/* nome + números do dia (sempre visíveis) */}
-                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 flex flex-col items-center gap-0.5 max-w-[170%]">
+                  <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-1.5 flex flex-col items-center gap-0.5 max-w-[170%]">
                     <span className="px-2 py-0.5 rounded-md bg-black/60 ring-1 ring-white/10 text-[11px] font-bold text-white truncate leading-tight max-w-full">
                       {nomeCurto(nome)}
                     </span>
@@ -1032,9 +1045,10 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
                   </div>
                   {!editLayout && (
                     <button
+                      type="button"
                       onClick={e => { e.stopPropagation(); limpar.mutate(m.id) }}
                       title="Tirar da mesa"
-                      className="absolute top-0 left-0 opacity-0 group-hover:opacity-100 text-ink-faint hover:text-red-400 bg-surface/70 rounded-full transition-opacity"
+                      className="absolute top-0 left-0 z-30 opacity-0 group-hover:opacity-100 focus:opacity-100 text-ink-faint hover:text-red-400 bg-surface/70 rounded-full transition-opacity"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -1044,7 +1058,7 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
                   )}
                 </>
               ) : (
-                <span className="absolute inset-0 flex items-center justify-center text-[15px] font-bold text-ink/30">{idx + 1}</span>
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[15px] font-bold text-ink/30">{idx + 1}</span>
               )}
             </div>
           )
