@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
-import { lazy, useState, useEffect } from 'react'
+import { lazy, useState, useEffect, type CSSProperties } from 'react'
+import { Toaster } from 'sonner'
+import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
 import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
@@ -80,6 +82,9 @@ const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(
 // (PedidoSimples) e o de garantia (PedidoGarantia). Gravam no banco do controle — ver
 // src/lib/controle-supabase/client.ts.
 const PedidoVendaNovo = lazy(() => import('@/pages/pedido-venda/NovoPedido'))
+// Detalhe do pedido: era o buraco que fazia o vendedor voltar pro controle.branorte.com
+// depois de criar o pedido aqui — não dava pra ver, baixar, ajustar nem excluir pelo CRM.
+const PedidoVendaDetalhe = lazy(() => import('@/pages/pedido-venda/PedidoDetalhe'))
 const PedidoVendaSimples = lazy(() => import('@/pages/pedido-venda/PedidoSimples'))
 const PedidoVendaGarantia = lazy(() => import('@/pages/pedido-venda/PedidoGarantia'))
 const Supervisao = lazy(() => import('@/pages/Supervisao').then(m => ({ default: m.Supervisao })))
@@ -536,6 +541,8 @@ function AppRoutes() {
             equipamentos, plano de pagamento, geracao de DOCX/PDF e envio pra fabrica. */}
         <Route path="/controle/novo-pedido" element={<PedidoVendaNovo />} />
         <Route path="/controle/pedidos/editar/:id" element={<PedidoVendaNovo />} />
+        {/* /editar/:id vem ANTES pra "editar" não ser capturado como um :id. */}
+        <Route path="/controle/pedidos/:id" element={<PedidoVendaDetalhe />} />
         <Route path="/controle/pedido-simples" element={<PedidoVendaSimples />} />
         <Route path="/controle/pedido-garantia" element={<PedidoVendaGarantia />} />
         {/* Cadastro rapido antigo (9 campos, produto em texto livre). Sai do menu, mas a
@@ -679,10 +686,49 @@ function OverlaysGlobais() {
   )
 }
 
+/**
+ * ⚠️ SEM ISTO O `toast()` DO SONNER É UM NO-OP SILENCIOSO.
+ * O sonner já era dependência e várias telas portadas do controle.branorte.com
+ * chamam `toast.success/.error/.loading` — mas ninguém nunca montou o <Toaster />,
+ * então a fila de toasts era escrita e jogada fora. Na prática: trocar o status de
+ * um pedido, ou falhar ao copiar um link, não dizia UMA PALAVRA pro usuário.
+ *
+ * TEMA — dois mecanismos, porque o sonner tem dois caminhos de cor:
+ *  1. `theme`: com `richColors`, o sonner escolhe a paleta de success/error pelo
+ *     PROP, não por CSS var. Deixando no default ('light'), o toast de erro saía
+ *     com fundo claro e texto vermelho POR CIMA do app escuro. E `theme="system"`
+ *     estaria errado também: o CRM não segue prefers-color-scheme, ele alterna a
+ *     classe `dark` no <html> (useDarkMode.ts). Daí o hook.
+ *  2. `--normal-*`: o toast neutro segue as CSS vars do próprio CRM, então casa
+ *     com as superfícies do app nos dois temas.
+ *
+ * Componente separado de propósito: assim a troca de tema re-renderiza SÓ o
+ * toaster, não a árvore inteira pendurada no <App>.
+ */
+function ToasterDoCrm() {
+  const [dark] = useDarkMode()
+  return (
+    <Toaster
+      position="top-right"
+      closeButton
+      richColors
+      theme={dark ? 'dark' : 'light'}
+      style={
+        {
+          '--normal-bg': 'hsl(var(--surface))',
+          '--normal-text': 'hsl(var(--ink))',
+          '--normal-border': 'hsl(var(--border))',
+        } as CSSProperties
+      }
+    />
+  )
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <ToasterDoCrm />
         <BrowserRouter>
           <AppRoutes />
           <OverlaysGlobais />

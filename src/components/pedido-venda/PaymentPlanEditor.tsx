@@ -469,7 +469,10 @@ export function PaymentPlanEditor({ valorTotal, paymentPlan, onChange, dataEntre
         </div>
       </div>
 
-      <div className="p-3 rounded-lg border" style={{ backgroundColor: estaCorreto ? 'hsl(var(--accent) / 0.1)' : 'hsl(var(--destructive) / 0.1)' }}>
+      {/* `--destructive` é var do app de origem e NÃO existe no CRM: quando as parcelas
+          NÃO fechavam com o total, a cor inválida caía fora e o bloco ficava SEM FUNDO —
+          justamente o caso em que o alerta precisa aparecer. Aqui a var é `--danger`. */}
+      <div className="p-3 rounded-lg border" style={{ backgroundColor: estaCorreto ? 'hsl(var(--accent) / 0.1)' : 'hsl(var(--danger) /0.1)' }}>
         <p className={`text-sm font-semibold ${estaCorreto ? 'text-accent' : 'text-destructive'}`}>
           Soma = R$ {somaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {estaCorreto ? '✓ OK' : `(falta R$ ${diferenca.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`}
         </p>

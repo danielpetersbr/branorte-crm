@@ -2788,8 +2788,15 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
         {/* Mensagem de Sucesso */}
         {arquivoUrl && (
-          <div className="p-6 rounded-lg bg-[var(--gradient-accent)] text-accent-foreground flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 shadow-[var(--shadow-accent)]">
-            <div className="p-3 rounded-lg bg-accent-foreground/10">
+          /* Era `bg-[var(--gradient-accent)] text-accent-foreground`: as DUAS vêm do app de
+             origem e nenhuma existe aqui — a var não resolve e `accent-foreground` não está
+             no tailwind.config. O bloco de confirmação saía sem fundo e com o texto na cor
+             herdada. `accent` (verde da marca) e `accent-fg` existem no CRM e têm par no escuro.
+             (Chaves removidas de propósito: comentário JSX entre chaves só vale em posição de
+             FILHO. Aqui é posição de EXPRESSÃO, e com as chaves o arquivo não parseia — o
+             build inteiro cai com TS1005/TS17002.) */
+          <div className="p-6 rounded-lg bg-accent text-accent-fg flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 shadow-lg">
+            <div className="p-3 rounded-lg bg-accent-fg/10">
               <FileText className="h-8 w-8" />
             </div>
             <div>
