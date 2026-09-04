@@ -12,7 +12,7 @@ import {
 import {
   Wallet, TrendingDown, CheckCircle2, Search, AlertTriangle, FileWarning,
   CalendarClock, X, Paperclip, Receipt, ShieldAlert, Clock, Upload, Send,
-  ThumbsUp, ThumbsDown, History, Users, Plus, Loader2, Pencil, Trash2,
+  ThumbsUp, ThumbsDown, History, Users, Plus, Loader2, Pencil, Trash2, Undo2,
   Factory, Truck, PackageCheck, HelpCircle, Camera, Archive, HandCoins,
 } from 'lucide-react'
 
@@ -81,6 +81,16 @@ const FABRICA_ICONE: Record<EtapaFabrica, typeof Wallet> = {
   CARREGADO: Truck, CANCELADO: X, SEM_CARD: HelpCircle,
 }
 
+/**
+ * Pedido regularizado (ou cancelado) guarda o valor que devia antes da baixa.
+ * Mostrar isso em vermelho encheu a tela de cobrança que já foi resolvida — no
+ * dia do mutirão eram R$ 10,1 mi de vermelho em 313 pedidos. Aqui o número
+ * some de vista, mas continua no title pra quem precisar conferir.
+ */
+function resolvido(r: { status: StatusPedido }): boolean {
+  return r.status === 'REGULARIZADO' || r.status === 'CANCELADO'
+}
+
 function EtiquetaFabrica({ etapa, desde }: { etapa: EtapaFabrica; desde: string | null }) {
   const Icone = FABRICA_ICONE[etapa]
   const dica = etapa === 'SEM_CARD'
@@ -121,6 +131,7 @@ const ACAO_ROTULO: Record<string, string> = {
   regularizacao_proposta: 'marcou como já pago e mandou pro gestor confirmar',
   regularizacao_confirmada: 'confirmou a regularização do pedido antigo',
   regularizacao_recusada: 'recusou a regularização',
+  regularizacao_desfeita: 'desfez a regularização — o pedido voltou pra cobrança',
   entrega_confirmada: 'confirmou que o cliente recebeu',
 }
 
@@ -922,6 +933,7 @@ function PainelPedido({ pedidoId, onClose }: { pedidoId: string; onClose: () => 
   const [regularizando, setRegularizando] = useState(false)
   const [confirmandoEntrega, setConfirmandoEntrega] = useState(false)
   const [motivoRecusaReg, setMotivoRecusaReg] = useState('')
+  const [motivoDesfazer, setMotivoDesfazer] = useState('')
   const p = data?.pedido
   const gestor = !!data?.escopo.gestor
 
@@ -1031,6 +1043,19 @@ function PainelPedido({ pedidoId, onClose }: { pedidoId: string; onClose: () => 
                   </p>
                   {p.regularizacao.motivoRecusa && (
                     <p className="mt-1 text-xs text-danger">Motivo da recusa: {p.regularizacao.motivoRecusa}</p>
+                  )}
+                  {gestor && p.regularizacao.status === 'CONFIRMADA' && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Input value={motivoDesfazer} onChange={e => setMotivoDesfazer(e.target.value)}
+                        placeholder="Por que está voltando pra cobrança?" className="h-8 max-w-[280px] text-xs" />
+                      <Botao tone="danger" disabled={acaoPedido.isPending || !motivoDesfazer.trim()}
+                        onClick={() => acaoPedido.mutate({
+                          acao: 'desfazer_regularizacao', order_id: p.id, motivo: motivoDesfazer.trim(),
+                        }, { onError: e => setErroAcao((e as FinanceiroErro).message), onSuccess: () => setMotivoDesfazer('') })}>
+                        {acaoPedido.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                        Isso não estava pago
+                      </Botao>
+                    </div>
                   )}
                   {gestor && p.regularizacao.status === 'PROPOSTA' && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1412,8 +1437,19 @@ export function ControleFinanceiro() {
                           <td className="px-4 py-3"><span className="text-sm text-text-secondary">{r.vendedor || '—'}</span></td>
                           <td className="px-4 py-3 text-right"><span className="text-sm tabular-nums text-text-primary">{brl(r.valorTotal)}</span></td>
                           <td className="px-4 py-3 text-right"><span className={`text-sm tabular-nums ${r.recebido > 0.01 ? 'text-success' : 'text-text-muted'}`}>{brl(r.recebido)}</span></td>
-                          <td className="px-4 py-3 text-right"><span className="text-sm font-semibold tabular-nums text-text-primary">{brl(r.aReceber)}</span></td>
-                          <td className="px-4 py-3 text-right"><span className={`text-sm tabular-nums ${r.vencido > 0.01 ? 'font-semibold text-danger' : 'text-text-muted'}`}>{r.vencido > 0.01 ? brl(r.vencido) : '—'}</span></td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`text-sm tabular-nums ${resolvido(r) ? 'text-text-muted/60' : 'font-semibold text-text-primary'}`}
+                              title={resolvido(r) ? `Antes da baixa: ${brl(r.aReceber)} em aberto` : undefined}>
+                              {resolvido(r) ? '—' : brl(r.aReceber)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`text-sm tabular-nums ${resolvido(r) ? 'text-text-muted/60'
+                              : r.vencido > 0.01 ? 'font-semibold text-danger' : 'text-text-muted'}`}
+                              title={resolvido(r) && r.vencido > 0.01 ? `Antes da baixa: ${brl(r.vencido)} vencido` : undefined}>
+                              {resolvido(r) ? '—' : r.vencido > 0.01 ? brl(r.vencido) : '—'}
+                            </span>
+                          </td>
                           <td className="px-4 py-3"><EtiquetaFabrica etapa={r.producao.etapa} desde={r.producao.desde} /></td>
                           <td className="px-4 py-3"><span className="text-sm text-text-secondary">{dataBR(r.proximoVencimento)}</span></td>
                           <td className="px-4 py-3">
@@ -1489,8 +1525,9 @@ export function ControleFinanceiro() {
                       <div><p className="text-[10px] uppercase text-text-muted">Recebido</p>
                         <p className="text-xs font-semibold tabular-nums text-success">{brl(r.recebido)}</p></div>
                       <div><p className="text-[10px] uppercase text-text-muted">Vencido</p>
-                        <p className={`text-xs font-semibold tabular-nums ${r.vencido > 0.01 ? 'text-danger' : 'text-text-muted'}`}>
-                          {r.vencido > 0.01 ? brl(r.vencido) : '—'}</p></div>
+                        <p className={`text-xs font-semibold tabular-nums ${resolvido(r) ? 'text-text-muted/60'
+                          : r.vencido > 0.01 ? 'text-danger' : 'text-text-muted'}`}>
+                          {resolvido(r) || r.vencido <= 0.01 ? '—' : brl(r.vencido)}</p></div>
                     </div>
                     {r.aReceber > 0.01 && r.status !== 'CANCELADO' && r.status !== 'REGULARIZADO' && (
                       <div className="mt-2 border-t border-border pt-2">

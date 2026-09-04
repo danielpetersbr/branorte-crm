@@ -140,7 +140,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return resto
     })
 
-    linhas.sort((a, b) => b.vencido - a.vencido || b.aReceber - a.aReceber)
+    // Pedido regularizado guarda o "vencido" que tinha antes da baixa, então
+    // ordenar só por valor jogava coisa já resolvida pro topo — depois do
+    // mutirão de 04/09/2026, 17 dos 30 primeiros eram regularizados. Quem já
+    // foi resolvido vai pro fim da fila.
+    const peso = (r: PedidoFinanceiro) => (r.status === 'REGULARIZADO' || r.status === 'CANCELADO' ? 1 : 0)
+    linhas.sort((a, b) => peso(a) - peso(b) || b.vencido - a.vencido || b.aReceber - a.aReceber)
 
     const gestor = ehGestor(esc.role)
     return res.status(200).json({

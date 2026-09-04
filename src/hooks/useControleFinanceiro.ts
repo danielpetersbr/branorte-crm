@@ -249,6 +249,7 @@ export type AcaoFinanceiro =
   | { acao: 'excluir_pagamento'; order_id: string; receipt_id: string; motivo?: string }
   | { acao: 'propor_regularizacao'; order_id: string; motivo: string }
   | { acao: 'decidir_regularizacao'; order_id: string; status: 'CONFIRMADA' | 'RECUSADA'; motivo?: string }
+  | { acao: 'desfazer_regularizacao'; order_id: string; motivo: string }
   | { acao: 'confirmar_entrega'; order_id: string; entregue_em: string; observacao?: string }
 
 /**

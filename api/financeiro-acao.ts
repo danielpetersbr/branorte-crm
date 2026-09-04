@@ -505,6 +505,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // ───────────────────────────────────────────────────────────────────
+      // Desfazer. Em 04/09/2026 foram regularizados 365 pedidos de uma vez —
+      // sem isto, corrigir um erro só dava por SQL, o que na prática significa
+      // que ninguém corrigia. Só gestor: a regularização é decisão dele.
+      case 'desfazer_regularizacao': {
+        if (!gestor) {
+          return res.status(403).json({ error: 'so_gestor', detail: 'Só o gestor desfaz uma regularização.' })
+        }
+        const motivo = String(b.motivo || '').trim()
+        if (!motivo) {
+          return res.status(400).json({ error: 'motivo_obrigatorio', detail: 'Diga por que está voltando este pedido para a cobrança.' })
+        }
+
+        const { data: reg } = await crm.from('fin_regularizacoes')
+          .select('status, motivo, proposto_por, proposto_por_nome').eq('order_id', orderId).maybeSingle()
+        if (!reg) return res.status(404).json({ error: 'nao_regularizado', detail: 'Este pedido não está regularizado.' })
+
+        await crm.from('fin_regularizacoes').delete().eq('order_id', orderId)
+
+        await auditar({ order_id: orderId, acao: 'regularizacao_desfeita', motivo,
+          antes: { status: reg.status, motivo: reg.motivo }, depois: null, ...ator })
+
+        // Quem propôs precisa saber que o pedido voltou pra fila dele.
+        const avisar = [...new Set([
+          ...(reg.proposto_por ? [reg.proposto_por as string] : []),
+          ...(await idsDoVendedor(pedido.vendedor)),
+        ])].filter(id => id !== esc.userId)
+        if (avisar.length) {
+          await notificar({
+            destinatarios: avisar, tipo: 'regularizacao_desfeita',
+            titulo: 'Pedido voltou para a cobrança',
+            corpo: `${esc.displayName || 'O gestor'} desfez a regularização do pedido ${pedido.pedido_numero} (${pedido.cliente || 'sem nome'}). Motivo: ${motivo}`,
+            order_id: orderId, chave: `regundo:${orderId}:${Date.now()}`,
+          })
+        }
+
+        return res.status(200).json({ ok: true })
+      }
+
+      // ───────────────────────────────────────────────────────────────────
       // O elo que faltava: a produção sabe quando o equipamento SAIU; só o
       // vendedor sabe quando o cliente RECEBEU. Marca dele, não briga com o
       // kanban da produção.
