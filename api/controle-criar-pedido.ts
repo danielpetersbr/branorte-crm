@@ -22,6 +22,15 @@
 //   4) espelha a linha em mirror_pedidos_venda do CRM (aparece na hora; não-fatal)
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+// Forma da linha do espelho: definição única, compartilhada com
+// controle-atualizar-pedido.ts. Ver o porquê em _lib/mirror-pedido.ts.
+//
+// ⚠️ O `.js` no final NÃO é engano e não pode sair. O package.json é `"type": "module"`:
+// sem a extensão, o Node de produção mata a function com ERR_MODULE_NOT_FOUND antes de
+// rodar a primeira linha — FUNCTION_INVOCATION_FAILED em 100% das chamadas. E não há como
+// perceber antes: o `tsc -p api/` usa moduleResolution "bundler", que não exige extensão,
+// e o `tsx` resolve sem ela. Os dois dão verde e a produção cai.
+import { mirrorRow } from './_lib/mirror-pedido.js'
 
 export const config = { api: { bodyParser: { sizeLimit: '256kb' } }, maxDuration: 30 }
 
@@ -43,32 +52,6 @@ interface Body {
   telefone?: string
   cidade?: string
   estado?: string
-}
-
-function mirrorRow(p: Record<string, unknown>) {
-  return {
-    id: String(p.id),
-    numero_orcamento: p.numero_orcamento ?? null,
-    pedido_numero: p.pedido_numero ?? null,
-    cliente: p.cliente ?? null,
-    vendedor: p.vendedor ?? null,
-    vendedor_2: p.vendedor_2 ?? null,
-    valor_total: p.valor_total ?? null,
-    valor_pago: p.valor_pago ?? null,
-    ajuste_valor: p.ajuste_valor ?? null,
-    ajuste_data: (p.ajuste_data as string | null)?.slice(0, 10) ?? null,
-    status: p.status ?? null,
-    status_pagamento: p.status_pagamento ?? null,
-    forma_pagamento: p.forma_pagamento ?? null,
-    data_venda: (p.data_venda as string | null)?.slice(0, 10) ?? null,
-    data_entrega: (p.data_entrega as string | null)?.slice(0, 10) ?? null,
-    data_pagamento: (p.data_pagamento as string | null)?.slice(0, 10) ?? null,
-    cidade: p.cidade ?? null,
-    estado: p.estado ?? null,
-    payment_plan_json: p.payment_plan_json ?? null,
-    raw: p,
-    synced_at: new Date().toISOString(),
-  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

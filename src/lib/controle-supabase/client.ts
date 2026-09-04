@@ -23,10 +23,17 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from './types'
 
-const CONTROLE_URL =
+// Exportados porque nem toda edge function do controle cabe no `functions.invoke()`.
+// A `gerar-placa-identificacao` devolve o .docx CRU (Content-Type
+// application/vnd.openxmlformats-officedocument.wordprocessingml.document); o
+// supabase-js só sabe parsear json/text/form-data e cai no `response.text()` pra
+// qualquer outro tipo — o que CORROMPE o binário. Quem precisa do Blob faz `fetch`
+// na mão e monta o header com estas duas constantes, em vez de recravar a URL e a
+// chave (foi assim que useVendasReais.ts acabou com uma segunda cópia do JWT).
+export const CONTROLE_URL =
   import.meta.env.VITE_CONTROLE_SUPABASE_URL || 'https://kfucuvwrnwrkshxpsmyq.supabase.co'
 
-const CONTROLE_ANON_KEY =
+export const CONTROLE_ANON_KEY =
   import.meta.env.VITE_CONTROLE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmdWN1dndybndya3NoeHBzbXlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMzAwODgsImV4cCI6MjA3NTYwNjA4OH0.Oe0otpf1l_Ssbi8FQJlbcDRNtW_j_IRY5EMnr8dNYNE'
 

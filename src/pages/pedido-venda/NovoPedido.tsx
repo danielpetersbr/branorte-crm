@@ -169,7 +169,7 @@ const Index = () => {
                       </div>
                     </div>
                     {modoAtivo === 'acessorios' && (
-                      <div className="absolute top-3 right-3 bg-accent text-accent-foreground text-xs font-bold px-3 py-1 rounded-full animate-fade-in">
+                      <div className="absolute top-3 right-3 bg-accent text-accent-fg text-xs font-bold px-3 py-1 rounded-full animate-fade-in">
                         Ativo
                       </div>
                     )}
