@@ -1,3 +1,8 @@
+// `tailwindcss-animate` fornece animate-in/fade-in-0/zoom-in-95/slide-in-from-*, que os
+// componentes Radix de `src/components/pedido-ui/` usam pra entrar e sair. Sem o plugin
+// as classes nao existem: o dialog aparece estalado, sem transicao (e sem erro nenhum).
+import animate from 'tailwindcss-animate'
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
@@ -69,6 +74,53 @@ export default {
           grid: 'hsl(var(--chart-grid) / <alpha-value>)',
           ink: 'hsl(var(--chart-ink) / <alpha-value>)',
         },
+        // ── Vocabulario shadcn/ui, usado SO pelos componentes de `pedido-ui/` ──
+        // Esses componentes vieram de controle.branorte.com junto com o subsistema de
+        // Pedido de Venda. Eles falam o dialeto do shadcn (bg-background, text-muted-
+        // foreground, border-input...), que nao existia aqui: sem estes aliases o
+        // Tailwind DESCARTA a classe em silencio e o dialog/popover sai transparente —
+        // o mesmo modo de falha ja documentado no `surface-3` la em cima.
+        //
+        // Cada um aponta pras CSS vars que o CRM ja tem, entao o que foi portado herda
+        // o tema do CRM (claro E escuro) em vez de trazer um segundo tema junto.
+        //
+        // ⚠️ `accent` NAO esta nesta lista de proposito. Aqui `accent` e o verde da
+        // marca (110 arquivos usam `bg-accent`); no shadcn `accent` e o cinza de hover
+        // de item de menu. Redefinir pintaria o app inteiro de verde errado, entao os
+        // arquivos portados usam `pvhover` (logo abaixo) no lugar.
+        background: 'hsl(var(--bg) / <alpha-value>)',
+        foreground: 'hsl(var(--ink) / <alpha-value>)',
+        card: {
+          DEFAULT: 'hsl(var(--surface) / <alpha-value>)',
+          foreground: 'hsl(var(--ink) / <alpha-value>)',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--surface) / <alpha-value>)',
+          foreground: 'hsl(var(--ink) / <alpha-value>)',
+        },
+        primary: {
+          DEFAULT: 'hsl(var(--accent) / <alpha-value>)',
+          foreground: 'hsl(var(--accent-fg) / <alpha-value>)',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--surface-2) / <alpha-value>)',
+          foreground: 'hsl(var(--ink) / <alpha-value>)',
+        },
+        muted: {
+          DEFAULT: 'hsl(var(--surface-2) / <alpha-value>)',
+          foreground: 'hsl(var(--ink-muted) / <alpha-value>)',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--danger) / <alpha-value>)',
+          foreground: 'hsl(var(--accent-fg) / <alpha-value>)',
+        },
+        input: 'hsl(var(--border) / <alpha-value>)',
+        ring: 'hsl(var(--accent) / <alpha-value>)',
+        // Hover/estado ativo de item de lista (o que o shadcn chamaria de `accent`).
+        pvhover: {
+          DEFAULT: 'hsl(var(--surface-2) / <alpha-value>)',
+          foreground: 'hsl(var(--ink) / <alpha-value>)',
+        },
         // Brand kept for backwards compat
         brand: {
           50:  'hsl(152 70% 96%)',
@@ -123,6 +175,7 @@ export default {
     },
   },
   plugins: [
+    animate,
     // Utilitarios pb-safe / pt-safe / pl-safe / pr-safe
     function ({ addUtilities }) {
       addUtilities({

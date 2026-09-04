@@ -75,6 +75,13 @@ const ControleDashboard = lazy(() => import('@/pages/ControleDashboard').then(m 
 const ControlePedidos = lazy(() => import('@/pages/ControlePedidos').then(m => ({ default: m.ControlePedidos })))
 const ControleFinanceiro = lazy(() => import('@/pages/ControleFinanceiro').then(m => ({ default: m.ControleFinanceiro })))
 const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(m => ({ default: m.ControleNovoPedido })))
+// Subsistema de Pedido de Venda portado de controle.branorte.com (export default la na origem).
+// Sao os 4 tipos de pedido: o seletor + form completo (NovoPedido), o rapido sem orcamento
+// (PedidoSimples) e o de garantia (PedidoGarantia). Gravam no banco do controle — ver
+// src/lib/controle-supabase/client.ts.
+const PedidoVendaNovo = lazy(() => import('@/pages/pedido-venda/NovoPedido'))
+const PedidoVendaSimples = lazy(() => import('@/pages/pedido-venda/PedidoSimples'))
+const PedidoVendaGarantia = lazy(() => import('@/pages/pedido-venda/PedidoGarantia'))
 const Supervisao = lazy(() => import('@/pages/Supervisao').then(m => ({ default: m.Supervisao })))
 const SupervisaoVendedor = lazy(() => import('@/pages/SupervisaoVendedor').then(m => ({ default: m.SupervisaoVendedor })))
 
@@ -524,7 +531,17 @@ function AppRoutes() {
         <Route path="/controle" element={<ControleDashboard />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
-        <Route path="/controle/novo-pedido" element={<ControleNovoPedido />} />
+        {/* Pedido de Venda completo (portado do controle.branorte.com):
+            seletor dos 4 tipos + formulario com upload de orcamento, extracao,
+            equipamentos, plano de pagamento, geracao de DOCX/PDF e envio pra fabrica. */}
+        <Route path="/controle/novo-pedido" element={<PedidoVendaNovo />} />
+        <Route path="/controle/pedidos/editar/:id" element={<PedidoVendaNovo />} />
+        <Route path="/controle/pedido-simples" element={<PedidoVendaSimples />} />
+        <Route path="/controle/pedido-garantia" element={<PedidoVendaGarantia />} />
+        {/* Cadastro rapido antigo (9 campos, produto em texto livre). Sai do menu, mas a
+            rota fica de pe durante a transicao — o "Pedido sem Orcamento" acima faz o mesmo
+            papel, so que gerando numero e documento como a fabrica espera. */}
+        <Route path="/controle/novo-pedido-rapido" element={<ControleNovoPedido />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
         {/* Adm de Reunião — pauta + checklist de tarefas + resumo */}
         <Route path="/reunioes" element={<Reunioes />} />
