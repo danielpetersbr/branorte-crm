@@ -4,6 +4,7 @@ import {
   criarAlertasGestor,
   criarResumoGestor,
   escolherVendedorInicial,
+  formatarMetricaGestor,
   ordenarVendedoresGestor,
   type VendedorGestor,
 } from './escritorio-gestor'
@@ -72,4 +73,10 @@ test('ordena atenção antes da produção e escolhe o primeiro alerta', () => {
 test('não escolhe líder de atendimentos quando a fonte está ausente para todos', () => {
   const vendedores = [base({ nome: 'JARDEL', atendimentos: null }), base({ nome: 'RAMON', atendimentos: null })]
   assert.equal(escolherVendedorInicial(vendedores, []), null)
+})
+
+test('formata métrica ausente como travessão', () => {
+  assert.equal(formatarMetricaGestor(null), '—')
+  assert.equal(formatarMetricaGestor(0), '0')
+  assert.equal(formatarMetricaGestor(1384), '1.384')
 })
