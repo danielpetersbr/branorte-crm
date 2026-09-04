@@ -723,7 +723,13 @@ export function Disparos() {
             está trabalhando?", não "recebe disparo?". Quem está em modo só recebe
             atende cliente do link o dia inteiro — apagar o boneco dele seria o
             mesmo erro que já pintava Álvaro e Lucas de cinza. */}
-        <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} />
+        <EscritorioMapa
+          vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))}
+          live={liveMesas}
+          efetivo={efetivo}
+          cotaAtiva={!!cotaCfg?.cota_ativa}
+          cotaZero={cotaCfg?.cota_zero ?? 60}
+        />
       </SecaoRecolhivel>
     </div>
   )
