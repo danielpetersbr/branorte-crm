@@ -26,9 +26,8 @@ const Index = () => {
   const { logout } = useAuth();
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  // Linha do `pedidos_venda` do controle, no modo edição (/controle/pedido/editar/:id).
-  // `useState(null)` cru era inferido como `null` e recusava a linha do banco no CRM,
-  // que roda com tipos estritos (no repo de origem passava batido).
+  // Linha do `pedidos_venda` do controle, no modo edicao. `useState(null)` cru era
+  // inferido como `null` e recusava a linha do banco sob os tipos estritos do CRM.
   const [pedidoData, setPedidoData] = useState<PedidoVendaRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -43,8 +42,8 @@ const Index = () => {
   }, [id]);
 
   const carregarPedido = async () => {
-    // `id` vem de useParams() como string | undefined. Só chegamos aqui com ele
-    // preenchido (o useEffect acima checa), mas o compilador não sabe disso.
+    // `id` vem de useParams() como string | undefined. So chegamos aqui com ele
+    // preenchido (o useEffect acima checa), mas o compilador nao sabe disso.
     if (!id) return;
     try {
       setLoading(true);
@@ -112,7 +111,7 @@ const Index = () => {
   // Se está carregando OU se tem ID mas ainda não tem dados, mostra loading
   if (loading || (id && !pedidoData)) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-text-muted">
+      <div className="min-h-full flex items-center justify-center">
         <p>Carregando pedido...</p>
       </div>
     );
