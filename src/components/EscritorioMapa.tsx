@@ -785,14 +785,16 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {modo === 'paredes' && (
             <>
-              <button onClick={() => { if (confirm('Copiar o desenho padrão atual pra você editar (substitui o que tiver)?')) seedPadrao.mutate() }}
+              <button type="button" onClick={() => { if (confirm('Copiar o desenho padrão atual pra você editar (substitui o que tiver)?')) seedPadrao.mutate() }}
                 className="text-[10px] px-2 py-1 rounded-full border border-border text-ink-muted hover:border-accent hover:text-accent">partir do padrão</button>
-              <button onClick={() => { if (confirm('Apagar TODAS as paredes desenhadas?')) limparParedes.mutate() }}
+              <button type="button" onClick={() => { if (confirm('Apagar TODAS as paredes desenhadas?')) limparParedes.mutate() }}
                 className="text-[10px] px-2 py-1 rounded-full border border-border text-ink-muted hover:border-red-400 hover:text-red-400">limpar tudo</button>
             </>
           )}
           <button
+            type="button"
             onClick={() => { setModo(m => m === 'paredes' ? 'normal' : 'paredes'); setSelected(null) }}
+            aria-pressed={modo === 'paredes'}
             className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border font-semibold transition-colors ${
               modo === 'paredes' ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:border-accent hover:text-accent'
             }`}
@@ -800,7 +802,9 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
             {modo === 'paredes' ? <><Check className="h-3 w-3" /> Concluir</> : <><Pencil className="h-3 w-3" /> Paredes</>}
           </button>
           <button
+            type="button"
             onClick={() => { setModo(m => m === 'mesas' ? 'normal' : 'mesas'); setSelected(null) }}
+            aria-pressed={editLayout}
             className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border font-semibold transition-colors ${
               editLayout ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:border-accent hover:text-accent'
             }`}
@@ -821,31 +825,38 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
             return (
               <span
                 key={o.nome}
-                draggable
-                onDragStart={e => { e.dataTransfer.setData('text/plain', o.nome); setDragging(o.nome) }}
-                onDragEnd={() => setDragging(null)}
-                onClick={() => setSelected(isSel ? null : o.nome)}
-                title={sentado ? `Já está na ${sentadoEm[o.nome]} — arraste pra mudar` : 'Arraste pra uma mesa'}
-                className={`group inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border text-[11px] font-semibold cursor-grab active:cursor-grabbing transition-all ${
+                className={`group inline-flex items-center rounded-full border text-[11px] font-semibold transition-all ${
                   isSel ? 'border-accent bg-accent/15 text-accent ring-1 ring-accent' :
                   sentado ? 'border-border bg-surface-2/60 text-ink-muted opacity-70' :
                   isOutro ? 'border-purple-400/40 bg-surface text-ink hover:border-purple-400' :
                   'border-accent/40 bg-surface text-ink hover:border-accent'
                 }`}
               >
-                <Avatar name={o.nome} size="xs" />
-                {o.nome}
-                {isOutro && o.setor && (
-                  <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 leading-none">{o.setor.toUpperCase()}</span>
-                )}
-                {sentado && !isOutro && <span className="text-[8px] text-emerald-400">●</span>}
+                <button
+                  type="button"
+                  draggable
+                  onDragStart={e => { e.dataTransfer.setData('text/plain', o.nome); setDragging(o.nome) }}
+                  onDragEnd={() => setDragging(null)}
+                  onClick={() => setSelected(isSel ? null : o.nome)}
+                  aria-pressed={isSel}
+                  aria-label={`${isSel ? 'Desmarcar' : 'Selecionar'} ${o.nome}${sentado ? `, sentado na ${sentadoEm[o.nome]}` : ', sem mesa'}`}
+                  className={`inline-flex items-center gap-1.5 py-1 pl-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isOutro ? 'pr-1' : 'pr-2'} cursor-grab active:cursor-grabbing`}
+                >
+                  <Avatar name={o.nome} size="xs" />
+                  {o.nome}
+                  {isOutro && o.setor && (
+                    <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 leading-none">{o.setor.toUpperCase()}</span>
+                  )}
+                  {sentado && !isOutro && <span className="text-[8px] text-emerald-400" aria-hidden="true">●</span>}
+                </button>
                 {isOutro && (
                   <button
-                    onClick={e => { e.stopPropagation(); if (confirm(`Remover ${o.nome} do escritório?`)) removerPessoa.mutate(o.nome) }}
-                    title="Remover do cadastro"
-                    className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-red-400 transition-opacity"
+                    type="button"
+                    onClick={() => { if (confirm(`Remover ${o.nome} do escritório?`)) removerPessoa.mutate(o.nome) }}
+                    aria-label={`Remover ${o.nome} do cadastro`}
+                    className="mr-1 opacity-0 transition-opacity text-ink-faint hover:text-red-400 group-hover:opacity-100 focus:opacity-100"
                   >
-                    <X className="h-2.5 w-2.5" />
+                    <X className="h-2.5 w-2.5" aria-hidden="true" />
                   </button>
                 )}
               </span>
@@ -857,19 +868,21 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
               <input
                 autoFocus value={novoNome} onChange={e => setNovoNome(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && novoNome.trim()) addPessoa.mutate({ nome: novoNome, setor: novoSetor }) }}
+                aria-label="Nome da nova pessoa"
                 placeholder="Nome" className="w-20 bg-transparent text-[11px] text-ink placeholder:text-ink-faint focus:outline-none"
               />
               <input
                 value={novoSetor} onChange={e => setNovoSetor(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && novoNome.trim()) addPessoa.mutate({ nome: novoNome, setor: novoSetor }) }}
+                aria-label="Setor da nova pessoa"
                 placeholder="Setor" className="w-16 bg-transparent text-[11px] text-ink placeholder:text-ink-faint focus:outline-none border-l border-border pl-1"
               />
-              <button onClick={() => addPessoa.mutate({ nome: novoNome, setor: novoSetor })} disabled={!novoNome.trim()}
+              <button type="button" onClick={() => addPessoa.mutate({ nome: novoNome, setor: novoSetor })} disabled={!novoNome.trim()}
                 className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent disabled:opacity-40">ok</button>
-              <button onClick={() => { setAddOpen(false); setNovoNome(''); setNovoSetor('') }} className="text-ink-faint hover:text-ink"><X className="h-3 w-3" /></button>
+              <button type="button" onClick={() => { setAddOpen(false); setNovoNome(''); setNovoSetor('') }} aria-label="Cancelar nova pessoa" className="text-ink-faint hover:text-ink"><X className="h-3 w-3" aria-hidden="true" /></button>
             </span>
           ) : (
-            <button onClick={() => setAddOpen(true)}
+            <button type="button" onClick={() => setAddOpen(true)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-dashed border-border text-[11px] text-ink-muted hover:border-accent hover:text-accent">
               <UserPlus className="h-3 w-3" /> pessoa
             </button>
@@ -1001,8 +1014,9 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
               {/* Handle de girar (só no modo posicionar) */}
               {editLayout && (
                 <button
+                  type="button"
                   onPointerDown={e => iniciarGirar(e, m.id)}
-                  title="Girar a mesa"
+                  aria-label={`Girar mesa ${idx + 1}`}
                   /* `text-black` fixo não serve aos dois temas: o accent claro é
                      escuro (preto dá 3,95:1) e o escuro é claro (branco dá 3,20:1).
                      Invertido por tema: 5,31:1 no claro, 6,56:1 no escuro. */
@@ -1047,7 +1061,7 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
                     <button
                       type="button"
                       onClick={e => { e.stopPropagation(); limpar.mutate(m.id) }}
-                      title="Tirar da mesa"
+                      aria-label={`Tirar ${nome} da mesa ${idx + 1}`}
                       className="absolute top-0 left-0 z-30 opacity-0 group-hover:opacity-100 focus:opacity-100 text-ink-faint hover:text-red-400 bg-surface/70 rounded-full transition-opacity"
                     >
                       <X className="h-3 w-3" />
@@ -1067,10 +1081,11 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
         {/* Botões de apagar parede (modo paredes, só nas customizadas) */}
         {modo === 'paredes' && temCustom && (paredes ?? []).map(p => (
           <button
+            type="button"
             key={`del-${p.id}`}
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); delParede.mutate(p.id) }}
-            title="Apagar esta parede"
+            aria-label="Apagar esta parede"
             className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] leading-none shadow ring-1 ring-black/40 z-30 hover:bg-red-600"
             style={{ left: pct(p.x, VB.w), top: pct(p.y, VB.h) }}
           >×</button>

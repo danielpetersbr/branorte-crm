@@ -75,6 +75,23 @@ test('gera primeiro o bloqueio por cota e depois a queda operacional', () => {
   assert.ok(alertas.some(alerta => alerta.tipo === 'destaque' && alerta.vendedor === 'ALVARO'))
 })
 
+test('cota parcial gera aviso sem dizer que o vendedor está bloqueado', () => {
+  const [alerta] = criarAlertasGestor([
+    base({ nome: 'JARDEL', parados: 37, fatorCota: 0.52, cortadoPorCota: false }),
+  ], { expediente: true, cotaAtiva: true, cotaZero: 60 })
+
+  assert.equal(alerta.tipo, 'cota-reduzida')
+  assert.doesNotMatch(alerta.titulo, /não recebe/i)
+})
+
+test('fora do expediente não transforma ausência de WhatsApp em alerta', () => {
+  const alertas = criarAlertasGestor([
+    base({ status: 'desconectado', orcamentos: 0 }),
+  ], { expediente: false, cotaAtiva: false, cotaZero: 60 })
+
+  assert.equal(alertas.length, 0)
+})
+
 test('ordena atenção antes da produção e escolhe o primeiro alerta', () => {
   const vendedores = [base({ nome: 'JARDEL', atendimentos: 30 }), base({ nome: 'RAMON', parados: 109, cortadoPorCota: true })]
   assert.equal(ordenarVendedoresGestor(vendedores, 'atencao')[0].nome, 'RAMON')
@@ -84,6 +101,15 @@ test('ordena atenção antes da produção e escolhe o primeiro alerta', () => {
 test('não escolhe líder de atendimentos quando a fonte está ausente para todos', () => {
   const vendedores = [base({ nome: 'JARDEL', atendimentos: null }), base({ nome: 'RAMON', atendimentos: null })]
   assert.equal(escolherVendedorInicial(vendedores, []), null)
+})
+
+test('vendedor sem alerta inicial seleciona o líder de atendimentos disponível', () => {
+  const vendedores = [
+    base({ nome: 'EDER', atendimentos: 4 }),
+    base({ nome: 'JARDEL', atendimentos: 30 }),
+  ]
+
+  assert.equal(escolherVendedorInicial(vendedores, []), 'JARDEL')
 })
 
 test('formata métrica ausente como travessão', () => {

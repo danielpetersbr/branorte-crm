@@ -120,7 +120,7 @@ function PainelComparativo({
       : 'Sem corte por cota.'
 
   return (
-    <aside className="min-w-0 space-y-3 rounded-xl border border-border bg-surface-2/30 p-3" aria-label="Comparativo da equipe">
+    <aside className="order-1 min-w-0 space-y-3 rounded-xl border border-border bg-surface-2/30 p-3 xl:order-2" aria-label="Comparativo da equipe">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-title text-ink">Visão do gestor</h2>
@@ -342,7 +342,6 @@ export function EscritorioGestor(props: EscritorioGestorProps) {
     <div className="space-y-3">
       <ResumoDia resumo={props.resumo} />
       <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,.85fr)]">
-        <div className="min-w-0">{props.mapa}</div>
         <PainelComparativo
           {...props}
           periodo={periodo}
@@ -351,6 +350,7 @@ export function EscritorioGestor(props: EscritorioGestorProps) {
           onPeriodo={setPeriodo}
           onOrdem={setOrdem}
         />
+        <div className="order-2 min-w-0 xl:order-1">{props.mapa}</div>
       </div>
     </div>
   )
