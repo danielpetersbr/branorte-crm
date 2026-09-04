@@ -8,10 +8,15 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import {
+  criarCabecalhosHojeGestor,
   formatarMetricaGestor,
   ordenarVendedoresGestor,
+  resolverSelecaoGestor,
+  resolverVisaoTabelaGestor,
+  rotuloOrdemGestor,
   type AlertaGestor,
   type OrdemGestor,
+  type PeriodoGestor,
   type ResumoGestor,
   type VendedorGestor,
 } from '@/lib/escritorio-gestor'
@@ -33,8 +38,6 @@ export type EscritorioGestorProps = {
   onSelecionar: (nome: string) => void
   mapa: ReactNode
 }
-
-type PeriodoGestor = 'hoje' | 'mes'
 
 type KpiProps = {
   label: string
@@ -86,15 +89,6 @@ const alertaTone = (nivel: AlertaGestor['nivel']) => {
   return 'border-success/30 bg-success-bg text-success'
 }
 
-const labelOrdem: Record<OrdemGestor, string> = {
-  atencao: 'Status',
-  atendimentos: 'Atend.',
-  leads: 'Leads',
-  orcamentos: 'Orç.',
-  ligacoes: 'Ligações',
-  parados: 'Pendências',
-}
-
 type PainelComparativoProps = EscritorioGestorProps & {
   periodo: PeriodoGestor
   ordem: OrdemGestor
@@ -117,6 +111,8 @@ function PainelComparativo({
   onOrdem,
 }: PainelComparativoProps) {
   const vendedorSelecionado = vendedores.find(vendedor => vendedor.nome === selecionado) ?? null
+  const cabecalhosHoje = criarCabecalhosHojeGestor(ordem)
+  const visaoTabela = resolverVisaoTabelaGestor(periodo, rankingMesDisponivel)
   const motivoCota = vendedorSelecionado?.cortadoPorCota
     ? `Distribuição pausada: ${formatarMetricaGestor(vendedorSelecionado.parados)} clientes parados ultrapassaram a cota.`
     : vendedorSelecionado?.fatorCota != null && vendedorSelecionado.fatorCota < 1
@@ -163,7 +159,7 @@ function PainelComparativo({
               <button
                 key={alerta.id}
                 type="button"
-                onClick={() => onSelecionar(alerta.vendedor)}
+                onClick={() => onSelecionar(resolverSelecaoGestor({ tipo: 'alerta', vendedor: alerta.vendedor }))}
                 aria-pressed={selecionado === alerta.vendedor}
                 className={`flex w-full items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${alertaTone(alerta.nivel)}`}
               >
@@ -181,30 +177,45 @@ function PainelComparativo({
       </section>
 
       <section aria-labelledby="comparativo-gestor-titulo">
-        <h3 id="comparativo-gestor-titulo" className="mb-1.5 text-label font-semibold text-ink">
-          Comparativo {periodo === 'hoje' ? 'de hoje' : 'do mês'}
-        </h3>
-        {periodo === 'hoje' ? (
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+          <h3 id="comparativo-gestor-titulo" className="text-label font-semibold text-ink">
+            Comparativo {periodo === 'hoje' ? 'de hoje' : 'do mês'}
+          </h3>
+          {visaoTabela === 'hoje' && (
+            <button
+              type="button"
+              onClick={() => onOrdem('atencao')}
+              aria-pressed={ordem === 'atencao'}
+              className={`rounded-md border px-2 py-1 text-micro font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                ordem === 'atencao' ? 'border-accent bg-accent-bg text-accent' : 'border-border bg-surface text-ink-muted hover:text-ink'
+              }`}
+            >
+              {rotuloOrdemGestor('atencao')}
+            </button>
+          )}
+        </div>
+        {visaoTabela === 'hoje' ? (
           <div className="overflow-x-auto rounded-lg border border-border bg-surface">
             <table className="w-full min-w-[650px] border-collapse text-micro">
               <caption className="sr-only">Produção e pendências dos vendedores hoje</caption>
               <thead className="bg-surface-2 text-left text-ink-muted">
                 <tr>
-                  <th scope="col" className="px-2 py-2 font-semibold">Vendedor</th>
-                  {(Object.keys(labelOrdem) as OrdemGestor[]).map(coluna => (
+                  {cabecalhosHoje.map(cabecalho => (
                     <th
-                      key={coluna}
+                      key={cabecalho.id}
                       scope="col"
-                      aria-sort={ordem === coluna ? 'descending' : 'none'}
+                      aria-sort={cabecalho.ariaSort ?? undefined}
                       className="px-2 py-2 font-semibold"
                     >
-                      <button
-                        type="button"
-                        onClick={() => onOrdem(coluna)}
-                        className={`whitespace-nowrap rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${ordem === coluna ? 'text-accent' : 'hover:text-ink'}`}
-                      >
-                        {labelOrdem[coluna]}
-                      </button>
+                      {cabecalho.ordem ? (
+                        <button
+                          type="button"
+                          onClick={() => onOrdem(cabecalho.ordem!)}
+                          className={`whitespace-nowrap rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${ordem === cabecalho.ordem ? 'text-accent' : 'hover:text-ink'}`}
+                        >
+                          {cabecalho.label}
+                        </button>
+                      ) : cabecalho.label}
                     </th>
                   ))}
                 </tr>
@@ -217,11 +228,11 @@ function PainelComparativo({
                 ) : linhasHoje.map(vendedor => (
                   <tr
                     key={vendedor.nome}
-                    onClick={() => onSelecionar(vendedor.nome)}
+                    onClick={() => onSelecionar(resolverSelecaoGestor({ tipo: 'linha', nome: vendedor.nome }))}
                     onKeyDown={evento => {
                       if (evento.key === 'Enter' || evento.key === ' ') {
                         evento.preventDefault()
-                        onSelecionar(vendedor.nome)
+                        onSelecionar(resolverSelecaoGestor({ tipo: 'linha', nome: vendedor.nome }))
                       }
                     }}
                     tabIndex={0}
@@ -239,16 +250,14 @@ function PainelComparativo({
                     <td className="px-2 py-2 text-right tabular-nums text-ink">{formatarMetricaGestor(vendedor.atendimentos)}</td>
                     <td className="px-2 py-2 text-right tabular-nums text-ink">{formatarMetricaGestor(vendedor.leads)}</td>
                     <td className="px-2 py-2 text-right tabular-nums text-ink">{formatarMetricaGestor(vendedor.orcamentos)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums text-ink">
-                      <span className="whitespace-nowrap">{formatarMetricaGestor(vendedor.ligacoesAtendidas)} / {formatarMetricaGestor(vendedor.ligacoesTotal)}</span>
-                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums text-ink">{formatarMetricaGestor(vendedor.ligacoesAtendidas)}</td>
                     <td className="px-2 py-2 text-right tabular-nums text-ink">{formatarMetricaGestor(vendedor.parados)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        ) : !rankingMesDisponivel ? (
+        ) : visaoTabela === 'mes-indisponivel' ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-3 py-5 text-center text-micro text-ink-muted">
             O comparativo do mês está indisponível no momento.
           </div>

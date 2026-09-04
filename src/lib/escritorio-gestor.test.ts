@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  criarCabecalhosHojeGestor,
   criarAlertasGestor,
   criarResumoGestor,
   escolherVendedorInicial,
   formatarMetricaGestor,
   ordenarVendedoresGestor,
+  resolverSelecaoGestor,
+  resolverVisaoTabelaGestor,
+  rotuloOrdemGestor,
   type VendedorGestor,
 } from './escritorio-gestor'
 
@@ -79,4 +83,25 @@ test('formata métrica ausente como travessão', () => {
   assert.equal(formatarMetricaGestor(null), '—')
   assert.equal(formatarMetricaGestor(0), '0')
   assert.equal(formatarMetricaGestor(1384), '1.384')
+})
+
+test('distingue ligações atendidas e não atribui a ordenação de atenção ao status', () => {
+  const cabecalhos = criarCabecalhosHojeGestor('ligacoes')
+  const status = cabecalhos.find(cabecalho => cabecalho.id === 'status')
+  const ligacoes = cabecalhos.find(cabecalho => cabecalho.id === 'ligacoes')
+
+  assert.deepEqual(status, { id: 'status', label: 'Status', ordem: null, ariaSort: null })
+  assert.deepEqual(ligacoes, { id: 'ligacoes', label: 'Ligações atendidas', ordem: 'ligacoes', ariaSort: 'descending' })
+  assert.equal(rotuloOrdemGestor('atencao'), 'Atenção primeiro')
+})
+
+test('resolve as visões Hoje, Mês e indisponibilidade mensal', () => {
+  assert.equal(resolverVisaoTabelaGestor('hoje', false), 'hoje')
+  assert.equal(resolverVisaoTabelaGestor('mes', true), 'mes')
+  assert.equal(resolverVisaoTabelaGestor('mes', false), 'mes-indisponivel')
+})
+
+test('resolve a seleção para alertas e linhas sem trocar o vendedor', () => {
+  assert.equal(resolverSelecaoGestor({ tipo: 'alerta', vendedor: 'RAMON' }), 'RAMON')
+  assert.equal(resolverSelecaoGestor({ tipo: 'linha', nome: 'ALVARO' }), 'ALVARO')
 })

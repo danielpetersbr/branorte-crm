@@ -40,6 +40,56 @@ export type AlertaGestor = {
 
 export type OrdemGestor = 'atencao' | 'atendimentos' | 'leads' | 'orcamentos' | 'ligacoes' | 'parados'
 
+export type CabecalhoHojeGestor = {
+  id: 'vendedor' | 'status' | Exclude<OrdemGestor, 'atencao'>
+  label: string
+  ordem: Exclude<OrdemGestor, 'atencao'> | null
+  ariaSort: 'descending' | 'none' | null
+}
+
+export function rotuloOrdemGestor(ordem: OrdemGestor): string {
+  return {
+    atencao: 'Atenção primeiro',
+    atendimentos: 'Atend.',
+    leads: 'Leads',
+    orcamentos: 'Orç.',
+    ligacoes: 'Ligações atendidas',
+    parados: 'Pendências',
+  }[ordem]
+}
+
+export function criarCabecalhosHojeGestor(ordemAtual: OrdemGestor): CabecalhoHojeGestor[] {
+  const fixos: CabecalhoHojeGestor[] = [
+    { id: 'vendedor', label: 'Vendedor', ordem: null, ariaSort: null },
+    { id: 'status', label: 'Status', ordem: null, ariaSort: null },
+  ]
+  const ordenaveis: Array<Exclude<OrdemGestor, 'atencao'>> = ['atendimentos', 'leads', 'orcamentos', 'ligacoes', 'parados']
+  return [
+    ...fixos,
+    ...ordenaveis.map(ordem => ({
+      id: ordem,
+      label: rotuloOrdemGestor(ordem),
+      ordem,
+      ariaSort: ordemAtual === ordem ? 'descending' as const : 'none' as const,
+    })),
+  ]
+}
+
+export type PeriodoGestor = 'hoje' | 'mes'
+
+export function resolverVisaoTabelaGestor(periodo: PeriodoGestor, rankingMesDisponivel: boolean): 'hoje' | 'mes' | 'mes-indisponivel' {
+  if (periodo === 'hoje') return 'hoje'
+  return rankingMesDisponivel ? 'mes' : 'mes-indisponivel'
+}
+
+export type OrigemSelecaoGestor =
+  | { tipo: 'alerta'; vendedor: string }
+  | { tipo: 'linha'; nome: string }
+
+export function resolverSelecaoGestor(origem: OrigemSelecaoGestor): string {
+  return origem.tipo === 'alerta' ? origem.vendedor : origem.nome
+}
+
 export function formatarMetricaGestor(valor: number | null): string {
   return valor == null ? '—' : new Intl.NumberFormat('pt-BR').format(valor)
 }
