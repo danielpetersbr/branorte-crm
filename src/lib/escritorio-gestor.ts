@@ -87,5 +87,6 @@ export function ordenarVendedoresGestor(vendedores: VendedorGestor[], ordem: Ord
 }
 
 export function escolherVendedorInicial(vendedores: VendedorGestor[], alertas: AlertaGestor[]): string | null {
-  return alertas[0]?.vendedor ?? ordenarVendedoresGestor(vendedores, 'atendimentos')[0]?.nome ?? null
+  const lider = ordenarVendedoresGestor(vendedores, 'atendimentos').find(vendedor => vendedor.atendimentos != null)
+  return alertas[0]?.vendedor ?? lider?.nome ?? null
 }

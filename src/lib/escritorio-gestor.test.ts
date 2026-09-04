@@ -68,3 +68,8 @@ test('ordena atenção antes da produção e escolhe o primeiro alerta', () => {
   assert.equal(ordenarVendedoresGestor(vendedores, 'atencao')[0].nome, 'RAMON')
   assert.equal(escolherVendedorInicial(vendedores, [{ id: 'RAMON-cota', vendedor: 'RAMON', tipo: 'cota-bloqueada', nivel: 'critico', titulo: '', texto: '' }]), 'RAMON')
 })
+
+test('não escolhe líder de atendimentos quando a fonte está ausente para todos', () => {
+  const vendedores = [base({ nome: 'JARDEL', atendimentos: null }), base({ nome: 'RAMON', atendimentos: null })]
+  assert.equal(escolherVendedorInicial(vendedores, []), null)
+})
