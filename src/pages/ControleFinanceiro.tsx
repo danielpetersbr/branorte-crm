@@ -1149,6 +1149,7 @@ export function ControleFinanceiro() {
   const [lancandoNa, setLancandoNa] = useState<PedidoFinanceiro | null>(null)
   const [erroLista, setErroLista] = useState<string | null>(null)
   const [aba, setAba] = useState<'pedidos' | 'vendedores'>('pedidos')
+  const [ocultarCarregados, setOcultarCarregados] = useState(false)
 
   const gestor = !!data?.escopo.gestor
   const escopado = data?.escopo.vendedores != null
@@ -1177,8 +1178,14 @@ export function ControleFinanceiro() {
     }
   }
 
+  // Filtro que o Daniel pediu em 04/09/2026: depois da baixa dos 270 pedidos
+  // antigos, o que já saiu da fábrica virou ruído na lista de trabalho. Este
+  // botão tira todos eles de uma vez, valendo por cima de qualquer outro filtro.
+  const escondeCarregado = ocultarCarregados && atual !== 'carregado_devendo'
+
   const rows = useMemo(() => {
     let r = (data?.pedidos ?? []).filter(filtra)
+    if (escondeCarregado) r = r.filter(x => x.producao.etapa !== 'CARREGADO')
     if (search) {
       const q = search.toLowerCase()
       r = r.filter(x => (x.cliente || '').toLowerCase().includes(q)
@@ -1190,7 +1197,20 @@ export function ControleFinanceiro() {
       r = [...r].sort((a, b) => (b.dataVenda || '').localeCompare(a.dataVenda || ''))
     }
     return r
-  }, [data, atual, search])
+  }, [data, atual, search, escondeCarregado])
+
+  // Quantos o botão está escondendo agora — o usuário precisa saber o que sumiu.
+  const escondidos = useMemo(() => {
+    if (!escondeCarregado) return 0
+    let r = (data?.pedidos ?? []).filter(filtra).filter(x => x.producao.etapa === 'CARREGADO')
+    if (search) {
+      const q = search.toLowerCase()
+      r = r.filter(x => (x.cliente || '').toLowerCase().includes(q)
+        || (x.pedidoNumero || '').toLowerCase().includes(q)
+        || (x.vendedor || '').toLowerCase().includes(q))
+    }
+    return r.length
+  }, [data, atual, search, escondeCarregado])
 
   const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
   const totalPages = Math.ceil(rows.length / PAGE_SIZE)
@@ -1301,10 +1321,24 @@ export function ControleFinanceiro() {
                   <Users className="h-3.5 w-3.5" /> Por vendedor
                 </button>
               )}
+              <button onClick={() => { setOcultarCarregados(v => !v); setPage(0) }}
+                disabled={atual === 'carregado_devendo'}
+                aria-pressed={escondeCarregado}
+                title={atual === 'carregado_devendo'
+                  ? 'Este filtro já mostra só os que carregaram — não dá pra escondê-los aqui.'
+                  : 'Tira da lista tudo que já saiu da fábrica'}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors
+                  disabled:opacity-40 disabled:cursor-not-allowed ${
+                  escondeCarregado ? 'border-accent bg-accent text-white' : 'border-border text-text-secondary hover:bg-surface-2'}`}>
+                <Truck className="h-3.5 w-3.5" /> Esconder já carregados
+              </button>
               <Input placeholder="Buscar cliente, pedido ou vendedor..." leftIcon={<Search className="h-4 w-4" />}
                 value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} className="lg:w-80" />
               <span className="ml-auto text-sm text-text-muted">
                 {rows.length.toLocaleString('pt-BR')} pedido{rows.length !== 1 ? 's' : ''}
+                {escondidos > 0 && (
+                  <span className="text-text-muted/70"> · {escondidos} escondido{escondidos !== 1 ? 's' : ''}</span>
+                )}
               </span>
             </div>
           </Card>
@@ -1381,9 +1415,11 @@ export function ControleFinanceiro() {
                       ))}
                       {pageRows.length === 0 && (
                         <tr><td colSpan={11} className="px-4 py-8 text-center text-text-muted">
-                          {atual === 'falta_lancar'
-                            ? 'Nenhum pedido esperando lançamento. Fila zerada.'
-                            : 'Nenhum pedido neste filtro.'}
+                          {escondidos > 0
+                            ? `Todos os ${escondidos} pedidos deste filtro já carregaram — desligue "Esconder já carregados" para vê-los.`
+                            : atual === 'falta_lancar'
+                              ? 'Nenhum pedido esperando lançamento. Fila zerada.'
+                              : 'Nenhum pedido neste filtro.'}
                         </td></tr>
                       )}
                     </tbody>
@@ -1428,7 +1464,11 @@ export function ControleFinanceiro() {
                   </Card>
                 ))}
                 {pageRows.length === 0 && (
-                  <Card className="p-6 text-center text-sm text-text-muted">Nenhum pedido neste filtro.</Card>
+                  <Card className="p-6 text-center text-sm text-text-muted">
+                    {escondidos > 0
+                      ? `Todos os ${escondidos} pedidos deste filtro já carregaram — desligue "Esconder já carregados" para vê-los.`
+                      : 'Nenhum pedido neste filtro.'}
+                  </Card>
                 )}
               </div>
 
