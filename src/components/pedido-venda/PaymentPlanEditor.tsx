@@ -9,9 +9,8 @@ import { toast } from "@/components/pedido-ui/use-toast";
 type DataTipo = "no_pedido" | "apos_pedido" | "na_nf" | "apos_nf" | "data_fixa";
 
 // Exportadas porque o PedidoForm precisa anotar os callbacks que percorrem o plano.
-// No repo de origem o tsconfig não tinha `noImplicitAny`, então `p`/`acc` viviam como
-// `any` implícito; o CRM é estrito e recusa. Exportar o tipo que já existia aqui é
-// melhor que espalhar `any` explícito pelo formulário.
+// No repo de origem o tsconfig nao tinha `noImplicitAny`, entao `p`/`acc` viviam como
+// `any` implicito; o CRM e estrito e recusa.
 export interface Parcela {
   n: number;
   descricao: string;

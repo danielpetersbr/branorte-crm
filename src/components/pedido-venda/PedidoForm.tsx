@@ -20,6 +20,7 @@ import {
   type ChecklistCompras,
   DEFAULT_CHECKLIST_COMPRAS,
   isChecklistEmpty,
+  validarChecklistProjeto,
 } from "./ChecklistComprasEditor";
 import { toast } from "sonner";
 import { supabase } from "@/lib/controle-supabase/client";
@@ -30,20 +31,9 @@ import { sumLineItems, sumCurrency } from "@/lib/pedido-venda/currency";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { useVendedores } from "@/hooks/pedido-venda/useVendedores";
 
-const VENDEDORES = [
-  "DANIEL",
-  "JARDEL",
-  "GUSTAVO",
-  "ALVARO",
-  "EDER",
-  "EDILSON JR",
-  "PEDRO",
-  "PATRICK",
-  "RAMON",
-  "LUCAS",
-  "IGOR",
-];
+// Lista de vendedores vem de `vendedores` (ativo = true) via useVendedores().
 
 // Lista de UFs válidas para validação cidade x estado
 const ESTADOS_UF = [
@@ -73,6 +63,7 @@ const detectarEstadoNaCidade = (cidade: string): string | null => {
 
 export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   const navigate = useNavigate();
+  const { vendedores: vendedoresCadastrados } = useVendedores();
   const [searchParams] = useSearchParams();
   const isProcessingRef = useRef(false);
   const [numeroOrcamento, setNumeroOrcamento] = useState("");
@@ -384,6 +375,9 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
   const planoPagamentoValido = validarPlanoPagamento();
 
+  // Bloco "Informações para o projeto": texto + ao menos 1 imagem são obrigatórios.
+  const erroChecklistProjeto = validarChecklistProjeto(checklistCompras);
+
   // Aplica um resultado de extração local (mammoth/PDF) aos campos do formulário.
   // Mesmo shape do extrair-orcamento; usado pelo fallback DOCX e pela importação de PDF.
   const aplicarResultadoLocal = (data: LocalExtractionResult, file: File) => {
@@ -448,7 +442,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
     // Espelha os agregados em window.* (mesmos campos lidos na geração do pedido)
     const totalComItensAdicionais = (data.total_equipamentos || 0) +
-      (data.itens_adicionais?.reduce((sum, item) => sum + (item.valor || 0), 0) || 0);
+      (data.itens_adicionais?.reduce((sum: number, item: { valor?: number | null }) => sum + (item.valor || 0), 0) || 0);
     (window as any).equipamentosDetalhados = equipamentosFinais;
     (window as any).totalEquipamentos = totalComItensAdicionais;
     if (data.motores_quantidade_total != null) (window as any).motoresQuantidadeTotal = data.motores_quantidade_total;
@@ -746,7 +740,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       // Salvar novos dados extraídos em window para usar no payload
       // Calcular total incluindo itens adicionais
       const totalComItensAdicionais = (data.total_equipamentos || 0) + 
-        (data.itens_adicionais?.reduce((sum: number, item: { valor?: number }) => sum + (item.valor || 0), 0) || 0);
+        (data.itens_adicionais?.reduce((sum: number, item: { valor?: number | null }) => sum + (item.valor || 0), 0) || 0);
       
       (window as any).equipamentosDetalhados = equipamentosFinais;
       (window as any).totalEquipamentos = totalComItensAdicionais;
@@ -2255,7 +2249,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                         <SelectValue placeholder="Selecione o vendedor" />
                       </SelectTrigger>
                       <SelectContent>
-                        {VENDEDORES.map((v) => (
+                        {vendedoresCadastrados.map((v) => (
                           <SelectItem key={v} value={v}>
                             {v}
                           </SelectItem>
@@ -2273,7 +2267,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="nenhum">Nenhum</SelectItem>
-                        {VENDEDORES.filter(v => v !== vendedor).map((v) => (
+                        {vendedoresCadastrados.filter(v => v !== vendedor).map((v) => (
                           <SelectItem key={v} value={v}>
                             {v}
                           </SelectItem>
@@ -2490,13 +2484,18 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-lg flex items-center gap-2 text-primary">
                   <Package className="h-5 w-5" />
-                  Check List projeto
+                  Informações para o projeto
                 </h3>
               </div>
               <ChecklistComprasEditor
                 value={checklistCompras}
                 onChange={setChecklistCompras}
               />
+              {erroChecklistProjeto && (
+                <p className="mt-3 text-sm font-medium text-destructive">
+                  {erroChecklistProjeto} — obrigatório para gerar o pedido.
+                </p>
+              )}
             </div>
 
             {/* 3. OBSERVAÇÕES DO ORÇAMENTO — ESCRITÓRIO (readonly) */}
@@ -2745,10 +2744,10 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         <div className="pt-6">
           <Button
             onClick={() => handleGerarPedido('docx')}
-            disabled={isGenerating || isGeneratingPDF || isExtracting || !numeroOrcamento || !vendedor || !planoPagamentoValido || (!voltagem && !porContaCliente && tensao === "Trifásico")}
+            disabled={isGenerating || isGeneratingPDF || isExtracting || !numeroOrcamento || !vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico")}
             className={cn(
               "w-full h-14 text-lg font-bold shadow-[var(--shadow-medium)] transition-all hover:scale-[1.02]",
-              (!vendedor || !planoPagamentoValido || (!voltagem && !porContaCliente && tensao === "Trifásico")) 
+              (!vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico"))
                 ? "bg-muted hover:bg-muted text-muted-foreground cursor-not-allowed" 
                 : "bg-green-600 hover:bg-green-700 text-white"
             )}
@@ -2773,6 +2772,11 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           {!vendedor && (
             <p className="text-xs text-destructive mt-2 text-center">
               Selecione um vendedor responsável
+            </p>
+          )}
+          {erroChecklistProjeto && (
+            <p className="text-xs text-destructive mt-2 text-center">
+              Informações para o projeto: {erroChecklistProjeto.toLowerCase()}
             </p>
           )}
           {!voltagem && !porContaCliente && tensao === "Trifásico" && (

@@ -25,6 +25,7 @@ import {
   type ChecklistCompras,
   DEFAULT_CHECKLIST_COMPRAS,
   isChecklistEmpty,
+  validarChecklistProjeto,
 } from "@/components/pedido-venda/ChecklistComprasEditor";
 
 const formSchema = z.object({
@@ -69,6 +70,14 @@ export default function PedidoSimples() {
   const onSubmit = async (data: FormData) => {
     try {
       setLoading(true);
+
+      // Informações para o projeto: texto + ao menos 1 imagem são obrigatórios
+      const erroProjeto = validarChecklistProjeto(checklistCompras);
+      if (erroProjeto) {
+        toast.error(`Informações para o projeto: ${erroProjeto.toLowerCase()}`);
+        setLoading(false);
+        return;
+      }
 
       // Validar se há plano de pagamento
       if (!paymentPlan || !paymentPlan.parcelas || paymentPlan.parcelas.length === 0) {
@@ -325,7 +334,7 @@ export default function PedidoSimples() {
               </div>
 
               <div className="mt-6 pt-6 border-t">
-                <h3 className="text-lg font-semibold mb-4">Check List projeto</h3>
+                <h3 className="text-lg font-semibold mb-4">Informações para o projeto</h3>
                 <ChecklistComprasEditor
                   value={checklistCompras}
                   onChange={setChecklistCompras}
