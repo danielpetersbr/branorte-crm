@@ -7,7 +7,7 @@ import {
   useControleFinanceiro, useControleFinanceiroPedido, useAcaoFinanceiro, lerArquivo, FinanceiroErro,
   LIMITE_UPLOAD_BYTES,
   type PedidoFinanceiro, type StatusPedido, type StatusParcela, type Parcela, type Recebimento,
-  type ArquivoUpload, type ResumoVendedor, type EventoAuditoria, type EtapaFabrica,
+  type ArquivoUpload, type ResumoVendedor, type EventoAuditoria, type EtapaFabrica, type Kpis,
 } from '@/hooks/useControleFinanceiro'
 import {
   Wallet, TrendingDown, CheckCircle2, Search, AlertTriangle, FileWarning,
@@ -123,6 +123,25 @@ const ACAO_ROTULO: Record<string, string> = {
   regularizacao_recusada: 'recusou a regularização',
   entrega_confirmada: 'confirmou que o cliente recebeu',
 }
+
+/** Filtros de segundo plano — vivem atrás de "mais filtros". */
+const SECUNDARIOS: {
+  chave: Atalho; label: string; tone: 'danger' | 'warning' | 'info' | 'muted'
+  icon: typeof Wallet; n: (k: Kpis, faltaLancar: number) => number
+}[] = [
+  { chave: 'na_fabrica', label: 'ainda está na fábrica', tone: 'info', icon: Factory,
+    n: k => k.pedidosNaFabrica },
+  { chave: 'sem_comprovante', label: 'pagamentos sem comprovante', tone: 'warning', icon: FileWarning,
+    n: k => k.pagamentosSemComprovante },
+  { chave: 'a_conferir', label: 'comprovantes a conferir', tone: 'warning', icon: ShieldAlert,
+    n: k => k.comprovantesAConferir },
+  { chave: 'boleto_pendente', label: 'boletos a enviar', tone: 'info', icon: Send,
+    n: k => k.boletosPendentes },
+  { chave: 'sem_plano', label: 'sem condição de pagamento', tone: 'muted', icon: FileWarning,
+    n: k => k.pedidosSemPlano },
+  { chave: 'divergente', label: 'plano ≠ valor do pedido', tone: 'warning', icon: AlertTriangle,
+    n: k => k.planosDivergentes },
+]
 
 const ACEITA = '.pdf,.jpg,.jpeg,.png,.webp'
 const MIMES_OK = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp']
@@ -1150,6 +1169,7 @@ export function ControleFinanceiro() {
   const [erroLista, setErroLista] = useState<string | null>(null)
   const [aba, setAba] = useState<'pedidos' | 'vendedores'>('pedidos')
   const [ocultarCarregados, setOcultarCarregados] = useState(false)
+  const [maisFiltros, setMaisFiltros] = useState(false)
 
   const gestor = !!data?.escopo.gestor
   const escopado = data?.escopo.vendedores != null
@@ -1178,14 +1198,16 @@ export function ControleFinanceiro() {
     }
   }
 
-  // Filtro que o Daniel pediu em 04/09/2026: depois da baixa dos 270 pedidos
-  // antigos, o que já saiu da fábrica virou ruído na lista de trabalho. Este
-  // botão tira todos eles de uma vez, valendo por cima de qualquer outro filtro.
-  const escondeCarregado = ocultarCarregados && atual !== 'carregado_devendo'
+  // Filtro pedido pelo Daniel em 04/09/2026: "deixa só o que realmente está em
+  // produção na empresa". Não basta esconder o que carregou — pedido cancelado
+  // na produção e pedido sem card também não estão sendo tocados pela fábrica.
+  // Então o botão MOSTRA só as três etapas em que o equipamento está aqui dentro.
+  const soNaFabrica = ocultarCarregados && atual !== 'carregado_devendo'
+  const NA_FABRICA: EtapaFabrica[] = ['ANTES_DO_CHAO', 'FABRICANDO', 'PRONTO']
 
   const rows = useMemo(() => {
     let r = (data?.pedidos ?? []).filter(filtra)
-    if (escondeCarregado) r = r.filter(x => x.producao.etapa !== 'CARREGADO')
+    if (soNaFabrica) r = r.filter(x => NA_FABRICA.includes(x.producao.etapa))
     if (search) {
       const q = search.toLowerCase()
       r = r.filter(x => (x.cliente || '').toLowerCase().includes(q)
@@ -1197,12 +1219,12 @@ export function ControleFinanceiro() {
       r = [...r].sort((a, b) => (b.dataVenda || '').localeCompare(a.dataVenda || ''))
     }
     return r
-  }, [data, atual, search, escondeCarregado])
+  }, [data, atual, search, soNaFabrica])
 
   // Quantos o botão está escondendo agora — o usuário precisa saber o que sumiu.
   const escondidos = useMemo(() => {
-    if (!escondeCarregado) return 0
-    let r = (data?.pedidos ?? []).filter(filtra).filter(x => x.producao.etapa === 'CARREGADO')
+    if (!soNaFabrica) return 0
+    let r = (data?.pedidos ?? []).filter(filtra).filter(x => !NA_FABRICA.includes(x.producao.etapa))
     if (search) {
       const q = search.toLowerCase()
       r = r.filter(x => (x.cliente || '').toLowerCase().includes(q)
@@ -1210,7 +1232,7 @@ export function ControleFinanceiro() {
         || (x.vendedor || '').toLowerCase().includes(q))
     }
     return r.length
-  }, [data, atual, search, escondeCarregado])
+  }, [data, atual, search, soNaFabrica])
 
   const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
   const totalPages = Math.ceil(rows.length / PAGE_SIZE)
@@ -1278,29 +1300,45 @@ export function ControleFinanceiro() {
               sub="não dá pra saber se já carregou" />
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {/* Eram 9 chips lado a lado e o Daniel resumiu: "essas coisa aqui só
+              confunde". Ficam à vista os três que geram trabalho — a fila de
+              quem alimenta, quem já levou o equipamento e não pagou, e quem
+              está vencido. O resto é detalhe: entra atrás de "mais filtros",
+              e reaparece sozinho quando está ativo, pra ninguém ficar com um
+              filtro ligado sem enxergar qual é. */}
+          <div className="flex flex-wrap items-center gap-2">
             <ChipPendencia n={faltaLancar} label="sem nenhum pagamento lançado" tone="warning"
               icon={FileWarning} ativo={atual === 'falta_lancar'} onClick={() => ir('falta_lancar')} />
             <ChipPendencia n={k.pedidosCarregadosEmAberto} label="carregou e ainda deve" tone="danger"
               icon={Truck} ativo={atual === 'carregado_devendo'} onClick={() => ir('carregado_devendo')} />
-            <ChipPendencia n={k.pedidosNaFabrica} label="ainda está na fábrica" tone="info"
-              icon={Factory} ativo={atual === 'na_fabrica'} onClick={() => ir('na_fabrica')} />
             <ChipPendencia n={k.pedidosComVencido} label="com parcela vencida" tone="danger"
               icon={Clock} ativo={atual === 'vencidos'} onClick={() => ir('vencidos')} />
+
+            {/* do gestor, e só quando tem alguém esperando */}
             {gestor && k.regularizacoesAConfirmar > 0 && (
               <ChipPendencia n={k.regularizacoesAConfirmar} label="esperando você confirmar" tone="warning"
                 icon={HandCoins} ativo={atual === 'regularizar'} onClick={() => ir('regularizar')} />
             )}
-            <ChipPendencia n={k.comprovantesAConferir} label="comprovantes a conferir" tone="warning"
-              icon={ShieldAlert} ativo={atual === 'a_conferir'} onClick={() => ir('a_conferir')} />
-            <ChipPendencia n={k.pagamentosSemComprovante} label="pagamentos sem comprovante" tone="warning"
-              icon={FileWarning} ativo={atual === 'sem_comprovante'} onClick={() => ir('sem_comprovante')} />
-            <ChipPendencia n={k.boletosPendentes} label="boletos a enviar" tone="info"
-              icon={Send} ativo={atual === 'boleto_pendente'} onClick={() => ir('boleto_pendente')} />
-            <ChipPendencia n={k.pedidosSemPlano} label="sem condição de pagamento" tone="muted"
-              icon={FileWarning} ativo={atual === 'sem_plano'} onClick={() => ir('sem_plano')} />
-            <ChipPendencia n={k.planosDivergentes} label="plano ≠ valor do pedido" tone="warning"
-              icon={AlertTriangle} ativo={atual === 'divergente'} onClick={() => ir('divergente')} />
+            {gestor && k.comprovantesAConferir > 0 && (
+              <ChipPendencia n={k.comprovantesAConferir} label="comprovantes a conferir" tone="warning"
+                icon={ShieldAlert} ativo={atual === 'a_conferir'} onClick={() => ir('a_conferir')} />
+            )}
+
+            {SECUNDARIOS.map(({ chave, label, tone, icon, n }) => {
+              // "comprovantes a conferir" já está lá em cima pro gestor
+              if (chave === 'a_conferir' && gestor && k.comprovantesAConferir > 0) return null
+              if (!maisFiltros && atual !== chave) return null
+              return (
+                <ChipPendencia key={chave} n={n(k, faltaLancar)} label={label} tone={tone}
+                  icon={icon} ativo={atual === chave} onClick={() => ir(chave)} />
+              )
+            })}
+
+            <button onClick={() => setMaisFiltros(v => !v)}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-dashed border-border px-2.5
+                text-xs font-medium text-text-muted transition-colors hover:bg-surface-2 hover:text-text-secondary">
+              {maisFiltros ? 'menos filtros' : 'mais filtros'}
+            </button>
           </div>
 
           <Card className="p-4">
@@ -1323,14 +1361,14 @@ export function ControleFinanceiro() {
               )}
               <button onClick={() => { setOcultarCarregados(v => !v); setPage(0) }}
                 disabled={atual === 'carregado_devendo'}
-                aria-pressed={escondeCarregado}
+                aria-pressed={soNaFabrica}
                 title={atual === 'carregado_devendo'
-                  ? 'Este filtro já mostra só os que carregaram — não dá pra escondê-los aqui.'
-                  : 'Tira da lista tudo que já saiu da fábrica'}
+                  ? 'Este filtro já mostra só os que carregaram — não dá pra combinar com este botão.'
+                  : 'Deixa só os pedidos que a fábrica está tocando agora: em projeto, em fabricação ou prontos pra sair'}
                 className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors
                   disabled:opacity-40 disabled:cursor-not-allowed ${
-                  escondeCarregado ? 'border-accent bg-accent text-white' : 'border-border text-text-secondary hover:bg-surface-2'}`}>
-                <Truck className="h-3.5 w-3.5" /> Esconder já carregados
+                  soNaFabrica ? 'border-accent bg-accent text-white' : 'border-border text-text-secondary hover:bg-surface-2'}`}>
+                <Factory className="h-3.5 w-3.5" /> Só o que está aqui dentro
               </button>
               <Input placeholder="Buscar cliente, pedido ou vendedor..." leftIcon={<Search className="h-4 w-4" />}
                 value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} className="lg:w-80" />
@@ -1416,7 +1454,7 @@ export function ControleFinanceiro() {
                       {pageRows.length === 0 && (
                         <tr><td colSpan={11} className="px-4 py-8 text-center text-text-muted">
                           {escondidos > 0
-                            ? `Todos os ${escondidos} pedidos deste filtro já carregaram — desligue "Esconder já carregados" para vê-los.`
+                            ? `Nenhum pedido deste filtro está na fábrica agora — os ${escondidos} outros já carregaram, foram cancelados na produção ou não têm card. Desligue "Só o que está aqui dentro" para vê-los.`
                             : atual === 'falta_lancar'
                               ? 'Nenhum pedido esperando lançamento. Fila zerada.'
                               : 'Nenhum pedido neste filtro.'}
@@ -1466,7 +1504,7 @@ export function ControleFinanceiro() {
                 {pageRows.length === 0 && (
                   <Card className="p-6 text-center text-sm text-text-muted">
                     {escondidos > 0
-                      ? `Todos os ${escondidos} pedidos deste filtro já carregaram — desligue "Esconder já carregados" para vê-los.`
+                      ? `Nenhum pedido deste filtro está na fábrica agora — os ${escondidos} outros já carregaram, foram cancelados na produção ou não têm card. Desligue "Só o que está aqui dentro" para vê-los.`
                       : 'Nenhum pedido neste filtro.'}
                   </Card>
                 )}
