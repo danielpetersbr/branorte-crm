@@ -7,9 +7,13 @@ import {
   criarAlertasGestor,
   criarResumoGestor,
   escolherVendedorInicial,
+  estaNoExpedienteGestor,
   formatarMetricaGestor,
   mesaTemSuperficieClicavelGestor,
+  nomeCanonicoVendedorGestor,
   normalizarFatorCotaGestor,
+  normalizarMetricaFonteGestor,
+  resolverEstadoFonteGestor,
   type VendedorGestor,
 } from '@/lib/escritorio-gestor'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -48,6 +52,18 @@ const STATUS_CFG: Record<LiveStatus['status'], { dot: string; label: string; glo
   versao_antiga: { dot: 'bg-amber-400',   label: 'recarregar' },
   desconectado:  { dot: 'bg-red-400',     label: 'desconectado', fade: true },
   desligado:     { dot: 'bg-slate-500',   label: 'desligado',    fade: true },
+}
+
+const STATUS_CURTO: Record<LiveStatus['status'], string> = {
+  ativo: 'trabalhando',
+  ocioso: 'parado',
+  aguardando: 'aguardando',
+  wa_fechado: 'WA fechado',
+  verificar_wa: 'verificar WA',
+  lento: 'lento',
+  versao_antiga: 'recarregar',
+  desconectado: 'offline',
+  desligado: 'desligado',
 }
 
 const VB = { w: 644, h: 642 }
@@ -336,11 +352,18 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
   const [draft, setDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [cardAberto, setCardAberto] = useState<string | null>(null) // funil fixado por clique (mobile)
   const [vendedorSelecionado, setVendedorSelecionado] = useState<string | null>(null)
+  const [agoraMs, setAgoraMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    const relogio = window.setInterval(() => setAgoraMs(Date.now()), 30_000)
+    return () => window.clearInterval(relogio)
+  }, [])
 
   const { data: dados } = useQuery<{ assign: Record<string, string>; pos: Record<string, Pos>; rot: Record<string, number> }>({
     queryKey: ['escritorio-mesas'],
     queryFn: async () => {
-      const { data } = await supabase.from('escritorio_mesas').select('mesa_id, vendedor_nome, pos_x, pos_y, pos_rot')
+      const { data, error } = await supabase.from('escritorio_mesas').select('mesa_id, vendedor_nome, pos_x, pos_y, pos_rot')
+      if (error) throw error
       const assign: Record<string, string> = {}
       const pos: Record<string, Pos> = {}
       const rot: Record<string, number> = {}
@@ -360,7 +383,8 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
   const { data: paredes } = useQuery<Array<Rect & { id: number }>>({
     queryKey: ['escritorio-paredes'],
     queryFn: async () => {
-      const { data } = await supabase.from('escritorio_paredes').select('id, x, y, w, h').order('id')
+      const { data, error } = await supabase.from('escritorio_paredes').select('id, x, y, w, h').order('id')
+      if (error) throw error
       return (data ?? []) as Array<Rect & { id: number }>
     },
   })
@@ -409,18 +433,20 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
   const { data: pessoas } = useQuery<Pessoa[]>({
     queryKey: ['escritorio-pessoas'],
     queryFn: async () => {
-      const { data } = await supabase.from('escritorio_pessoas')
+      const { data, error } = await supabase.from('escritorio_pessoas')
         .select('nome, setor').eq('ativo', true).order('ordem')
+      if (error) throw error
       return (data ?? []) as Pessoa[]
     },
   })
 
   // Orçamentos feitos hoje por vendedor (orcamentos_gerados guarda nome completo → casa por 1º nome)
-  const { data: orcHoje, isFetched: orcHojeFetched } = useQuery<Record<string, number>>({
+  const { data: orcHoje, isSuccess: orcHojeSuccess, dataUpdatedAt: orcHojeUpdatedAt } = useQuery<Record<string, number>>({
     queryKey: ['escritorio-orcamentos-hoje'],
     queryFn: async () => {
       const inicio = new Date(); inicio.setHours(0, 0, 0, 0)
-      const { data } = await supabase.from('orcamentos_gerados').select('vendedor_nome').gte('created_at', inicio.toISOString())
+      const { data, error } = await supabase.from('orcamentos_gerados').select('vendedor_nome').gte('created_at', inicio.toISOString())
+      if (error) throw error
       const m: Record<string, number> = {}
       for (const r of (data ?? []) as Array<{ vendedor_nome: string | null }>) {
         const k = (r.vendedor_nome ?? '').trim().split(/\s+/)[0]?.toUpperCase()
@@ -433,10 +459,11 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
   const orcDe = (nome: string) => orcHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
   // Leads recebidos hoje — MESMA fonte da página Atendimentos (auditoria.atendimentos_por_cliente, created_at hoje)
-  const { data: leadsHoje, isFetched: leadsHojeFetched } = useQuery<Record<string, number>>({
+  const { data: leadsHoje, isSuccess: leadsHojeSuccess, dataUpdatedAt: leadsHojeUpdatedAt } = useQuery<Record<string, number>>({
     queryKey: ['escritorio-leads-hoje'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_leads_hoje')
+      const { data, error } = await supabase.rpc('escritorio_leads_hoje')
+      if (error) throw error
       const m: Record<string, number> = {}
       for (const r of (data ?? []) as Array<{ vend: string; leads: number }>) m[r.vend] = r.leads
       return m
@@ -453,10 +480,11 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
   // ligou" está travado (LIGACAO_REGUA_CONFIAVEL=false). O DESFECHO é outro campo e é
   // confiável — dá pra dizer que o cliente atendeu sem saber quem discou.
   type LigProsp = { atendidas: number; ligTotal: number; puxados: number; trabalhados: number }
-  const { data: ligProsp, isFetched: ligProspFetched } = useQuery<Record<string, LigProsp>>({
+  const { data: ligProsp, isSuccess: ligProspSuccess, dataUpdatedAt: ligProspUpdatedAt } = useQuery<Record<string, LigProsp>>({
     queryKey: ['escritorio-lig-prospec-hoje'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_ligacoes_prospec_hoje')
+      const { data, error } = await supabase.rpc('escritorio_ligacoes_prospec_hoje')
+      if (error) throw error
       const m: Record<string, LigProsp> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
         m[r.vend] = { atendidas: r.lig_atendidas ?? 0, ligTotal: r.lig_total ?? 0, puxados: r.prospec_puxados ?? 0, trabalhados: r.prospec_trabalhados ?? 0 }
@@ -469,10 +497,11 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
 
   // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
   type Funil = { aberto: number; prospec: number; novoLead: number; tentativa: number; followup: number; quente: number; orcamento: number; vendido: number; perdidos: number; totalChats: number; atendimentos: number; msgs: number }
-  const { data: funil, isFetched: funilFetched } = useQuery<Record<string, Funil>>({
+  const { data: funil, isSuccess: funilSuccess, dataUpdatedAt: funilUpdatedAt } = useQuery<Record<string, Funil>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_funil_vivo')
+      const { data, error } = await supabase.rpc('escritorio_funil_vivo')
+      if (error) throw error
       const m: Record<string, Funil> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
         m[r.vendedor_nome] = { aberto: r.aberto, prospec: r.prospec, novoLead: r.novo_lead, tentativa: r.tentativa, followup: r.followup, quente: r.quente, orcamento: r.orcamento, vendido: r.vendido, perdidos: r.perdidos, totalChats: r.total_chats, atendimentos: r.atendimentos, msgs: r.msgs }
@@ -501,9 +530,7 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
   }, [assignMap])
 
   // ----- Painel do gestor: uma normalização por vendedor, preservando fonte ausente como null -----
-  const hora = new Date().getHours()
-  const expediente = hora >= 7 && hora < 19
-  const ALERTA_STATUS = ['wa_fechado', 'verificar_wa', 'desconectado']
+  const expediente = estaNoExpedienteGestor(agoraMs)
   const vendedoresGestor = useMemo<VendedorGestor[]>(() => vendedores
     .filter(v => infoDe[v.vendedor_nome]?.tipo !== 'outro')
     .map(v => {
@@ -519,26 +546,30 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
         statusLabel: STATUS_CFG[status].label,
         pingSec: ls?.pingSec ?? null,
         versao: ls?.versao ?? null,
-        atendimentos: funilFetched ? (f?.atendimentos ?? 0) : null,
-        leads: leadsHojeFetched ? leadsDe(nome) : null,
-        orcamentos: orcHojeFetched ? orcDe(nome) : null,
-        ligacoesAtendidas: ligProspFetched ? (lp?.atendidas ?? 0) : null,
-        ligacoesTotal: ligProspFetched ? (lp?.ligTotal ?? 0) : null,
-        followup: funilFetched ? (f?.followup ?? 0) : null,
-        quentes: funilFetched ? (f?.quente ?? 0) : null,
-        carteiraAberta: funilFetched ? (f?.aberto ?? 0) : null,
-        carteiraTotal: funilFetched ? (f?.totalChats ?? 0) : null,
+        atendimentos: normalizarMetricaFonteGestor(funilSuccess, f?.atendimentos),
+        leads: normalizarMetricaFonteGestor(leadsHojeSuccess, leadsDe(nome)),
+        orcamentos: normalizarMetricaFonteGestor(orcHojeSuccess, orcDe(nome)),
+        ligacoesAtendidas: normalizarMetricaFonteGestor(ligProspSuccess, lp?.atendidas),
+        ligacoesTotal: normalizarMetricaFonteGestor(ligProspSuccess, lp?.ligTotal),
+        followup: normalizarMetricaFonteGestor(funilSuccess, f?.followup),
+        quentes: normalizarMetricaFonteGestor(funilSuccess, f?.quente),
+        carteiraAberta: normalizarMetricaFonteGestor(funilSuccess, f?.aberto),
+        carteiraTotal: normalizarMetricaFonteGestor(funilSuccess, f?.totalChats),
         parados: quota ? quota.parados_topo : null,
         fatorCota: normalizarFatorCotaGestor(cotaAtiva, quota?.fator_cota),
         cortadoPorCota: cotaAtiva && !!quota?.cortado_por_cota,
       }
-    }), [vendedores, infoDe, live, funil, funilFetched, ligProsp, ligProspFetched, efetivo, cotaAtiva, leadsHoje, leadsHojeFetched, orcHoje, orcHojeFetched])
+    }), [vendedores, infoDe, live, funil, funilSuccess, ligProsp, ligProspSuccess, efetivo, cotaAtiva, leadsHoje, leadsHojeSuccess, orcHoje, orcHojeSuccess])
   const vendedorGestorDe = useMemo(() => Object.fromEntries(vendedoresGestor.map(v => [v.nome, v])), [vendedoresGestor])
-  const resumoGestor = useMemo(() => criarResumoGestor(vendedoresGestor, expediente), [vendedoresGestor, expediente])
   const alertasGestor = useMemo(
     () => criarAlertasGestor(vendedoresGestor, { expediente, cotaAtiva, cotaZero }),
     [vendedoresGestor, expediente, cotaAtiva, cotaZero],
   )
+  const vendedoresEmAtencao = useMemo(
+    () => new Set(alertasGestor.filter(alerta => alerta.nivel !== 'positivo').map(alerta => alerta.vendedor)),
+    [alertasGestor],
+  )
+  const resumoGestor = useMemo(() => criarResumoGestor(vendedoresGestor, alertasGestor), [vendedoresGestor, alertasGestor])
 
   useEffect(() => {
     setVendedorSelecionado(atual => {
@@ -548,32 +579,37 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
   }, [vendedoresGestor, alertasGestor])
 
   // Fonte mensal — atend/leads/orçamentos agregados no mês corrente (RPC escritorio_ranking_mes).
-  const { data: rankingMesRaw, isFetched: rankingMesFetched, isError: rankingMesError } = useQuery<Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>>({
+  const { data: rankingMesRaw, isSuccess: rankingMesSuccess, isError: rankingMesError, dataUpdatedAt: rankingMesUpdatedAt } = useQuery<Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>>({
     queryKey: ['escritorio-ranking-mes'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_ranking_mes')
+      const { data, error } = await supabase.rpc('escritorio_ranking_mes')
+      if (error) throw error
       return (data ?? []) as Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>
     },
     refetchInterval: 120_000,
   })
 
+  const rankingMesEstado = resolverEstadoFonteGestor(rankingMesSuccess, rankingMesError)
   const rankingMes = useMemo(() => {
-    const nomesGestor = new Set(vendedoresGestor.map(v => (v.nome.split(/\s+/)[0] || '').toUpperCase()))
-    return (rankingMesRaw ?? [])
-      .filter(r => nomesGestor.has((r.vend.split(/\s+/)[0] || '').toUpperCase()))
-      .map(r => ({
-        nome: r.vend,
+    if (!rankingMesSuccess) return []
+    const nomesGestor = vendedoresGestor.map(vendedor => vendedor.nome)
+    return (rankingMesRaw ?? []).flatMap(r => {
+      const nome = nomeCanonicoVendedorGestor(r.vend, nomesGestor)
+      return nome ? [{
+        nome,
         atendimentos: r.atendimentos,
         leads: r.leads,
         orcamentos: r.orcamentos,
-      }))
-  }, [rankingMesRaw, vendedoresGestor])
+      }] : []
+    })
+  }, [rankingMesRaw, rankingMesSuccess, vendedoresGestor])
 
   // Último heartbeat (sync) de cada vendedor — pra contar há quanto tempo está inativo (vermelho).
-  const { data: ultimoSync } = useQuery<Record<string, number>>({
+  const { data: ultimoSync, isSuccess: ultimoSyncSuccess } = useQuery<Record<string, number>>({
     queryKey: ['escritorio-ultimo-sync'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_ultimo_sync')
+      const { data, error } = await supabase.rpc('escritorio_ultimo_sync')
+      if (error) throw error
       const m: Record<string, number> = {}
       for (const r of (data ?? []) as Array<{ vendedor_nome: string; ultimo_sync: string }>) {
         if (r.vendedor_nome && r.ultimo_sync) m[r.vendedor_nome] = new Date(r.ultimo_sync).getTime()
@@ -582,6 +618,23 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
     },
     refetchInterval: 60_000,
   })
+
+  const ultimaAtualizacaoMs = useMemo(() => {
+    const heartbeatMaisRecente = ultimoSyncSuccess ? Math.max(0, ...Object.values(ultimoSync ?? {})) : 0
+    const fontes = [
+      funilSuccess ? funilUpdatedAt : 0,
+      leadsHojeSuccess ? leadsHojeUpdatedAt : 0,
+      orcHojeSuccess ? orcHojeUpdatedAt : 0,
+      ligProspSuccess ? ligProspUpdatedAt : 0,
+      rankingMesSuccess ? rankingMesUpdatedAt : 0,
+      heartbeatMaisRecente,
+    ]
+    const maisRecente = Math.max(...fontes)
+    return maisRecente > 0 ? maisRecente : null
+  }, [funilSuccess, funilUpdatedAt, leadsHojeSuccess, leadsHojeUpdatedAt, orcHojeSuccess, orcHojeUpdatedAt, ligProspSuccess, ligProspUpdatedAt, rankingMesSuccess, rankingMesUpdatedAt, ultimoSync, ultimoSyncSuccess])
+  const ultimaAtualizacaoLabel = ultimaAtualizacaoMs == null
+    ? '—'
+    : new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(ultimaAtualizacaoMs)
 
   function posDe(id: string): Pos {
     if (localPos[id]) return localPos[id]
@@ -769,10 +822,11 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
         <div>
           <h2 className="text-sm font-semibold text-ink flex items-center gap-2 flex-wrap">
             <Building2 className="h-4 w-4 text-accent" />
-            Escritório — quem senta em cada mesa
+            Escritório do time
             <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-300 px-1.5 py-0.5 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> AO VIVO
             </span>
+            <span className="text-[9px] font-medium text-ink-faint">Última atualização: {ultimaAtualizacaoLabel}</span>
           </h2>
           <p className="text-[10px] text-ink-muted mt-0.5 flex items-center gap-1">
             <MousePointerClick className="h-3 w-3" />
@@ -944,13 +998,13 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
           const info = nome ? infoDe[nome] : undefined
           const isOutro = info?.tipo === 'outro'
           const ls = nome && !isOutro ? live?.[nome] : undefined
-          const cfg = ls ? STATUS_CFG[ls.status] : undefined
+          const cfg = !isOutro ? STATUS_CFG[ls?.status ?? 'desligado'] : undefined
           const gestor = nome && !isOutro ? vendedorGestorDe[nome] : undefined
           const fade = !!cfg?.fade && modo === 'normal'
-          const alerta = !isOutro && modo === 'normal' && (gestor?.cortadoPorCota || (expediente && !!ls && ALERTA_STATUS.includes(ls.status)))
+          const alerta = !isOutro && modo === 'normal' && !!nome && vendedoresEmAtencao.has(nome)
           const selecionadoMesa = !isOutro && nome === vendedorSelecionado
           const inativoMin = (!isOutro && nome && ls?.status && OFFLINE_STATUSES.has(ls.status) && ultimoSync?.[nome])
-            ? minutosUteisInativo(ultimoSync[nome], Date.now()) : null
+            ? minutosUteisInativo(ultimoSync[nome], agoraMs) : null
           const isOver = overMesa === m.id
           const p = posDe(m.id)
           const left = pct(p.x - DESK_W / 2, VB.w)
@@ -1007,7 +1061,12 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
                   draggable={!!nome && modo === 'normal'}
                   onDragStart={e => { if (nome && modo === 'normal') { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
                   onDragEnd={() => setDragging(null)}
-                  className={`w-full h-full transition-opacity ${nome && modo === 'normal' ? 'cursor-grab active:cursor-grabbing' : ''} ${editLayout ? 'pointer-events-none' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
+                  role={modo === 'normal' && isOutro ? 'group' : undefined}
+                  tabIndex={modo === 'normal' && isOutro ? 0 : undefined}
+                  aria-label={modo === 'normal' && isOutro && nome
+                    ? `Mesa ${idx + 1}, ocupada por ${nome}${info?.setor ? `, setor ${info.setor}` : ''}. Arraste para mover.`
+                    : undefined}
+                  className={`w-full h-full transition-opacity ${nome && modo === 'normal' ? 'cursor-grab active:cursor-grabbing' : ''} ${editLayout ? 'pointer-events-none' : ''} ${isOutro ? 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
                 >
                   {conteudoMesa}
                 </div>
@@ -1036,10 +1095,13 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
                       {abreviaSetor(info?.setor ?? null)}
                     </span>
                   ) : (
-                    <span
-                      className={`pointer-events-none absolute top-1 right-1 h-3 w-3 rounded-full ring-2 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
-                      title={cfg?.label ?? 'sem sinal'}
-                    />
+                    <span className="pointer-events-none absolute -top-1.5 right-0 inline-flex items-center gap-1 rounded bg-black/75 px-1 py-0.5 text-[7px] font-bold leading-none text-white ring-1 ring-white/15">
+                      <span
+                        className={`h-2 w-2 rounded-full ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
+                        aria-hidden="true"
+                      />
+                      {STATUS_CURTO[ls?.status ?? 'desligado']}
+                    </span>
                   )}
                   {/* nome + números do dia (sempre visíveis) */}
                   <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-1.5 flex flex-col items-center gap-0.5 max-w-[170%]">
@@ -1103,7 +1165,7 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
         resumo={resumoGestor}
         alertas={alertasGestor}
         rankingMes={rankingMes}
-        rankingMesDisponivel={rankingMesFetched && !rankingMesError}
+        rankingMesEstado={rankingMesEstado}
         selecionado={vendedorSelecionado}
         onSelecionar={setVendedorSelecionado}
         mapa={mapaEscritorio}

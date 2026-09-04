@@ -10,11 +10,13 @@ import {
 import {
   criarCabecalhosHojeGestor,
   formatarMetricaGestor,
+  formatarUltimoSinalGestor,
   ordenarVendedoresGestor,
   resolverSelecaoGestor,
   resolverVisaoTabelaGestor,
   rotuloOrdemGestor,
   type AlertaGestor,
+  type EstadoFonteGestor,
   type OrdemGestor,
   type PeriodoGestor,
   type ResumoGestor,
@@ -33,7 +35,7 @@ export type EscritorioGestorProps = {
   resumo: ResumoGestor
   alertas: AlertaGestor[]
   rankingMes: RankingMesGestor[]
-  rankingMesDisponivel: boolean
+  rankingMesEstado: EstadoFonteGestor
   selecionado: string | null
   onSelecionar: (nome: string) => void
   mapa: ReactNode
@@ -101,7 +103,7 @@ function PainelComparativo({
   vendedores,
   alertas,
   rankingMes,
-  rankingMesDisponivel,
+  rankingMesEstado,
   selecionado,
   onSelecionar,
   periodo,
@@ -112,12 +114,10 @@ function PainelComparativo({
 }: PainelComparativoProps) {
   const vendedorSelecionado = vendedores.find(vendedor => vendedor.nome === selecionado) ?? null
   const cabecalhosHoje = criarCabecalhosHojeGestor(ordem)
-  const visaoTabela = resolverVisaoTabelaGestor(periodo, rankingMesDisponivel)
-  const motivoCota = vendedorSelecionado?.cortadoPorCota
-    ? `Distribuição pausada: ${formatarMetricaGestor(vendedorSelecionado.parados)} clientes parados ultrapassaram a cota.`
-    : vendedorSelecionado?.fatorCota != null && vendedorSelecionado.fatorCota < 1
-      ? `Distribuição reduzida para ${Math.round(vendedorSelecionado.fatorCota * 100)}% por causa da cota de clientes parados.`
-      : 'Sem corte por cota.'
+  const visaoTabela = resolverVisaoTabelaGestor(periodo, rankingMesEstado)
+  const motivosDistribuicao = vendedorSelecionado
+    ? alertas.filter(alerta => alerta.vendedor === vendedorSelecionado.nome && alerta.nivel !== 'positivo')
+    : []
 
   return (
     <aside className="order-1 min-w-0 space-y-3 rounded-xl border border-border bg-surface-2/30 p-3 xl:order-2" aria-label="Comparativo da equipe">
@@ -257,6 +257,10 @@ function PainelComparativo({
               </tbody>
             </table>
           </div>
+        ) : visaoTabela === 'mes-carregando' ? (
+          <div className="rounded-lg border border-dashed border-border bg-surface px-3 py-5 text-center text-micro text-ink-muted" role="status">
+            Carregando comparativo do mês…
+          </div>
         ) : visaoTabela === 'mes-indisponivel' ? (
           <div className="rounded-lg border border-dashed border-border bg-surface px-3 py-5 text-center text-micro text-ink-muted">
             O comparativo do mês está indisponível no momento.
@@ -279,7 +283,21 @@ function PainelComparativo({
                     <td colSpan={4} className="px-3 py-5 text-center text-ink-faint">Sem dados do mês.</td>
                   </tr>
                 ) : rankingMes.map(linha => (
-                  <tr key={linha.nome} className="border-t border-border">
+                  <tr
+                    key={linha.nome}
+                    onClick={() => onSelecionar(resolverSelecaoGestor({ tipo: 'linha', nome: linha.nome }))}
+                    onKeyDown={evento => {
+                      if (evento.key === 'Enter' || evento.key === ' ') {
+                        evento.preventDefault()
+                        onSelecionar(resolverSelecaoGestor({ tipo: 'linha', nome: linha.nome }))
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-selected={selecionado === linha.nome}
+                    className={`cursor-pointer border-t border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
+                      selecionado === linha.nome ? 'bg-accent-bg' : 'hover:bg-surface-2/70'
+                    }`}
+                  >
                     <th scope="row" className="whitespace-nowrap px-2 py-2 text-left font-semibold text-ink">{linha.nome}</th>
                     <td className="px-2 py-2 text-right tabular-nums text-ink">{formatarMetricaGestor(linha.atendimentos)}</td>
                     <td className="px-2 py-2 text-right tabular-nums text-ink">{formatarMetricaGestor(linha.leads)}</td>
@@ -300,10 +318,24 @@ function PainelComparativo({
           <>
             <p className="mt-0.5 text-micro text-ink-muted">Produção de hoje e situação da carteira.</p>
             <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3">
+              <div>
+                <dt className="text-micro text-ink-faint">Status atual</dt>
+                <dd>
+                  <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-micro font-semibold ${statusTone(vendedorSelecionado.status)}`}>
+                    {vendedorSelecionado.statusLabel}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-micro text-ink-faint">Último sinal</dt>
+                <dd className="text-label font-semibold tabular-nums text-ink">{formatarUltimoSinalGestor(vendedorSelecionado.pingSec)}</dd>
+              </div>
               {[
                 ['Atendimentos hoje', vendedorSelecionado.atendimentos],
                 ['Leads recebidos', vendedorSelecionado.leads],
                 ['Orçamentos hoje', vendedorSelecionado.orcamentos],
+                ['Ligações atendidas', vendedorSelecionado.ligacoesAtendidas],
+                ['Total registrado', vendedorSelecionado.ligacoesTotal],
                 ['Follow-up', vendedorSelecionado.followup],
                 ['Quentes', vendedorSelecionado.quentes],
                 ['Clientes parados', vendedorSelecionado.parados],
@@ -319,7 +351,18 @@ function PainelComparativo({
               <p className="text-label font-semibold tabular-nums text-ink">
                 {formatarMetricaGestor(vendedorSelecionado.carteiraAberta)} abertas de {formatarMetricaGestor(vendedorSelecionado.carteiraTotal)} clientes
               </p>
-              <p className={`mt-1.5 text-micro ${vendedorSelecionado.cortadoPorCota ? 'text-danger' : 'text-ink-muted'}`}>{motivoCota}</p>
+              <p className="mt-2 text-micro text-ink-faint">Recebimento de leads</p>
+              {motivosDistribuicao.length === 0 ? (
+                <p className="text-micro text-ink-muted">Sem impedimento operacional ou por cota identificado.</p>
+              ) : (
+                <ul className="mt-1 space-y-1">
+                  {motivosDistribuicao.map(alerta => (
+                    <li key={alerta.id} className={`text-micro ${alerta.nivel === 'critico' ? 'text-danger' : 'text-warning'}`}>
+                      <span className="font-semibold">{alerta.titulo}.</span> {alerta.texto}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </>
         ) : (
@@ -334,8 +377,8 @@ export function EscritorioGestor(props: EscritorioGestorProps) {
   const [periodo, setPeriodo] = useState<PeriodoGestor>('hoje')
   const [ordem, setOrdem] = useState<OrdemGestor>('atencao')
   const linhasHoje = useMemo(
-    () => ordenarVendedoresGestor(props.vendedores, ordem),
-    [props.vendedores, ordem],
+    () => ordenarVendedoresGestor(props.vendedores, ordem, props.alertas),
+    [props.vendedores, props.alertas, ordem],
   )
 
   return (
