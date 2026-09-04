@@ -1831,19 +1831,19 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           
           {/* Feedback de status do App2 */}
           {statusApp2 === 'sending' && (
-            <div className="flex items-center gap-2 text-blue-600 mt-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-300 mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-sm font-medium">Enviando à Produção...</span>
             </div>
           )}
           {statusApp2 === 'done' && (
-            <div className="flex items-center gap-2 text-green-600 mt-3 p-3 rounded-lg bg-green-50 border border-green-200">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-300 mt-3 p-3 rounded-lg bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900">
               <CheckCircle className="h-4 w-4" />
               <span className="text-sm font-medium">Documento tratado enviado para Produção ✅</span>
             </div>
           )}
           {statusApp2 === 'error' && (
-            <div className="flex items-center gap-2 text-red-600 mt-3 p-3 rounded-lg bg-red-50 border border-red-200">
+            <div className="flex items-center gap-2 text-red-600 dark:text-red-300 mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900">
               <span className="text-sm font-medium">❌ Erro ao enviar para limpeza de preços</span>
             </div>
           )}
@@ -1871,7 +1871,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: João Silva Ltda"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(cliente) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      isFieldEmpty(cliente) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                 </div>
@@ -1887,7 +1887,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Nome do contato"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(atencaoA) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                        isFieldEmpty(atencaoA) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                       )}
                     />
                   </div>
@@ -1900,7 +1900,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: (11) 98765-4321"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(telefone) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                        isFieldEmpty(telefone) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                       )}
                     />
                   </div>
@@ -1917,7 +1917,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: cliente@email.com"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(email) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      isFieldEmpty(email) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                 </div>
@@ -1933,7 +1933,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: 000.000.000-00 ou 00.000.000/0001-00"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(cpfCnpj) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                        isFieldEmpty(cpfCnpj) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                       )}
                     />
                   </div>
@@ -1960,7 +1960,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Nome fantasia (obrigatório para CNPJ)"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(fantasia) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                        isFieldEmpty(fantasia) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                       )}
                     />
                   </div>
@@ -1976,7 +1976,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: Rua das Flores, 123"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(endereco) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      isFieldEmpty(endereco) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                 </div>
@@ -1991,7 +1991,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: Centro"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(bairro) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      isFieldEmpty(bairro) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                 </div>
@@ -2006,7 +2006,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: 12345-678"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(cep) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      isFieldEmpty(cep) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                 </div>
@@ -2022,7 +2022,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: São Paulo"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(cidade) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                        isFieldEmpty(cidade) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                       )}
                     />
                   </div>
@@ -2036,7 +2036,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                        maxLength={2}
                        className={cn(
                          "mt-1 uppercase",
-                         isFieldEmpty(estado) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400",
+                         isFieldEmpty(estado) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600",
                          // Destacar em laranja se houver inconsistência cidade x estado
                          detectarEstadoNaCidade(cidade) && detectarEstadoNaCidade(cidade) !== estado.toUpperCase() && "border-orange-400 bg-orange-50/50 focus:border-orange-400 focus:ring-orange-400"
                        )}
@@ -2080,7 +2080,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Ex: Rua das Flores, 123"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(enderecoEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                              enderecoEntregaDiferente && isFieldEmpty(enderecoEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                             )}
                           />
                         </div>
@@ -2093,7 +2093,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Ex: Centro"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(bairroEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                              enderecoEntregaDiferente && isFieldEmpty(bairroEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                             )}
                           />
                         </div>
@@ -2106,7 +2106,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Ex: 12345-678"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(cepEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                              enderecoEntregaDiferente && isFieldEmpty(cepEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                             )}
                           />
                         </div>
@@ -2120,7 +2120,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                               placeholder="Ex: São Paulo"
                               className={cn(
                                 "mt-1",
-                                enderecoEntregaDiferente && isFieldEmpty(cidadeEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                                enderecoEntregaDiferente && isFieldEmpty(cidadeEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                               )}
                             />
                           </div>
@@ -2134,7 +2134,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                               maxLength={2}
                               className={cn(
                                 "mt-1 uppercase",
-                                enderecoEntregaDiferente && isFieldEmpty(estadoEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                                enderecoEntregaDiferente && isFieldEmpty(estadoEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                               )}
                             />
                           </div>
@@ -2148,7 +2148,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Nome do responsável"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(responsavelRecebimento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                              enderecoEntregaDiferente && isFieldEmpty(responsavelRecebimento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                             )}
                           />
                         </div>
@@ -2238,7 +2238,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: 2025 - 1234"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(numeroOrcamento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                        isFieldEmpty(numeroOrcamento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                       )}
                     />
                   </div>
@@ -2295,7 +2295,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: Fabrica de Ração Master - 300500 com moega e silos"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(descricaoEquipamento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      isFieldEmpty(descricaoEquipamento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
@@ -2360,7 +2360,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: 30"
                     className={cn(
                       "mt-1",
-                      (!diasUteis || (diasUteis === 0 && !modoPartesOutros)) && showValidation && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      (!diasUteis || (diasUteis === 0 && !modoPartesOutros)) && showValidation && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                 </div>
@@ -2705,7 +2705,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: 150.000,00"
                     className={cn(
                       "mt-1 text-lg font-semibold",
-                      (isFieldEmpty(valorTotal) || valorTotal === "R$ 0,00") && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400"
+                      (isFieldEmpty(valorTotal) || valorTotal === "R$ 0,00") && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
                     )}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
