@@ -5,6 +5,10 @@ import {
   useFeedbacks, useAtualizarFeedback,
   type RoadmapFeedback, type RoadmapStatus, type RoadmapPrioridade,
 } from '@/hooks/useRoadmap'
+import { useHeatmapSemanal } from '@/hooks/useDashboardEtiquetas'
+import { useCan } from '@/hooks/usePermissions'
+import { HeatmapDiaHora } from '@/components/HeatmapDiaHora'
+import { JanelaBadge } from '@/pages/dashboard/ui/JanelaBadge'
 
 const STATUS_LABEL: Record<RoadmapStatus | 'todos', string> = {
   todos: 'Todos',
@@ -44,6 +48,24 @@ export function Roadmap() {
   const { data: feedbacks, isLoading } = useFeedbacks(filtroStatus)
   const atualizar = useAtualizarFeedback()
 
+  /*
+   * Heatmap "quando chegam os leads" — mudou-se pra cá em 03/09/2026 (saiu do
+   * /analytics e da aba Equipe do Dashboard).
+   *
+   * ⚠️ GATE POR `menu.dashboard`, e não por estar nesta página. O vendedor
+   * ALCANÇA o /roadmap (é onde ele vê o retorno do feedback que mandou — ver o
+   * guard em App.tsx), mas NÃO alcança /dashboard nem /analytics. Sem esta
+   * trava, mudar o bloco de lugar publicaria o volume de leads da operação
+   * inteira pro time de vendas, que hoje não enxerga esse número.
+   *
+   * O `enabled` do hook segura a RPC junto: sem ele o vendedor não veria o
+   * bloco, mas a chamada sairia igual e o dado chegaria no navegador dele.
+   * (Isso é trava de UI — quem decide de verdade é a RLS da RPC.)
+   */
+  const can = useCan()
+  const podeVerHeatmap = can('menu.dashboard')
+  const { data: heatmap30d } = useHeatmapSemanal(podeVerHeatmap)
+
   if (isLoading) return <PageLoading />
 
   const lista = feedbacks ?? []
@@ -69,6 +91,25 @@ export function Roadmap() {
             <p className="text-[12px] text-ink-muted">Bugs, sugestões e melhorias enviados pelos vendedores.</p>
           </div>
         </div>
+
+        {/* Quando chegam os leads — janela fixa de 30 dias, independente de
+            qualquer filtro desta página (o de status vale só pros feedbacks). */}
+        {podeVerHeatmap && (
+          <section id="quando-chegam" className="bg-surface border border-border rounded-lg p-4 mb-4">
+            <div className="mb-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-[13px] font-semibold text-ink">Quando chegam os leads</h2>
+                <JanelaBadge tipo="fixo" label="últimos 30 dias" />
+              </div>
+              <p className="text-[11px] text-ink-faint mt-0.5">
+                Dia da semana × hora. Serve pra escalar plantão e turno de atendimento.
+              </p>
+            </div>
+            {heatmap30d && heatmap30d.length > 0
+              ? <HeatmapDiaHora heatmap={heatmap30d} />
+              : <p className="text-[12px] text-ink-faint">Sem dados no período.</p>}
+          </section>
+        )}
 
         {/* Filtros de status */}
         <div className="bg-surface border border-border rounded-lg p-2 mb-4 flex flex-wrap gap-1.5">

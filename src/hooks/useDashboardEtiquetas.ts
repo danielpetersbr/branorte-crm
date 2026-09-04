@@ -131,10 +131,15 @@ export function useDashboardEtiquetas(preset: DashboardPreset = '') {
 }
 
 // Heatmap semanal SEMPRE com janela fixa (últimos 30 dias) — independente do
-// filtro de data do dashboard. Faz sentido porque "quando chegam os leads" é
+// filtro de data de quem o exibe. Faz sentido porque "quando chegam os leads" é
 // padrão semanal, não métrica do dia.
-export function useHeatmapSemanal() {
+//
+// `enabled` existe porque o único consumidor hoje é o /roadmap, página que o
+// VENDEDOR alcança (ver Roadmap.tsx). Esconder o bloco no render não bastaria:
+// a RPC sairia igual e o dado chegaria no navegador dele.
+export function useHeatmapSemanal(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ['dashboard-heatmap-30d'],
     queryFn: async (): Promise<{ dow: number; hour: number; total: number }[]> => {
       const to = new Date()
