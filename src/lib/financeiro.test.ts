@@ -4,6 +4,7 @@ import {
   devidoDe, diffDias, statusParcela, agregarPedido, resumoKpis, pedidoNoEscopo, ehGestor,
   podeAlterarRecebimento,
   type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type Escopo, type Cobertura, type ConferenciaRaw,
+  type Producao, type Regularizacao, type MarcasPedido,
 } from '../../api/_lib/financeiro-core.js'
 
 const HOJE = '2026-08-06'
@@ -344,4 +345,104 @@ test('ehGestor: so admin e financeiro conferem comprovante', () => {
   assert.equal(ehGestor('vendor'), false)
   assert.equal(ehGestor('mapa'), false)
   assert.equal(ehGestor('marketing'), false)
+})
+
+// ── fábrica e mutirão ────────────────────────────────────────────────────────
+
+function prod(etapa: Producao['etapa'], desde: string | null = '2026-08-01T12:00:00Z'): Producao {
+  return { etapa, statusCru: etapa, desde }
+}
+function marcaReg(status: Regularizacao['status'], over: Partial<Regularizacao> = {}): MarcasPedido {
+  return {
+    regularizacao: {
+      status, motivo: 'Pago antes do sistema', propostoPor: 'Jardel', propostoEm: '2026-08-01T10:00:00Z',
+      decididoPor: null, decididoEm: null, motivoRecusa: null, ...over,
+    },
+    entrega: null,
+  }
+}
+
+test('producao: etapa do pedido chega no resultado', () => {
+  const r = agregarPedido(pedido(), [parcela()], [], HOJE, new Map(), prod('CARREGADO'))
+  assert.equal(r.producao.etapa, 'CARREGADO')
+  assert.equal(r.producao.desde, '2026-08-01T12:00:00Z')
+})
+
+test('producao: sem card nao quebra — vira SEM_CARD', () => {
+  const r = agregarPedido(pedido(), [parcela()], [], HOJE)
+  assert.equal(r.producao.etapa, 'SEM_CARD')
+})
+
+test('semLancamento: pedido sem nenhum receipt entra na fila de quem alimenta', () => {
+  const vazio = agregarPedido(pedido(), [parcela()], [], HOJE)
+  assert.equal(vazio.semLancamento, true)
+
+  const comUm = agregarPedido(pedido(), [parcela()], [receipt({ amount: 100 })], HOJE)
+  assert.equal(comUm.semLancamento, false)
+})
+
+test('semLancamento: pedido ja regularizado sai da fila mesmo sem receipt', () => {
+  const r = agregarPedido(pedido(), [parcela()], [], HOJE, new Map(), prod('CARREGADO'), marcaReg('CONFIRMADA'))
+  assert.equal(r.semLancamento, false)
+})
+
+test('regularizacao CONFIRMADA vira status proprio — nunca QUITADO', () => {
+  const r = agregarPedido(pedido({ valor_total: 1000 }), [parcela({ amount: 1000, due_date: '2026-01-01' })],
+    [], HOJE, new Map(), prod('CARREGADO'), marcaReg('CONFIRMADA'))
+  assert.equal(r.status, 'REGULARIZADO')
+})
+
+test('regularizacao apenas PROPOSTA nao muda o status — a divida continua viva', () => {
+  const r = agregarPedido(pedido({ valor_total: 1000 }), [parcela({ amount: 1000, due_date: '2026-01-01' })],
+    [], HOJE, new Map(), prod('CARREGADO'), marcaReg('PROPOSTA'))
+  assert.equal(r.status, 'VENCIDO')
+  assert.equal(r.regularizacao?.status, 'PROPOSTA')
+})
+
+test('cancelado ganha de regularizado', () => {
+  const r = agregarPedido(pedido({ status: 'CANCELADO' }), [parcela()], [], HOJE, new Map(),
+    prod('CANCELADO'), marcaReg('CONFIRMADA'))
+  assert.equal(r.status, 'CANCELADO')
+})
+
+test('kpis: separa o que carregou do que ainda esta na fabrica', () => {
+  const carregado = agregarPedido(pedido({ id: 'a', valor_total: 1000 }),
+    [parcela({ id: 'i1', amount: 1000 })], [], HOJE, new Map(), prod('CARREGADO'))
+  const naFabrica = agregarPedido(pedido({ id: 'b', valor_total: 700 }),
+    [parcela({ id: 'i2', amount: 700 })], [], HOJE, new Map(), prod('FABRICANDO'))
+  const pronto = agregarPedido(pedido({ id: 'c', valor_total: 300 }),
+    [parcela({ id: 'i3', amount: 300 })], [], HOJE, new Map(), prod('PRONTO'))
+  const semCard = agregarPedido(pedido({ id: 'd', valor_total: 50 }),
+    [parcela({ id: 'i4', amount: 50 })], [], HOJE)
+
+  const k = resumoKpis([carregado, naFabrica, pronto, semCard])
+  assert.equal(k.carregadoAReceber, 1000)
+  assert.equal(k.pedidosCarregadosEmAberto, 1)
+  assert.equal(k.naFabricaAReceber, 1000)      // 700 fabricando + 300 pronto
+  assert.equal(k.pedidosNaFabrica, 2)
+  assert.equal(k.pedidosSemCard, 1)
+  assert.equal(k.pedidosCarregadosSemLancamento, 1)
+  assert.equal(k.valorCarregadoSemLancamento, 1000)
+})
+
+test('kpis: regularizado sai da cobranca mas continua no vendido', () => {
+  const normal = agregarPedido(pedido({ id: 'a', valor_total: 500 }),
+    [parcela({ id: 'i1', amount: 500, due_date: '2026-01-01' })], [], HOJE)
+  const reg = agregarPedido(pedido({ id: 'b', valor_total: 1000 }),
+    [parcela({ id: 'i2', amount: 1000, due_date: '2026-01-01' })], [], HOJE, new Map(),
+    prod('CARREGADO'), marcaReg('CONFIRMADA'))
+
+  const k = resumoKpis([normal, reg])
+  assert.equal(k.totalVendido, 1500)           // o faturamento aconteceu nos dois
+  assert.equal(k.totalAReceber, 500)           // mas so o normal e divida viva
+  assert.equal(k.totalVencido, 500)
+  assert.equal(k.pedidosComVencido, 1)
+  assert.equal(k.pedidosRegularizados, 1)
+  assert.equal(k.valorRegularizado, 1000)
+})
+
+test('kpis: proposta pendente aparece na fila do gestor', () => {
+  const p = agregarPedido(pedido({ valor_total: 800 }), [parcela({ amount: 800 })], [], HOJE,
+    new Map(), prod('CARREGADO'), marcaReg('PROPOSTA'))
+  assert.equal(resumoKpis([p]).regularizacoesAConfirmar, 1)
 })
