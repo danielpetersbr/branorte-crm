@@ -6,6 +6,7 @@ import {
   criarResumoGestor,
   escolherVendedorInicial,
   formatarMetricaGestor,
+  mesaTemSuperficieClicavelGestor,
   normalizarFatorCotaGestor,
   ordenarVendedoresGestor,
   resolverSelecaoGestor,
@@ -82,6 +83,11 @@ test('cota parcial gera aviso sem dizer que o vendedor está bloqueado', () => {
 
   assert.equal(alerta.tipo, 'cota-reduzida')
   assert.doesNotMatch(alerta.titulo, /não recebe/i)
+  assert.doesNotMatch(alerta.texto, /não recebe/i)
+})
+
+test('mesa administrativa ocupada mantém superfície clicável no modo normal', () => {
+  assert.equal(mesaTemSuperficieClicavelGestor('normal', 'outro', false), true)
 })
 
 test('fora do expediente não transforma ausência de WhatsApp em alerta', () => {

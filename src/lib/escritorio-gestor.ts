@@ -90,6 +90,14 @@ export function resolverSelecaoGestor(origem: OrigemSelecaoGestor): string {
   return origem.tipo === 'alerta' ? origem.vendedor : origem.nome
 }
 
+export function mesaTemSuperficieClicavelGestor(
+  modo: 'normal' | 'paredes' | 'mesas',
+  tipoOcupante: 'vendedor' | 'outro' | null,
+  pessoaSelecionada: boolean,
+): boolean {
+  return modo === 'normal' && (pessoaSelecionada || tipoOcupante !== null)
+}
+
 export function formatarMetricaGestor(valor: number | null): string {
   return valor == null ? '—' : new Intl.NumberFormat('pt-BR').format(valor)
 }

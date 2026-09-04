@@ -8,6 +8,7 @@ import {
   criarResumoGestor,
   escolherVendedorInicial,
   formatarMetricaGestor,
+  mesaTemSuperficieClicavelGestor,
   normalizarFatorCotaGestor,
   type VendedorGestor,
 } from '@/lib/escritorio-gestor'
@@ -956,7 +957,8 @@ export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero 
           const top = pct(p.y - DESK_H / 2, VB.h)
           const width = pct(DESK_W, VB.w)
           const height = pct(DESK_H, VB.h)
-          const superficieClicavel = modo === 'normal' && (!!selected || (!!nome && !isOutro))
+          const tipoOcupante = nome ? (isOutro ? 'outro' : 'vendedor') : null
+          const superficieClicavel = mesaTemSuperficieClicavelGestor(modo, tipoOcupante, !!selected)
           const rotacaoMesa = { transform: `rotate(${rotDe(m.id)}deg)`, transition: girando === m.id ? 'none' : 'transform .12s' }
           const conteudoMesa = (
             <div className="w-full h-full" style={rotacaoMesa}>
