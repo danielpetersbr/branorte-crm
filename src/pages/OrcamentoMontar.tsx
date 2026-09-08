@@ -496,7 +496,7 @@ export function OrcamentoMontar() {
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false)
   // Sprint 3: marca true quando o copiloto IA dispara a finalização (auto-submit 3s)
   const [autoSubmitFromIA, setAutoSubmitFromIA] = useState(false)
-  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
+  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; viaServidor?: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; aviso?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
@@ -4048,6 +4048,7 @@ export function OrcamentoMontar() {
                 <FolderOpen className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
                 <span>
                   Salvo em <code className="text-[10px] bg-surface-2 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\{anoDestino}\Orçamentos {anoDestino}\{pastaDestino}\</code>
+                  {sucesso.viaServidor && ' (pelo sincronizador, em até 30s)'}
                 </span>
               </div>
             )}
@@ -4068,6 +4069,16 @@ export function OrcamentoMontar() {
               <div className="flex items-start gap-2 text-danger text-[10.5px] bg-danger/10 border border-danger/30 rounded p-2 mt-1">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                 <span><strong>Upload falhou:</strong> {sucesso.erro}</span>
+              </div>
+            )}
+            {/* AVISO ≠ erro: o orçamento saiu inteiro, só não pelo caminho preferido
+                (ex: gravação direta na pasta caiu e foi pelo servidor). Fica amarelo
+                e NÃO pinta o card de vermelho — antes isso virava "FALHA AO SALVAR"
+                num orçamento que estava salvo, no Z:\ e já no WhatsApp do vendedor. */}
+            {sucesso.aviso && (
+              <div className="flex items-start gap-2 text-warning text-[10.5px] bg-warning/10 border border-warning/30 rounded p-2 mt-1">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>{sucesso.aviso}</span>
               </div>
             )}
             {sucesso.pdfErro && (

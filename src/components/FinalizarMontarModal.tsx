@@ -18,6 +18,7 @@ import {
   isFolderScanSupported, pickOrcamentoFolder, getStoredFolderHandle,
   scanFolderForLastNumber, formatarNumero, ensureWritePermission,
   resolverPastaDoMes, escreverArquivo, decidirDestinoPasta,
+  esquecerPastaSalva, classificarFalhaPasta, avisoPastaViaServidor,
 } from '@/lib/orcamento-folder-scan'
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 import { montarNotaTxt } from '@/lib/orcamento-docx'
@@ -148,7 +149,11 @@ interface Props {
   open: boolean
   snapshot: CarrinhoSnapshot
   onClose: () => void
-  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null }) => void
+  /** `erro` = alguma saída do orçamento FALHOU (card vermelho).
+   *  `aviso` = deu tudo certo por um caminho alternativo (card verde + nota amarela).
+   *  Misturar os dois é o que fazia o vendedor ver "FALHA AO SALVAR" num orçamento
+   *  que tinha sido salvo, entregue no Z:\ e mandado no WhatsApp. */
+  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; viaServidor?: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; aviso?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null }) => void
   /** Sprint 3: quando vem do copiloto IA com cliente pré-preenchido, dispara
    *  contagem regressiva de 3s e auto-clica Gerar (zero atrito).
    *  Vendedor vê o botão "Cancelar countdown" pra interromper se quiser editar. */
@@ -626,8 +631,45 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     // Medido: upload pro servidor falhava, setErro era chamado, e o pai recebia `erro: null`
     // => toast VERDE "Orçamento gerado" com nada salvo e nenhum WhatsApp enviado.
     let erroFluxo: string | null = null
+    // Aviso ≠ erro: o orçamento saiu inteiro, só não pelo caminho preferido.
+    let avisoFluxo: string | null = null
     try {
       const hoje = new Date()
+
+      // 0) RESERVA A PASTA AGORA, ainda coladinho no clique do vendedor.
+      // requestPermission() da File System Access só é aceito enquanto a "user
+      // activation" do clique está viva (~5s) — e a permissão de escrita NÃO
+      // sobrevive ao fechar o Chrome. Quando isso ficava lá embaixo, depois de
+      // gerar DOCX + PDF (30-60s), o pedido morria com NotAllowedError e o save
+      // "falhava" no fim de todo o trabalho, pintando o card de vermelho mesmo
+      // com o orçamento indo inteiro pelo servidor. Resolvendo aqui, ou a pasta
+      // está de pé (e a gravação direta segue), ou o fluxo já nasce via servidor.
+      let pastaMesReservada: any = null
+      let nomePastaReservada = ''
+      if (opcoes.salvarNaPasta) {
+        setStep('Conferindo a pasta Z:\\...', 5)
+        try {
+          const handle = await getStoredFolderHandle(true)
+          if (!handle) throw new Error('Permissão de escrita negada')
+          nomePastaReservada = (handle as any).name || ''
+          const resolved = await withTimeout(resolverPastaDoMes(handle, hoje), 20000, 'localizar a pasta do mês no Z:\\')
+          if (resolved.ok) {
+            pastaMesReservada = resolved.pastaMes
+          } else if (resolved.sugestaoCriar) {
+            pastaMesReservada = await withTimeout(resolved.sugestaoCriar(), 20000, 'criar a pasta do mês no Z:\\')
+          } else {
+            throw new Error(resolved.motivo)
+          }
+        } catch (e) {
+          console.warn('Pasta Z:\\ indisponível — vai pelo servidor:', e)
+          const falha = classificarFalhaPasta(e)
+          if (falha.permanente) {
+            await esquecerPastaSalva()
+            setTemPastaLocal(false)
+          }
+          avisoFluxo = avisoPastaViaServidor(falha)
+        }
+      }
       // Data do cabeçalho: respeita a que o vendedor escolheu na prévia; se não
       // mexeu, é hoje. Só aceita DD/MM/AAAA — qualquer outra coisa cai pra hoje.
       const dataEscolhida = (snapshot.dataEmissao || '').trim()
@@ -1051,24 +1093,30 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       }
       console.log(`[gerar] pdf fonte final: ${pdfFonte}`)
 
-      // Detecta modo teste: se rootHandle salvo tem 'teste' no nome
-      let isTesteMode = false
-      try {
-        const h = await getStoredFolderHandle()
-        if (h && (h as any).name && /teste/i.test((h as any).name)) isTesteMode = true
-      } catch {}
+      // Detecta modo teste: se rootHandle salvo tem 'teste' no nome. Usa o nome
+      // capturado no passo 0 quando ele existe — a pasta pode ter sido esquecida
+      // lá (falha permanente) e aí o getStoredFolderHandle daqui viria vazio.
+      let isTesteMode = /teste/i.test(nomePastaReservada)
+      if (!isTesteMode && !nomePastaReservada) {
+        try {
+          const h = await getStoredFolderHandle()
+          if (h && (h as any).name && /teste/i.test((h as any).name)) isTesteMode = true
+        } catch {}
+      }
       const base = nomeBase(orc.numero, cliNome, descricao || sugestao, isTesteMode)
       // Filename curto pro WhatsApp (sem descricao do produto)
       const baseWhatsApp = nomeBaseWhatsApp(orc.numero, cliNome)
       let baixouDocx = false, baixouPdf = false, salvouNaPasta = false
+      // true = quem levou o arquivo pro Z:\ foi o servidor (chega pelo sincronizador,
+      // em até 30s). false com salvouNaPasta = o navegador gravou direto, na hora.
+      let viaServidor = false
       let whatsappEnviado = false
       let whatsappMensagem: string | null = null
 
       // Salva no SERVIDOR (Storage + confirma status + dispara WhatsApp). É
       // máquina-independente. Serve como caminho primário (salvarNoServidor) E
-      // como FALLBACK quando a pasta Z: falha — ex: virada de mês com o handle
-      // apontando pro mês antigo (o navegador não pula pra pasta irmã). Retorna
-      // true se salvou. Mutamos baixouDocx/salvouNaPasta via closure.
+      // como FALLBACK quando a pasta Z: não está de pé no navegador do vendedor.
+      // Retorna true se salvou. Mutamos salvouNaPasta via closure.
       async function uploadServidor(): Promise<boolean> {
         setStep('Enviando pro servidor...', 75)
         const vendedorNome = vendedorResponsavel.nome
@@ -1094,9 +1142,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               setGerandoProgress(p => Math.min(92, Math.max(p, p + 3)))
             },
           })
-          baixouDocx = true
-          if (pdfBlob) baixouPdf = true
+          // NÃO marca baixouDocx/baixouPdf aqui: no caminho do servidor nada é
+          // baixado pro PC. O card dizia ".docx baixado / PDF baixado" e o
+          // vendedor ia procurar em Downloads um arquivo que nunca chegou lá.
           salvouNaPasta = true
+          viaServidor = true
           if (pdfBlob) {
             if (upRes.whatsapp?.ok) {
               whatsappEnviado = true
@@ -1118,64 +1168,57 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       }
 
       setStep('Preparando para salvar...', 70)
-      // 6a) Salvar na pasta Z: se solicitado
-      if (opcoes.salvarNaPasta) {
+      // 6a) Gravação direta na pasta Z: — só quando a reserva do passo 0 deu certo.
+      // (Se não deu, `avisoFluxo` já explica o porquê e o save vai pelo servidor.)
+      if (pastaMesReservada) {
+        const pastaMes = pastaMesReservada
         try {
-          let handle = await getStoredFolderHandle(true)
-          if (!handle) handle = await pickOrcamentoFolder(true)
-          if (handle) {
-            const ok = await withTimeout(ensureWritePermission(handle), 20000, 'permissão de escrita na pasta')
-            if (!ok) throw new Error('Permissão de escrita negada')
+          // Grava os arquivos na pasta EM PARALELO (docx/pdf/txt). Cada escreverArquivo
+          // abre seu próprio writable num arquivo distinto — no Z:\ (Drive File Stream)
+          // gravar concorrente corta o tempo vs sequencial (3 round-trips → 1 janela).
+          // docx/pdf são críticos (se falharem, o catch externo cai pro servidor);
+          // o .txt (data de envio, usado pra rastrear entrega) é best-effort.
+          const vendedorNome = vendedorResponsavel.nome
+          const txtBlob = new Blob([montarNotaTxt(vendedorNome, hoje)], { type: 'text/plain;charset=utf-8' })
+          const writes: Promise<void>[] = [escreverArquivo(pastaMes, `${base}.docx`, docxBlob)]
+          if (pdfBlob) writes.push(escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob))
+          writes.push(
+            escreverArquivo(pastaMes, `${base} - ${vendedorNome}.txt`, txtBlob)
+              .catch((txtErr) => { console.warn('Falha .txt:', txtErr) })
+          )
+          await withTimeout(Promise.all(writes), 30000, 'gravar arquivos na pasta Z:\\')
+          salvouNaPasta = true
 
-            const resolved = await withTimeout(resolverPastaDoMes(handle, hoje), 20000, 'localizar a pasta do mês no Z:\\')
-            let pastaMes
-            if (resolved.ok) {
-              pastaMes = resolved.pastaMes
-            } else if (resolved.sugestaoCriar) {
-              pastaMes = await resolved.sugestaoCriar()
-            } else {
-              throw new Error(resolved.motivo)
+          // Confirma a gravação relendo o .docx (size > 0) e SÓ então marca o
+          // orçamento como ENTREGUE. Sem isso o status ficava 'rascunho' pra
+          // sempre no fluxo de pasta local — disparando falso alarme de "NÃO foi
+          // salvo / Reenviar pra pasta" toda vez que o vendedor reabria.
+          try {
+            const docxHandle: any = await withTimeout((pastaMes as any).getFileHandle(`${base}.docx`), 15000, 'confirmar arquivo na pasta')
+            const docxFile: any = await withTimeout(docxHandle.getFile(), 15000, 'ler arquivo gravado')
+            if (docxFile.size > 0 && orc.status !== 'enviado') {
+              await atualizar.mutateAsync({ id: orc.id, status: 'enviado' })
             }
-            // Grava os arquivos na pasta EM PARALELO (docx/pdf/txt). Cada escreverArquivo
-            // abre seu próprio writable num arquivo distinto — no Z:\ (Drive File Stream)
-            // gravar concorrente corta o tempo vs sequencial (3 round-trips → 1 janela).
-            // docx/pdf são críticos (se falharem, o catch externo cai pro servidor);
-            // o .txt (data de envio, usado pra rastrear entrega) é best-effort.
-            const vendedorNome = vendedorResponsavel.nome
-            const txtBlob = new Blob([montarNotaTxt(vendedorNome, hoje)], { type: 'text/plain;charset=utf-8' })
-            const writes: Promise<void>[] = [escreverArquivo(pastaMes, `${base}.docx`, docxBlob)]
-            if (pdfBlob) writes.push(escreverArquivo(pastaMes, `${base}.pdf`, pdfBlob))
-            writes.push(
-              escreverArquivo(pastaMes, `${base} - ${vendedorNome}.txt`, txtBlob)
-                .catch((txtErr) => { console.warn('Falha .txt:', txtErr) })
-            )
-            await withTimeout(Promise.all(writes), 30000, 'gravar arquivos na pasta Z:\\')
-            salvouNaPasta = true
-
-            // Confirma a gravação relendo o .docx (size > 0) e SÓ então marca o
-            // orçamento como ENTREGUE. Sem isso o status ficava 'rascunho' pra
-            // sempre no fluxo de pasta local — disparando falso alarme de "NÃO foi
-            // salvo / Reenviar pra pasta" toda vez que o vendedor reabria.
-            try {
-              const docxHandle: any = await withTimeout((pastaMes as any).getFileHandle(`${base}.docx`), 15000, 'confirmar arquivo na pasta')
-              const docxFile: any = await withTimeout(docxHandle.getFile(), 15000, 'ler arquivo gravado')
-              if (docxFile.size > 0 && orc.status !== 'enviado') {
-                await atualizar.mutateAsync({ id: orc.id, status: 'enviado' })
-              }
-            } catch (verErr) {
-              console.warn('Não confirmou arquivo na pasta — mantém rascunho:', verErr)
-            }
+          } catch (verErr) {
+            console.warn('Não confirmou arquivo na pasta — mantém rascunho:', verErr)
           }
         } catch (e) {
           console.warn('Falha salvar pasta:', e)
-          // Virada de mês / pasta stale: o navegador NÃO pula pra pasta do mês novo
-          // (handle salvo aponta pro mês antigo). Em vez de largar no Downloads e
-          // ficar 'rascunho' (vendedor acha que "não salvou"), salva no SERVIDOR —
-          // máquina-independente. Só baixa local se o servidor TAMBÉM falhar.
+          // Pasta caiu NO MEIO da gravação (Z: desconectou, disco cheio, permissão
+          // revogada). Em vez de largar no Downloads e ficar 'rascunho' (vendedor
+          // acha que "não salvou"), salva no SERVIDOR — máquina-independente.
+          // Só baixa local se o servidor TAMBÉM falhar.
+          const falha = classificarFalhaPasta(e)
           const okServer = await uploadServidor()
           if (okServer) {
-            erroFluxo = `✅ Orçamento salvo pelo servidor (o arquivo chega na pasta Z: pelo sincronizador). A gravação direta na pasta falhou — provável virada de mês. Pra voltar a gravar direto, clique em "Sincronizar com pasta" e escolha a pasta BASE "3 - Orçamento".`
-            setErro(erroFluxo)
+            if (falha.permanente) {
+              await esquecerPastaSalva()
+              setTemPastaLocal(false)
+            }
+            // Deu certo pelo servidor: isso é AVISO, não falha. Antes virava `erro`
+            // e o card gritava "FALHA AO SALVAR" num orçamento que estava salvo,
+            // entregue no Z:\ e já no WhatsApp do vendedor.
+            avisoFluxo = avisoPastaViaServidor(falha)
           } else {
             baixarBlob(docxBlob, `${base}.docx`)
             baixouDocx = true
@@ -1183,11 +1226,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               baixarBlob(pdfBlob, `${base}.pdf`)
               baixouPdf = true
             }
-            erroFluxo = `Não consegui salvar na pasta (${(e as Error).message}) nem no servidor. Arquivos baixados localmente. Tente de novo.`
+            erroFluxo = `Não consegui salvar na pasta (${falha.motivo}) nem no servidor. Arquivos baixados localmente. Tente de novo.`
             setErro(erroFluxo)
           }
         }
-      } else if (opcoes.salvarNoServidor) {
+      } else if (opcoes.salvarNaPasta || opcoes.salvarNoServidor) {
         // 6c) Upload via /api/orcamento-presign + /api/orcamento-confirm
         // (server-side, bypassa RLS/session stale, dispara WhatsApp atomicamente).
         const okServer = await uploadServidor()
@@ -1260,7 +1303,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
       setGerandoStep('Pronto!')
       setGerandoProgress(100)
-      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro: erroFluxo, pdfErro, whatsappEnviado, whatsappMensagem })
+      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, viaServidor, pdfBlob, cliente: cliNome.trim(), erro: erroFluxo, aviso: avisoFluxo, pdfErro, whatsappEnviado, whatsappMensagem })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
       setErro((e as Error).message)

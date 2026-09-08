@@ -39,6 +39,82 @@ async function dbSet(key: string, value: any): Promise<void> {
   })
 }
 
+async function dbDelete(key: string): Promise<void> {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    tx.objectStore(STORE_NAME).delete(key)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+// Esquece a pasta guardada NESTE navegador. Serve pros casos em que a pasta não
+// volta sozinha (permissão vencida, pasta que sumiu do PC, handle preso num mês
+// antigo): sem isso o vendedor levava o mesmo erro em TODO orçamento seguinte —
+// e sempre no fim, depois de gerar DOCX e PDF à toa. Sem pasta guardada o modal
+// já nasce no caminho do servidor, que entrega no Z:\ pelo sincronizador.
+export async function esquecerPastaSalva(): Promise<void> {
+  try {
+    await dbDelete(HANDLE_KEY)
+  } catch (e) {
+    console.warn('Não consegui esquecer a pasta salva:', (e as Error).message)
+  }
+}
+
+export interface FalhaPasta {
+  /** frase curta, em português de vendedor, do que aconteceu */
+  motivo: string
+  /** true = não adianta repetir neste navegador sem reescolher a pasta */
+  permanente: boolean
+}
+
+// Traduz o erro cru da File System Access API pro que o vendedor precisa saber.
+// Antes o app chutava "provável virada de mês" pra QUALQUER falha de pasta — o
+// que mandava o vendedor reconfigurar a pasta mesmo quando o problema era o Z:\
+// lento ou a permissão do Chrome que venceu.
+export function classificarFalhaPasta(e: unknown): FalhaPasta {
+  const err = e as { name?: string; message?: string } | null
+  const nome = err?.name ?? ''
+  const msg = (err?.message ?? String(e ?? '')).trim()
+
+  if (nome === 'AbortError' || /\babort|cancel/i.test(msg)) {
+    return { motivo: 'a janela de escolher a pasta foi fechada', permanente: false }
+  }
+  // requestPermission() do Chrome só funciona nos ~5s seguintes a um clique, e a
+  // permissão de escrita não sobrevive ao fechar o navegador. Fora dessa janela
+  // ele lança NotAllowedError — o que, no meio do save, parecia "pasta quebrada".
+  if (nome === 'NotAllowedError' || nome === 'SecurityError' || /permiss|user activation|denied/i.test(msg)) {
+    return {
+      motivo: 'o navegador não deu permissão de escrita na pasta (ela vence quando o Chrome fecha)',
+      permanente: true,
+    }
+  }
+  if (nome === 'NotFoundError' || /not found|n[ãa]o encontrad/i.test(msg)) {
+    return { motivo: 'a pasta configurada não existe mais neste PC (Z:\\ desconectado?)', permanente: true }
+  }
+  // Textos que o próprio resolverPastaDoMes devolve em `motivo`
+  if (/^A pasta salva é/i.test(msg)) {
+    return { motivo: 'a pasta configurada é a de um mês antigo', permanente: true }
+  }
+  if (/n[ãa]o parece a de or[çc]amentos/i.test(msg)) {
+    return { motivo: 'a pasta configurada não é a de orçamentos', permanente: true }
+  }
+  if (/tempo esgotado/i.test(msg)) {
+    return { motivo: 'o Z:\\ não respondeu a tempo', permanente: false }
+  }
+  return { motivo: msg || 'erro não identificado', permanente: false }
+}
+
+// Frase única pro card do vendedor quando a gravação direta caiu mas o orçamento
+// foi inteiro pelo servidor. NÃO é falha: nada se perdeu.
+export function avisoPastaViaServidor(falha: FalhaPasta): string {
+  const base = `Não gravei direto na pasta (${falha.motivo}). O orçamento foi pelo servidor e chega no Z:\\ em até 30s — nada se perdeu.`
+  return falha.permanente
+    ? `${base} Desliguei a pasta deste navegador; pra voltar a gravar direto, abra "Finalizar" e clique em "Trocar pasta", escolhendo a pasta BASE "3 - Orçamento".`
+    : base
+}
+
 export function isFolderScanSupported(): boolean {
   if (typeof window === 'undefined') return false
   // showDirectoryPicker existe em Chrome Android mas LANCA erro quando chamado
