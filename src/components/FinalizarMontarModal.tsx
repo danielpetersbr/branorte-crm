@@ -50,6 +50,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 export interface CarrinhoSnapshot {
   voltagem: 'monofasico' | 'trifasico'
   itens: Array<{
+    uid?: string
     nome: string
     qtd: number
     valor: number
@@ -119,6 +120,10 @@ export interface CarrinhoSnapshot {
     freteTxt?: string | null
     validadeDias?: number | null
   }
+  /** Preços de motor editados a mão no preview (chave cv|polos|item_uid → valor). */
+  motorPrecoOverride?: Record<string, number>
+  /** Modo Exportação aplicado: 0, 10 ou 20 (%). Os itens já vão com o acréscimo. */
+  exportPct?: 0 | 10 | 20
   // Parcelas estruturadas (tabela DATA/MÉTODO/VALOR)
   parcelas?: Array<{
     id: string
@@ -745,6 +750,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // catálogo. Coluna itens é JSONB, aceita os campos extras sem migration.
       const itensDb: OrcamentoItem[] = itensNorm.map((it, idx) => ({
         letra: letraItem(idx),
+        uid: it.uid,
         qtd: it.qtd,
         nome: it.nome,
         specs: it.specs,
@@ -863,6 +869,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         // Data da venda (coluna criada em 08/09/2026). Prioridade pra prévia, que é
         // onde o vendedor edita; o campo do modal entra quando a prévia está vazia.
         data_venda: dataVendaISO,
+        // Sem estes dois, reabrir o orçamento devolvia o motor pelo preço do catálogo
+        // (perdendo o valor negociado) e o modo Exportação aparecia desligado.
+        motor_preco_override: snapshot.motorPrecoOverride && Object.keys(snapshot.motorPrecoOverride).length
+          ? snapshot.motorPrecoOverride
+          : null,
+        export_pct: snapshot.exportPct ?? 0,
         // Config que gerou a condição — só quando o vendedor de fato mexeu no bloco,
         // ou quando já vinha salva (senão gravaria o default do formulário).
         forma_pagamento_cfg: pgTocado ? formaPagamentoCfg : (salvoOrigem?.forma_pagamento_cfg ?? null),

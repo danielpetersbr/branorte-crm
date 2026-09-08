@@ -580,12 +580,13 @@ export function OrcamentoMontar() {
     balancaDispensada,
     obsPorConta,
     motorPrecoOverride,
+    exportPct,
   }), [
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataEmissaoTxt, dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
     parcelasPagamento, fotoPrincipal, observacoesTxt, observacoesFoto,
     componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
-    motorPrecoOverride,
+    motorPrecoOverride, exportPct,
   ])
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
@@ -664,6 +665,7 @@ export function OrcamentoMontar() {
     setBalancaDispensada((prev as any).balancaDispensada ?? false)
     setObsPorConta((prev as any).obsPorConta ?? null)
     setMotorPrecoOverride((prev as any).motorPrecoOverride ?? {})
+    setExportPct((prev as any).exportPct ?? 0)
     setHistoryStack(stack => stack.slice(0, -1))
   }
 
@@ -708,6 +710,7 @@ export function OrcamentoMontar() {
     setBalancaDispensada((d as any).balancaDispensada ?? false)
     setObsPorConta((d as any).obsPorConta ?? null)
     setMotorPrecoOverride((d as any).motorPrecoOverride ?? {})
+    setExportPct((d as any).exportPct ?? 0)
     draft.dismissRecovered()
   }
 
@@ -891,7 +894,14 @@ export function OrcamentoMontar() {
     [carrinho, fExp],
   )
   const motoresAgrupadosExib = useMemo(
-    () => fExp === 1 ? motoresAgrupados : motoresAgrupados.map(m => ({ ...m, valor_total: Math.round(m.valor_total * fExp) })),
+    // valor_unit TAMBÉM leva o acréscimo: é ele que o save persiste em motores[].
+    // Antes só o valor_total era ajustado, e o motor ficava gravado 10-20% abaixo
+    // do que foi cobrado (15 orçamentos, R$ 19,7 mil de diferença no registro).
+    () => fExp === 1 ? motoresAgrupados : motoresAgrupados.map(m => ({
+      ...m,
+      valor_unit: Math.round(m.valor_unit * fExp),
+      valor_total: Math.round(m.valor_total * fExp),
+    })),
     [motoresAgrupados, fExp],
   )
   const totalItemsExib = useMemo(
@@ -2308,7 +2318,9 @@ export function OrcamentoMontar() {
       if (itAny.__full === true) {
         const valorFull = Number(it.valor) || 0
         novos.push({
-          uid: gerarUid(),
+          // Reusa o uid salvo: é a chave do override de preço de motor e da
+          // exclusão de itens do cálculo de acessórios. Item legado (sem uid) ganha um novo.
+          uid: typeof itAny.uid === 'string' && itAny.uid ? itAny.uid : gerarUid(),
           catalogo_id: typeof itAny.catalogo_id === 'number' ? itAny.catalogo_id : -1,
           preco_branorte_id: itAny.preco_branorte_id ?? null,
           categoria: itAny.categoria || 'MODELO',
@@ -2544,6 +2556,31 @@ export function OrcamentoMontar() {
     if (typeof dv === 'string') {
       const mdv = dv.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
       if (mdv) setDataVendaTxt(`${mdv[3]}/${mdv[2]}/${mdv[1]}`)
+    }
+    // Preços de motor editados a mão (senha) e modo Exportação: sem isto o motor
+    // voltava ao preço do catálogo e o acréscimo sumia do botão — com os valores
+    // dos itens JÁ acrescidos, o que convidava a aplicar o +10% duas vezes.
+    setMotorPrecoOverride(((o as any).motor_preco_override ?? {}) as Record<string, number>)
+    const ep = Number((o as any).export_pct ?? 0)
+    if (ep === 10 || ep === 20) {
+      // ⚠️ Os itens são GRAVADOS já com o acréscimo (o save persiste a camada de
+      // exibição). Religar o modo sem mais nada aplicaria +10% EM CIMA de +10% —
+      // medido: um orçamento de R$ 20.579 reabria como R$ 22.197. Então o carrinho
+      // volta ao valor-base e o modo reaplica por cima, chegando no mesmo total.
+      // O override de motor NÃO entra aqui: ele já é gravado como valor-base.
+      const f = 1 + ep / 100
+      const desinfla = (v: number | null | undefined) =>
+        (typeof v === 'number' && v > 0 ? Math.round(v / f) : v)
+      setCarrinho(cs => cs.map(c => ({
+        ...c,
+        valor: Math.round(c.valor / f),
+        valor_original: typeof c.valor_original === 'number' ? Math.round(c.valor_original / f) : c.valor_original,
+        motor_valor_unit: desinfla(c.motor_valor_unit) as number,
+      })))
+      setAcessorios(a => (a && a.valorFixo != null && a.valorFixo > 0 ? { ...a, valorFixo: Math.round(a.valorFixo / f) } : a))
+      setExportPct(ep)
+    } else {
+      setExportPct(0)
     }
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
@@ -3616,6 +3653,7 @@ export function OrcamentoMontar() {
         snapshot={{
           voltagem,
           itens: carrinhoFinal.map(c => ({
+            uid: c.uid,
             nome: c.nome_custom || c.nome,  // usa nome customizado se vendedor editou
             qtd: c.qtd,
             valor: c.valor,
@@ -3650,6 +3688,9 @@ export function OrcamentoMontar() {
             motores_incluso_idx: c.motores_incluso_idx,
           })),
           motoresAgrupados: motoresAgrupadosFinal,
+          // Decisões do vendedor que precisam voltar iguais na próxima edição.
+          motorPrecoOverride,
+          exportPct,
           acessorios: acessoriosFinal ? { pct: acessoriosFinal.pct, items: acessoriosFinal.items, valor: valorAcessoriosFinal } : null,
           totalItems: totalItemsFinal,
           totalMotores: totalMotoresFinal,

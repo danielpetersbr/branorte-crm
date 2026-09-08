@@ -17,6 +17,10 @@ export interface OrcamentoItem {
   // modelos prontos (orcamento_modelos) e orçamentos legados NÃO têm __full →
   // continuam reconstruindo via fuzzy match no carregarDoModelo.
   __full?: boolean
+  // uid do item no carrinho. Persistido porque o override de preço de motor e a
+  // exclusão de itens da base de acessórios são indexados POR uid — regenerar o
+  // uid a cada carregamento invalidava as duas coisas ao reabrir o orçamento.
+  uid?: string
   catalogo_id?: number
   preco_branorte_id?: number | null
   categoria?: string
@@ -149,6 +153,9 @@ export interface OrcamentoGerado {
   data_venda?: string | null
   // Config estruturada do bloco de pagamento do modal (repopula os selects ao reabrir).
   forma_pagamento_cfg?: any | null
+  // Preços de motor editados a mão no preview (senha) e modo Exportação (0/10/20).
+  motor_preco_override?: Record<string, number> | null
+  export_pct?: number | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
   foto_principal_url: string | null
@@ -583,6 +590,8 @@ export interface CriarOrcamentoInput {
   // Data da venda (AAAA-MM-DD) e a config que gerou a forma de pagamento.
   data_venda?: string | null
   forma_pagamento_cfg?: any | null
+  motor_preco_override?: Record<string, number> | null
+  export_pct?: number | null
 }
 
 export function useCriarOrcamento() {
@@ -678,6 +687,8 @@ export function useCriarOrcamento() {
         // que gerou a condição — o INSERT tem lista explícita, não espalha o resto.
         data_venda: input.data_venda ?? null,
         forma_pagamento_cfg: input.forma_pagamento_cfg ?? null,
+        motor_preco_override: input.motor_preco_override ?? null,
+        export_pct: input.export_pct ?? 0,
         numero_base: numero,
       }
       // Tenta inserir; se ainda assim der duplicate (race rara), incrementa e tenta de novo
@@ -811,6 +822,8 @@ export function useCriarAlteracao() {
         parcelas: rest.parcelas ?? null,
         data_venda: rest.data_venda ?? null,
         forma_pagamento_cfg: rest.forma_pagamento_cfg ?? null,
+        motor_preco_override: rest.motor_preco_override ?? null,
+        export_pct: rest.export_pct ?? 0,
         parent_id,
         versao_alt: nextAlt,
         numero_base: numeroBase,
