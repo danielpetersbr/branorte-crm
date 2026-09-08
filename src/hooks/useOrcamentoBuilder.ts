@@ -144,6 +144,11 @@ export interface OrcamentoGerado {
   tensao_motores?: 220 | 380 | 660 | null
   marca_motores?: string | null
   parcelas: any[] | null
+  // Data da venda (AAAA-MM-DD): base do calculo das datas das parcelas relativas.
+  // Coluna criada em 08/09/2026 — antes disso o parcelamento reabria sem datas.
+  data_venda?: string | null
+  // Config estruturada do bloco de pagamento do modal (repopula os selects ao reabrir).
+  forma_pagamento_cfg?: any | null
   status: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
   pdf_url: string | null
   foto_principal_url: string | null
@@ -575,6 +580,9 @@ export interface CriarOrcamentoInput {
   parcelas?: any[] | null
   // Data do cabeçalho (AAAA-MM-DD). Ausente = hoje. Vendedor troca na prévia.
   data_emissao?: string | null
+  // Data da venda (AAAA-MM-DD) e a config que gerou a forma de pagamento.
+  data_venda?: string | null
+  forma_pagamento_cfg?: any | null
 }
 
 export function useCriarOrcamento() {
@@ -665,6 +673,11 @@ export function useCriarOrcamento() {
         tensao_motores: input.tensao_motores ?? null,
         marca_motores: input.marca_motores ?? null,
         parcelas: input.parcelas ?? null,
+        // Sem estes dois o orçamento NOVO nascia sem a data da venda (e o
+        // parcelamento relativo aparecia sem datas ao reabrir) e sem a config
+        // que gerou a condição — o INSERT tem lista explícita, não espalha o resto.
+        data_venda: input.data_venda ?? null,
+        forma_pagamento_cfg: input.forma_pagamento_cfg ?? null,
         numero_base: numero,
       }
       // Tenta inserir; se ainda assim der duplicate (race rara), incrementa e tenta de novo
@@ -796,6 +809,8 @@ export function useCriarAlteracao() {
         tensao_motores: rest.tensao_motores ?? null,
         marca_motores: rest.marca_motores ?? null,
         parcelas: rest.parcelas ?? null,
+        data_venda: rest.data_venda ?? null,
+        forma_pagamento_cfg: rest.forma_pagamento_cfg ?? null,
         parent_id,
         versao_alt: nextAlt,
         numero_base: numeroBase,

@@ -2537,6 +2537,14 @@ export function OrcamentoMontar() {
       const m = de.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
       if (m) setDataEmissaoTxt(`${m[3]}/${m[2]}/${m[1]}`)
     }
+    // Data da venda (coluna data_venda). É ela que transforma "60 dias após a NF"
+    // numa data de verdade na tabela de parcelas — sem isso o orçamento reabria com
+    // o parcelamento certo e a coluna de datas toda em "—".
+    const dv = (o as any).data_venda
+    if (typeof dv === 'string') {
+      const mdv = dv.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+      if (mdv) setDataVendaTxt(`${mdv[3]}/${mdv[2]}/${mdv[1]}`)
+    }
     // Restaura termos inline no preview (forma de pagamento, prazo, data, parcelas)
     if (o.forma_pagamento) setFormaPagamentoTxt(o.forma_pagamento)
     if (o.prazo_entrega) setPrazoEntregaTxt(o.prazo_entrega)
@@ -3600,6 +3608,8 @@ export function OrcamentoMontar() {
           observacoes_foto_url: (orcamentoEditando as any).observacoes_foto_url ?? null,
           forma_pagamento: orcamentoEditando.forma_pagamento ?? null,
           parcelas: orcamentoEditando.parcelas ?? null,
+          data_venda: (orcamentoEditando as any).data_venda ?? null,
+          forma_pagamento_cfg: (orcamentoEditando as any).forma_pagamento_cfg ?? null,
         } : null}
         removidoManual={removidoManual}
         autoSubmitOnOpen={autoSubmitFromIA}

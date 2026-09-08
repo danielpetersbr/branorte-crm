@@ -176,6 +176,10 @@ interface Props {
     observacoes_foto_url: string | null
     forma_pagamento: string | null
     parcelas: any[] | null
+    /** AAAA-MM-DD. Base do calculo das datas das parcelas. */
+    data_venda: string | null
+    /** Config estruturada do bloco de pagamento (repopula os selects ao reabrir). */
+    forma_pagamento_cfg: any | null
   } | null
   /** Campos que o vendedor limpou EXPLICITAMENTE nesta sessão (aí o null vale). */
   removidoManual?: { hero: boolean; obsFoto: boolean; parcelas: boolean; formaPg: boolean }
@@ -393,11 +397,32 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     setObservacoes(initialModal.observacoes ?? '')
     setPrazoEntrega(initialModal.prazo_entrega ?? '')
     // forma_pagamento vira free-text no campo custom (mais simples que tentar reverter pra TipoPagamento)
-    if (initialModal.forma_pagamento) {
+    // Config estruturada salva (coluna forma_pagamento_cfg): repopula os campos que
+    // GERARAM a condicao — tipo, percentuais, intervalo, datas. Sem ela o modal caia
+    // sempre em "Personalizado" com o texto pronto, e o vendedor perdia o parcelamento
+    // que tinha montado (so via o resultado em texto).
+    const cfg = salvoOrigem?.forma_pagamento_cfg
+    if (cfg && typeof cfg === 'object') {
+      if (cfg.tipo) setPgTipo(cfg.tipo)
+      if (cfg.data_venda) setPgDataVenda(cfg.data_venda)
+      if (cfg.avista_meio) setPgAvistaMeio(cfg.avista_meio)
+      if (typeof cfg.avista_desconto_pct === 'number') setPgAvistaDesconto(cfg.avista_desconto_pct)
+      if (typeof cfg.num_parcelas === 'number') setPgNumParcelas(cfg.num_parcelas)
+      if (typeof cfg.intervalo_dias === 'number') setPgIntervalo(cfg.intervalo_dias)
+      if (cfg.primeira_em) setPgPrimeiraEm(cfg.primeira_em)
+      if (typeof cfg.entrada_pct === 'number') setPgEntradaPct(cfg.entrada_pct)
+      if (typeof cfg.parcelas_apos_entrada === 'number') setPgParcelasApos(cfg.parcelas_apos_entrada)
+      if (cfg.texto_custom) setPgCustom(cfg.texto_custom)
+      // Escolha real do vendedor, feita numa sessao anterior: vale como configurada.
+      setPgTocado(true)
+    } else if (initialModal.forma_pagamento) {
       setPgTipo('personalizado')
       setPgCustom(initialModal.forma_pagamento)
     }
-  }, [open, initialModal])
+    // Data da venda salva no orcamento (coluna data_venda) — sem ela as parcelas
+    // relativas ("60 dias apos a NF") voltavam sem data nenhuma.
+    if (salvoOrigem?.data_venda) setPgDataVenda(salvoOrigem.data_venda)
+  }, [open, initialModal, salvoOrigem])
 
   // Observações escritas na PRÉVIA (bloco "Observações", enquanto monta) mandam no modal.
   // Roda DEPOIS do efeito do initialModal de propósito: o que o vendedor acabou de digitar
@@ -660,6 +685,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // Mesma data em ISO (AAAA-MM-DD) pra coluna DATE do banco
       const [ddBR, mmBR, yyyyBR] = dataEmissaoBR.split('/')
       const dataEmissaoISO = `${yyyyBR}-${mmBR}-${ddBR}`
+      // Data da venda: a prévia guarda DD/MM/AAAA, o campo do modal já é ISO.
+      // Vazia = null (coluna DATE não aceita string vazia).
+      const dataVendaBR = (snapshot.termsInline?.dataVenda || '').trim()
+      const dataVendaISO = /^\d{2}\/\d{2}\/\d{4}$/.test(dataVendaBR)
+        ? `${dataVendaBR.slice(6, 10)}-${dataVendaBR.slice(3, 5)}-${dataVendaBR.slice(0, 2)}`
+        : (/^\d{4}-\d{2}-\d{2}$/.test(pgDataVenda) ? pgDataVenda : null)
 
       // 1) Número fresco NA HORA de gerar SEM varrer o Z:\.
       // A mutation `criar` já chama obterProximoNumero() (índice fresco da pasta +
@@ -829,6 +860,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         // Data do cabeçalho escolhida na prévia (ou hoje). Sem isso o PDF saía
         // com a data trocada mas o banco/lista continuava com a data de hoje.
         data_emissao: dataEmissaoISO,
+        // Data da venda (coluna criada em 08/09/2026). Prioridade pra prévia, que é
+        // onde o vendedor edita; o campo do modal entra quando a prévia está vazia.
+        data_venda: dataVendaISO,
+        // Config que gerou a condição — só quando o vendedor de fato mexeu no bloco,
+        // ou quando já vinha salva (senão gravaria o default do formulário).
+        forma_pagamento_cfg: pgTocado ? formaPagamentoCfg : (salvoOrigem?.forma_pagamento_cfg ?? null),
         modelo_id: null,
         modelo_basename: 'PERSONALIZADO',
         voltagem: snapshot.voltagem,
