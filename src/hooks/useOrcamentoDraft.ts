@@ -40,7 +40,14 @@ interface UseDraftReturn<T> {
  *   }
  *   // ao finalizar: draft.clearDraft()
  */
-export function useOrcamentoDraft<T>(snapshot: T, enabled = true): UseDraftReturn<T> {
+/**
+ * @param scope identifica QUAL orçamento este rascunho representa (ex: 'edit-1752').
+ *   Sem isso a chave era única e global: o rascunho do orçamento que o vendedor
+ *   estava montando aparecia dentro de um orçamento SALVO que ele abriu pra editar,
+ *   e o botão "Recuperar" trocava foto, pagamento e itens pelos do outro orçamento.
+ */
+export function useOrcamentoDraft<T>(snapshot: T, enabled = true, scope = ''): UseDraftReturn<T> {
+  const storageKey = scope ? `${DRAFT_KEY}:${scope}` : DRAFT_KEY
   const [recovered, setRecovered] = useState<OrcamentoDraft<T> | null>(null)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
@@ -50,24 +57,36 @@ export function useOrcamentoDraft<T>(snapshot: T, enabled = true): UseDraftRetur
   // Recupera rascunho no mount
   useEffect(() => {
     if (!enabled) return
+    // Faxina: rascunhos escopados (um por orcamento editado) que passaram do TTL.
     try {
-      const raw = localStorage.getItem(DRAFT_KEY)
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i)
+        if (!k || !k.startsWith(`${DRAFT_KEY}:`)) continue
+        try {
+          const p = JSON.parse(localStorage.getItem(k) || '{}') as OrcamentoDraft<T>
+          const t = new Date(p?.saved_at ?? '').getTime()
+          if (Number.isNaN(t) || Date.now() - t > DRAFT_TTL_MS) localStorage.removeItem(k)
+        } catch { localStorage.removeItem(k) }
+      }
+    } catch { /* localStorage indisponivel */ }
+    try {
+      const raw = localStorage.getItem(storageKey)
       if (!raw) return
       const parsed = JSON.parse(raw) as OrcamentoDraft<T>
       if (parsed.version !== DRAFT_VERSION) {
-        localStorage.removeItem(DRAFT_KEY)
+        localStorage.removeItem(storageKey)
         return
       }
       const savedTime = new Date(parsed.saved_at).getTime()
       if (Number.isNaN(savedTime) || Date.now() - savedTime > DRAFT_TTL_MS) {
-        localStorage.removeItem(DRAFT_KEY)
+        localStorage.removeItem(storageKey)
         return
       }
       setRecovered(parsed)
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[useOrcamentoDraft] falha ao ler rascunho:', err)
-      try { localStorage.removeItem(DRAFT_KEY) } catch { /* noop */ }
+      try { localStorage.removeItem(storageKey) } catch { /* noop */ }
     }
     // intentionally only on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,7 +100,7 @@ export function useOrcamentoDraft<T>(snapshot: T, enabled = true): UseDraftRetur
         saved_at: new Date().toISOString(),
         data,
       }
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload))
+      localStorage.setItem(storageKey, JSON.stringify(payload))
       setStatus('saved')
       setLastSavedAt(new Date())
     } catch (err) {
@@ -89,7 +108,7 @@ export function useOrcamentoDraft<T>(snapshot: T, enabled = true): UseDraftRetur
       // eslint-disable-next-line no-console
       console.error('[useOrcamentoDraft] falha ao salvar:', err)
     }
-  }, [])
+  }, [storageKey])
 
   // Autosave debounced quando o snapshot muda.
   // Skip do primeiro render (snapshot inicial nao precisa salvar antes do usuario interagir).
@@ -132,7 +151,7 @@ export function useOrcamentoDraft<T>(snapshot: T, enabled = true): UseDraftRetur
 
   const clearDraft = useCallback(() => {
     try {
-      localStorage.removeItem(DRAFT_KEY)
+      localStorage.removeItem(storageKey)
       setLastSavedAt(null)
       setStatus('idle')
       setRecovered(null)
@@ -140,7 +159,7 @@ export function useOrcamentoDraft<T>(snapshot: T, enabled = true): UseDraftRetur
       // eslint-disable-next-line no-console
       console.error('[useOrcamentoDraft] falha ao apagar rascunho:', err)
     }
-  }, [])
+  }, [storageKey])
 
   const saveNow = useCallback((data: T) => {
     if (timeoutRef.current !== null) {

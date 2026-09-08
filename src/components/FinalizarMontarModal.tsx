@@ -167,6 +167,18 @@ interface Props {
     forma_pagamento: string | null
     prazo_entrega: string | null
   } | null
+  /** O que JÁ está gravado no orçamento aberto pra editar (null quando é novo).
+   *  Usado como rede: se a tela veio sem foto/pagamento/parcelas mas o vendedor
+   *  não removeu nada de propósito, o save mantém o que estava salvo em vez de
+   *  gravar null — era assim que "sumia a foto" e "sumia a condição de pagamento". */
+  salvoOrigem?: {
+    foto_principal_url: string | null
+    observacoes_foto_url: string | null
+    forma_pagamento: string | null
+    parcelas: any[] | null
+  } | null
+  /** Campos que o vendedor limpou EXPLICITAMENTE nesta sessão (aí o null vale). */
+  removidoManual?: { hero: boolean; obsFoto: boolean; parcelas: boolean; formaPg: boolean }
 }
 
 function formatBRL(v: number): string {
@@ -208,7 +220,7 @@ function baixarBlob(blob: Blob, nome: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen, saveMode = 'new', parentOrcamento }: Props) {
+export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen, saveMode = 'new', parentOrcamento, salvoOrigem = null, removidoManual }: Props) {
   const { profile } = useAuth()
   const { data: vendorsAtivos } = useVendors()
   const vendedorResponsavel = useMemo(
@@ -272,6 +284,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   const [pgEntradaPct, setPgEntradaPct] = useState<number>(50)
   const [pgParcelasApos, setPgParcelasApos] = useState<number>(1)
   const [pgCustom, setPgCustom] = useState<string>('')
+  // O vendedor mexeu no bloco de forma de pagamento nesta abertura do modal?
+  // Só então a condição montada aqui vale como escolha dele (o formulário abre
+  // pré-preenchido com "à vista PIX 5%", que não pode virar promessa por descuido).
+  const [pgTocado, setPgTocado] = useState(false)
 
   // Número (folder scan ou banco)
   const [numeroAtual, setNumeroAtual] = useState<string>('')
@@ -397,6 +413,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     if (open) {
       setNumeroAtual('')
       setTemPastaLocal(false)
+      setPgTocado(false)
     }
   }, [open])
 
@@ -488,6 +505,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     pgNumParcelas, pgIntervalo, pgPrimeiraEm,
     pgEntradaPct, pgParcelasApos, pgCustom,
   ])
+
+  // Condição de pagamento que realmente vai pro orçamento (mesma cadeia do save).
+  const formaPgResumo = snapshot.termsInline?.formaPagamento
+    || (pgTocado ? formaPgOut.forma_pagamento : null)
+    || (removidoManual?.formaPg ? null : salvoOrigem?.forma_pagamento)
+    || 'a combinar'
 
   function aplicarCliente(c: NonNullable<typeof clientesSugeridos>[number]) {
     setCliNome(c.nome)
@@ -788,6 +811,13 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         }
       }
 
+      // Uma única definição da condição de pagamento pro banco, pro PDF e pro DOCX
+      // (antes eram três expressões repetidas — dava pra divergirem).
+      const formaPagamentoFinal = snapshot.termsInline?.formaPagamento
+        || (pgTocado ? formaPgOut.forma_pagamento : null)
+        || (removidoManual?.formaPg ? null : salvoOrigem?.forma_pagamento)
+        || 'a combinar'
+
       const stepLabel = saveMode === 'alt' ? 'Criando alteração...' : saveMode === 'update' && editingId ? 'Atualizando orçamento no banco...' : 'Salvando orçamento no banco...'
       setStep(stepLabel, 10)
       // Modo edição vs criação: 'update'+editingId → UPDATE (mantém numero/sequencial), 'alt' → ALT, senão INSERT
@@ -812,17 +842,23 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         total_proposta: snapshot.totalGeral,
         observacoes: observacoes.trim() || null,
         // WYSIWYG: preview inline tem prioridade no save tambem
-        forma_pagamento: snapshot.termsInline?.formaPagamento || formaPgOut.forma_pagamento || 'a combinar',
+        forma_pagamento: formaPagamentoFinal,
         prazo_entrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
-        parcelas: snapshot.parcelas?.length ? snapshot.parcelas : null,
+        parcelas: snapshot.parcelas?.length
+          ? snapshot.parcelas
+          : (removidoManual?.parcelas ? null : (salvoOrigem?.parcelas ?? null)),
         componentes_extras: snapshot.componentesExtras ?? null,
         // Motores avulsos (migration 2026-07-07) — round-trip ao reabrir/editar
         motores_avulsos: snapshot.motoresAvulsos?.length ? snapshot.motoresAvulsos : null,
         balanca_dispensada: snapshot.balancaDispensada ?? false,
         // null = cai no default histórico (5 linhas) na hora de renderizar
         obs_por_conta: snapshot.obsPorConta ?? null,
-        foto_principal_url: fotoPrincipalUrl,
-        observacoes_foto_url: observacoesFotoUrl,
+        // Se a tela está sem foto e o vendedor NÃO tirou ela (hidratação incompleta,
+        // ou o upload da foto nova falhou logo acima), mantém a que já estava salva.
+        foto_principal_url: fotoPrincipalUrl
+          ?? (removidoManual?.hero ? null : (salvoOrigem?.foto_principal_url ?? null)),
+        observacoes_foto_url: observacoesFotoUrl
+          ?? (removidoManual?.obsFoto ? null : (salvoOrigem?.observacoes_foto_url ?? null)),
         // Persistência (migration 2026-06-10): frete, desconto, tensão e marca dos
         // motores agora sobrevivem ao reabrir/editar (antes só viviam no rascunho local).
         frete_tipo: snapshot.termsInline?.freteTipo ?? null,
@@ -902,7 +938,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // vendedor preencheu algo NOVO la (formaPgOut nao-vazio).
           dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
           prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
-          formaPagamento: snapshot.termsInline?.formaPagamento || formaPgOut.forma_pagamento || 'a combinar',
+          formaPagamento: formaPagamentoFinal,
           // Frete escolhido pelo vendedor (CIF/FOB + texto) — sem isso o PDF cai no
           // default FOB "por conta do cliente" mesmo num orçamento CIF.
           freteTipo: snapshot.termsInline?.freteTipo ?? null,
@@ -974,7 +1010,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // WYSIWYG: preview inline e a fonte da verdade visual pro vendedor.
           // Se ele ve 'a combinar' no preview, isso vai pro PDF. Modal so vence
           // se o vendedor preencheu algo NOVO la (formaPgOut nao-vazio).
-          formaPagamento: snapshot.termsInline?.formaPagamento || formaPgOut.forma_pagamento || 'a combinar',
+          formaPagamento: formaPagamentoFinal,
           dataVenda: snapshot.termsInline?.dataVenda || (pgDataVenda ? formaPgOut.data_venda : null) || null,
           prazoEntrega: snapshot.termsInline?.prazoEntrega || prazoEntrega.trim() || null,
           observacoes: observacoes.trim() || null,
@@ -1584,13 +1620,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
                 <CreditCard className="h-3 w-3" />
                 Forma de pagamento
               </div>
-              {formaPgOut.forma_pagamento && (
-                <span className="text-[10px] text-ink-faint truncate max-w-[55%]" title={formaPgOut.forma_pagamento}>
-                  {formaPgOut.forma_pagamento}
-                </span>
-              )}
+              {/* Mostra a condição que VAI SAIR no orçamento — não o default do
+                  formulário. O resumo antigo exibia "à vista PIX 5%" sem ninguém ter
+                  escolhido, enquanto o banco gravava "a combinar". */}
+              <span className="text-[10px] text-ink-faint truncate max-w-[55%]" title={formaPgResumo}>
+                {formaPgResumo}
+              </span>
             </summary>
-            <div className="px-3 pb-3 space-y-2">
+            {/* Qualquer mexida aqui dentro marca a condição como ESCOLHIDA pelo vendedor.
+                Sem isso não dá pra distinguir "à vista PIX 5%" escolhido de "à vista PIX 5%"
+                que é só o default do formulário — e gravar o default viraria 5% de desconto
+                prometido em orçamento que ninguém configurou. */}
+            <div
+              className="px-3 pb-3 space-y-2"
+              onClickCapture={() => setPgTocado(true)}
+              onChangeCapture={() => setPgTocado(true)}
+            >
             <div className="flex gap-1 flex-wrap">
               {([['avista', 'À vista'], ['parcelado', 'Parcelado'], ['entrada', 'Entrada+Parcelas'], ['personalizado', 'Personalizado']] as const).map(([t, l]) => (
                 <button

@@ -544,6 +544,17 @@ export function OrcamentoMontar() {
   // null = usa OBS_POR_CONTA_DEFAULT (5 linhas históricas) na preview/PDF/DOCX.
   const [obsPorConta, setObsPorConta] = useState<string[] | null>(null)
 
+  // ─── ANTI-APAGÃO NA EDIÇÃO ────────────────────────────────────────────────
+  // Ao reabrir um orçamento salvo, o save faz UPDATE com o estado da TELA. Se a
+  // hidratação não trouxe algo (cache velho, rascunho de outro orçamento aplicado
+  // por cima, race de carregamento), o campo vazio na tela APAGAVA o dado do banco
+  // — foi assim que "sumia a foto" e "sumia a condição de pagamento" ao editar.
+  // Estas flags separam "o vendedor limpou de propósito" de "nunca chegou na tela":
+  // só a remoção explícita grava null; caso contrário o valor salvo é preservado.
+  const [removidoManual, setRemovidoManual] = useState<{ hero: boolean; obsFoto: boolean; parcelas: boolean; formaPg: boolean }>(
+    { hero: false, obsFoto: false, parcelas: false, formaPg: false },
+  )
+
   // Snapshot do estado p/ autosave. Inclui tudo que o vendedor pode ter mudado
   // (carrinho, acessorios, voltagem, termos, etc). Excluido: filtros de busca, modais.
   const draftSnapshot = useMemo(() => ({
@@ -579,7 +590,15 @@ export function OrcamentoMontar() {
 
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
   // antes do usuario interagir). Banner de recuperacao aparece se draft existir.
-  const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores)
+  // Se URL tem ?id=N, o builder está EDITANDO um orçamento salvo (save vira UPDATE).
+  const [searchParams] = useSearchParams()
+  const editingIdParam = searchParams.get('id')
+  const editingId = editingIdParam ? Number(editingIdParam) : null
+  // Escopo do rascunho: um por orçamento em edição. Antes era uma chave só pro
+  // builder inteiro — o rascunho de um orçamento novo aparecia dentro de outro
+  // salvo aberto pra editar, e "Recuperar" trocava foto/pagamento/itens pelos dele.
+  const draftScope = editingId ? `edit-${editingId}` : ''
+  const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores, draftScope)
 
   // ─── HISTÓRICO PRA UNDO (Ctrl+Z) ──────────────────────────────────────────
   // Guarda snapshots anteriores do estado pra vendedor desfazer mudanças
@@ -699,9 +718,8 @@ export function OrcamentoMontar() {
   // ─── EDIÇÃO DE ORÇAMENTO SALVO ──────────────────────────────────────────
   // Se URL tem ?id=N, carrega orcamentos_gerados[N] e popula o carrinho.
   // Save flow detecta editingId pra fazer UPDATE em vez de INSERT.
-  const [searchParams] = useSearchParams()
-  const editingIdParam = searchParams.get('id')
-  const editingId = editingIdParam ? Number(editingIdParam) : null
+  // (editingId é declarado lá em cima, antes do autosave — o rascunho precisa dele
+  // pra separar a chave por orçamento.)
   const { data: orcamentoEditando, isLoading: loadingOrcamento, isFetching: fetchingOrcamento } = useOrcamentoGerado(editingId)
   const [orcamentoHidratado, setOrcamentoHidratado] = useState(false)
   // Estado pra hidratar o modal FinalizarMontarModal com dados do orcamento salvo
@@ -726,6 +744,8 @@ export function OrcamentoMontar() {
       setInitialModal(prev => prev ? { ...prev, prazo_entrega: v || null } : prev)
     } else if (key === 'formaPagamento') {
       setFormaPagamentoTxt(v)
+      // Apagar o texto na prévia é decisão do vendedor (vs campo que nunca hidratou).
+      setRemovidoManual(r => ({ ...r, formaPg: !v.trim() }))
       // Sincroniza com initialModal pra que o modal Finalizar nao sobrescreva o valor
       // editado inline com o antigo do banco. (Bug: vendedor editava 'a combinar'
       // no preview, mas PDF saia com 'À vista PIX 5%' herdado do banco.)
@@ -812,8 +832,22 @@ export function OrcamentoMontar() {
 
   const temAcessorios = !!acessorios && (acessorios.items?.length ?? 0) > 0
 
+  // Trava anti-sobrescrita: em modo edição, salvar ANTES da hidratação terminar
+  // grava a tela (vazia ou pela metade) por cima do orçamento salvo — e não só nos
+  // campos que têm rede própria, mas em todos: observações, componentes extras,
+  // frete, desconto, motores avulsos. Melhor recusar o save.
+  const salvarBloqueadoPorCarregamento = () => {
+    if (!editingId || orcamentoHidratado) return false
+    alert(
+      'O orçamento salvo ainda está carregando. Espere ele aparecer completo na tela antes de salvar — '
+      + 'salvar agora apagaria o que está gravado. Se não carregar, recarregue a página (F5).',
+    )
+    return true
+  }
+
   // Abre o modal de finalização (gera PDF/DOCX). Antes revisa cliente.
   const abrirFinalizar = () => {
+    if (salvarBloqueadoPorCarregamento()) return
     setSaveMode('new')
     if (clienteDados.nome?.trim()) {
       setInitialModal(prev => ({
@@ -1812,6 +1846,8 @@ export function OrcamentoMontar() {
     if (!temAlgoPraLimpar) return
     if (!confirm('Limpar TUDO do orçamento? (itens, cliente, foto, forma de pagamento, observações)')) return
     // Reseta orcamento inteiro pro estado inicial
+    // "Limpar TUDO" é remoção explícita: aqui o save PODE gravar null por cima.
+    setRemovidoManual({ hero: true, obsFoto: true, parcelas: true, formaPg: true })
     setCarrinho([])
     setFotoPrincipal(null)
     setAcessorios(null)
@@ -2544,8 +2580,22 @@ export function OrcamentoMontar() {
       (it: any) => Array.isArray(it?.specs) && it.specs.some((s: any) => typeof s === 'string' && /c[oó]digo\s*finame/i.test(s)),
     )
     if (ehFinameSalvo) setFinameMode(true)
+    // Estado acabou de vir do banco: nada foi removido pelo vendedor ainda.
+    setRemovidoManual({ hero: false, obsFoto: false, parcelas: false, formaPg: false })
+    // A hidratação NÃO é uma ação do vendedor: sem isto ela empilhava o estado
+    // VAZIO (pré-carregamento) no histórico, e o primeiro Ctrl+Z / botão Desfazer
+    // depois de abrir um orçamento salvo zerava carrinho, foto e parcelas.
+    isApplyingUndoRef.current = true
+    setHistoryStack([])
     setOrcamentoHidratado(true)
   }, [editingId, orcamentoEditando, loadingItems, loadingMotores, orcamentoHidratado, modelos, fetchingOrcamento])
+
+  // Trocar de orçamento SEM sair da rota (?id=A → ?id=B) mantinha orcamentoHidratado
+  // em true e o builder seguia mostrando o anterior — e um save nesse estado gravava
+  // o conteúdo do orçamento errado por cima do B.
+  useEffect(() => {
+    setOrcamentoHidratado(false)
+  }, [editingId])
 
   // Enquanto o fetch fresco do orçamento não terminou (e ainda não hidratou), segura
   // o PageLoading — evita flash do builder vazio antes do estado ser restaurado.
@@ -2592,7 +2642,7 @@ export function OrcamentoMontar() {
               // saveMode='update': reenvia ATUALIZANDO o próprio orçamento (mantém
               // número) em vez de criar um novo. Com a gravação verificada na pasta,
               // o status vira 'enviado' e o banner some.
-              onClick={() => { setSaveMode('update'); setFinalizarOpen(true) }}
+              onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('update'); setFinalizarOpen(true) }}
               disabled={carrinho.length === 0 || finameBloqueado}
               className="text-[11px] px-2.5 py-1.5 rounded bg-danger hover:bg-danger/90 text-white font-bold flex items-center gap-1 shadow-sm disabled:opacity-50"
             >
@@ -2981,6 +3031,7 @@ export function OrcamentoMontar() {
                     <button
                       disabled={carrinho.length === 0 || finameBloqueado}
                       onClick={() => {
+                        if (salvarBloqueadoPorCarregamento()) return
                         setSaveMode('update')
                         setFinalizarOpen(true)
                       }}
@@ -3004,21 +3055,21 @@ export function OrcamentoMontar() {
                       <div className="fixed inset-0 z-40" onClick={() => setSaveDropdownOpen(false)} />
                       <div className="absolute right-0 top-full mt-1 z-50 bg-bg border border-border rounded-lg shadow-xl min-w-[220px] overflow-hidden">
                         <button
-                          onClick={() => { setSaveMode('update'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('update'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
                           className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border"
                         >
                           <div className="text-[13px] font-bold text-ink">Salvar em cima</div>
                           <div className="text-[11px] text-ink-muted">Sobrescreve o orçamento {orcamentoEditando?.numero}</div>
                         </button>
                         <button
-                          onClick={() => { setSaveMode('alt'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('alt'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
                           className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border"
                         >
                           <div className="text-[13px] font-bold text-accent">Salvar como ALT</div>
                           <div className="text-[11px] text-ink-muted">Cria versão alternativa vinculada</div>
                         </button>
                         <button
-                          onClick={() => { setSaveMode('new'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('new'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
                           className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors"
                         >
                           <div className="text-[13px] font-bold text-ink">Salvar como novo</div>
@@ -3294,7 +3345,10 @@ export function OrcamentoMontar() {
                 observacoesExtra={observacoesTxt || null}
                 observacoesFoto={finameMode ? null : observacoesFoto}
                 onUpdateObservacoes={(t) => setObservacoesTxt(t)}
-                onUpdateObservacoesFoto={(f) => setObservacoesFoto(f)}
+                onUpdateObservacoesFoto={(f: string | null) => {
+                  setObservacoesFoto(f)
+                  setRemovidoManual(r => ({ ...r, obsFoto: !f }))
+                }}
                 onAddAcessorios={finameMode ? undefined : () => setAcessoriosOpen(true)}
                 onAddItem={finameMode ? undefined : () => {
                   // Mobile: alterna pro tab Catálogo (que tava escondido)
@@ -3313,7 +3367,11 @@ export function OrcamentoMontar() {
                 onEditAcessorios={() => setAcessoriosOpen(true)}
                 onRemoveAcessorios={() => setAcessorios(null)}
                 onRemove={finameMode ? undefined : removerItem}
-                onFotoChange={finameMode ? undefined : setFotoPrincipal}
+                onFotoChange={finameMode ? undefined : (f: string | null) => {
+                  setFotoPrincipal(f)
+                  // Tirar a foto na tela é decisão do vendedor: aí sim o save grava null.
+                  setRemovidoManual(r => ({ ...r, hero: !f }))
+                }}
                 onUpdateNome={finameMode ? undefined : alterarNome}
                 onUpdateFotoItem={finameMode ? undefined : (uid, novaFoto) =>
                   setCarrinho(c => c.map(it => it.uid === uid ? { ...it, foto_url: novaFoto } : it))
@@ -3357,7 +3415,10 @@ export function OrcamentoMontar() {
                 finameSomaItens={finameMode ? finameSomaItens : undefined}
                 onFinameAceitarTotal={finameMode ? aceitarNovoTotalFiname : undefined}
                 parcelas={parcelasPagamento}
-                onUpdateParcelas={setParcelasPagamento}
+                onUpdateParcelas={(p: ParcelaPagamento[]) => {
+                  setParcelasPagamento(p)
+                  setRemovidoManual(r => ({ ...r, parcelas: p.length === 0 }))
+                }}
                 motoresDisponiveis={motores ?? []}
                 onTrocarMotor={trocarMotorDoItem}
                 onMotorPorContaCliente={marcarMotorPorContaCliente}
@@ -3531,6 +3592,16 @@ export function OrcamentoMontar() {
           numero_base: orcamentoEditando.numero_base ?? orcamentoEditando.numero,
         } : null}
         initialModal={initialModal}
+        // Anti-apagão: o que JÁ está salvo neste orçamento + o que o vendedor
+        // removeu de propósito nesta sessão. O save usa isso pra não gravar null
+        // por cima de foto/pagamento/parcelas que só faltaram na tela.
+        salvoOrigem={editingId && orcamentoEditando ? {
+          foto_principal_url: orcamentoEditando.foto_principal_url ?? null,
+          observacoes_foto_url: (orcamentoEditando as any).observacoes_foto_url ?? null,
+          forma_pagamento: orcamentoEditando.forma_pagamento ?? null,
+          parcelas: orcamentoEditando.parcelas ?? null,
+        } : null}
+        removidoManual={removidoManual}
         autoSubmitOnOpen={autoSubmitFromIA}
         snapshot={{
           voltagem,
@@ -3586,7 +3657,13 @@ export function OrcamentoMontar() {
           termsInline: {
             dataVenda: dataVendaTxt || null,
             prazoEntrega: prazoEntregaTxt || null,
-            formaPagamento: formaPagamentoTxt || 'a combinar',
+            // Sem fallback 'a combinar' aqui: era ele que atropelava a condição de
+            // pagamento montada nos selects do modal (entrada, parcelas, PIX com
+            // desconto). Como 'a combinar' é truthy, o modal nunca chegava a olhar a
+            // própria configuração — desde 27/05/2026 TODO orçamento salvava
+            // "a combinar". O default agora mora só no modal, no fim da cadeia:
+            // texto da prévia > selects do modal > o que já estava salvo > 'a combinar'.
+            formaPagamento: formaPagamentoTxt || null,
             freteTipo,
             freteTxt: freteTxt || null,
             validadeDias,
@@ -4261,6 +4338,7 @@ export function OrcamentoMontar() {
             return
           }
           // Auto-submit SE IA pré-preencheu cliente (zero atrito)
+          if (salvarBloqueadoPorCarregamento()) return
           const temCliente = !!opts.cliente_dados?.nome
           setAutoSubmitFromIA(temCliente)
           setFinalizarOpen(true)
