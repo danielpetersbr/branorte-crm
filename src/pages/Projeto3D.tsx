@@ -376,7 +376,7 @@ export function Projeto3D() {
           title="Configurador 3D Branorte"
           onLoad={() => setLoading(false)}
           className="absolute inset-0 h-full w-full border-0"
-          allow="fullscreen; accelerometer; gyroscope; xr-spatial-tracking"
+          allow={`fullscreen; accelerometer; gyroscope; xr-spatial-tracking; microphone ${CONFIGURADOR_ORIGIN}`}
         />
       </div>
 
