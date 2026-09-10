@@ -26,6 +26,8 @@ interface UseDraftReturn<T> {
   saveNow: (data: T) => void
   /** Status do ultimo save. UI pode mostrar "salvando..."/"salvo". */
   status: 'idle' | 'saving' | 'saved' | 'error'
+  /** Por que o ultimo save falhou. 'quota' = localStorage cheio. */
+  errorReason: 'quota' | 'outro' | null
   /** Timestamp do ultimo save bem-sucedido. */
   lastSavedAt: Date | null
 }
@@ -46,10 +48,49 @@ interface UseDraftReturn<T> {
  *   estava montando aparecia dentro de um orçamento SALVO que ele abriu pra editar,
  *   e o botão "Recuperar" trocava foto, pagamento e itens pelos do outro orçamento.
  */
+/**
+ * Cota estourada. O nome do erro varia por navegador (Firefox usa NS_ERROR_...), e
+ * navegador antigo so traz o `code` — por isso as tres checagens.
+ */
+function ehCotaCheia(err: unknown): boolean {
+  const e = err as { name?: string; code?: number }
+  if (!e) return false
+  return e.name === 'QuotaExceededError'
+    || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    || e.code === 22 || e.code === 1014
+}
+
+/**
+ * Apaga o rascunho ESCOPADO mais antigo (`...:edit-N`), nunca o que esta sendo salvo.
+ * Devolve false quando nao ha mais o que descartar — ai a cota esta cheia por outra
+ * coisa e insistir nao adianta.
+ */
+function descartarRascunhoMaisAntigo(exceto: string): boolean {
+  let alvo: string | null = null
+  let maisVelho = Number.POSITIVE_INFINITY
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (!k || k === exceto || !k.startsWith(DRAFT_KEY + ':')) continue
+      let quando = 0
+      try {
+        quando = Date.parse(JSON.parse(localStorage.getItem(k) || '{}')?.saved_at || '') || 0
+      } catch { quando = 0 }   // ilegivel = candidato preferencial
+      if (quando < maisVelho) { maisVelho = quando; alvo = k }
+    }
+    if (!alvo) return false
+    localStorage.removeItem(alvo)
+    // eslint-disable-next-line no-console
+    console.warn('[useOrcamentoDraft] cota cheia — descartei o rascunho', alvo)
+    return true
+  } catch { return false }
+}
+
 export function useOrcamentoDraft<T>(snapshot: T, enabled = true, scope = ''): UseDraftReturn<T> {
   const storageKey = scope ? `${DRAFT_KEY}:${scope}` : DRAFT_KEY
   const [recovered, setRecovered] = useState<OrcamentoDraft<T> | null>(null)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [errorReason, setErrorReason] = useState<'quota' | 'outro' | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const timeoutRef = useRef<number | null>(null)
   const firstRunRef = useRef(true)
@@ -93,21 +134,49 @@ export function useOrcamentoDraft<T>(snapshot: T, enabled = true, scope = ''): U
   }, [])
 
   const writeDraft = useCallback((data: T) => {
-    try {
-      setStatus('saving')
-      const payload: OrcamentoDraft<T> = {
-        version: DRAFT_VERSION,
-        saved_at: new Date().toISOString(),
-        data,
-      }
-      localStorage.setItem(storageKey, JSON.stringify(payload))
-      setStatus('saved')
-      setLastSavedAt(new Date())
-    } catch (err) {
-      setStatus('error')
-      // eslint-disable-next-line no-console
-      console.error('[useOrcamentoDraft] falha ao salvar:', err)
+    setStatus('saving')
+    const payload: OrcamentoDraft<T> = {
+      version: DRAFT_VERSION,
+      saved_at: new Date().toISOString(),
+      data,
     }
+    let json: string
+    try {
+      json = JSON.stringify(payload)
+    } catch (err) {
+      setStatus('error'); setErrorReason('outro')
+      // eslint-disable-next-line no-console
+      console.error('[useOrcamentoDraft] snapshot nao serializa:', err)
+      return
+    }
+
+    // Cada orcamento aberto pra editar cria a SUA chave (`...:edit-1752`), e a faxina
+    // por TTL so remove as de 7+ dias. Vendedor que abre dezenas de orcamentos na
+    // semana enche a cota do localStorage (~5 MB por origem) — e a partir dai TODO
+    // save do rascunho falha, mesmo com o carrinho vazio. Era isso que acendia
+    // "Falha ao salvar rascunho" numa tela recem-aberta (10/09/2026).
+    //
+    // Quando a cota estoura, abre espaco jogando fora os rascunhos MAIS ANTIGOS de
+    // OUTROS orcamentos, um por vez, e tenta de novo. Sao rascunhos de orcamentos que
+    // ja estao gravados no banco: o que se perde e a edicao nao salva mais velha da
+    // maquina, e a alternativa era nao salvar rascunho nenhum.
+    for (let tentativa = 0; tentativa < 6; tentativa++) {
+      try {
+        localStorage.setItem(storageKey, json)
+        setStatus('saved'); setErrorReason(null)
+        setLastSavedAt(new Date())
+        return
+      } catch (err) {
+        if (!ehCotaCheia(err) || !descartarRascunhoMaisAntigo(storageKey)) {
+          setStatus('error')
+          setErrorReason(ehCotaCheia(err) ? 'quota' : 'outro')
+          // eslint-disable-next-line no-console
+          console.error('[useOrcamentoDraft] falha ao salvar:', err)
+          return
+        }
+      }
+    }
+    setStatus('error'); setErrorReason('quota')
   }, [storageKey])
 
   // Autosave debounced quando o snapshot muda.
@@ -169,5 +238,6 @@ export function useOrcamentoDraft<T>(snapshot: T, enabled = true, scope = ''): U
     writeDraft(data)
   }, [writeDraft])
 
-  return { recovered, dismissRecovered, clearDraft, saveNow, status, lastSavedAt }
+  return { recovered, dismissRecovered, clearDraft, saveNow, status,
+    errorReason, lastSavedAt }
 }

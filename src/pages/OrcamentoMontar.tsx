@@ -2649,7 +2649,13 @@ export function OrcamentoMontar() {
   // Indicador visual do autosave: status atual + horario do ultimo save.
   const draftStatusLabel = (() => {
     if (draft.status === 'saving') return 'Salvando rascunho...'
-    if (draft.status === 'error') return 'Falha ao salvar rascunho'
+    // O rascunho e conveniencia local (localStorage); o orcamento em si vai pro banco
+    // no Salvar/Gerar. Dizer so "falha" fazia o vendedor achar que perdeu o orcamento.
+    if (draft.status === 'error') {
+      return draft.errorReason === 'quota'
+        ? 'Sem espaco pro rascunho local — o orcamento salva normal'
+        : 'Rascunho local nao salvou — o orcamento salva normal'
+    }
     if (draft.lastSavedAt) {
       const hh = String(draft.lastSavedAt.getHours()).padStart(2, '0')
       const mm = String(draft.lastSavedAt.getMinutes()).padStart(2, '0')
