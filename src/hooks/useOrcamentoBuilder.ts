@@ -358,25 +358,72 @@ export function useAtualizarOrcamento() {
   })
 }
 
-// Lista orçamentos gerados (recentes)
+// Lista orçamentos gerados — TODOS, sem teto de linhas.
+//
+// ⚠️ O `.limit(1000)` de antes não era margem folgada: em 10/09/2026 a tabela tinha 1.673
+// orçamentos e a tela, que ordena por data DESC, escondia os 673 mais ANTIGOS sem avisar
+// nada (o cabeçalho dizia "1000 orçamento(s) no sistema" — exatamente o teto). Como os
+// filtros de vendedor/status/etiqueta e a busca rodam client-side, o que não vem no fetch
+// simplesmente não existe pra tela.
+//
+// Agora pagina de 1.000 em 1.000 até o lote vir curto. O que paga essa conta é o select
+// enxuto: `select('*')` trazia os jsonb de itens, acessórios, motores e componentes —
+// 1.673 linhas = ~9 MB de JSON. Só as colunas que a tela mostra dão ~553 KB (16× menos),
+// e este hook só serve a tela Orçamentos Salvos.
+const ORC_LISTA_COLUNAS =
+  'id,numero,numero_base,versao_alt,data_emissao,sequencial,cliente_nome,vendedor_nome,total_proposta,status,modelo_basename,created_at'
+
+export type OrcamentoGeradoLista = Pick<
+  OrcamentoGerado,
+  | 'id'
+  | 'numero'
+  | 'numero_base'
+  | 'versao_alt'
+  | 'data_emissao'
+  | 'sequencial'
+  | 'cliente_nome'
+  | 'vendedor_nome'
+  | 'total_proposta'
+  | 'status'
+  | 'modelo_basename'
+  | 'created_at'
+>
+
+const ORC_PAGINA = 1000      // teto de linhas por request do PostgREST
+const ORC_MAX_PAGINAS = 50   // guarda contra loop infinito (50 mil), não teto de negócio
+
 export function useOrcamentosGerados(filters?: { vendedor_nome?: string; status?: string }) {
   return useQuery({
     queryKey: ['orcamentos-gerados', filters],
-    queryFn: async (): Promise<OrcamentoGerado[]> => {
-      let q = supabase
-        .from('orcamentos_gerados')
-        .select('*')
-        .order('data_emissao', { ascending: false })
-        .order('sequencial', { ascending: false })
-        // antes era 100 -> escondia orcamentos antigos (ex: 2026-1050, o 112o mais
-        // recente). Filtro de vendedor/status e a busca rodam client-side, entao tudo
-        // precisa estar carregado. Tabela inteira ~376 linhas / 659KB, cabe folgado.
-        .limit(1000)
-      if (filters?.vendedor_nome) q = q.eq('vendedor_nome', filters.vendedor_nome)
-      if (filters?.status) q = q.eq('status', filters.status)
-      const { data, error } = await q
-      if (error) throw error
-      return (data ?? []) as OrcamentoGerado[]
+    queryFn: async (): Promise<OrcamentoGeradoLista[]> => {
+      const todos: OrcamentoGeradoLista[] = []
+      for (let pagina = 0; pagina < ORC_MAX_PAGINAS; pagina++) {
+        let q = supabase
+          .from('orcamentos_gerados')
+          .select(ORC_LISTA_COLUNAS)
+          .order('data_emissao', { ascending: false })
+          .order('sequencial', { ascending: false })
+          // ⚠️ desempate obrigatório: (data_emissao, sequencial) NÃO é único — 18 pares
+          // repetidos em 10/09/2026. Sem ordem total, a página seguinte do `.range()`
+          // repete uma linha e pula outra.
+          .order('id', { ascending: false })
+          .range(pagina * ORC_PAGINA, pagina * ORC_PAGINA + ORC_PAGINA - 1)
+        if (filters?.vendedor_nome) q = q.eq('vendedor_nome', filters.vendedor_nome)
+        if (filters?.status) q = q.eq('status', filters.status)
+        const { data, error } = await q
+        if (error) {
+          // PGRST103 = "offset X, but there are only Y rows". Acontece quando o total é
+          // múltiplo exato de ORC_PAGINA: o lote anterior veio cheio, o loop pede a página
+          // seguinte e não sobrou nada. É fim de lista, não falha — sem este break a tela
+          // quebraria justamente no orçamento 2.000.
+          if ((error as { code?: string }).code === 'PGRST103') break
+          throw error
+        }
+        const lote = (data ?? []) as unknown as OrcamentoGeradoLista[]
+        todos.push(...lote)
+        if (lote.length < ORC_PAGINA) break
+      }
+      return todos
     },
     staleTime: 30_000,
   })

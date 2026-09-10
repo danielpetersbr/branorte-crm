@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Edit3, Search, FileText, Calendar, User, DollarSign, ChevronRight } from 'lucide-react'
-import { useOrcamentosGerados, type OrcamentoGerado } from '@/hooks/useOrcamentoBuilder'
+import { useOrcamentosGerados, type OrcamentoGeradoLista } from '@/hooks/useOrcamentoBuilder'
 import { supabase } from '@/lib/supabase'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
@@ -39,11 +39,11 @@ const STATUS_LABEL: Record<string, { label: string; class: string }> = {
 }
 
 interface OrcamentoGroup {
-  parent: OrcamentoGerado
-  alts: OrcamentoGerado[]
+  parent: OrcamentoGeradoLista
+  alts: OrcamentoGeradoLista[]
 }
 
-function OrcamentoRow({ o, isAlt }: { o: OrcamentoGerado; isAlt?: boolean }) {
+function OrcamentoRow({ o, isAlt }: { o: OrcamentoGeradoLista; isAlt?: boolean }) {
   const st = STATUS_LABEL[o.status] ?? { label: o.status, class: 'bg-gray-100 text-gray-700' }
   return (
     <tr className={`border-b border-border/60 hover:bg-surface-2/40 ${isAlt ? 'bg-surface-2/20' : ''}`}>
