@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 
@@ -31,6 +32,8 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 // Provider único — fica no topo do app, executa getSession()/profile fetch UMA vez.
 // Todas as chamadas a useAuth() compartilham o mesmo estado, sem refetch ao trocar de página.
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
+  const identity = useRef<string | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -50,6 +53,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
       if (!mounted) return
+      const nextId = sess?.user.id ?? null
+      if (identity.current !== nextId) {
+        // Limpa também logout em outra aba e troca direta de conta. Não limpar
+        // em TOKEN_REFRESHED: a identidade e a carteira continuam as mesmas.
+        queryClient.clear()
+        setProfile(null)
+        setProfileError(false)
+        setLoading(!!nextId)
+        identity.current = nextId
+      }
       setSession(sess)
       if (!sess) {
         setProfile(null)
@@ -60,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false
       sub.subscription.unsubscribe()
     }
-  }, [])
+  }, [queryClient])
 
   // Carrega profile só quando o user_id muda (evita refetch em TOKEN_REFRESHED/foco da aba).
   const userId = session?.user?.id ?? null
@@ -127,12 +140,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut()
+    queryClient.clear()
+    identity.current = null
     setSession(null)
     setProfile(null)
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile, loading, profileError, signOut }}>
+    <AuthContext.Provider value={{ session, profile: profile?.id === userId ? profile : null, loading: loading || (!!userId && !!profile && profile.id !== userId), profileError, signOut }}>
       {children}
     </AuthContext.Provider>
   )

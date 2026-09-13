@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { canonico, ordemDe, corDaEtiqueta, ETIQUETAS_OCULTAS, montarConversa } from '@/lib/wa-funil'
 import { foraDoRanking, NOMES_FORA_DO_RANKING } from '@/lib/vendedores-fora-do-ranking'
+import { useAuth } from './useAuth'
 
 // Kanban de etiquetas WhatsApp — espelho do que o vendedor vê no Wascript.
 // Fontes (sincronizadas pela extensão Branorte WA Sync a cada 30s):
@@ -38,8 +39,10 @@ export interface WaKanban {
 }
 
 export function useWaVendedores() {
+  const userId = useAuth().session?.user.id
   return useQuery({
-    queryKey: ['wa-vendedores'],
+    queryKey: ['wa-vendedores', userId],
+    enabled: !!userId,
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -55,10 +58,11 @@ export function useWaVendedores() {
 }
 
 export function useWaKanban(vendedor: string | null) {
+  const userId = useAuth().session?.user.id
   const todos = vendedor === TODOS
   return useQuery<WaKanban>({
-    queryKey: ['wa-kanban', vendedor],
-    enabled: !!vendedor,
+    queryKey: ['wa-kanban', vendedor, userId],
+    enabled: !!vendedor && !!userId,
     refetchInterval: 30_000, // mesma cadência da extensão
     queryFn: async () => {
       let etiqQuery = supabase
@@ -174,12 +178,13 @@ export function useWaMensagens(
   habilitado = true,
   limite = MSGS_PAGINA_INICIAL,
 ) {
+  const userId = useAuth().session?.user.id
   return useQuery<WaConversa>({
-    queryKey: ['wa-mensagens', vendedor, chatId, limite],
-    enabled: habilitado && !!vendedor && !!chatId,
+    queryKey: ['wa-mensagens', vendedor, chatId, limite, userId],
+    enabled: habilitado && !!vendedor && !!chatId && !!userId,
     refetchInterval: 30_000,
     // mantém a página anterior visível durante o refetch/expansão (não pisca vazio)
-    placeholderData: prev => prev,
+    placeholderData: (prev, query) => query?.queryKey[1] === vendedor && query?.queryKey[2] === chatId && query?.queryKey[4] === userId ? prev : undefined,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('wa_chat_messages')
@@ -214,10 +219,11 @@ export interface WaAgendada {
  * telefone (fallback quando o agendamento não gravou o chat_id igual).
  */
 export function useWaAgendadas(vendedor: string | null) {
+  const userId = useAuth().session?.user.id
   const todos = vendedor === TODOS
   return useQuery({
-    queryKey: ['wa-agendadas', vendedor],
-    enabled: !!vendedor,
+    queryKey: ['wa-agendadas', vendedor, userId],
+    enabled: !!vendedor && !!userId,
     refetchInterval: 60_000,
     queryFn: async () => {
       let q = supabase
@@ -272,9 +278,10 @@ export interface WaMovimento {
 
 /** Histórico de movimentação de etiquetas de um chat (timeline do drawer) */
 export function useWaMovimentos(vendedor: string | null, phone: string | null) {
+  const userId = useAuth().session?.user.id
   return useQuery<WaMovimento[]>({
-    queryKey: ['wa-movimentos', vendedor, phone],
-    enabled: !!vendedor && !!phone,
+    queryKey: ['wa-movimentos', vendedor, phone, userId],
+    enabled: !!vendedor && !!phone && !!userId,
     staleTime: 60_000,
     queryFn: async () => {
       const { data, error } = await supabase
