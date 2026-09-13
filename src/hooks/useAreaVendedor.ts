@@ -48,8 +48,10 @@ export function useAreaVendedor(vendedorNome: string | null, vendedorId: string 
     carteira,
     analises,
     precalculadas,
+    // Conservador: 1000 também pode ser o total exato. Não afirmar carteira completa.
+    precalculadasLimiteAtingido: (precalculadas.data?.length ?? 0) >= 1000,
     clientes: montarAreaClientes(carteira.data, podeLerSupervisao ? analises.data : []),
     atualizadoEm: carteira.dataUpdatedAt,
-    atualizar: () => Promise.all([carteira.refetch(), ...(podeLerSupervisao && vendedorId ? [analises.refetch()] : [])]),
+    atualizar: () => Promise.all([carteira.refetch(), ...(podeLerSupervisao && vendedorId ? [analises.refetch()] : []), ...(podeLerPrecalculada && vendedorId ? [precalculadas.refetch()] : [])]),
   }
 }
