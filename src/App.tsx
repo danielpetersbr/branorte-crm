@@ -35,6 +35,7 @@ const Representantes = lazy(() => import('@/pages/Representantes').then(m => ({ 
 const SejaRepresentante = lazy(() => import('@/pages/SejaRepresentante').then(m => ({ default: m.SejaRepresentante })))
 const Funil = lazy(() => import('@/pages/Funil').then(m => ({ default: m.Funil })))
 const FunilWhatsApp = lazy(() => import('@/pages/FunilWhatsApp').then(m => ({ default: m.FunilWhatsApp })))
+const AreaVendedor = lazy(() => import('@/pages/AreaVendedor'))
 const FunilRelatorio = lazy(() => import('@/pages/FunilRelatorio').then(m => ({ default: m.FunilRelatorio })))
 const OrcamentoBuilder = lazy(() => import('@/pages/OrcamentoBuilder').then(m => ({ default: m.OrcamentoBuilder })))
 const OrcamentoMontar = lazy(() => import('@/pages/OrcamentoMontar').then(m => ({ default: m.OrcamentoMontar })))
@@ -568,6 +569,7 @@ function AppRoutes() {
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
         <Route path="/funil" element={<FunilWhatsApp />} />
+        {profile.role === 'admin' && <Route path="/area-vendedor" element={<AreaVendedor />} />}
         <Route path="/funil/manual" element={<Funil />} />
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
         <Route path="/projeto" element={<Projeto />} />
