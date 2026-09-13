@@ -106,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
       { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
       { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
+      { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, adminOnly: true },
       // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
       // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
       { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
