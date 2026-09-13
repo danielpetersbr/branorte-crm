@@ -8,7 +8,7 @@ import { ETAPAS_AREA, REGRAS_ETAPA, syncDesatualizada, type AreaCliente } from '
 import { corpoVisivel } from '@/lib/wa-funil'
 import { estadoAnalisePrecalculada, type AnalisePrecalculada } from '@/lib/area-vendedor-analises'
 
-const control = 'min-h-11 rounded-md border border-border bg-surface px-3 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+const control = 'min-h-10 rounded-md border border-border bg-surface px-3 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
 const normalizar = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase()
 function dataHora(valor: string | number | null | undefined) {
   if (!valor) return 'Não disponível'
@@ -31,72 +31,86 @@ export default function AreaVendedor() {
   const vendedorId = nome && matches.length === 1 ? matches[0].id : null
   const area = useAreaVendedor(nome || null, vendedorId, isAdmin)
   const analisesPorChat = useMemo(() => new Map((area.precalculadas.data ?? []).map(a => [a.chat_id, a])), [area.precalculadas.data])
-  const clientes = useMemo(() => area.clientes.filter(c =>
+  const filtrados = useMemo(() => area.clientes.filter(c =>
     (!etapa || c.etapas.includes(etapa)) &&
-    (!somentePendencias || c.achados.length > 0 || (analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias.length ?? 0) > 0) &&
     normalizar(`${c.chat.contact_name ?? ''} ${c.chat.phone}`).includes(normalizar(busca))
-  ), [area.clientes, etapa, somentePendencias, busca, analisesPorChat])
+  ).sort((a, b) => {
+    const pa = analisesPorChat.get(a.chat.chat_id ?? '')?.pendencias.length ?? 0
+    const pb = analisesPorChat.get(b.chat.chat_id ?? '')?.pendencias.length ?? 0
+    return Number(pb > 0) - Number(pa > 0) || (Date.parse(b.chat.last_message_at ?? '') || 0) - (Date.parse(a.chat.last_message_at ?? '') || 0)
+  }), [area.clientes, etapa, busca, analisesPorChat])
+  const pendencias = filtrados.filter(c => (analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias.length ?? 0) > 0).length
+  const clientes = somentePendencias ? filtrados.filter(c => (analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias.length ?? 0) > 0) : filtrados
   const cliente = clientes.find(c => c.id === selecionado) ?? null
-  const pendencias = area.clientes.filter(c => c.achados.length > 0 || (analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias.length ?? 0) > 0).length
+  const analisados = filtrados.filter(c => analisesPorChat.has(c.chat.chat_id ?? '')).length
   const atualizando = area.carteira.isFetching || area.analises.isFetching || area.precalculadas.isFetching
+  const syncAntiga = !!nome && !area.carteira.isLoading && syncDesatualizada(area.carteira.data?.ultimaSync ?? null)
+  const problemas = [
+    (nomes.error || vendors.error) && 'Cadastro de vendedores indisponível. Recarregue a página.',
+    area.carteira.error && 'Falha ao atualizar a carteira. Os dados visíveis podem ser da consulta anterior.',
+    area.precalculadas.error && 'Análises publicadas indisponíveis nesta consulta.',
+    (nome && !vendedorId && !vendors.isLoading) && 'Vendedor sem vínculo único no cadastro: análises não associadas.',
+    syncAntiga && 'Sincronização de etiquetas antiga ou sem data confiável.',
+    area.analises.error && 'Supervisão antiga indisponível.',
+  ].filter(Boolean)
 
   return (
-    <main className="mx-auto max-w-[1500px] space-y-5 p-4 md:p-6">
+    <main className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Área do vendedor</h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-muted">Sua carteira, o que ficou pendente e a conversa que explica o próximo passo.</p>
+          <h1 className="text-xl font-semibold tracking-tight">Área do vendedor</h1>
+          <p className="mt-0.5 text-sm text-ink-muted">Clientes, conversas e próximos passos.</p>
         </div>
         <button className={`${control} inline-flex items-center gap-2 disabled:opacity-50`} disabled={!nome || atualizando} onClick={() => { void area.atualizar() }}>
           <RefreshCw size={16} aria-hidden="true" /> {atualizando ? 'Atualizando…' : 'Atualizar dados'}
         </button>
       </header>
 
-      <section aria-label="Filtros da carteira" className="grid gap-3 rounded-lg border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.4fr]">
-        <label className="grid gap-1.5 text-sm font-medium">Vendedor
+      <section aria-label="Filtros da carteira" className="grid gap-2 sm:grid-cols-[1fr_1fr_1.4fr]">
+        <label className="grid gap-1 text-xs font-medium text-ink-muted">Vendedor
           <select className={control} value={nome} onChange={e => { setNome(e.target.value); setSelecionado(null) }}>
             <option value="">Selecione seu nome</option>
             {(nomes.data ?? []).map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
-        <label className="grid gap-1.5 text-sm font-medium">Etapa do funil
+        <label className="grid gap-1 text-xs font-medium text-ink-muted">Etapa
           <select className={control} value={etapa} onChange={e => { setEtapa(e.target.value); setSelecionado(null) }}>
             <option value="">Todas as etapas</option>
             {ETAPAS_AREA.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
         </label>
-        <label className="grid gap-1.5 text-sm font-medium sm:col-span-2 lg:col-span-1">Cliente ou telefone
-          <span className="relative"><Search size={16} aria-hidden="true" className="absolute left-3 top-3.5 text-ink-faint" /><input className={`${control} w-full pl-9`} type="search" value={busca} placeholder="Buscar na carteira" onChange={e => setBusca(e.target.value)} /></span>
+        <label className="grid gap-1 text-xs font-medium text-ink-muted">Cliente ou telefone
+          <span className="relative"><Search size={16} aria-hidden="true" className="absolute left-3 top-3 text-ink-faint" /><input className={`${control} w-full pl-9`} type="search" value={busca} placeholder="Buscar na carteira" onChange={e => setBusca(e.target.value)} /></span>
         </label>
       </section>
-      {etapa && REGRAS_ETAPA[etapa] && <p className="text-sm text-ink-muted">{REGRAS_ETAPA[etapa]}</p>}
-      <p className="rounded-md border border-info/30 bg-info-bg p-3 text-sm text-info">Esta página lê análises previamente publicadas pelo Codex. Ela não executa IA nem envia mensagens ou altera etiquetas. {isAdmin ? 'Apontamentos antigos da supervisão aparecem separados para o gestor.' : 'Os apontamentos de supervisão continuam restritos ao gestor.'}</p>
-
-      {(nomes.error || vendors.error) && <p role="alert" className="rounded-md bg-danger-bg p-3 text-danger">Não foi possível carregar os vendedores. Recarregue a página para tentar novamente.</p>}
-      {!nome ? <div className="rounded-lg border border-dashed border-border-strong px-5 py-14 text-center"><h2 className="text-lg font-semibold">Comece pelo seu nome</h2><p className="mt-2 text-ink-muted">Selecione um vendedor para consultar os clientes e as análises disponíveis.</p>{nomes.isLoading && <p role="status" className="mt-3 text-sm">Carregando vendedores…</p>}</div> : <>
-        <div className="space-y-2 text-xs text-ink-muted">
-          <p>Última sincronização de etiquetas: <span className="font-medium text-ink">{dataHora(area.carteira.data?.ultimaSync)}</span>. Dados consultados: {dataHora(area.atualizadoEm)}.</p>
-          <p>A carteira é consultada a cada 30 segundos e as análises salvas a cada minuto. Isso não gera uma nova análise. Conversas podem estar incompletas se a extensão não sincronizou.</p>
+      <details className="rounded-md border border-border px-3 py-2 text-xs text-ink-muted">
+        <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+          <span className={problemas.length ? 'text-warning' : ''}>{nomes.error || vendors.error ? 'Falha ao carregar vendedores' : area.carteira.error ? 'Carteira indisponível ou desatualizada' : !nome ? 'Selecione um vendedor para consultar' : area.precalculadas.error ? 'Análises indisponíveis' : area.precalculadas.isLoading ? 'Consultando análises…' : `${analisados} de ${filtrados.length} clientes com análise publicada`}</span>
+          {syncAntiga && <span className="ml-3 text-warning">Sincronização desatualizada</span>}
+          <span className="ml-3">Status e limites da leitura</span>
+        </summary>
+        <div className="mt-3 space-y-2 border-t border-border pt-3">
+          {problemas.map((p, i) => <p key={i} className="text-warning">{p}</p>)}
+          <p>Etiquetas sincronizadas: {dataHora(area.carteira.data?.ultimaSync)}. Carteira consultada: {dataHora(area.atualizadoEm)}.</p>
+          <p>A carteira atualiza a cada 30 segundos; análises salvas, a cada minuto. Isso não gera análise nova. Nenhuma mensagem é enviada e nenhuma etiqueta é alterada.</p>
+          <p>Ausência de análise não significa atendimento em dia. A captura pode estar incompleta. Supervisão antiga não substitui análise atual e permanece restrita ao gestor.</p>
+          {etapa && REGRAS_ETAPA[etapa] && <p>{etapa}: {REGRAS_ETAPA[etapa]}</p>}
         </div>
-        {!area.carteira.isLoading && syncDesatualizada(area.carteira.data?.ultimaSync ?? null) && <p className="rounded-md bg-warning-bg p-3 text-sm text-warning">Sincronização de etiquetas antiga ou sem data confiável. Confira o WhatsApp antes de cobrar um retorno.</p>}
-        {!vendedorId && !vendors.isLoading && <p role="status" className="rounded-md bg-warning-bg p-3 text-sm text-warning">O nome do WhatsApp ainda não tem um vínculo único com o cadastro do vendedor. A carteira pode ser consultada; as análises não serão misturadas com as de outro vendedor.</p>}
-        {area.carteira.error && <p role="alert" className="rounded-md bg-danger-bg p-3 text-sm text-danger">Não foi possível atualizar a carteira. Use “Atualizar dados” para tentar novamente; qualquer lista ainda visível é da consulta anterior.</p>}
-        {area.analises.error && <p role="alert" className="rounded-md bg-warning-bg p-3 text-sm text-warning">As análises estão indisponíveis. Ausência de apontamento não significa que o cliente está em dia.</p>}
-        {area.precalculadas.error && <p role="alert" className="rounded-md bg-warning-bg p-3 text-sm text-warning">Não foi possível consultar as análises publicadas. A integração pode ainda não estar disponível. A carteira continua acessível; nenhuma análise será inventada.</p>}
-        <section className="overflow-hidden rounded-lg border border-border bg-surface lg:grid lg:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.5fr)]" aria-label="Carteira e análise do cliente">
-          <div className={`${cliente ? 'hidden lg:block' : ''} min-w-0 lg:border-r lg:border-border`}>
-            <div className="space-y-3 border-b border-border p-4">
+      </details>
+      {!nome ? <div className="rounded-lg border border-dashed border-border-strong px-5 py-14 text-center"><h2 className="text-lg font-semibold">Comece pelo seu nome</h2><p className="mt-2 text-ink-muted">Selecione um vendedor para consultar os clientes e as análises disponíveis.</p>{nomes.isLoading && <p role="status" className="mt-3 text-sm">Carregando vendedores…</p>}</div> : <>
+        <section className="overflow-hidden rounded-lg border border-border bg-surface lg:grid lg:h-[calc(100dvh-215px)] lg:min-h-[480px] lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]" aria-label="Carteira e análise do cliente">
+          <div className={`${cliente ? 'hidden lg:flex' : 'flex'} min-h-0 min-w-0 flex-col lg:border-r lg:border-border`}>
+            <div className="space-y-2 border-b border-border px-4 py-3">
               <h2 className="font-semibold">{clientes.length} clientes <span className="font-normal text-ink-muted">na seleção</span></h2>
-              <label className="flex min-h-8 items-center gap-2 text-sm text-ink-muted"><input type="checkbox" checked={somentePendencias} onChange={e => setSomentePendencias(e.target.checked)} className="h-4 w-4 accent-accent focus-visible:ring-2 focus-visible:ring-accent" />Somente com pendências ({pendencias})</label>
-              <p className="text-xs text-ink-faint">Confira a data da análise antes de agir.</p>
+              <label className="flex min-h-7 items-center gap-2 text-xs text-ink-muted"><input type="checkbox" checked={somentePendencias} onChange={e => setSomentePendencias(e.target.checked)} className="h-4 w-4 accent-accent focus-visible:ring-2 focus-visible:ring-accent" />Com pendências na análise: {pendencias} clientes</label>
             </div>
-            {area.carteira.isLoading ? <p role="status" className="p-6 text-ink-muted">Carregando a carteira…</p> : clientes.length === 0 ? <p className="p-6 text-sm text-ink-muted">Nenhum cliente encontrado nesta seleção. Tente outra etapa ou limpe a busca. Isso não comprova ausência de pendências.</p> : <ul className="max-h-[70vh] divide-y divide-border overflow-y-auto">
+            {area.carteira.isLoading ? <p role="status" className="p-6 text-ink-muted">Carregando a carteira…</p> : clientes.length === 0 ? <p className="p-6 text-sm text-ink-muted">Nenhum cliente nesta seleção. Limpe a busca ou desmarque o filtro de pendências.</p> : <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
               {clientes.map(c => <li key={c.id}><button onClick={() => setSelecionado(c.id)} aria-pressed={c.id === selecionado} className={`flex w-full items-start gap-3 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${c.id === selecionado ? 'bg-accent-bg' : 'hover:bg-surface-2'}`}>
-                <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{c.chat.contact_name || c.chat.phone}</span><span className="mt-1 block text-xs text-ink-muted">{c.etapas.join(' / ') || 'Sem etiqueta'}</span><span className="mt-2 block line-clamp-2 text-sm text-ink-muted">{analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias[0] || c.achados[0]?.titulo || (analisesPorChat.has(c.chat.chat_id ?? '') ? 'Análise salva disponível — conferir resumo' : 'Sem análise disponível')}</span><span className="mt-2 block text-xs text-ink-faint">Última mensagem: {dataHora(c.chat.last_message_at)}</span></span><ChevronRight size={16} aria-hidden="true" className="mt-1 shrink-0 text-ink-faint" />
+                <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{c.chat.contact_name || c.chat.phone}</span><span className="mt-1 block text-xs text-ink-muted">{c.etapas.join(' / ') || 'Sem etiqueta'}</span><span className="mt-2 block line-clamp-2 text-sm text-ink-muted">{analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias[0] || (analisesPorChat.has(c.chat.chat_id ?? '') ? 'Análise publicada disponível' : 'Ainda sem análise publicada')}</span><span className="mt-2 block text-xs text-ink-faint">Conversa: {dataHora(c.chat.last_message_at)}</span></span><ChevronRight size={16} aria-hidden="true" className="mt-1 shrink-0 text-ink-faint" />
               </button></li>)}
             </ul>}
           </div>
-          <div className={`${cliente ? '' : 'hidden lg:block'} min-w-0`}>
+          <div className={`${cliente ? '' : 'hidden lg:block'} min-h-0 min-w-0 overflow-y-auto`}>
             {cliente ? <DetalheCliente key={`${nome}:${cliente.id}`} cliente={cliente} vendedor={nome} analise={analisesPorChat.get(cliente.chat.chat_id ?? '')} carregandoAnalise={area.precalculadas.isLoading} erroAnalise={!!area.precalculadas.error} voltar={() => setSelecionado(null)} /> : <div className="px-6 py-20 text-center"><h2 className="text-lg font-semibold">Abra um cliente para conferir</h2><p className="mx-auto mt-2 max-w-sm text-sm text-ink-muted">Veja o resumo disponível, os próximos passos e as mensagens registradas, sem enviar nada automaticamente.</p></div>}
           </div>
         </section>
@@ -109,12 +123,10 @@ function AnaliseSalva({ analise, ultimaMensagem }: { analise: AnalisePrecalculad
   const estado = estadoAnalisePrecalculada(analise, ultimaMensagem)
   return <section aria-label="Análise publicada pelo Codex" className="space-y-4">
     <div>
-      <h3 className="text-lg font-semibold">Análise publicada pelo Codex</h3>
-      <p className="mt-1 text-xs text-ink-muted">Gerada em {dataHora(analise.gerado_em)}. Leitura dos dados em {dataHora(analise.snapshot_em)}.</p>
-      <p className="mt-1 text-xs text-ink-muted">{analise.mensagens_analisadas} mensagens analisadas. Última mensagem incluída: {dataHora(analise.ultima_mensagem_em)}.</p>
+      <h3 className="text-base font-semibold">Análise do atendimento</h3>
+      <p className="mt-1 text-xs text-ink-muted">Publicada pelo Codex em {dataHora(analise.gerado_em)}</p>
     </div>
-    <p className={`rounded-md p-3 text-sm ${estado === 'desatualizada' ? 'bg-warning-bg text-warning' : 'bg-surface-2 text-ink-muted'}`}>{estado === 'desatualizada' ? 'Há dados mais recentes que esta análise. Confira a conversa antes de usar as recomendações.' : 'A correspondência integral com o histórico atual ainda não foi verificada. Esta é uma leitura salva, não uma análise em tempo real.'}</p>
-    {(analise.historico_parcial || analise.audios_sem_transcricao > 0) && <p className="text-sm text-warning">{analise.historico_parcial ? 'Histórico parcial: nem toda a conversa foi analisada. ' : ''}{analise.audios_sem_transcricao > 0 ? `${analise.audios_sem_transcricao} áudio(s) sem transcrição ficaram fora da interpretação.` : ''}</p>}
+    <details className="text-xs text-ink-muted"><summary className={`cursor-pointer ${estado === 'desatualizada' ? 'text-warning' : ''}`}>{estado === 'desatualizada' ? 'Análise desatualizada — confira a conversa' : 'Leitura salva — histórico atual não verificado'}{analise.audios_sem_transcricao > 0 ? ` / ${analise.audios_sem_transcricao} áudio(s) não interpretados` : ''}{analise.historico_parcial ? ' / histórico parcial' : ''}</summary><p className="mt-2">Dados lidos em {dataHora(analise.snapshot_em)}. {analise.mensagens_analisadas} mensagens analisadas; última incluída em {dataHora(analise.ultima_mensagem_em)}. Áudios sem transcrição não foram interpretados. A análise não é atualizada só por abrir esta página.</p></details>
     <div><h4 className="font-semibold">Resumo do atendimento</h4><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed">{analise.resumo}</p></div>
     <div><h4 className="font-semibold">Pendências identificadas</h4>{analise.pendencias.length ? <ul className="mt-2 list-disc space-y-2 pl-5 text-sm">{analise.pendencias.map((p, i) => <li key={i} className="whitespace-pre-wrap break-words">{p}</li>)}</ul> : <p className="mt-2 text-sm text-ink-muted">Nenhuma pendência apontada nesta leitura. Isso não garante que não existam pendências posteriores.</p>}</div>
     <div><h4 className="font-semibold">Próximo passo sugerido</h4><p className="mt-2 whitespace-pre-wrap break-words text-sm">{analise.proxima_acao || 'Nenhum próximo passo foi publicado.'}</p></div>
@@ -138,9 +150,9 @@ function DetalheCliente({ cliente, vendedor, voltar, analise, carregandoAnalise,
       <p className="mt-1 text-sm text-ink-muted">{cliente.chat.phone}</p>
     </header>
     {analise ? <AnaliseSalva analise={analise} ultimaMensagem={cliente.chat.last_message_at} /> : <section className="rounded-md bg-surface-2 p-4"><h3 className="font-semibold">{carregandoAnalise ? 'Consultando análise salva…' : erroAnalise ? 'Análise temporariamente indisponível' : 'Ainda não há análise publicada para este cliente'}</h3><p className="mt-1 text-sm text-ink-muted">{carregandoAnalise ? 'Aguarde a consulta terminar.' : 'Ausência de análise não significa que o atendimento está em dia. Confira a conversa abaixo.'}</p></section>}
-    {cliente.analiseDesatualizada && <p className="rounded-md border border-warning/30 bg-warning-bg p-3 text-sm text-warning">Há mensagem posterior ao apontamento. Confira a conversa: a pendência pode já ter sido resolvida.</p>}
-    {cliente.achados.length > 0 && <section aria-label="Apontamentos antigos da supervisão" className="space-y-5">
-      <h3 className="font-semibold">Apontamentos da supervisão</h3>
+    {cliente.achados.length > 0 && <details aria-label="Apontamentos antigos da supervisão" className="space-y-5 border-t border-border pt-3 text-ink-muted">
+      <summary className="cursor-pointer text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">Supervisão antiga: {cliente.achados.length} apontamento(s) — não é a análise atual</summary>
+      <p className="text-xs">Regras antigas podem indicar cobranças já resolvidas. Não use esses apontamentos como confirmação de pendência.{cliente.analiseDesatualizada ? ' Há mensagens posteriores aos apontamentos.' : ''}</p>
       {cliente.achados.map(a => <div key={a.id} className="border-l-2 border-accent pl-4">
         <p className="text-xs font-medium text-ink-muted">{a.camada === 'ia' ? 'Análise de IA' : a.camada === 'heuristica' ? 'Indício por regra heurística — não é IA' : 'Apontamento por regra — não é IA'} · {dataHora(a.atualizado_em)}</p>
         <h3 className="mt-2 text-base font-semibold">{a.titulo}</h3>
@@ -150,7 +162,7 @@ function DetalheCliente({ cliente, vendedor, voltar, analise, carregandoAnalise,
         <h4 className="mt-4 text-sm font-semibold">Evidência</h4>
         {a.evidencias.length ? a.evidencias.map(e => <blockquote key={e.id} className="mt-2 rounded-md bg-surface-2 p-3 text-sm"><p className="whitespace-pre-wrap break-words">{e.trecho || 'Trecho de texto não disponível.'}</p><footer className="mt-2 text-xs text-ink-muted">Fonte: {e.fonte} · {dataHora(e.ocorrido_em)}</footer></blockquote>) : <p className="mt-1 text-sm text-ink-muted">Este apontamento não trouxe um trecho de evidência. Verifique na conversa.</p>}
       </div>)}
-    </section>}
+    </details>}
     <section className="border-t border-border pt-5" aria-label="Conversa registrada">
       <h3 className="font-semibold">Conversa registrada</h3>
       <p className="mt-1 text-xs text-ink-muted">Somente mensagens capturadas pela extensão. Não equivale ao histórico completo do WhatsApp.</p>
