@@ -52,6 +52,7 @@ export default function AreaVendedor() {
     (nome && !vendedorId && !vendors.isLoading) && 'Vendedor sem vínculo único no cadastro: análises não associadas.',
     syncAntiga && 'Sincronização de etiquetas antiga ou sem data confiável.',
     area.analises.error && 'Supervisão antiga indisponível.',
+    area.precalculadasLimiteAtingido && 'Limite de 1.000 análises atingido; pode haver resultados não exibidos.',
   ].filter(Boolean)
 
   return (
@@ -87,6 +88,7 @@ export default function AreaVendedor() {
         <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
           <span className={problemas.length ? 'text-warning' : ''}>{nomes.error || vendors.error ? 'Falha ao carregar vendedores' : area.carteira.error ? 'Carteira indisponível ou desatualizada' : !nome ? 'Selecione um vendedor para consultar' : area.precalculadas.error ? 'Análises indisponíveis' : area.precalculadas.isLoading ? 'Consultando análises…' : `${analisados} de ${filtrados.length} clientes com análise publicada`}</span>
           {syncAntiga && <span className="ml-3 text-warning">Sincronização desatualizada</span>}
+          {area.precalculadasLimiteAtingido && <span className="ml-3 text-warning">Resultados limitados a 1.000 análises</span>}
           <span className="ml-3">Status e limites da leitura</span>
         </summary>
         <div className="mt-3 space-y-2 border-t border-border pt-3">
@@ -124,7 +126,7 @@ function AnaliseSalva({ analise, ultimaMensagem }: { analise: AnalisePrecalculad
   return <section aria-label="Análise publicada pelo Codex" className="space-y-4">
     <div>
       <h3 className="text-base font-semibold">Análise do atendimento</h3>
-      <p className="mt-1 text-xs text-ink-muted">Publicada pelo Codex em {dataHora(analise.gerado_em)}</p>
+      <p className="mt-1 text-xs text-ink-muted">{analise.origem === 'codex_review' ? 'Análise revisada nesta sessão do Codex' : 'Análise publicada pelo Codex Cloud'} em {dataHora(analise.gerado_em)}. {analise.origem === 'codex_review' && 'Não é uma rotina online automática.'}</p>
     </div>
     <details className="text-xs text-ink-muted"><summary className={`cursor-pointer ${estado === 'desatualizada' ? 'text-warning' : ''}`}>{estado === 'desatualizada' ? 'Análise desatualizada — confira a conversa' : 'Leitura salva — histórico atual não verificado'}{analise.audios_sem_transcricao > 0 ? ` / ${analise.audios_sem_transcricao} áudio(s) não interpretados` : ''}{analise.historico_parcial ? ' / histórico parcial' : ''}</summary><p className="mt-2">Dados lidos em {dataHora(analise.snapshot_em)}. {analise.mensagens_analisadas} mensagens analisadas; última incluída em {dataHora(analise.ultima_mensagem_em)}. Áudios sem transcrição não foram interpretados. A análise não é atualizada só por abrir esta página.</p></details>
     <div><h4 className="font-semibold">Resumo do atendimento</h4><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed">{analise.resumo}</p></div>
@@ -142,7 +144,7 @@ function DetalheCliente({ cliente, vendedor, voltar, analise, carregandoAnalise,
   const conversa = useWaMensagens(vendedor, cliente.chat.chat_id, true, limite)
   // O hook legado mantém placeholder da consulta anterior; não exibir como nova conversa.
   const mensagens = conversa.isPlaceholderData ? [] : conversa.data?.mensagens ?? []
-  const audios = mensagens.filter(m => /audio|ptt|voice/i.test(m.tipo))
+  const audiosSemTranscricao = mensagens.filter(m => /audio|ptt|voice/i.test(m.tipo) && !m.transcricao?.trim())
   return <article className="space-y-6 p-4 md:p-6">
     <header>
       <button onClick={voltar} className={`${control} mb-4 inline-flex items-center gap-2 lg:hidden`}><ArrowLeft size={16} />Voltar à carteira</button>
@@ -166,11 +168,11 @@ function DetalheCliente({ cliente, vendedor, voltar, analise, carregandoAnalise,
     <section className="border-t border-border pt-5" aria-label="Conversa registrada">
       <h3 className="font-semibold">Conversa registrada</h3>
       <p className="mt-1 text-xs text-ink-muted">Somente mensagens capturadas pela extensão. Não equivale ao histórico completo do WhatsApp.</p>
-      {audios.length > 0 && <p className="mt-3 rounded-md bg-warning-bg p-3 text-sm text-warning">Há {audios.length} áudio(s) neste trecho. A transcrição não está disponível nesta consulta; não deduza seu conteúdo pelo contexto.</p>}
+      {audiosSemTranscricao.length > 0 && <p className="mt-3 rounded-md bg-warning-bg p-3 text-sm text-warning">Há {audiosSemTranscricao.length} áudio(s) sem transcrição neste trecho. Não deduza seu conteúdo pelo contexto.</p>}
       {!cliente.chat.chat_id ? <p className="mt-4 text-sm text-ink-muted">Este contato ainda não tem conversa vinculada.</p> : conversa.isLoading || conversa.isPlaceholderData ? <p role="status" className="mt-4 text-sm">Carregando mensagens…</p> : conversa.error ? <div role="alert" className="mt-4 text-sm text-danger">Não foi possível carregar as mensagens. <button onClick={() => { void conversa.refetch() }} className="underline focus-visible:ring-2 focus-visible:ring-accent">Tentar novamente</button></div> : <>
         {conversa.data?.temMais && <button className={`${control} mt-4 w-full`} disabled={conversa.isFetching} onClick={() => setLimite(n => n + 50)}>Carregar mensagens anteriores</button>}
         {mensagens.length === 0 && <p className="mt-4 text-sm text-ink-muted">Nenhuma mensagem capturada disponível.</p>}
-        <ol className="mt-4 space-y-3">{mensagens.map(m => <li key={m.msg_id} className={`max-w-[95%] rounded-md p-3 ${m.from_me ? 'ml-auto bg-accent-bg' : 'mr-auto bg-surface-2'}`}><p className="mb-1 text-xs font-medium text-ink-muted">{m.from_me === null ? 'Origem não informada' : m.from_me ? vendedor : 'Cliente'} · {dataHora(m.data_msg)}</p><p className="whitespace-pre-wrap break-words text-sm">{corpoVisivel(m.body) || (/audio|ptt|voice/i.test(m.tipo) ? 'Áudio — conteúdo não transcrito' : `Mensagem ${m.tipo || 'sem texto'} — conteúdo não disponível`)}</p></li>)}</ol>
+        <ol className="mt-4 space-y-3">{mensagens.map(m => <li key={m.msg_id} className={`max-w-[95%] rounded-md p-3 ${m.from_me ? 'ml-auto bg-accent-bg' : 'mr-auto bg-surface-2'}`}><p className="mb-1 text-xs font-medium text-ink-muted">{m.from_me === null ? 'Origem não informada' : m.from_me ? vendedor : 'Cliente'} · {dataHora(m.data_msg)}</p>{m.transcricao?.trim() ? <><p className="mb-1 text-xs font-medium text-ink-muted">Transcrição{m.transcricao_em ? ` registrada em ${dataHora(m.transcricao_em)}` : ''}</p><p className="whitespace-pre-wrap break-words text-sm">{m.transcricao.trim()}</p></> : <p className="whitespace-pre-wrap break-words text-sm">{corpoVisivel(m.body) || (/audio|ptt|voice/i.test(m.tipo) ? 'Áudio — conteúdo não transcrito' : `Mensagem ${m.tipo || 'sem texto'} — conteúdo não disponível`)}</p>}</li>)}</ol>
       </>}
     </section>
   </article>
