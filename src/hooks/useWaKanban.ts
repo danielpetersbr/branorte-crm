@@ -144,6 +144,8 @@ export interface WaMensagem {
   from_me: boolean | null
   tipo: string
   body: string | null
+  transcricao?: string | null
+  transcricao_em?: string | null
   duracao_seg: number | null
   media_url: string | null
   data_msg: string | null
@@ -188,7 +190,7 @@ export function useWaMensagens(
     queryFn: async () => {
       const { data, error } = await supabase
         .from('wa_chat_messages')
-        .select('msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg')
+        .select('msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg, transcricao, transcricao_em')
         .eq('vendedor_nome', vendedor!)
         .eq('chat_id', chatId!)
         .order('data_msg', { ascending: false, nullsFirst: false })
