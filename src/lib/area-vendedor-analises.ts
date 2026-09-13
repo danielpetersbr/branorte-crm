@@ -8,7 +8,7 @@ export const analisePrecalculadaSchema = z.object({
   snapshot_sha256: z.string().regex(/^[a-f0-9]{64}$/),
   mensagens_analisadas: z.number().int().nonnegative(),
   audios_sem_transcricao: z.number().int().nonnegative(), historico_parcial: z.boolean(),
-  versao_contrato: z.literal(1), origem: z.literal('codex_cloud'),
+  versao_contrato: z.literal(1), origem: z.enum(['codex_review', 'codex_cloud']),
   resumo: z.string().min(1).max(12000),
   pendencias: z.array(z.string().max(2000)).max(30),
   proxima_acao: z.string().max(4000).nullable(),
