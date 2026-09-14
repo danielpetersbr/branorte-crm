@@ -208,7 +208,7 @@ export async function uploadOrcamentoViaServer(input: OrcamentoUploadInput): Pro
       vendedor_nome: primeiroNome,
       cliente_nome: input.clienteNome,
     }),
-  }, 60_000)
+  }, 20_000)
   if (!confirmR.ok) {
     const text = await confirmR.text().catch(() => '')
     throw new Error(`confirm HTTP ${confirmR.status}: ${text.slice(0, 200)}`)

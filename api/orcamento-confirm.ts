@@ -10,6 +10,7 @@
 //   - WhatsApp e idempotente (pode re-enviar sem subir de novo)
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { settleWithin } from './_lib/orcamento-confirm-timeout.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -123,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .createSignedUrl(body.whatsapp_envio_path, 60 * 60 * 24 * 7)
       if (sErr || !signed?.signedUrl) throw new Error(`signed_url: ${sErr?.message || 'sem url'}`)
 
-      const { data: fnData, error: fnErr } = await supa.functions.invoke('orcamento-enviar-meu-zap', {
+      const invocation = await settleWithin(supa.functions.invoke('orcamento-enviar-meu-zap', {
         body: {
           vendedor_nome: body.vendedor_nome,
           pdf_url: signed.signedUrl,
@@ -131,7 +132,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cliente_nome: body.cliente_nome || '',
           caption: body.whatsapp_caption || `Orcamento ${base}`,
         },
-      })
+      }), 10_000)
+      if (invocation.status === 'timeout') {
+        throw new Error('O WhatsApp demorou para responder. O orçamento foi salvo; use Reenviar ao WhatsApp em Orçamentos Salvos.')
+      }
+      const { data: fnData, error: fnErr } = invocation.value
       if (fnErr) throw new Error(fnErr.message)
       if ((fnData as any)?.error) throw new Error((fnData as any).detail || (fnData as any).error)
       result.whatsapp = { ok: true, msg: (fnData as any)?.msg || 'Enviado pro WhatsApp' }
