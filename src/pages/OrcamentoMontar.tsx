@@ -2792,7 +2792,7 @@ export function OrcamentoMontar() {
       // mas parent nao tem altura limitada -> orcMontar crescia infinito conforme
       // o conteudo da sidebar do catalogo, gerando area branca enorme no card preview).
       // Em desktop usa 100vh - padding pro respiro; mobile usa min-h-screen + overflow.
-      className="h-screen lg:h-[calc(100vh-1rem)] flex flex-col gap-2 p-2 lg:pl-1 lg:pr-2 transition-all duration-200 overflow-hidden"
+      className="h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] md:h-screen lg:h-[calc(100vh-1rem)] flex flex-col gap-1.5 sm:gap-2 p-2 lg:pl-1 lg:pr-2 transition-all duration-200 overflow-hidden"
     >
       {/* Banner CRÍTICO: orçamento existente está em rascunho (upload server falhou).
           Quando vendedor reabre via ?id=N e a row tá rascunho, mostra alerta
@@ -2860,12 +2860,13 @@ export function OrcamentoMontar() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-[18px] font-bold text-ink flex items-center gap-2">
+          <h1 className="text-[16px] sm:text-[18px] font-bold text-ink flex items-center gap-2 leading-tight">
             <Sparkles className="h-5 w-5 text-accent" />
             Montar Orçamento Personalizado
           </h1>
           <p className="text-[11px] text-ink-faint mt-0.5 flex items-center gap-2">
-            <span>Adicione items à esquerda. Veja o orçamento se montando à direita.</span>
+            <span className="sm:hidden">Escolha um modelo ou adicione equipamentos.</span>
+            <span className="hidden sm:inline">Adicione itens à esquerda. Veja o orçamento se montando à direita.</span>
             {draftStatusLabel && (
               <span className={`inline-flex items-center gap-1 ${draft.status === 'error' ? 'text-danger' : 'text-success'}`}>
                 <Save className="h-3 w-3" />
@@ -2906,7 +2907,7 @@ export function OrcamentoMontar() {
             <button
               key={b.pacote}
               onClick={() => setPacotePicker({ open: true, initialPacote: b.pacote })}
-              className="text-[13px] sm:text-[11px] px-3 py-2.5 sm:py-1.5 rounded-md font-semibold bg-accent/15 active:bg-accent/35 hover:bg-accent/25 text-accent border border-accent/30 flex items-center justify-center sm:justify-start gap-1.5 transition-colors min-h-[44px] sm:min-h-0"
+              className="text-[12px] sm:text-[11px] px-2.5 py-2 sm:py-1.5 rounded-md font-semibold bg-accent/15 active:bg-accent/35 hover:bg-accent/25 text-accent border border-accent/30 flex items-center justify-center sm:justify-start gap-1.5 transition-colors min-h-[40px] sm:min-h-0"
             >
               <Package className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
               {b.label}
@@ -2918,10 +2919,10 @@ export function OrcamentoMontar() {
 
       {/* Tabs mobile-only — Preview e o foco, Catalogo e secao secundaria pra adicionar.
           Preview vem primeiro porque e default; Catalogo pra acao "+ adicionar item" */}
-      <div className="lg:hidden flex items-center gap-1 bg-surface-2 rounded-lg p-1">
+      <div className="lg:hidden flex items-center gap-1 bg-surface-2 rounded-xl p-1 shadow-sm border border-border/60">
         <button
           onClick={() => setMobileTab('preview')}
-          className={`flex-1 text-[14px] px-3 py-3 rounded-md font-bold transition-colors relative min-h-[48px] ${
+          className={`flex-1 text-[13px] px-3 py-2.5 rounded-lg font-bold transition-colors relative min-h-[44px] ${
             mobileTab === 'preview' ? 'bg-accent text-white' : 'text-ink-muted active:bg-surface-3'
           }`}
         >
@@ -2934,7 +2935,7 @@ export function OrcamentoMontar() {
         </button>
         <button
           onClick={() => setMobileTab('catalogo')}
-          className={`flex-1 text-[14px] px-3 py-3 rounded-md font-bold transition-colors min-h-[48px] ${
+          className={`flex-1 text-[13px] px-3 py-2.5 rounded-lg font-bold transition-colors min-h-[44px] ${
             mobileTab === 'catalogo' ? 'bg-accent text-white' : 'text-ink-muted active:bg-surface-3'
           }`}
         >+ Adicionar</button>
@@ -3092,10 +3093,10 @@ export function OrcamentoMontar() {
         </Card>
 
         {/* PREVIEW DO ORÇAMENTO — sticky no desktop pra não rolar com a lista esquerda */}
-        <Card className={`flex flex-col w-full min-w-0 min-h-0 overflow-hidden max-h-[calc(100vh-180px)] md:max-h-none lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
+        <Card className={`flex h-full flex-col w-full min-w-0 min-h-0 overflow-hidden md:max-h-none lg:sticky lg:top-3 lg:self-start lg:justify-self-stretch lg:max-h-[calc(100vh-1.5rem)] lg:h-[calc(100vh-1.5rem)] ${mobileTab === 'catalogo' ? 'hidden lg:flex' : ''}`}>
           {/* Toolbar do preview — botões maiores + CTA principal destacado */}
-          <div className="p-1.5 sm:p-3 border-b border-border flex items-center justify-between bg-surface-2/30 flex-wrap gap-y-1.5 gap-x-1 sm:gap-2">
-            <div className="flex items-center gap-1 bg-surface rounded-md p-0.5 border border-border">
+          <div className="p-2 sm:p-3 border-b border-border grid grid-cols-2 items-center bg-surface-2/30 gap-2 sm:flex sm:justify-between sm:flex-wrap">
+            <div className="col-span-2 grid grid-cols-2 sm:flex sm:col-span-1 items-center gap-1 bg-surface rounded-lg p-0.5 border border-border">
               <button
                 onClick={() => setModoVisao('preview')}
                 className={`text-[12px] px-3 py-1.5 rounded font-semibold flex items-center gap-1.5 transition-all min-h-[34px] ${
@@ -3122,11 +3123,11 @@ export function OrcamentoMontar() {
               </button>
             </div>
             {/* Voltagem dos motores — perto dos items, mais visivel que no header global */}
-            <div className="flex items-center gap-1 bg-surface rounded-md p-0.5 border border-border">
+            <div className="flex w-full sm:w-auto items-center gap-1 bg-surface rounded-lg p-0.5 border border-border">
               <span className="text-[10px] uppercase tracking-wider text-ink-faint font-bold px-2">⚡</span>
               <button
                 onClick={() => aplicarVoltagem('monofasico')}
-                className={`text-[12px] px-3 py-1.5 rounded font-semibold transition-all min-h-[34px] ${
+                className={`flex-1 text-[12px] px-2 sm:px-3 py-1.5 rounded font-semibold transition-all min-h-[34px] ${
                   voltagem === 'monofasico'
                     ? 'bg-warning text-white shadow-sm'
                     : 'text-ink-muted hover:bg-surface-3'
@@ -3137,7 +3138,7 @@ export function OrcamentoMontar() {
               </button>
               <button
                 onClick={() => aplicarVoltagem('trifasico')}
-                className={`text-[12px] px-3 py-1.5 rounded font-semibold transition-all min-h-[34px] ${
+                className={`flex-1 text-[12px] px-2 sm:px-3 py-1.5 rounded font-semibold transition-all min-h-[34px] ${
                   voltagem === 'trifasico'
                     ? 'bg-info text-white shadow-sm'
                     : 'text-ink-muted hover:bg-surface-3'
@@ -3151,7 +3152,7 @@ export function OrcamentoMontar() {
                 O clique abre o popup pra escolher o percentual (ou desligar). */}
             <button
               onClick={() => setExportInfoOpen(true)}
-              className={`text-[12px] px-3 py-1.5 rounded-md font-semibold transition-all min-h-[34px] border ${
+              className={`w-full sm:w-auto truncate text-[11px] sm:text-[12px] px-2 sm:px-3 py-1.5 rounded-lg font-semibold transition-all min-h-[36px] border ${
                 exportacao
                   ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
                   : 'bg-surface text-ink-muted border-border hover:bg-surface-3'
@@ -3164,7 +3165,7 @@ export function OrcamentoMontar() {
                 nomes + códigos FINAME, motor/acessórios embutidos no valor). Não-destrutivo. */}
             <button
               onClick={() => setFinameMode(v => !v)}
-              className={`text-[12px] px-3 py-1.5 rounded-md font-semibold transition-all min-h-[34px] border ${
+              className={`w-full sm:w-auto truncate text-[11px] sm:text-[12px] px-2 sm:px-3 py-1.5 rounded-lg font-semibold transition-all min-h-[36px] border ${
                 finameMode
                   ? 'bg-accent text-white border-accent shadow-sm'
                   : 'bg-surface text-ink-muted border-border hover:bg-surface-3'
@@ -3173,7 +3174,7 @@ export function OrcamentoMontar() {
             >
               {finameMode ? '🏷️ Modo FINAME ✓' : '🏷️ Modo FINAME'}
             </button>
-            <div className="flex items-center gap-1 sm:gap-2">
+            <div className="flex w-full sm:w-auto items-center justify-end gap-1 sm:gap-2">
               <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface border border-border">
                 <span className="text-[11px] text-ink-faint">{carrinho.length}</span>
                 <span className="text-[11px] text-ink-muted">{carrinho.length === 1 ? 'item' : 'items'}</span>
