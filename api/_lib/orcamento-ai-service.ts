@@ -1,8 +1,8 @@
-import { buildProposal } from '../../src/lib/orcamento-ai/proposal-builder'
-import { matchModel } from '../../src/lib/orcamento-ai/model-matcher'
-import type { ComposicaoResolvida, IntencaoOrcamento, ModeloCandidato, OrcamentoAISnapshot, PerguntaPendente, PropostaOrcamento } from '../../src/lib/orcamento-ai/types'
-import type { AuthenticatedSeller, AuthenticationResult } from './orcamento-ai-auth'
-import type { AuditEvent, AuditEventType } from './orcamento-ai-audit'
+import { buildProposal } from '../../src/lib/orcamento-ai/proposal-builder.js'
+import { matchModel } from '../../src/lib/orcamento-ai/model-matcher.js'
+import type { ComposicaoResolvida, IntencaoOrcamento, ModeloCandidato, OrcamentoAISnapshot, PerguntaPendente, PropostaOrcamento } from '../../src/lib/orcamento-ai/types.js'
+import type { AuthenticatedSeller, AuthenticationResult } from './orcamento-ai-auth.js'
+import type { AuditEvent, AuditEventType } from './orcamento-ai-audit.js'
 
 interface ServiceDeps {
   authenticate(token: string): Promise<AuthenticationResult>

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sanitizeAuditPayload } from '../../src/lib/orcamento-ai/privacy'
+import { sanitizeAuditPayload } from '../../src/lib/orcamento-ai/privacy.js'
 
 export type AuditEventType = 'requested' | 'proposed' | 'blocked' | 'applied' | 'finalized' | 'failed'
 

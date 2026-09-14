@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { handleTransactionalOrcamentoAI } from './_lib/orcamento-ai-http'
+import { handleTransactionalOrcamentoAI } from './_lib/orcamento-ai-http.js'
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } }
 

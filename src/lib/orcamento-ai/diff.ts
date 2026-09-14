@@ -1,4 +1,4 @@
-import type { DiferencaProposta, OrcamentoAISnapshot, PropostaOrcamento } from './types'
+import type { DiferencaProposta, OrcamentoAISnapshot, PropostaOrcamento } from './types.js'
 
 const TRACKED_FIELDS: Array<keyof Pick<PropostaOrcamento, 'cliente' | 'modelo' | 'itens' | 'motores' | 'acessorios' | 'componentes' | 'voltagem' | 'fotoPrincipalUrl' | 'condicoes'>> = [
   'cliente', 'modelo', 'itens', 'motores', 'acessorios', 'componentes', 'voltagem', 'fotoPrincipalUrl', 'condicoes',

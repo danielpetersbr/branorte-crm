@@ -1,4 +1,4 @@
-import type { IntencaoOrcamento, ItemPedido, VoltagemOrcamento } from './types'
+import type { IntencaoOrcamento, ItemPedido, VoltagemOrcamento } from './types.js'
 
 export interface RawIntentInput {
   texto: string

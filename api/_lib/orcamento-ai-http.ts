@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { authenticateSeller } from './orcamento-ai-auth'
-import { findModelCandidates, resolveCatalogComposition } from './orcamento-ai-catalog'
-import { interpretQuoteRequest } from './orcamento-ai-openai'
-import { createOrcamentoAIService } from './orcamento-ai-service'
-import { writeOrcamentoAIAudit } from './orcamento-ai-audit'
+import { authenticateSeller } from './orcamento-ai-auth.js'
+import { findModelCandidates, resolveCatalogComposition } from './orcamento-ai-catalog.js'
+import { interpretQuoteRequest } from './orcamento-ai-openai.js'
+import { createOrcamentoAIService } from './orcamento-ai-service.js'
+import { writeOrcamentoAIAudit } from './orcamento-ai-audit.js'
 
 export async function handleTransactionalOrcamentoAI(req: VercelRequest, res: VercelResponse) {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL

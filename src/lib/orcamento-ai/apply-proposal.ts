@@ -1,5 +1,5 @@
-import { createSnapshotRevision } from './snapshot'
-import type { OrcamentoAISnapshot, PropostaOrcamento } from './types'
+import { createSnapshotRevision } from './snapshot.js'
+import type { OrcamentoAISnapshot, PropostaOrcamento } from './types.js'
 
 export function applyProposal(snapshot: OrcamentoAISnapshot, proposal: PropostaOrcamento): OrcamentoAISnapshot {
   if (proposal.baseRevision !== createSnapshotRevision(snapshot)) throw new Error('STALE_BASE_REVISION')

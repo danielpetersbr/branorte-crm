@@ -1,4 +1,4 @@
-import type { IntencaoOrcamento, ModeloCandidato } from './types'
+import type { IntencaoOrcamento, ModeloCandidato } from './types.js'
 
 export type ModelMatchResult =
   | { status: 'exato'; match: ModeloCandidato; alternatives: [] }

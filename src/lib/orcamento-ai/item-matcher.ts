@@ -1,4 +1,4 @@
-import type { ItemPedido, VoltagemOrcamento } from './types'
+import type { ItemPedido, VoltagemOrcamento } from './types.js'
 
 export interface CatalogItemCandidate {
   id: number

@@ -1,5 +1,5 @@
-import type { IntencaoOrcamento } from '../../src/lib/orcamento-ai/types'
-import { normalizeIntent } from '../../src/lib/orcamento-ai/intent-normalizer'
+import type { IntencaoOrcamento } from '../../src/lib/orcamento-ai/types.js'
+import { normalizeIntent } from '../../src/lib/orcamento-ai/intent-normalizer.js'
 
 const INTENT_SCHEMA = {
   type: 'object', additionalProperties: false,

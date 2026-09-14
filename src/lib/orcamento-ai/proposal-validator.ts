@@ -1,5 +1,5 @@
-import { createSnapshotRevision } from './snapshot'
-import type { AlertaValidacao, IntencaoOrcamento, ModeloCandidato, OrcamentoAISnapshot, PropostaOrcamento } from './types'
+import { createSnapshotRevision } from './snapshot.js'
+import type { AlertaValidacao, IntencaoOrcamento, ModeloCandidato, OrcamentoAISnapshot, PropostaOrcamento } from './types.js'
 
 function sameAccessories(left: PropostaOrcamento['acessorios'], right: ModeloCandidato['acessorios']): boolean {
   return JSON.stringify(left) === JSON.stringify(right)

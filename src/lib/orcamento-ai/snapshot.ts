@@ -1,4 +1,4 @@
-import type { OrcamentoAISnapshot } from './types'
+import type { OrcamentoAISnapshot } from './types.js'
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize)

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ComposicaoResolvida, IntencaoOrcamento, ModeloCandidato, VoltagemOrcamento } from '../../src/lib/orcamento-ai/types'
-import { matchCatalogItem, priceForVoltage, type CatalogItemCandidate } from '../../src/lib/orcamento-ai/item-matcher'
+import type { ComposicaoResolvida, IntencaoOrcamento, ModeloCandidato, VoltagemOrcamento } from '../../src/lib/orcamento-ai/types.js'
+import { matchCatalogItem, priceForVoltage, type CatalogItemCandidate } from '../../src/lib/orcamento-ai/item-matcher.js'
 
 type JsonRecord = Record<string, unknown>
 

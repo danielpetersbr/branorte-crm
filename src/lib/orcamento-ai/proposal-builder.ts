@@ -1,7 +1,7 @@
-import { diffProposal } from './diff'
-import { createSnapshotRevision } from './snapshot'
-import type { IntencaoOrcamento, ModeloCandidato, OrcamentoAISnapshot, PropostaOrcamento } from './types'
-import { validateProposal } from './proposal-validator'
+import { diffProposal } from './diff.js'
+import { createSnapshotRevision } from './snapshot.js'
+import type { IntencaoOrcamento, ModeloCandidato, OrcamentoAISnapshot, PropostaOrcamento } from './types.js'
+import { validateProposal } from './proposal-validator.js'
 
 export interface BuildProposalInput {
   snapshot: OrcamentoAISnapshot
