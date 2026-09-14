@@ -40,7 +40,7 @@ const INTENT_SCHEMA = {
   },
 } as const
 
-export async function interpretQuoteRequest(message: string, apiKey: string, model = process.env.OPENAI_ORCAMENTO_MODEL || 'gpt-5.4-mini'): Promise<IntencaoOrcamento> {
+export async function interpretQuoteRequest(message: string, apiKey: string, model = process.env.OPENAI_ORCAMENTO_MODEL || 'gpt-5.6-luna'): Promise<IntencaoOrcamento> {
   const deterministic = normalizeIntent({ texto: message })
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',

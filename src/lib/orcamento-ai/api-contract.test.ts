@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { compacta03Master150500Mono, emptyQuoteSnapshot } from './__fixtures__/compacta-03-master-150500-mono'
 import { createOrcamentoAIService } from '../../../api/_lib/orcamento-ai-service'
@@ -84,6 +85,12 @@ test('never exposes server secrets in responses or errors', async () => {
     .execute({ token: 'valid', body: { message: 'teste', snapshot: emptyQuoteSnapshot } })
   assert.equal(result.status, 500)
   assert.doesNotMatch(JSON.stringify(result.body), /secret|OPENAI_API_KEY|SERVICE_ROLE/i)
+})
+
+test('orçamentista usa GPT-5.6 Luna como modelo padrão econômico', async () => {
+  const source = await readFile(new URL('../../../api/_lib/orcamento-ai-openai.ts', import.meta.url), 'utf8')
+
+  assert.match(source, /OPENAI_ORCAMENTO_MODEL\s*\|\|\s*'gpt-5\.6-luna'/)
 })
 
 test('builds an ad-hoc equipment proposal with explicit 10 percent accessories', async () => {
