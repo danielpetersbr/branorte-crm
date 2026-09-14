@@ -1,17 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  'https://flwbeevtvjiouxdjmziv.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2JlZXZ0dmppb3V4ZGpteml2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTA0MDY3NiwiZXhwIjoyMDY2NjE2Njc2fQ.6zYh9j5Zcjv9mEPvbrR29Vaq5gr625SvgwonYYM3xPI'
-)
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const SUPABASE_ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente.')
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 async function runSQL(sql: string) {
   // Use the postgrest rpc or direct fetch
-  const res = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/rest/v1/rpc/exec_sql', {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2JlZXZ0dmppb3V4ZGpteml2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTA0MDY3NiwiZXhwIjoyMDY2NjE2Njc2fQ.6zYh9j5Zcjv9mEPvbrR29Vaq5gr625SvgwonYYM3xPI',
-      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2JlZXZ0dmppb3V4ZGpteml2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTA0MDY3NiwiZXhwIjoyMDY2NjE2Njc2fQ.6zYh9j5Zcjv9mEPvbrR29Vaq5gr625SvgwonYYM3xPI',
+      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'apikey': SUPABASE_SERVICE_ROLE_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ sql_query: sql }),
@@ -44,7 +45,8 @@ async function main() {
 
     // We need to run DDL via the Supabase Dashboard SQL editor or management API
     // Let's try the management API with a fresh approach
-    const MGMT_TOKEN = 'sbp_514a864dca53dba8c9a9ba65f6428e55e99319f6'
+    if (!SUPABASE_ACCESS_TOKEN) throw new Error('Configure SUPABASE_ACCESS_TOKEN para executar migrações pela Management API.')
+    const MGMT_TOKEN = SUPABASE_ACCESS_TOKEN
     const PROJECT_ID = 'flwbeevtvjiouxdjmziv'
 
     const sqls = [

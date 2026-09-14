@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:orcamento-ai:e2e": "node scripts/orcamento-ai-e2e.mjs",
     "import": "npx tsx scripts/import-contacts.ts"
   },
   "engines": {

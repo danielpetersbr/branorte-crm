@@ -21,6 +21,8 @@ import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada, stripSufixoVoltagem } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
+import { applyProposal } from '@/lib/orcamento-ai/apply-proposal'
+import type { OrcamentoAISnapshot, PropostaOrcamento } from '@/lib/orcamento-ai/types'
 import { useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
 import { useAuth } from '@/hooks/useAuth'
@@ -428,6 +430,7 @@ function motorOverrideKey(m: { item_uid?: string; motorIndex?: number; cv: numbe
 export function OrcamentoMontar() {
   const { data: items, isLoading: loadingItems } = useCatalogoItems()
   const { data: motores, isLoading: loadingMotores } = useCatalogoMotores()
+  const { data: modelos } = useOrcamentoModelos()
 
   const [busca, setBusca] = useState('')
   const [categoria, setCategoria] = useState<string | null>(null)
@@ -494,8 +497,6 @@ export function OrcamentoMontar() {
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
   const [saveMode, setSaveMode] = useState<'update' | 'alt' | 'new'>('new')
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false)
-  // Sprint 3: marca true quando o copiloto IA dispara a finalização (auto-submit 3s)
-  const [autoSubmitFromIA, setAutoSubmitFromIA] = useState(false)
   const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
@@ -736,6 +737,7 @@ export function OrcamentoMontar() {
 
   // Estado do cliente (preenchido via modal de edição ou IA)
   const [clienteDados, setClienteDados] = useState<PreviewClienteDados>({})
+  const [aiModeloAtual, setAiModeloAtual] = useState<OrcamentoAISnapshot['modelo']>(null)
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
 
   function atualizarTermo(key: 'dataVenda' | 'prazoEntrega' | 'formaPagamento' | 'freteTxt' | 'freteTipo' | 'validadeDias', v: string) {
@@ -861,7 +863,6 @@ export function OrcamentoMontar() {
         prazo_entrega: prev?.prazo_entrega ?? null,
       }))
     }
-    setAutoSubmitFromIA(false)
     setFinalizarOpen(true)
   }
 
@@ -881,6 +882,127 @@ export function OrcamentoMontar() {
     [componentesExtras],
   )
   const totalGeral = totalEquip + totalMotores + totalComponentesExtras
+
+  const aiSnapshot = useMemo<OrcamentoAISnapshot>(() => {
+    const modeloSalvo = orcamentoEditando?.modelo_id
+      ? (modelos ?? []).find((modelo) => modelo.id === orcamentoEditando.modelo_id)
+      : null
+    const prazoDias = Number(prazoEntregaTxt.match(/\d+/)?.[0] ?? 90)
+    return {
+      orcamentoId: editingId,
+      cliente: {
+        nome: clienteDados.nome ?? initialModal?.cliente_nome ?? '',
+        telefone: clienteDados.fone ?? initialModal?.cliente_dados?.fone ?? undefined,
+        cidade: clienteDados.cidade ?? initialModal?.cliente_dados?.cidade ?? undefined,
+        uf: initialModal?.cliente_dados?.uf ?? undefined,
+        endereco: clienteDados.endereco ?? initialModal?.cliente_dados?.endereco ?? undefined,
+        bairro: clienteDados.bairro ?? initialModal?.cliente_dados?.bairro ?? undefined,
+        cep: clienteDados.cep ?? initialModal?.cliente_dados?.cep ?? undefined,
+        cpfCnpj: clienteDados.cnpj ?? initialModal?.cliente_dados?.cnpj ?? undefined,
+        ie: clienteDados.ie ?? initialModal?.cliente_dados?.ie ?? undefined,
+        email: clienteDados.email ?? initialModal?.cliente_dados?.email ?? undefined,
+      },
+      modelo: aiModeloAtual ?? (modeloSalvo ? {
+        id: modeloSalvo.id,
+        basename: modeloSalvo.basename,
+        linha: /COMPACTA\s*0?1/i.test(modeloSalvo.pacote) ? 'COMPACTA_01' : /COMPACTA\s*0?2/i.test(modeloSalvo.pacote) ? 'COMPACTA_02' : /COMPACTA\s*0?3/i.test(modeloSalvo.pacote) ? 'COMPACTA_03' : /MINI/i.test(modeloSalvo.pacote) ? 'MINI' : undefined,
+        master: modeloSalvo.is_master,
+        voltagem: modeloSalvo.voltagem,
+        producaoKgH: modeloSalvo.producao_kgh,
+        armazenamentoKg: modeloSalvo.armazenamento_kg,
+      } : null),
+      itens: carrinho.map((item) => ({
+        catalogoId: item.catalogo_id >= 0 ? item.catalogo_id : null,
+        nome: item.nome_custom || item.nome,
+        quantidade: item.qtd,
+        valorUnitario: item.valor,
+        categoria: item.categoria,
+        descricao: [...item.specs],
+        fotoUrl: item.foto_url,
+      })),
+      motores: motoresAgrupados.flatMap((motor) => Array.from({ length: Math.max(1, motor.qtd) }, () => ({
+        descricao: `Motor ${motor.cv.toLocaleString('pt-BR')} CV ${motor.polos} polos`,
+        cv: motor.cv,
+        polos: motor.polos,
+        valor: motor.valor_unit,
+        incluso: Boolean(motor.incluso_real),
+      }))),
+      acessorios: acessorios ? {
+        mode: acessorios.valorFixo != null ? 'fixo' : 'percentual',
+        valor: valorAcessorios,
+        percentual: acessorios.pct,
+        items: [...acessorios.items],
+        source: 'snapshot',
+      } : null,
+      componentes: componentesExtras.map((item) => ({ nome: item.nome, valor: Number(item.valor) || 0 })),
+      voltagem,
+      fotoPrincipalUrl: fotoPrincipal,
+      condicoes: {
+        formaPagamento: formaPagamentoTxt || 'a combinar',
+        prazoDias,
+        prazoTipo: /pronta/i.test(prazoEntregaTxt) ? 'pronta_entrega' : /corrido/i.test(prazoEntregaTxt) ? 'corridos' : 'uteis',
+        freteTipo,
+        freteTexto: freteTxt || (freteTipo === 'FOB' ? 'por conta do cliente' : 'por conta da Branorte'),
+        validadeDias,
+        observacoes: observacoesTxt,
+      },
+    }
+  }, [editingId, clienteDados, initialModal, aiModeloAtual, orcamentoEditando?.modelo_id, modelos, carrinho, motoresAgrupados, acessorios, valorAcessorios, componentesExtras, voltagem, fotoPrincipal, formaPagamentoTxt, prazoEntregaTxt, freteTipo, freteTxt, validadeDias, observacoesTxt])
+
+  function handleApplyAIProposal(proposal: PropostaOrcamento) {
+    const next = applyProposal(aiSnapshot, proposal)
+    const localModel = proposal.modelo ? (modelos ?? []).find((modelo) => modelo.id === proposal.modelo!.id) : null
+    if (proposal.modelo && !localModel) throw new Error('O modelo escolhido não está mais disponível. Atualize a página e tente novamente.')
+    if (localModel) carregarDoModelo(localModel, false, true)
+    else setCarrinho(next.itens.map((item) => {
+      const preco = item.catalogoId != null ? (precos ?? []).find((entry) => entry.id === item.catalogoId) : null
+      const catalogo = preco ? (items ?? []).find((entry) => entry.preco_branorte_id === preco.id) : null
+      const motor = next.motores.find((entry) => entry.itemCatalogoId === item.catalogoId)
+      return {
+        uid: gerarUid(),
+        catalogo_id: catalogo?.id ?? -1,
+        preco_branorte_id: preco?.id ?? item.catalogoId,
+        categoria: item.categoria ?? preco?.categoria ?? catalogo?.categoria ?? 'OUTROS',
+        nome: catalogo?.nome_curto ?? item.nome,
+        specs: item.descricao?.length ? [...item.descricao] : catalogo?.specs ?? [],
+        qtd: item.quantidade,
+        valor: item.valorUnitario,
+        valor_original: item.valorUnitario,
+        motor_cv: motor?.cv ?? preco?.motor_cv ?? null,
+        motor_polos: motor?.polos ?? preco?.motor_polos ?? null,
+        motor_qtd: motor ? 1 : 0,
+        motor_valor_unit: motor?.incluso ? 0 : motor?.valor ?? 0,
+        foto_url: item.fotoUrl ?? catalogo?.foto_url ?? null,
+      }
+    }))
+    setAiModeloAtual(next.modelo)
+    setVoltagem(next.voltagem ?? voltagem)
+    setAcessorios(next.acessorios ? {
+      pct: next.acessorios.percentual ?? Math.max(1, Math.round(next.acessorios.valor / Math.max(next.itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0), 1) * 100)),
+      items: [...next.acessorios.items],
+      valorFixo: next.acessorios.mode === 'fixo' ? next.acessorios.valor : null,
+    } : null)
+    setComponentesExtras(next.componentes.map((item, index) => ({ id: `ai-${proposal.id}-${index}`, nome: item.nome, valor: item.valor })))
+    setFotoPrincipal(next.fotoPrincipalUrl)
+    setClienteDados({
+      nome: next.cliente.nome, fone: next.cliente.telefone, cidade: next.cliente.cidade,
+      bairro: next.cliente.bairro, endereco: next.cliente.endereco, cep: next.cliente.cep,
+      cnpj: next.cliente.cpfCnpj, ie: next.cliente.ie, email: next.cliente.email,
+    })
+    setInitialModal((previous) => ({
+      cliente_nome: next.cliente.nome,
+      cliente_dados: { ...(previous?.cliente_dados ?? {}), nome: next.cliente.nome, fone: next.cliente.telefone, cidade: next.cliente.cidade, uf: next.cliente.uf, endereco: next.cliente.endereco, bairro: next.cliente.bairro, cep: next.cliente.cep, cnpj: next.cliente.cpfCnpj, ie: next.cliente.ie, email: next.cliente.email },
+      observacoes: next.condicoes.observacoes || null,
+      forma_pagamento: next.condicoes.formaPagamento || null,
+      prazo_entrega: `${next.condicoes.prazoDias} dias ${next.condicoes.prazoTipo === 'uteis' ? 'úteis' : next.condicoes.prazoTipo === 'corridos' ? 'corridos' : ''}`.trim(),
+    }))
+    setFormaPagamentoTxt(next.condicoes.formaPagamento)
+    setPrazoEntregaTxt(`${next.condicoes.prazoDias} dias ${next.condicoes.prazoTipo === 'uteis' ? 'úteis' : next.condicoes.prazoTipo === 'corridos' ? 'corridos' : ''}`.trim())
+    setFreteTipo(next.condicoes.freteTipo)
+    setFreteTxt(next.condicoes.freteTexto)
+    setValidadeDias(next.condicoes.validadeDias)
+    setObservacoesTxt(next.condicoes.observacoes)
+  }
 
   // ── Modo EXPORTAÇÃO: +10% ou +20% em todos os valores. fExp=1 quando desligado. ──
   // Aplica nas versões "*Exib" que alimentam o preview, o resumo e o orçamento gerado.
@@ -1258,7 +1380,6 @@ export function OrcamentoMontar() {
   // Lista de modelos de pacote — usado pelo copiloto IA pra resolver onCarregarPacote.
   // (Outros componentes mais abaixo no arquivo carregam de novo; ok porque o hook
   // usa React Query e dedup automaticamente.)
-  const { data: modelos } = useOrcamentoModelos()
   // Transportadores ficam em precos_branorte (modal dedicado com fórmula de chupim)
   const transportadores = useMemo(
     () => (precos ?? []).filter(p => p.categoria === 'TRANSPORTADOR'),
@@ -2163,8 +2284,8 @@ export function OrcamentoMontar() {
   }
 
   // Carrega um modelo pronto (orcamento_modelos) no carrinho do Montar Custom
-  function carregarDoModelo(modelo: OrcamentoModelo, append = false) {
-    if (!append && carrinho.length > 0 && !confirm('Substituir os items atuais pelos do modelo?')) return
+  function carregarDoModelo(modelo: OrcamentoModelo, append = false, alreadyConfirmed = false) {
+    if (!append && !alreadyConfirmed && carrinho.length > 0 && !confirm('Substituir os items atuais pelos do modelo?')) return
     const catalogoItems = items ?? []
     const fotoMapTransp = montarMapaFotosTransportador(catalogoItems)
 
@@ -3643,9 +3764,8 @@ export function OrcamentoMontar() {
           numero_base: orcamentoEditando.numero_base ?? orcamentoEditando.numero,
         } : null}
         initialModal={initialModal}
-        // Anti-apagão: o que JÁ está salvo neste orçamento + o que o vendedor
-        // removeu de propósito nesta sessão. O save usa isso pra não gravar null
-        // por cima de foto/pagamento/parcelas que só faltaram na tela.
+        // Preserva dados já salvos ao editar; somente apaga o que o vendedor
+        // removeu explicitamente nesta sessão.
         salvoOrigem={editingId && orcamentoEditando ? {
           foto_principal_url: orcamentoEditando.foto_principal_url ?? null,
           observacoes_foto_url: (orcamentoEditando as any).observacoes_foto_url ?? null,
@@ -3655,7 +3775,7 @@ export function OrcamentoMontar() {
           forma_pagamento_cfg: (orcamentoEditando as any).forma_pagamento_cfg ?? null,
         } : null}
         removidoManual={removidoManual}
-        autoSubmitOnOpen={autoSubmitFromIA}
+        autoSubmitOnOpen={false}
         snapshot={{
           voltagem,
           itens: carrinhoFinal.map(c => ({
@@ -3732,7 +3852,7 @@ export function OrcamentoMontar() {
           balancaDispensada,
           obsPorConta: obsPorConta,
         } as CarrinhoSnapshot}
-        onClose={() => { setFinalizarOpen(false); setAutoSubmitFromIA(false); }}
+        onClose={() => setFinalizarOpen(false)}
         onSuccess={info => {
           setSucesso(info)
           setEnviandoWA(info.whatsappEnviado ? 'enviado' : info.whatsappMensagem ? 'erro' : 'idle')
@@ -4330,76 +4450,11 @@ export function OrcamentoMontar() {
         )
       })()}
 
-      {/* Copiloto IA — botão flutuante + drawer lateral. Faz consultas (leitura)
-          e propõe ações de escrita (vendedor aprova clicando nos cards do chat).
-          O carrinho_resumo dá contexto pra IA referenciar itens já adicionados. */}
       <OrcamentoAIChat
-        contexto={{
-          orcamento_id: editingId,
-          cliente_nome: initialModal?.cliente_nome ?? null,
-          carrinho_resumo: carrinho.length > 0
-            ? (() => {
-                const fmt = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n)
-                const total = carrinho.reduce((acc, c) => acc + c.valor * c.qtd, 0)
-                const linhas = carrinho.slice(0, 15).map(c =>
-                  `- ${c.qtd}x ${c.nome} [id=${c.catalogo_id}] = ${fmt(c.valor * c.qtd)}`
-                )
-                const sufixo = carrinho.length > 15 ? `\n…e mais ${carrinho.length - 15} itens` : ''
-                return `${linhas.join('\n')}${sufixo}\n\nTOTAL ATUAL: ${fmt(total)} (${carrinho.length} ${carrinho.length === 1 ? 'item' : 'itens'})`
-              })()
-            : null,
-        }}
-        onAdicionarItem={(preco_id, qtd) => {
-          const p = (precos ?? []).find(x => x.id === preco_id)
-          if (!p) return
-          adicionarItemDePreco(p, undefined, undefined, Math.max(1, qtd || 1))
-        }}
-        onCarregarPacote={(modelo_id) => {
-          const m = (modelos ?? []).find(x => x.id === modelo_id)
-          console.log('[CRM] onCarregarPacote id:', modelo_id, 'found:', !!m, 'modelos count:', (modelos ?? []).length)
-          if (!m) {
-            console.warn('[CRM] Modelo não encontrado! ID:', modelo_id)
-            return
-          }
-          // Quando vem da IA, SEMPRE append (a IA pode ter adicionado itens
-          // antes mas o state do React ainda não atualizou neste tick)
-          carregarDoModelo(m, true)
-        }}
-        onPreencherCliente={(dados) => {
-          // Merge nos dados do modal de finalização. Quando o vendedor clicar
-          // em "Finalizar", o FinalizarMontarModal abre com esses campos preenchidos.
-          setInitialModal(prev => ({
-            cliente_nome: dados.nome ?? prev?.cliente_nome ?? '',
-            cliente_dados: { ...(prev?.cliente_dados ?? {}), ...dados },
-            observacoes: prev?.observacoes ?? null,
-            forma_pagamento: prev?.forma_pagamento ?? null,
-            prazo_entrega: prev?.prazo_entrega ?? null,
-          }))
-        }}
+        snapshot={aiSnapshot}
+        onApplyProposal={handleApplyAIProposal}
         onDrawerToggle={setAiDrawerOpen}
-        onFinalizarOrcamento={(opts) => {
-          // Pré-preenche cliente se IA mandou + abre o modal FinalizarMontarModal.
-          // Vendedor revisa e clica em "Gerar" — fluxo padrão (PDF, save, WhatsApp).
-          if (opts.cliente_dados) {
-            setInitialModal(prev => ({
-              cliente_nome: opts.cliente_dados!.nome ?? prev?.cliente_nome ?? '',
-              cliente_dados: { ...(prev?.cliente_dados ?? {}), ...opts.cliente_dados },
-              observacoes: prev?.observacoes ?? null,
-              forma_pagamento: prev?.forma_pagamento ?? null,
-              prazo_entrega: prev?.prazo_entrega ?? null,
-            }))
-          }
-          // Carrinho vazio? avisa antes de abrir o modal (que pediria items)
-          if (carrinho.length === 0) {
-            alert('Adicione items ao carrinho antes de finalizar. A IA pode te ajudar com isso.')
-            return
-          }
-          // Auto-submit SE IA pré-preencheu cliente (zero atrito)
-          if (salvarBloqueadoPorCarregamento()) return
-          const temCliente = !!opts.cliente_dados?.nome
-          setAutoSubmitFromIA(temCliente)
-          setFinalizarOpen(true)
-        }}
+        onRequestFinalize={handleFinalizarClick}
       />
     </div>
   )

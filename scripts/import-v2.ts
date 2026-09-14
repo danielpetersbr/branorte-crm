@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import XLSX from 'xlsx'
 
-const SUPABASE_URL = 'https://flwbeevtvjiouxdjmziv.supabase.co'
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZsd2JlZXZ0dmppb3V4ZGpteml2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTA0MDY3NiwiZXhwIjoyMDY2NjE2Njc2fQ.6zYh9j5Zcjv9mEPvbrR29Vaq5gr625SvgwonYYM3xPI'
-const MGMT_TOKEN = 'sbp_514a864dca53dba8c9a9ba65f6428e55e99319f6'
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const MGMT_TOKEN = process.env.SUPABASE_ACCESS_TOKEN
+if (!SUPABASE_URL || !SUPABASE_KEY || !MGMT_TOKEN) throw new Error('Configure SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_ACCESS_TOKEN.')
 const PROJECT_ID = 'flwbeevtvjiouxdjmziv'
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
