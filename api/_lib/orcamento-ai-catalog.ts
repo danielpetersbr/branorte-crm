@@ -57,7 +57,7 @@ function mapModel(row: JsonRecord): ModeloCandidato {
   }
 }
 
-export async function findModelCandidates(supabase: SupabaseClient, intent: IntencaoOrcamento): Promise<ModeloCandidato[]> {
+export async function findModelCandidates(supabase: SupabaseClient, intent: IntencaoOrcamento, selectedModelId?: string): Promise<ModeloCandidato[]> {
   const requested = intent.modeloPedido
   if (!requested) return []
   let query = supabase
@@ -65,8 +65,12 @@ export async function findModelCandidates(supabase: SupabaseClient, intent: Inte
     .select('id, basename, pacote, voltagem, is_master, producao_kgh, armazenamento_kg, itens, acessorios, motores, foto_url')
     .eq('ativo', true)
     .limit(30)
-  if (requested.voltagem) query = query.eq('voltagem', requested.voltagem)
-  if (requested.master !== undefined) query = query.eq('is_master', requested.master)
+  const selectedId = Number(selectedModelId)
+  if (selectedModelId && Number.isFinite(selectedId)) query = query.eq('id', selectedId)
+  else {
+    if (requested.voltagem) query = query.eq('voltagem', requested.voltagem)
+    if (requested.master !== undefined) query = query.eq('is_master', requested.master)
+  }
   const { data, error } = await query
   if (error) throw new Error('catalog_lookup_failed')
   const models = (data ?? []).map((row) => mapModel(row as JsonRecord))

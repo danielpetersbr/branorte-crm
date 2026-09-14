@@ -7,7 +7,7 @@ import type { AuditEvent, AuditEventType } from './orcamento-ai-audit.js'
 interface ServiceDeps {
   authenticate(token: string): Promise<AuthenticationResult>
   interpret(message: string): Promise<IntencaoOrcamento>
-  findModels(intent: IntencaoOrcamento, seller: AuthenticatedSeller): Promise<ModeloCandidato[]>
+  findModels(intent: IntencaoOrcamento, seller: AuthenticatedSeller, selectedModelId?: string): Promise<ModeloCandidato[]>
   resolveItems?(intent: IntencaoOrcamento, seller: AuthenticatedSeller): Promise<ComposicaoResolvida>
   audit?(event: AuditEvent): Promise<void>
 }
@@ -58,7 +58,7 @@ export function createOrcamentoAIService(deps: ServiceDeps) {
         const intent = await deps.interpret(message)
         let proposal: PropostaOrcamento
         if (intent.modeloPedido?.linha) {
-          const candidates = await deps.findModels(intent, auth.seller)
+          const candidates = await deps.findModels(intent, auth.seller, input.body.selected_model_id)
           const selected = input.body.selected_model_id ? candidates.find((candidate) => String(candidate.id) === input.body.selected_model_id) : undefined
           const match = selected ? { status: 'exato' as const, match: selected, alternatives: [] as [] } : matchModel(intent, candidates)
           if (match.status !== 'exato') {
@@ -67,7 +67,16 @@ export function createOrcamentoAIService(deps: ServiceDeps) {
             await audit({ eventType: 'blocked', quoteId: snapshot.orcamentoId, result: { status: match.status, questions } })
             return { status: 200, body: { reply: match.reason, proposal: null, questions, trace_id } }
           }
-          proposal = buildProposal({ snapshot, intent, model: match.match })
+          let resolvedItems: ComposicaoResolvida | undefined
+          if (intent.itensPedidos.length) {
+            resolvedItems = await deps.resolveItems?.(intent, auth.seller)
+            if (!resolvedItems || resolvedItems.perguntas.length) {
+              const questions = resolvedItems?.perguntas ?? [{ code: 'ITEMS_UNAVAILABLE', question: 'Não consegui consultar os equipamentos adicionais agora.' }]
+              await audit({ eventType: 'blocked', quoteId: snapshot.orcamentoId, result: { status: 'requer_escolha', questions } })
+              return { status: 200, body: { reply: questions.map((item) => item.question).join('\n'), proposal: null, questions, trace_id } }
+            }
+          }
+          proposal = buildProposal({ snapshot, intent, model: match.match, resolvedItems: resolvedItems?.itens, resolvedMotors: resolvedItems?.motores })
         } else {
           const composition = await deps.resolveItems?.(intent, auth.seller)
           if (!composition || composition.perguntas.length) {

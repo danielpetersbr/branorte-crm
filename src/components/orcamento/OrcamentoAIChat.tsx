@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import type { OrcamentoAISnapshot, PropostaOrcamento } from '@/lib/orcamento-ai/types'
 import { useOrcamentoAI } from '@/hooks/useOrcamentoAI'
 import { OrcamentoAIProposalCard } from './OrcamentoAIProposalCard'
+import { compactChatMessage } from '@/lib/orcamento-ai/chat-display'
 
 interface Props {
   snapshot: OrcamentoAISnapshot
@@ -104,22 +105,22 @@ export function OrcamentoAIChat({ snapshot, onApplyProposal, onRequestFinalize, 
   return <>
     <button type="button" onClick={() => toggle(true)} className="fixed bottom-20 left-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700" aria-label="Abrir Orçamentista Branorte"><Bot size={26} /></button>
     {open && <div className="fixed inset-0 z-40 bg-black/30" onClick={() => toggle(false)} />}
-    <aside className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col bg-slate-100 shadow-2xl transition-transform duration-200 ${open ? 'translate-x-0' : 'translate-x-full'}`} aria-hidden={!open}>
+    <aside className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-slate-100 text-slate-900 shadow-2xl transition-transform duration-200 ${open ? 'translate-x-0' : 'translate-x-full'}`} aria-hidden={!open}>
       <header className="flex items-center justify-between bg-slate-950 px-4 py-3 text-white">
         <div><p className="flex items-center gap-2 font-semibold"><Bot size={20} /> Orçamentista Branorte</p><p className="text-xs text-slate-300">Monta, confere e só aplica com sua autorização</p></div>
         <div className="flex gap-1"><button type="button" onClick={() => { if (!messages.length || confirm('Limpar a conversa?')) clear() }} className="rounded p-2 hover:bg-white/10" aria-label="Limpar conversa"><Trash2 size={18} /></button><button type="button" onClick={() => toggle(false)} className="rounded p-2 hover:bg-white/10" aria-label="Fechar"><X size={20} /></button></div>
       </header>
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {!messages.length && <div className="rounded-xl border border-emerald-200 bg-white p-4 text-sm text-slate-700">Envie os dados do cliente e diga o modelo ou os equipamentos. Exemplo: “Ronaldo Biazi, Hidrolândia/GO, Compacta 03 Master 150500-4000-4000 monofásica”.</div>}
-        {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`max-w-[88%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm ${message.role === 'user' ? 'ml-auto bg-emerald-600 text-white' : 'bg-white text-slate-800 shadow-sm'}`}>{message.content}</div>)}
-        {questions.flatMap((question) => question.options ?? []).length > 0 && <div className="rounded-xl border bg-white p-3"><p className="mb-2 text-sm font-semibold">Escolha o modelo correto:</p><div className="space-y-2">{questions.flatMap((question) => question.options ?? []).map((option) => <button key={option.id} type="button" disabled={loading} onClick={() => void send(`Confirmo o modelo: ${option.label}`, option.id)} className="w-full rounded-lg border px-3 py-2 text-left text-xs hover:border-emerald-500 hover:bg-emerald-50">{option.label}</button>)}</div></div>}
+        {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`max-w-[92%] whitespace-pre-wrap break-words rounded-xl px-4 py-3 text-sm leading-relaxed ${message.role === 'user' ? 'ml-auto bg-emerald-700 text-white' : 'border border-slate-200 bg-white text-slate-900 shadow-sm'}`}>{compactChatMessage(message.content)}</div>)}
+        {questions.flatMap((question) => question.options ?? []).length > 0 && <div className="rounded-xl border border-slate-300 bg-white p-4 text-slate-900 shadow-sm"><p className="mb-3 text-sm font-bold">Escolha o modelo correto:</p><div className="space-y-2">{questions.flatMap((question) => question.options ?? []).map((option) => <button key={option.id} type="button" onClick={() => void send(`Confirmo o modelo: ${option.label}`, option.id)} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 hover:border-emerald-600 hover:bg-emerald-50">{option.label}</button>)}</div></div>}
         {proposal && <OrcamentoAIProposalCard proposal={proposal} applied={appliedProposalId === proposal.id} applying={applying} onApply={apply} onCorrect={() => inputRef.current?.focus()} onFinalize={onRequestFinalize} />}
         {(loading || transcribing) && <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 size={16} className="animate-spin" />{transcribing ? 'Transcrevendo áudio…' : 'Montando e conferindo a proposta…'}</div>}
         {(error || localError) && <p className="rounded-lg bg-red-50 p-2 text-sm text-red-700">{localError || error}</p>}
       </div>
       <footer className="border-t bg-white p-3"><div className="flex items-end gap-2">
         <button type="button" disabled={loading || transcribing} onClick={recording ? stopRecording : startRecording} className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${recording ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-700'}`} aria-label={recording ? 'Parar gravação' : 'Gravar áudio'}>{recording ? <Square size={17} /> : <Mic size={20} />}</button>
-        <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} rows={2} placeholder="Digite o pedido do orçamento…" className="max-h-32 flex-1 resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:border-emerald-500" />
+        <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submit() } }} rows={2} placeholder="Digite o pedido do orçamento…" className="max-h-32 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-emerald-500" />
         <button type="button" disabled={!input.trim() || loading || transcribing} onClick={() => void submit()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white disabled:bg-slate-300" aria-label="Enviar"><Send size={19} /></button>
       </div></footer>
     </aside>

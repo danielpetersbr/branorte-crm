@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { OrcamentoAISnapshot, PerguntaPendente, PropostaOrcamento } from '@/lib/orcamento-ai/types'
 
@@ -22,6 +22,7 @@ export function useOrcamentoAI(snapshot: OrcamentoAISnapshot) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [conversationId] = useState(() => globalThis.crypto?.randomUUID?.() ?? `conversation-${Date.now()}`)
+  const selectedModelIdRef = useRef<string | undefined>(undefined)
 
   const send = useCallback(async (message: string, selectedModelId?: string) => {
     const text = message.trim()
@@ -29,6 +30,8 @@ export function useOrcamentoAI(snapshot: OrcamentoAISnapshot) {
     setMessages((current) => [...current, { role: 'user', content: text }])
     setLoading(true)
     setError(null)
+    setQuestions([])
+    if (selectedModelId) selectedModelIdRef.current = selectedModelId
     try {
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token
@@ -37,7 +40,7 @@ export function useOrcamentoAI(snapshot: OrcamentoAISnapshot) {
       const response = await fetch('/api/orcamento-ai', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: conversationRequest, snapshot, conversation_id: conversationId, selected_model_id: selectedModelId }),
+        body: JSON.stringify({ message: conversationRequest, snapshot, conversation_id: conversationId, selected_model_id: selectedModelId ?? selectedModelIdRef.current }),
       })
       const raw = await response.text()
       let result: ApiResponse
@@ -46,6 +49,7 @@ export function useOrcamentoAI(snapshot: OrcamentoAISnapshot) {
       const reply = result.reply || 'Proposta preparada para conferência.'
       setMessages((current) => [...current, { role: 'assistant', content: reply }])
       setProposal(result.proposal ?? null)
+      if (result.proposal?.modelo?.id) selectedModelIdRef.current = String(result.proposal.modelo.id)
       setQuestions(result.questions ?? [])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Falha ao conversar com o orçamentista.')
@@ -59,6 +63,7 @@ export function useOrcamentoAI(snapshot: OrcamentoAISnapshot) {
     setProposal(null)
     setQuestions([])
     setError(null)
+    selectedModelIdRef.current = undefined
   }, [])
 
   const recordEvent = useCallback(async (eventType: 'applied' | 'finalized', proposalId: string, quoteId?: number | string | null) => {

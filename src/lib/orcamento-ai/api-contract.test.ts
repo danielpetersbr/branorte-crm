@@ -42,6 +42,43 @@ test('returns questions and no proposal for ambiguous models', async () => {
   assert.ok(result.body.questions.length > 0)
 })
 
+test('keeps the explicitly selected model on the next seller message', async () => {
+  let selectedSeen: string | undefined
+  const result = await service({
+    findModels: async (_intent, _seller, selectedModelId) => {
+      selectedSeen = selectedModelId
+      return [compacta03Master150500Mono]
+    },
+  }).execute({
+    token: 'valid',
+    body: {
+      message: 'Acrescente uma ensacadeira',
+      snapshot: emptyQuoteSnapshot,
+      selected_model_id: String(compacta03Master150500Mono.id),
+    },
+  })
+  assert.equal(selectedSeen, String(compacta03Master150500Mono.id))
+  assert.equal(result.body.proposal?.modelo?.id, compacta03Master150500Mono.id)
+  assert.equal(result.body.questions.length, 0)
+})
+
+test('adds requested equipment to a selected factory model without changing its accessories', async () => {
+  const withExtra: IntencaoOrcamento = {
+    ...intent,
+    itensPedidos: [{ textoOriginal: 'uma ensacadeira de saco aberto', categoria: 'ENSACADEIRA', quantidade: 1 }],
+  }
+  const result = await service({
+    interpret: async () => withExtra,
+    resolveItems: async () => ({
+      itens: [{ catalogoId: 999, nome: 'ENSACADEIRA SACO ABERTO', quantidade: 1, valorUnitario: 26400, categoria: 'ENSACADEIRA' }],
+      motores: [],
+      perguntas: [],
+    }),
+  }).execute({ token: 'valid', body: { message: 'Compacta e mais uma ensacadeira', snapshot: emptyQuoteSnapshot, selected_model_id: String(compacta03Master150500Mono.id) } })
+  assert.equal(result.body.proposal?.itens.length, compacta03Master150500Mono.itens.length + 1)
+  assert.deepEqual(result.body.proposal?.acessorios, compacta03Master150500Mono.acessorios)
+})
+
 test('never exposes server secrets in responses or errors', async () => {
   const result = await service({ interpret: async () => { throw new Error('OPENAI_API_KEY=secret SUPABASE_SERVICE_ROLE_KEY=secret') } })
     .execute({ token: 'valid', body: { message: 'teste', snapshot: emptyQuoteSnapshot } })

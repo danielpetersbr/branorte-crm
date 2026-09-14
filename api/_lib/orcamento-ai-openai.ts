@@ -47,7 +47,7 @@ export async function interpretQuoteRequest(message: string, apiKey: string, mod
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      instructions: 'Extraia apenas o pedido do vendedor para um orçamento Branorte. Não invente preço, ID, modelo ou acessório. Preserve medidas e nomes exatamente. Responda somente no schema.',
+      instructions: 'Extraia apenas o pedido do vendedor para um orçamento Branorte. Não invente preço, ID, modelo ou acessório. Preserve medidas e nomes exatamente. Quando houver modelo pronto, itensPedidos deve conter somente equipamentos adicionais pedidos fora do modelo, nunca os componentes já pertencentes ao modelo. Considere a confirmação mais recente do vendedor como definitiva. Responda somente no schema.',
       input: message,
       text: { format: { type: 'json_schema', name: 'intencao_orcamento', strict: true, schema: INTENT_SCHEMA } },
     }),

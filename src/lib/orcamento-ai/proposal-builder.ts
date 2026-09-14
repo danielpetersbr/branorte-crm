@@ -20,8 +20,8 @@ function proposalId(): string {
 }
 
 export function buildProposal({ snapshot, intent, model, resolvedItems, resolvedMotors }: BuildProposalInput): PropostaOrcamento {
-  const sourceItems = model?.itens ?? resolvedItems ?? snapshot.itens
-  const sourceMotors = model?.motores ?? resolvedMotors ?? snapshot.motores
+  const sourceItems = model ? [...model.itens, ...(resolvedItems ?? [])] : resolvedItems ?? snapshot.itens
+  const sourceMotors = model ? [...model.motores, ...(resolvedMotors ?? [])] : resolvedMotors ?? snapshot.motores
   const itens = sourceItems.map((item) => ({ ...item, descricao: item.descricao ? [...item.descricao] : undefined }))
   const motores = sourceMotors.map((motor) => ({ ...motor }))
   let acessorios = model?.acessorios
