@@ -163,7 +163,7 @@ interface Props {
   // Modo de salvamento: 'new' (default), 'update' (sobrescreve), 'alt' (cria versão alternativa)
   saveMode?: 'update' | 'alt' | 'new'
   // Dados do orçamento pai para criação de ALT
-  parentOrcamento?: { id: number; numero: string; numero_base: string } | null
+  parentOrcamento?: { id: number; numero: string; numero_base: string; cliente_nome?: string | null } | null
   // Valores iniciais carregados do orçamento sendo editado (pra pre-popular cliente/observacoes/etc)
   initialModal?: {
     cliente_nome: string
@@ -632,6 +632,27 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     if (!cliNome.trim()) {
       setErro('Nome do cliente é obrigatório')
       return
+    }
+    // Numero reciclado: modo UPDATE mantem numero/sequencial e sobrescreve o
+    // registro. Com cliente diferente, o orcamento antigo some e dois clientes
+    // ficam com o mesmo numero. A pagina ja avisa antes de abrir o modal; isto
+    // aqui e a rede de seguranca (inclui chamadas do copiloto IA).
+    if (saveMode === 'update' && parentOrcamento?.cliente_nome) {
+      const norm = (s: string) => (s || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+      const antes = norm(parentOrcamento.cliente_nome)
+      const agora = norm(cliNome)
+      const igual = !antes || !agora || antes === agora ||
+        (antes.length >= 4 && agora.length >= 4 && (antes.startsWith(agora) || agora.startsWith(antes)))
+      if (!igual) {
+        setErro(
+          `O ${parentOrcamento.numero} é do cliente "${parentOrcamento.cliente_nome}". ` +
+          `Salvar em cima apagaria o orçamento dele e daria o mesmo número pra dois clientes. ` +
+          `Feche e use "Salvar como novo" no menu do botão verde.`
+        )
+        return
+      }
     }
     if (!snapshot.itens || snapshot.itens.length === 0) {
       setErro('Adicione pelo menos um item ao carrinho antes de gerar')
