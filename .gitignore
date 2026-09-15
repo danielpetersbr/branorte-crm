@@ -17,6 +17,7 @@ __pycache__/
 # arquivos de sonda/repro de depuracao, que ja foram commitados por engano
 # duas vezes e so sairam por faxina manual.
 .git-rewrite/
+.worktrees/
 __*.ts
 _probe*.ts
 **/__sim_*.ts
