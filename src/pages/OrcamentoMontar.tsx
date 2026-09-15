@@ -427,6 +427,41 @@ function motorOverrideKey(m: { item_uid?: string; motorIndex?: number; cv: numbe
   return `${m.item_uid ?? '?'}::${m.motorIndex ?? 'main'}::${m.cv}p${m.polos}`
 }
 
+// ── Conferencia dos acessorios ────────────────────────────────────────────
+// Acessorio com VALOR FIXO nao recalcula sozinho. Se o vendedor mexe no
+// carrinho depois de fechar o valor, o bloco fica defasado em silencio.
+// Carimbamos a assinatura do carrinho no momento em que os acessorios foram
+// definidos/conferidos; se ela muda, o orcamento pede conferencia.
+function assinaturaCarrinho(items: CarrinhoItem[]): string {
+  return items
+    .map(c => `${c.uid}:${c.qtd}:${Math.round(c.valor)}:${c.brinde ? 1 : 0}${c.incluso ? 1 : 0}${c.por_conta_cliente ? 1 : 0}`)
+    .join('|')
+}
+
+// Mesmo cliente escrito diferente ("Jose Silva" / "JOSE SILVA ME") nao e troca
+// de cliente. Comparacao tolerante a acento, caixa e pontuacao.
+function normCliente(s: string): string {
+  return (s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase()
+}
+
+function mesmoCliente(a: string, b: string): boolean {
+  const x = normCliente(a)
+  const y = normCliente(b)
+  if (!x || !y) return true            // sem dado pra comparar: nao atrapalha
+  if (x === y) return true
+  return x.length >= 4 && y.length >= 4 && (x.startsWith(y) || y.startsWith(x))
+}
+
+type AcessoriosCfg = { pct: number; items: string[]; valorFixo?: number | null; excludedItemUids?: string[] } | null
+
+function chaveAcessorios(a: AcessoriosCfg): string {
+  if (!a) return ''
+  return [a.pct, a.valorFixo ?? '', (a.items ?? []).join('~'), (a.excludedItemUids ?? []).join(',')].join('|')
+}
+
 export function OrcamentoMontar() {
   const { data: items, isLoading: loadingItems } = useCatalogoItems()
   const { data: motores, isLoading: loadingMotores } = useCatalogoMotores()
@@ -485,6 +520,14 @@ export function OrcamentoMontar() {
   const [acessoriosOpen, setAcessoriosOpen] = useState(false)
   // Popup de confirmação quando finaliza sem acessórios (obrigatório decidir)
   const [confirmSemAcessorios, setConfirmSemAcessorios] = useState(false)
+  // Assinatura do carrinho na ultima vez que os acessorios foram conferidos.
+  // null = sem acessorios. Ver `acessoriosDesatualizados`.
+  const [acessSig, setAcessSig] = useState<string | null>(null)
+  const acessKeyRef = useRef<string>('')
+  // Popup obrigatorio: carrinho mudou depois do acessorio de valor fixo
+  const [confirmAcessoriosDefasados, setConfirmAcessoriosDefasados] = useState(false)
+  // Popup obrigatorio: "Salvar em cima" com cliente diferente do dono do numero
+  const [confirmNumeroReciclado, setConfirmNumeroReciclado] = useState(false)
   const [showOnlyPopular, setShowOnlyPopular] = useState(false)
   const [showOnlyOficiais, setShowOnlyOficiais] = useState(true)  // default: só items curados
   const [modoVisao, setModoVisao] = useState<ModoVisao>('preview')
@@ -837,6 +880,35 @@ export function OrcamentoMontar() {
 
   const temAcessorios = !!acessorios && (acessorios.items?.length ?? 0) > 0
 
+  const carrinhoSig = useMemo(() => assinaturaCarrinho(carrinho), [carrinho])
+
+  // Sempre que a CONFIGURACAO dos acessorios muda (editou, carregou modelo,
+  // desfez, restaurou rascunho), carimba o carrinho daquele momento como
+  // conferido. Mudanca so no carrinho NAO recarimba -> e isso que dispara o aviso.
+  useEffect(() => {
+    const key = chaveAcessorios(acessorios)
+    if (key === acessKeyRef.current) return
+    acessKeyRef.current = key
+    setAcessSig(acessorios ? assinaturaCarrinho(carrinho) : null)
+  }, [acessorios, carrinho])
+
+  // Marca os acessorios como conferidos agora (sem mexer na config).
+  const marcarAcessoriosConferidos = () => {
+    acessKeyRef.current = chaveAcessorios(acessorios)
+    setAcessSig(assinaturaCarrinho(carrinho))
+  }
+
+  // Valor fixo nao acompanha o carrinho -> se o carrinho mudou desde a ultima
+  // conferencia, o bloco de acessorios esta defasado. No modo % o valor
+  // recalcula sozinho, entao nao trava.
+  const acessoriosDesatualizados =
+    !finameMode &&
+    !!acessorios &&
+    acessorios.valorFixo != null &&
+    acessorios.valorFixo > 0 &&
+    acessSig !== null &&
+    acessSig !== carrinhoSig
+
   // Trava anti-sobrescrita: em modo edição, salvar ANTES da hidratação terminar
   // grava a tela (vazia ou pela metade) por cima do orçamento salvo — e não só nos
   // campos que têm rede própria, mas em todos: observações, componentes extras,
@@ -873,7 +945,29 @@ export function OrcamentoMontar() {
     // (Itens sem código FINAME já desabilitam o botão antes de chegar aqui.)
     if (finameMode) { abrirFinalizar(); return }
     if (!temAcessorios) { setConfirmSemAcessorios(true); return }
+    // Acessorio de valor fixo + carrinho alterado depois: exige conferir.
+    if (acessoriosDesatualizados) { setConfirmAcessoriosDefasados(true); return }
     abrirFinalizar()
+  }
+
+  // "Salvar em cima" mantem numero e sequencial e SOBRESCREVE o registro. Se o
+  // cliente mudou, isso apaga o orcamento do cliente antigo e manda o mesmo
+  // numero pra dois clientes. Aconteceu 4x em set/2026 (o 2594 saiu pra 5
+  // clientes diferentes). Antes de abrir o modal, exige decidir.
+  const clienteTrocouNoUpdate =
+    !!editingId &&
+    !!orcamentoEditando?.cliente_nome &&
+    !!clienteDados.nome?.trim() &&
+    !mesmoCliente(orcamentoEditando.cliente_nome, clienteDados.nome)
+
+  const pedirSalvar = (modo: 'update' | 'alt' | 'new') => {
+    if (salvarBloqueadoPorCarregamento()) return
+    if (modo === 'update' && clienteTrocouNoUpdate) {
+      setConfirmNumeroReciclado(true)
+      return
+    }
+    setSaveMode(modo)
+    setFinalizarOpen(true)
   }
 
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
@@ -2814,7 +2908,7 @@ export function OrcamentoMontar() {
               // saveMode='update': reenvia ATUALIZANDO o próprio orçamento (mantém
               // número) em vez de criar um novo. Com a gravação verificada na pasta,
               // o status vira 'enviado' e o banner some.
-              onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('update'); setFinalizarOpen(true) }}
+              onClick={() => pedirSalvar('update')}
               disabled={carrinho.length === 0 || finameBloqueado}
               className="text-[11px] px-2.5 py-1.5 rounded bg-danger hover:bg-danger/90 text-white font-bold flex items-center gap-1 shadow-sm disabled:opacity-50"
             >
@@ -3203,13 +3297,11 @@ export function OrcamentoMontar() {
                   <div className="flex items-stretch">
                     <button
                       disabled={carrinho.length === 0 || finameBloqueado}
-                      onClick={() => {
-                        if (salvarBloqueadoPorCarregamento()) return
-                        setSaveMode('update')
-                        setFinalizarOpen(true)
-                      }}
+                      onClick={() => pedirSalvar('update')}
                       className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-l-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
-                      title="Salvar alterações no orçamento atual (sobrescreve)"
+                      title={clienteTrocouNoUpdate
+                        ? `Atenção: este orçamento é de ${orcamentoEditando?.cliente_nome}. Salvar em cima recicla o número.`
+                        : 'Salvar alterações no orçamento atual (sobrescreve)'}
                     >
                       <FileText className="h-4 w-4" />
                       <span className="hidden sm:inline">Salvar</span>
@@ -3228,21 +3320,21 @@ export function OrcamentoMontar() {
                       <div className="fixed inset-0 z-40" onClick={() => setSaveDropdownOpen(false)} />
                       <div className="absolute right-0 top-full mt-1 z-50 bg-bg border border-border rounded-lg shadow-xl min-w-[220px] overflow-hidden">
                         <button
-                          onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('update'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          onClick={() => { setSaveDropdownOpen(false); pedirSalvar('update') }}
                           className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border"
                         >
                           <div className="text-[13px] font-bold text-ink">Salvar em cima</div>
                           <div className="text-[11px] text-ink-muted">Sobrescreve o orçamento {orcamentoEditando?.numero}</div>
                         </button>
                         <button
-                          onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('alt'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          onClick={() => { setSaveDropdownOpen(false); pedirSalvar('alt') }}
                           className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border"
                         >
                           <div className="text-[13px] font-bold text-accent">Salvar como ALT</div>
                           <div className="text-[11px] text-ink-muted">Cria versão alternativa vinculada</div>
                         </button>
                         <button
-                          onClick={() => { if (salvarBloqueadoPorCarregamento()) return; setSaveMode('new'); setFinalizarOpen(true); setSaveDropdownOpen(false) }}
+                          onClick={() => { setSaveDropdownOpen(false); pedirSalvar('new') }}
                           className="w-full text-left px-4 py-3 hover:bg-surface-2 transition-colors"
                         >
                           <div className="text-[13px] font-bold text-ink">Salvar como novo</div>
@@ -3514,6 +3606,7 @@ export function OrcamentoMontar() {
                 totalGeral={totalGeralFinal}
                 acessorios={acessoriosFinal}
                 valorAcessorios={valorAcessoriosFinal}
+                acessoriosDesatualizados={acessoriosDesatualizados}
                 fotoPrincipal={finameMode ? null : fotoPrincipal}
                 observacoesExtra={observacoesTxt || null}
                 observacoesFoto={finameMode ? null : observacoesFoto}
@@ -3631,8 +3724,12 @@ export function OrcamentoMontar() {
               </div>
               {/* No FINAME, acessórios/motores estão embutidos — sem linha separada. */}
               {!finameMode && acessorios && (
-                <div className="flex justify-between text-[11px] text-ink-muted">
-                  <span>Acessórios ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})</span>
+                <div className={`flex justify-between text-[11px] ${acessoriosDesatualizados ? 'text-amber-500 font-semibold' : 'text-ink-muted'}`}>
+                  <span>
+                    {acessoriosDesatualizados && '⚠️ '}
+                    Acessórios ({acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'R$ fixo' : `${acessorios.pct}%`})
+                    {acessoriosDesatualizados && ' — confira'}
+                  </span>
                   <span className="font-semibold">{formatBRL(valorAcessoriosExib)}</span>
                 </div>
               )}
@@ -3755,11 +3852,109 @@ export function OrcamentoMontar() {
         </div>
       )}
 
+      {/* Popup obrigatorio: acessorio com valor fixo e carrinho mexido depois */}
+      {confirmAcessoriosDefasados && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setConfirmAcessoriosDefasados(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-amber-500/15 text-amber-500 flex items-center justify-center text-lg">⚠️</div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-bold text-ink">Confira os acessórios</h3>
+                <p className="text-[13px] text-ink-muted mt-1 leading-snug">
+                  Os acessórios estão com <b>valor fixo</b> ({formatBRL(valorAcessorios)}) e o
+                  carrinho mudou depois disso. O valor <b>não recalcula sozinho</b> — confira a
+                  lista e o valor antes de gerar.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                onClick={() => { setConfirmAcessoriosDefasados(false); setAcessoriosOpen(true) }}
+                className="w-full rounded-md bg-accent hover:bg-accent/90 text-white text-[13px] font-bold py-2.5 transition-colors"
+              >
+                🔍 Conferir acessórios
+              </button>
+              <button
+                onClick={() => { marcarAcessoriosConferidos(); setConfirmAcessoriosDefasados(false); abrirFinalizar() }}
+                className="w-full rounded-md border border-border bg-surface-2 hover:border-border-strong text-ink text-[13px] font-semibold py-2.5 transition-colors"
+              >
+                Já conferi, continuar
+              </button>
+              <button
+                onClick={() => setConfirmAcessoriosDefasados(false)}
+                className="w-full text-[12px] text-ink-muted hover:text-ink py-1"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup obrigatorio: salvar em cima trocando o cliente = numero reciclado */}
+      {confirmNumeroReciclado && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setConfirmNumeroReciclado(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-surface p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-danger/15 text-danger flex items-center justify-center text-lg">🚫</div>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-bold text-ink">Esse número já é de outro cliente</h3>
+                <p className="text-[13px] text-ink-muted mt-1 leading-snug">
+                  O <b>{orcamentoEditando?.numero}</b> é do cliente <b>{orcamentoEditando?.cliente_nome}</b> e
+                  agora o orçamento está no nome de <b>{clienteDados.nome}</b>.
+                  Salvar em cima <b>apaga o orçamento do {orcamentoEditando?.cliente_nome}</b> e manda o
+                  mesmo número pros dois. Salve como novo.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                onClick={() => { setConfirmNumeroReciclado(false); setSaveMode('new'); setFinalizarOpen(true) }}
+                className="w-full rounded-md bg-accent hover:bg-accent/90 text-white text-[13px] font-bold py-2.5 transition-colors"
+              >
+                ✅ Salvar como novo (número novo)
+              </button>
+              <button
+                onClick={() => { setConfirmNumeroReciclado(false); setSaveMode('alt'); setFinalizarOpen(true) }}
+                className="w-full rounded-md border border-border bg-surface-2 hover:border-border-strong text-ink text-[13px] font-semibold py-2.5 transition-colors"
+              >
+                Salvar como ALT do {orcamentoEditando?.numero}
+              </button>
+              <button
+                onClick={() => { setConfirmNumeroReciclado(false); setSaveMode('update'); setFinalizarOpen(true) }}
+                className="w-full text-[12px] text-danger hover:underline py-1"
+              >
+                Só corrigi o nome do cliente — salvar em cima mesmo assim
+              </button>
+              <button
+                onClick={() => setConfirmNumeroReciclado(false)}
+                className="w-full text-[12px] text-ink-muted hover:text-ink py-1"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <FinalizarMontarModal
         open={finalizarOpen}
         editingId={editingId}
         saveMode={saveMode}
         parentOrcamento={editingId && orcamentoEditando ? {
+          cliente_nome: orcamentoEditando.cliente_nome,
           id: orcamentoEditando.parent_id ?? orcamentoEditando.id,
           numero: orcamentoEditando.numero,
           numero_base: orcamentoEditando.numero_base ?? orcamentoEditando.numero,
@@ -3875,12 +4070,16 @@ export function OrcamentoMontar() {
         onSave={cfg => {
           // cfg.valorFixo definido = vendedor escolheu valor fixo (R$);
           // null = modo %, recalcula via pct sobre os equipamentos.
-          setAcessorios({
+          const nova = {
             pct: cfg.pct,
             items: cfg.items,
             valorFixo: cfg.valorFixo,
             excludedItemUids: cfg.excludedItemUids,
-          })
+          }
+          setAcessorios(nova)
+          // Passou pelo modal = conferiu. Carimba mesmo que nada tenha mudado.
+          acessKeyRef.current = chaveAcessorios(nova)
+          setAcessSig(assinaturaCarrinho(carrinho))
           setAcessoriosOpen(false)
         }}
         onRemove={() => { setAcessorios(null); setAcessoriosOpen(false) }}

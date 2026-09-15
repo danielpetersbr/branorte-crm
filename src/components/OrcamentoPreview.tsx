@@ -134,6 +134,8 @@ export interface OrcamentoPreviewProps {
   totalGeral: number
   acessorios: { pct: number; items: string[]; valorFixo?: number | null } | null
   valorAcessorios: number
+  /** Valor fixo definido antes de o carrinho mudar — pede conferencia (nao sai no PDF). */
+  acessoriosDesatualizados?: boolean
   componentesExtras?: PreviewComponenteExtra[]
   onUpdateComponentesExtras?: (items: PreviewComponenteExtra[]) => void
   // Sugestões puxadas do cadastro (precos_branorte) — apresentadas no popover "+ Adicionar"
@@ -387,7 +389,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const {
     carrinho, motoresAgrupados, voltagem,
     totalItems, totalMotores, totalEquip, totalGeral,
-    acessorios, valorAcessorios,
+    acessorios, valorAcessorios, acessoriosDesatualizados,
     numero, dataEmissao, onUpdateDataEmissao, cliente, terms, observacoesExtra, fotoPrincipal,
     obsPorConta = null, onUpdateObsPorConta,
     observacoesFoto = null, onUpdateObservacoes, onUpdateObservacoesFoto,
@@ -1404,6 +1406,23 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                 )}
               </div>
+              {!renderMode && acessoriosDesatualizados && (
+                <div className="print:hidden mb-2 flex items-start gap-2 rounded-md border border-amber-400 bg-amber-50 px-2.5 py-2 text-[13px] text-amber-800">
+                  <span className="shrink-0">⚠️</span>
+                  <div className="min-w-0">
+                    <b>Confira os acessórios.</b> O valor está fixo e o carrinho mudou depois
+                    que ele foi definido — este bloco não recalcula sozinho.
+                    {onEditAcessorios && (
+                      <button
+                        onClick={onEditAcessorios}
+                        className="ml-1 underline font-semibold hover:text-amber-900"
+                      >
+                        conferir agora
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="pl-3 text-[14.5px] text-gray-700 space-y-0.5">
                 {acessorios.items.length > 0
                   ? acessorios.items.map((s, i) => <div key={i} className="flex gap-1.5"><span className="text-gray-400">•</span><span>{s}</span></div>)
