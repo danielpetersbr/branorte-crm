@@ -106,7 +106,11 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
       { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
       { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
-      { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, adminOnly: true },
+      // Cada vendedor abre a DELE: a tela deriva o nome de user_profiles.vendor_id e
+      // so o admin tem seletor. Por isso saiu de adminOnly e virou permissao — que e
+      // o que /admin/permissoes edita. SEM `roles` junto: permKey + roles sao duas
+      // fontes de verdade pro mesmo acesso, e foi isso que escondeu /contatos.
+      { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, permKey: 'menu.area_vendedor' },
       // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
       // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
       { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },

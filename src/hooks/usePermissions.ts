@@ -57,6 +57,9 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.supervisao', label: 'Central de Supervisao (achados por vendedor)', group: 'Menu' },
   { key: 'menu.reunioes', label: 'Adm de Reunião', group: 'Menu' },
   { key: 'menu.ligacoes', label: 'Ligações', group: 'Menu' },
+  // Cada vendedor ve a carteira DELE: a tela deriva o nome de user_profiles.vendor_id
+  // e nao oferece seletor pra quem nao e admin. Sem vinculo, nao carrega nada.
+  { key: 'menu.area_vendedor', label: 'Área do Vendedor (cada um vê só a carteira dele)', group: 'Menu' },
   { key: 'menu.agenda', label: 'Agenda (calendário/tarefas)', group: 'Menu' },
   { key: 'menu.due_diligence', label: 'Consulta (Due Diligence)', group: 'Menu' },
   // Editar o Guia = criar/alterar/aprovar conteúdo técnico e imagens. É poder
@@ -124,6 +127,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     // e faltavam aqui — as duas rotas caíam em /atendimentos na carga fria.
     'menu.contatos': true,
     'menu.ligacoes': true,
+    'menu.area_vendedor': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
     'precos.consultar': true,

@@ -21,14 +21,26 @@ export default function AreaVendedor() {
   const isAdmin = profile?.role === 'admin'
   const nomes = useWaVendedores()
   const vendors = useVendors()
-  const [nome, setNome] = useState('')
+  const [nomeEscolhido, setNomeEscolhido] = useState('')
   const [etapa, setEtapa] = useState('')
   const [busca, setBusca] = useState('')
   const [somentePendencias, setSomentePendencias] = useState(false)
   const [selecionado, setSelecionado] = useState<string | null>(null)
+  /*
+   * Quem NÃO é admin vê a própria carteira e só ela: o nome não é escolhido na
+   * tela, vem de `profile.vendor_id`. Deixar o seletor aberto pro vendedor
+   * exibiria a carteira do colega (conversa, nome e telefone do cliente dele) —
+   * `wa_chat_labels` é legível por qualquer autenticado, então a única trava
+   * dessa parte é esta. As análises já são travadas na RLS por vendedor_id.
+   */
+  const meuVendor = (vendors.data ?? []).find(v => v.id === profile?.vendor_id) ?? null
+  const nome = isAdmin ? nomeEscolhido : (meuVendor?.name ?? '')
+  const setNome = (v: string) => { if (isAdmin) setNomeEscolhido(v) }
+  // Sem vínculo no cadastro não há carteira pra mostrar — e o aviso tem que dizer isso.
+  const semVinculo = !isAdmin && !vendors.isLoading && !meuVendor
   // Apenas vínculo exato e único. Selecionar um nome não concede acesso.
   const matches = (vendors.data ?? []).filter(v => normalizar(v.name) === normalizar(nome) || normalizar(v.key ?? '') === normalizar(nome))
-  const vendedorId = nome && matches.length === 1 ? matches[0].id : null
+  const vendedorId = isAdmin ? (nome && matches.length === 1 ? matches[0].id : null) : (meuVendor?.id ?? null)
   const area = useAreaVendedor(nome || null, vendedorId, isAdmin)
   const analisesPorChat = useMemo(() => new Map((area.precalculadas.data ?? []).map(a => [a.chat_id, a])), [area.precalculadas.data])
   const filtrados = useMemo(() => area.clientes.filter(c =>
@@ -49,7 +61,8 @@ export default function AreaVendedor() {
     (nomes.error || vendors.error) && 'Cadastro de vendedores indisponível. Recarregue a página.',
     area.carteira.error && 'Falha ao atualizar a carteira. Os dados visíveis podem ser da consulta anterior.',
     area.precalculadas.error && 'Análises publicadas indisponíveis nesta consulta.',
-    (nome && !vendedorId && !vendors.isLoading) && 'Vendedor sem vínculo único no cadastro: análises não associadas.',
+    semVinculo && 'Seu usuário não está vinculado a um vendedor no cadastro. Peça ao administrador para vincular em Admin › Usuários.',
+    (isAdmin && nome && !vendedorId && !vendors.isLoading) && 'Vendedor sem vínculo único no cadastro: análises não associadas.',
     syncAntiga && 'Sincronização de etiquetas antiga ou sem data confiável.',
     area.analises.error && 'Supervisão antiga indisponível.',
     area.precalculadasLimiteAtingido && 'Limite de 1.000 análises atingido; pode haver resultados não exibidos.',
@@ -69,10 +82,17 @@ export default function AreaVendedor() {
 
       <section aria-label="Filtros da carteira" className="grid gap-2 sm:grid-cols-[1fr_1fr_1.4fr]">
         <label className="grid gap-1 text-xs font-medium text-ink-muted">Vendedor
-          <select className={control} value={nome} onChange={e => { setNome(e.target.value); setSelecionado(null) }}>
-            <option value="">Selecione seu nome</option>
-            {(nomes.data ?? []).map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
+          {isAdmin ? (
+            <select className={control} value={nome} onChange={e => { setNome(e.target.value); setSelecionado(null) }}>
+              <option value="">Selecione seu nome</option>
+              {(nomes.data ?? []).map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          ) : (
+            // Não é campo desabilitado por capricho: o vendedor não escolhe carteira.
+            <span className={`${control} flex items-center font-semibold text-ink`}>
+              {meuVendor?.name ?? (vendors.isLoading ? 'Carregando…' : 'Sem vínculo no cadastro')}
+            </span>
+          )}
         </label>
         <label className="grid gap-1 text-xs font-medium text-ink-muted">Etapa
           <select className={control} value={etapa} onChange={e => { setEtapa(e.target.value); setSelecionado(null) }}>
@@ -86,7 +106,7 @@ export default function AreaVendedor() {
       </section>
       <details className="rounded-md border border-border px-3 py-2 text-xs text-ink-muted">
         <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-          <span className={problemas.length ? 'text-warning' : ''}>{nomes.error || vendors.error ? 'Falha ao carregar vendedores' : area.carteira.error ? 'Carteira indisponível ou desatualizada' : !nome ? 'Selecione um vendedor para consultar' : area.precalculadas.error ? 'Análises indisponíveis' : area.precalculadas.isLoading ? 'Consultando análises…' : `${analisados} de ${filtrados.length} clientes com análise publicada`}</span>
+          <span className={problemas.length ? 'text-warning' : ''}>{nomes.error || vendors.error ? 'Falha ao carregar vendedores' : area.carteira.error ? 'Carteira indisponível ou desatualizada' : !nome ? (isAdmin ? 'Selecione um vendedor para consultar' : semVinculo ? 'Usuário sem vendedor vinculado' : 'Carregando seu cadastro') : area.precalculadas.error ? 'Análises indisponíveis' : area.precalculadas.isLoading ? 'Consultando análises…' : `${analisados} de ${filtrados.length} clientes com análise publicada`}</span>
           {syncAntiga && <span className="ml-3 text-warning">Sincronização desatualizada</span>}
           {area.precalculadasLimiteAtingido && <span className="ml-3 text-warning">Resultados limitados a 1.000 análises</span>}
           <span className="ml-3">Status e limites da leitura</span>
@@ -99,7 +119,15 @@ export default function AreaVendedor() {
           {etapa && REGRAS_ETAPA[etapa] && <p>{etapa}: {REGRAS_ETAPA[etapa]}</p>}
         </div>
       </details>
-      {!nome ? <div className="rounded-lg border border-dashed border-border-strong px-5 py-14 text-center"><h2 className="text-lg font-semibold">Comece pelo seu nome</h2><p className="mt-2 text-ink-muted">Selecione um vendedor para consultar os clientes e as análises disponíveis.</p>{nomes.isLoading && <p role="status" className="mt-3 text-sm">Carregando vendedores…</p>}</div> : <>
+      {!nome ? <div className="rounded-lg border border-dashed border-border-strong px-5 py-14 text-center">
+        <h2 className="text-lg font-semibold">{isAdmin ? 'Comece pelo seu nome' : semVinculo ? 'Seu usuário ainda não tem vendedor vinculado' : 'Carregando sua carteira…'}</h2>
+        <p className="mt-2 text-ink-muted">{isAdmin
+          ? 'Selecione um vendedor para consultar os clientes e as análises disponíveis.'
+          : semVinculo
+            ? 'Sem esse vínculo não dá para saber qual carteira é a sua. Peça ao administrador para vincular seu usuário em Admin › Usuários.'
+            : 'Buscando o seu cadastro de vendedor.'}</p>
+        {isAdmin && nomes.isLoading && <p role="status" className="mt-3 text-sm">Carregando vendedores…</p>}
+      </div> : <>
         <section className="overflow-hidden rounded-lg border border-border bg-surface lg:grid lg:h-[calc(100dvh-215px)] lg:min-h-[480px] lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]" aria-label="Carteira e análise do cliente">
           <div className={`${cliente ? 'hidden lg:flex' : 'flex'} min-h-0 min-w-0 flex-col lg:border-r lg:border-border`}>
             <div className="space-y-2 border-b border-border px-4 py-3">
