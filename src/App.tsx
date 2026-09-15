@@ -428,7 +428,18 @@ function AppRoutes() {
      * guard só escolhe a tela.
      */
     const ligacoesOk = p.startsWith('/ligacoes') && can('menu.ligacoes')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    /*
+     * Área do Vendedor: mesma ideia do /ligacoes — a tela abre em modo pessoal
+     * (AreaVendedor.tsx decide pelo papel), sem seletor de colega. O nome vem de
+     * user_profiles.vendor_id, nao de escolha na tela.
+     *
+     * O recorte das ANALISES nao depende deste guard nem do menu: quem decide e a
+     * RLS de area_vendedor_analises (admin OU p.vendor_id = vendedor_id). Ja a
+     * CARTEIRA (wa_chat_labels) e legivel por qualquer autenticado — a mesma fonte
+     * que o Funil de Vendas ja usa —, entao ali quem recorta e a propria tela.
+     */
+    const areaVendedorOk = p.startsWith('/area-vendedor') && can('menu.area_vendedor')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -569,7 +580,10 @@ function AppRoutes() {
         {/* /funil = Kanban WhatsApp (espelho das etiquetas Wascript); o kanban
             manual antigo (status_vendedor) continua em /funil/manual */}
         <Route path="/funil" element={<FunilWhatsApp />} />
-        {profile.role === 'admin' && <Route path="/area-vendedor" element={<AreaVendedor />} />}
+        {/* QUARTO portao da Area do Vendedor, alem de permissao, guard de URL e menu:
+            a rota so existia pra admin, entao liberar os outros tres deixaria o
+            vendedor numa tela em branco. Agora segue a MESMA chave dos outros tres. */}
+        {can('menu.area_vendedor') && <Route path="/area-vendedor" element={<AreaVendedor />} />}
         <Route path="/funil/manual" element={<Funil />} />
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
         <Route path="/projeto" element={<Projeto />} />
