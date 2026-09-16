@@ -4029,6 +4029,7 @@ export function OrcamentoMontar() {
         open={finalizarOpen}
         editingId={editingId}
         saveMode={saveMode}
+        descricaoSalva={editingId && orcamentoEditando ? ((orcamentoEditando as any).descricao ?? null) : null}
         parentOrcamento={editingId && orcamentoEditando ? {
           cliente_nome: orcamentoEditando.cliente_nome,
           id: orcamentoEditando.parent_id ?? orcamentoEditando.id,

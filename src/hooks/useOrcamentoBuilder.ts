@@ -142,6 +142,10 @@ export interface OrcamentoGerado {
   motores_avulsos: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
   balanca_dispensada: boolean | null
   observacoes: string | null
+  // Descrição curta que vai pro NOME DO ARQUIVO (ex: "SILO 8,5 TONELADAS +
+  // TRANSPORTADOR HELICOIDAL 210 +4"). Coluna criada em 16/09/2026 — antes
+  // disso o texto morria no modal e reabrir pra editar devolvia campo vazio.
+  descricao?: string | null
   forma_pagamento: string | null
   prazo_entrega: string | null
   // Frete editavel inline no preview. Colunas criadas via migration 2026-06-10
@@ -609,6 +613,8 @@ export interface CriarOrcamentoInput {
   total_motores: number
   total_proposta: number
   observacoes?: string | null
+  /** Descrição curta usada no nome do arquivo do PDF/DOCX. */
+  descricao?: string | null
   forma_pagamento?: string | null
   prazo_entrega?: string | null
   status?: 'rascunho' | 'enviado' | 'aprovado' | 'perdido'
@@ -716,6 +722,7 @@ export function useCriarOrcamento() {
         total_motores: input.total_motores,
         total_proposta: input.total_proposta,
         observacoes: input.observacoes ?? null,
+        descricao: input.descricao ?? null,
         forma_pagamento: input.forma_pagamento ?? null,
         prazo_entrega: input.prazo_entrega ?? null,
         status: input.status ?? 'rascunho',
