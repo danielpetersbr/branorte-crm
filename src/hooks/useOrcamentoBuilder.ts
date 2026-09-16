@@ -66,6 +66,9 @@ export interface OrcamentoMotor {
   // recalcula valor do equipamento via valor_equipamento; se for avulso, só zera o motor).
   // O motor não aparece mais na tabela MOTORES TRIFÁSICOS.
   removido?: boolean
+  // Redutor aplicado ao motor (catalogo_motorredutor). O valor do redutor JÁ está
+  // somado em `valor` — a linha sai como "X CV Y polos + Redutor QNN".
+  redutor?: { modelo: string; valor: number }
 }
 
 export interface OrcamentoModelo {

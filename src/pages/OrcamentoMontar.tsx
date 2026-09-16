@@ -33,11 +33,20 @@ import {
   type MaterialChupim, type InclinacaoChupim,
 } from '@/lib/calcChupim'
 import { useTransportadorFuncoes, useCriarTransportadorFuncao, type TransportadorFuncao } from '@/hooks/useTransportadorFuncoes'
+import { useMotoresRedutorAdmin } from '@/hooks/useMotoresAdmin'
 import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 import { decidirDestinoPasta } from '@/lib/orcamento-folder-scan'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
+
+/** Redutor escolhido pelo vendedor pra acompanhar um motor (catalogo_motorredutor).
+ *  Guarda modelo + valor no momento da aplicação (snapshot, igual motor_valor_unit) —
+ *  orçamento antigo não muda de preço se a tabela for reajustada depois. */
+export interface RedutorAplicado {
+  modelo: string
+  valor: number
+}
 
 interface CarrinhoItem {
   uid: string
@@ -99,6 +108,12 @@ interface CarrinhoItem {
    *  motorIndex (multi-motor). */
   motor_incluso_manual?: boolean
   motores_incluso_idx?: number[]
+
+  /** Redutor aplicado a um motor deste item (catalogo_motorredutor — Q50…Q130).
+   *  Chave do mapa: 'main' = motor único do item; String(motorIndex) = multi-motor
+   *  (0/1 do spec, 100+N dos motores_extras). O valor SOMA na linha do motor na
+   *  tabela MOTORES (linha única "X CV Y polos + Redutor QNN"). */
+  redutores?: Record<string, RedutorAplicado>
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
   /** Snapshot dos motores extras do item de catálogo (multi-motor, ex: misturador c/ aquecimento).
@@ -124,6 +139,8 @@ export interface MotorAvulsoOrc {
   polos: number
   qtd: number
   por_conta_cliente?: boolean
+  /** Redutor aplicado a este motor avulso (soma no valor da linha). */
+  redutor?: RedutorAplicado
 }
 
 function formatBRL(v: number): string {
@@ -226,6 +243,9 @@ interface MotorAgrupado {
   // Decidido AQUI (spec do item + polos=0) e propagado pro preview, PDF e DOCX — antes
   // cada renderizador redecidia e o PDF, que só olhava polos===0, escrevia "4 polos".
   motorredutor?: boolean
+  // Redutor aplicado a este motor. O valor já está somado em valor_unit/valor_total —
+  // a linha vira "X CV Y polos + Redutor QNN" com um valor único (decisão do Daniel, 16/09).
+  redutor?: RedutorAplicado
 }
 
 // Peneira PASSIVA (jogo de peneira, par de peneiras, peneira de moinho) não tem
@@ -233,6 +253,22 @@ interface MotorAgrupado {
 // (ex: "Jogo Peneira Moinho 15 CV") é a bitola do moinho que ela serve, não um motor.
 function peneiraSemMotor(nome: string): boolean {
   return /peneira/i.test(nome) && !/vibrat[óo]ria/i.test(nome)
+}
+
+// Chave do redutor no mapa CarrinhoItem.redutores. motorIndex undefined = motor único.
+function redutorKey(motorIndex?: number): string {
+  return motorIndex == null ? 'main' : String(motorIndex)
+}
+
+// Soma o redutor na linha do motor (decisão do Daniel, 16/09: linha única
+// "X CV Y polos + Redutor QNN" com valor somado, em vez de linha separada).
+// Motor REMOVIDO não cobra redutor — a linha inteira sai do orçamento.
+// Motor INCLUSO / POR CONTA DO CLIENTE segue cobrando o redutor: quem fornece o
+// redutor é a Branorte, então o valor não pode sumir junto com o do motor.
+function comRedutor(linha: MotorAgrupado, red?: RedutorAplicado): MotorAgrupado {
+  if (!red || linha.removido) return linha
+  const v = linha.valor_total + Number(red.valor || 0)
+  return { ...linha, redutor: red, valor_unit: v, valor_total: v }
 }
 
 function agruparMotores(
@@ -252,14 +288,14 @@ function agruparMotores(
       : null
     const valorUnit = ma.por_conta_cliente ? 0 : (match ? Number(match.valor) : 0)
     for (let i = 0; i < (ma.qtd || 1); i++) {
-      linhas.push({
+      linhas.push(comRedutor({
         cv: Number(ma.cv), polos: ma.polos, qtd: 1,
         valor_unit: valorUnit, valor_total: valorUnit,
         item_nome: 'Motor avulso', item_uid: `avulso:${ma.id}`,
         por_conta_cliente: !!ma.por_conta_cliente,
         incluso_real: false,
         removido: false,
-      })
+      }, ma.redutor))
     }
   }
   for (const it of carrinho) {
@@ -298,7 +334,7 @@ function agruparMotores(
         const qtdExtra = (me.qtd || 1) * it.qtd
         // Expande em N linhas (1 por motor) em vez de 1 linha com (×N)
         for (let i = 0; i < qtdExtra; i++) {
-          linhas.push({
+          linhas.push(comRedutor({
             cv: Number(me.cv),
             polos: me.polos,
             qtd: 1,
@@ -311,7 +347,7 @@ function agruparMotores(
             incluso_real: meInclusoManual,
             removido: meRemovido,
             motorredutor: me.polos === 0 || /motorredutor|moto\s*redutor/i.test(me.descricao ?? ''),
-          })
+          }, it.redutores?.[redutorKey(meIdx)]))
         }
       })
     }
@@ -386,7 +422,7 @@ function agruparMotores(
       const temMotoresExtras = Array.isArray(it.motores_extras_snapshot) && it.motores_extras_snapshot.length > 0
       // 1 linha por motor da spec × qtd do item (sem agregar — cada item vira N linhas)
       for (let i = 0; i < it.qtd; i++) {
-        linhas.push({
+        linhas.push(comRedutor({
           cv: cv1, polos: motorPolos, qtd: 1,
           valor_unit: valorCv1, valor_total: valorCv1,
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
@@ -394,9 +430,9 @@ function agruparMotores(
           incluso_real: tratarComoIncluso || isInclusoManual(0),
           removido: isRemovido(0),
           motorredutor: motorPolos === 0 || eMotorredutor,
-        })
+        }, it.redutores?.[redutorKey(0)]))
         if (!temMotoresExtras) {
-          linhas.push({
+          linhas.push(comRedutor({
             cv: cv2, polos: motorPolos, qtd: 1,
             valor_unit: valorCv2, valor_total: valorCv2,
             item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
@@ -404,7 +440,7 @@ function agruparMotores(
             incluso_real: tratarComoIncluso || isInclusoManual(1),
             removido: isRemovido(1),
             motorredutor: motorPolos === 0 || eMotorredutor,
-          })
+          }, it.redutores?.[redutorKey(1)]))
         }
       }
     } else {
@@ -414,7 +450,7 @@ function agruparMotores(
       // Motor com valor=0 por OUTRO motivo (sem match no catálogo) NÃO é incluso → UI mostra warning.
       const inclusoReal = (eIncluso && (eMotorredutor || inclusoDireto)) || isInclusoManual()
       for (let i = 0; i < qtdMotor; i++) {
-        linhas.push({
+        linhas.push(comRedutor({
           cv: it.motor_cv, polos: motorPolos, qtd: 1,
           valor_unit: valorMotor, valor_total: valorMotor,
           item_nome: nomeItem, item_uid: it.uid,
@@ -422,7 +458,7 @@ function agruparMotores(
           incluso_real: inclusoReal,
           removido: motorRemovido,
           motorredutor: motorPolos === 0 || eMotorredutor,
-        })
+        }, it.redutores?.[redutorKey()]))
       }
     }
   }
@@ -473,6 +509,12 @@ function chaveAcessorios(a: AcessoriosCfg): string {
 export function OrcamentoMontar() {
   const { data: items, isLoading: loadingItems } = useCatalogoItems()
   const { data: motores, isLoading: loadingMotores } = useCatalogoMotores()
+  // Redutores Q50…Q130 (catalogo_motorredutor) — picker "Aplicar redutor" na tabela de motores.
+  const { data: redutoresCat } = useMotoresRedutorAdmin()
+  const redutoresDisponiveis = useMemo(
+    () => (redutoresCat ?? []).filter(r => r.ativo),
+    [redutoresCat],
+  )
   const { data: modelos } = useOrcamentoModelos()
 
   const [busca, setBusca] = useState('')
@@ -2188,6 +2230,24 @@ export function OrcamentoMontar() {
     }))
   }
 
+  // Aplica (ou tira, com red = null) um redutor no motor da linha. O valor do redutor
+  // soma na linha do motor em agruparMotores. Vale também pra motor avulso.
+  function aplicarRedutorNoMotor(itemUid: string, red: RedutorAplicado | null, motorIndex?: number) {
+    if (itemUid.startsWith('avulso:')) {
+      const id = itemUid.slice('avulso:'.length)
+      setMotoresAvulsos(ms => ms.map(m => m.id === id ? { ...m, redutor: red ?? undefined } : m))
+      return
+    }
+    const key = redutorKey(motorIndex)
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== itemUid) return it
+      const next = { ...(it.redutores ?? {}) }
+      if (red) next[key] = red
+      else delete next[key]
+      return { ...it, redutores: Object.keys(next).length ? next : undefined }
+    }))
+  }
+
   // Issue #23: REMOVE o motor de um item. Cliente não quer motor — Branorte vende só o
   // equipamento. Quando o motor estava INCLUSO no preço (precos_branorte com
   // valor_com_motor_trif/mono), recalcula o valor pro valor_equipamento (sem motor).
@@ -2574,6 +2634,7 @@ export function OrcamentoMontar() {
           motores_removidos_idx: itAny.motores_removidos_idx ?? undefined,
           motor_incluso_manual: !!itAny.motor_incluso_manual,
           motores_incluso_idx: itAny.motores_incluso_idx ?? undefined,
+          redutores: itAny.redutores ?? undefined,
         })
         return
       }
@@ -3698,6 +3759,8 @@ export function OrcamentoMontar() {
                 onMotorPorContaCliente={marcarMotorPorContaCliente}
                 onMotorIncluso={marcarMotorIncluso}
                 onRemoverMotor={removerMotorDoItem}
+                redutoresDisponiveis={redutoresDisponiveis}
+                onAplicarRedutor={finameMode ? undefined : aplicarRedutorNoMotor}
                 onRestaurarMotor={restaurarMotorDoItem}
                 onEditarPrecoMotor={finameMode ? undefined : editarPrecoMotor}
                 onAdicionarMotorAvulso={finameMode ? undefined : adicionarMotorAvulso}
@@ -4016,6 +4079,7 @@ export function OrcamentoMontar() {
             motores_removidos_idx: c.motores_removidos_idx,
             motor_incluso_manual: c.motor_incluso_manual,
             motores_incluso_idx: c.motores_incluso_idx,
+            redutores: c.redutores,
           })),
           motoresAgrupados: motoresAgrupadosFinal,
           // Decisões do vendedor que precisam voltar iguais na próxima edição.
