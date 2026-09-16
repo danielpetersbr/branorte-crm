@@ -81,6 +81,8 @@ export interface CarrinhoSnapshot {
     motores_extras_snapshot?: any[]
     motores_por_conta_idx?: number[]
     motores_removidos_idx?: number[]
+    /** Redutores aplicados aos motores deste item (chave 'main' ou String(motorIndex)). */
+    redutores?: Record<string, { modelo: string; valor: number }>
   }>
   motoresAgrupados: Array<{
     cv: number
@@ -91,6 +93,9 @@ export interface CarrinhoSnapshot {
     item_uid?: string
     /** Acionamento é motorredutor — rótulo "X CV motorredutor" no preview/PDF/DOCX. */
     motorredutor?: boolean
+    item_nome?: string
+    /** Redutor aplicado ao motor — valor já somado em valor_unit/valor_total. */
+    redutor?: { modelo: string; valor: number }
   }>
   acessorios: { pct: number; items: string[]; valor: number } | null
   totalItems: number          // só os itens, sem acessórios
@@ -814,6 +819,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         polos: m.polos,
         valor: m.valor_unit,
         motorredutor: m.motorredutor,
+        ...(m.redutor ? { redutor: m.redutor } : {}),
       }))
 
       // Upload da foto principal pro Storage (se for dataURL, converte pra blob e sobe)

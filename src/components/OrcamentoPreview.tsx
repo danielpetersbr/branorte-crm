@@ -62,6 +62,18 @@ export interface PreviewMotor {
   // Antes cada renderizador redecidia sozinho: o PDF só olhava polos===0 e trocava
   // "motorredutor" por "4 polos"/"2 polos" no misturador horizontal.
   motorredutor?: boolean
+  // Redutor aplicado ao motor (catalogo_motorredutor). O valor JÁ vem somado em
+  // valor_total — a linha mostra "X CV Y polos + Redutor QNN" com valor único.
+  redutor?: { modelo: string; valor: number }
+}
+
+// Redutor do catálogo (catalogo_motorredutor) oferecido no picker "Aplicar redutor".
+export interface RedutorOption {
+  id: number
+  modelo: string
+  cv_min: number
+  cv_max: number
+  valor: number
 }
 
 // Motor do catálogo central (catalogo_motores). Passado pra o picker de troca.
@@ -262,6 +274,10 @@ export interface OrcamentoPreviewProps {
   // novoValor null limpa o override (volta ao preço do catálogo). Só edição (renderMode
   // não recebe, então o PDF não expõe o gesto). A senha é conferida aqui no preview.
   onEditarPrecoMotor?: (m: PreviewMotor, novoValor: number | null) => void
+  // Redutor que acompanha o motor (catalogo_motorredutor). O picker fica no mesmo
+  // modal do motor; aplicar soma o valor do redutor na linha. red=null tira o redutor.
+  redutoresDisponiveis?: RedutorOption[]
+  onAplicarRedutor?: (itemUid: string, red: { modelo: string; valor: number } | null, motorIndex?: number) => void
 
   // Vendedores Branorte pra grid de contatos no rodape. Quando passado, renderiza
   // dinamicamente em vez do hardcoded antigo (que so tinha 3 vendedores).
@@ -409,6 +425,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onAdicionarMotorAvulso,
     onRemoverMotor, onRestaurarMotor, onEditarPrecoMotor,
+    redutoresDisponiveis, onAplicarRedutor,
     vendedoresContato, vendedorResponsavelNome,
     onEditCliente,
     onUpdateFotoItem,
@@ -1558,7 +1575,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       // (sem match no catálogo de motores, etc) NÃO é incluso — mostra warning
                       // pra vendedor preencher em vez de silenciosamente cobrar como "incluso".
                       const incluso = !porContaCliente && !removido && m.incluso_real === true
-                      const semValor = !porContaCliente && !removido && !incluso && m.valor_total === 0
+                      // Valor do MOTOR sozinho (o redutor soma na mesma linha). Com redutor
+                      // aplicado a linha sempre tem valor visível, então o warning "definir
+                      // valor" fica só pro caso de linha realmente zerada.
+                      const valorSoMotor = m.valor_total - (m.redutor?.valor ?? 0)
+                      const semValor = !porContaCliente && !removido && !incluso && valorSoMotor === 0 && !m.redutor
                       const podeTrocar = !renderMode && !!onTrocarMotor && !!m.item_uid && !!motoresDisponiveis?.length
                       const aberto = trocarMotorIdx === idx
                       // Detecta motorredutor: 1) polos=0 (catalogo_motores marca motorredutor assim)
@@ -1583,6 +1604,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               </button>
                             ) : (
                               <span className="font-semibold">{m.cv} CV {tipoMotor}</span>
+                            )}
+                            {/* Redutor aplicado pelo vendedor: entra no MESMO rótulo do motor,
+                                com o valor já somado na coluna (decisão do Daniel, 16/09). */}
+                            {m.redutor && (
+                              <span className="font-semibold"> + Redutor {m.redutor.modelo}</span>
                             )}
                             {/* Quando item tem 2 motores, identifica o secundario pelo papel
                                 descrito na spec (ex: exaustor, agitador, motorredutor auxiliar).
@@ -1691,6 +1717,70 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                           : '✕ REMOVER motor (cliente compra fora ou não quer)'}
                                       </button>
                                     )}
+                                    {/* APLICAR REDUTOR — catalogo_motorredutor (Q50…Q130).
+                                        Compatíveis com o CV do motor vêm primeiro e destacados;
+                                        os demais seguem clicáveis (vendedor decide). */}
+                                    {onAplicarRedutor && m.item_uid && !!redutoresDisponiveis?.length && (
+                                      <div className="mt-2 pt-2 border-t border-gray-200">
+                                        <div className="text-[11px] uppercase font-bold text-gray-600 tracking-wider mb-1.5">
+                                          Aplicar redutor
+                                          {m.redutor && (
+                                            <span className="normal-case text-emerald-700 ml-1">· atual: {m.redutor.modelo}</span>
+                                          )}
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                          {redutoresDisponiveis
+                                            .slice()
+                                            .sort((a, b) => {
+                                              const compat = (r: RedutorOption) =>
+                                                m.cv >= Number(r.cv_min) - 0.01 && m.cv <= Number(r.cv_max) + 0.01
+                                              return (Number(compat(b)) - Number(compat(a))) || Number(a.valor) - Number(b.valor)
+                                            })
+                                            .map(r => {
+                                              const compat = m.cv >= Number(r.cv_min) - 0.01 && m.cv <= Number(r.cv_max) + 0.01
+                                              const atual = m.redutor?.modelo === r.modelo
+                                              return (
+                                                <button
+                                                  key={r.id}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    onAplicarRedutor!(
+                                                      m.item_uid!,
+                                                      atual ? null : { modelo: r.modelo, valor: Number(r.valor) },
+                                                      m.motorIndex,
+                                                    )
+                                                    setTrocarMotorIdx(null)
+                                                  }}
+                                                  title={atual
+                                                    ? `Clique pra TIRAR o redutor ${r.modelo}`
+                                                    : `${r.modelo} — motores de ${Number(r.cv_min)} a ${Number(r.cv_max)} CV${compat ? '' : ' (fora da faixa deste motor)'}`}
+                                                  className={`px-2 py-1 rounded text-[11px] border transition-colors ${
+                                                    atual
+                                                      ? 'bg-emerald-600 border-emerald-600 text-white font-bold'
+                                                      : compat
+                                                        ? 'bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50'
+                                                        : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
+                                                  }`}
+                                                >
+                                                  {r.modelo} · R$ {formatBRLBare(Number(r.valor))}
+                                                </button>
+                                              )
+                                            })}
+                                        </div>
+                                        {m.redutor && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              onAplicarRedutor!(m.item_uid!, null, m.motorIndex)
+                                              setTrocarMotorIdx(null)
+                                            }}
+                                            className="mt-1.5 w-full px-2 py-1 rounded text-[11px] border bg-white border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                                          >
+                                            ↩ Tirar redutor {m.redutor.modelo} deste motor
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="p-1 overflow-y-auto">
                                     {(() => {
@@ -1769,6 +1859,18 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                   )}
                                 </span>
                               )
+                              // Motor por conta do cliente / incluso MAS com redutor aplicado:
+                              // quem fornece o redutor é a Branorte, então a linha mostra o
+                              // valor do redutor (senão a cobrança sumia junto com a do motor).
+                              : (porContaCliente || incluso) && m.redutor
+                                ? (
+                                  <span title={`Motor ${porContaCliente ? 'por conta do cliente' : 'incluso no equipamento'} — valor refere-se ao redutor ${m.redutor.modelo}`}>
+                                    R$ {formatBRLBare(m.valor_total)}
+                                    {!renderMode && (
+                                      <span className="text-gray-500 italic text-[11px] ml-1 print:hidden">(só o redutor)</span>
+                                    )}
+                                  </span>
+                                )
                               : porContaCliente
                                 ? <span className="text-gray-500 italic">por conta do cliente</span>
                                 : incluso
