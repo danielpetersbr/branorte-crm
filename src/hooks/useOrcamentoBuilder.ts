@@ -53,6 +53,8 @@ export interface OrcamentoMotor {
   cv: number
   polos: number
   valor: number
+  /** Acionamento é motorredutor: rótulo "X CV motorredutor" em vez de "X CV N polos". */
+  motorredutor?: boolean
   // Bug #25: distinguir "motor genuinamente incluso no preço do equipamento"
   // (motorredutor, TH, spec com "(incluso)") de "motor avulso sem valor preenchido"
   // (catálogo não encontrou match). Quando valor=0 + incluso=false + por_conta_cliente=false

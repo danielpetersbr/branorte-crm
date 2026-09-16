@@ -88,6 +88,9 @@ export interface CarrinhoSnapshot {
     qtd: number
     valor_unit: number
     valor_total: number
+    item_uid?: string
+    /** Acionamento é motorredutor — rótulo "X CV motorredutor" no preview/PDF/DOCX. */
+    motorredutor?: boolean
   }>
   acessorios: { pct: number; items: string[]; valor: number } | null
   totalItems: number          // só os itens, sem acessórios
@@ -810,6 +813,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         cv: m.cv,
         polos: m.polos,
         valor: m.valor_unit,
+        motorredutor: m.motorredutor,
       }))
 
       // Upload da foto principal pro Storage (se for dataURL, converte pra blob e sobe)
@@ -962,7 +966,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       // 4) Gera .docx (mesma estrategia do PDF — captura preview HTML como imagem)
       const previewProps = {
         carrinho: itensNorm.map((it, idx) => ({
-          uid: `pdf-${idx}`,
+          // uid REAL do carrinho: motoresAgrupados[].item_uid aponta pra ele. Com o uid
+          // sintético o preview não achava o item e perdia o rótulo "motorredutor"
+          // (saía "4 polos"/"2 polos" no PDF) e o papel do 2º motor (exaustor/agitador).
+          uid: it.uid ?? `pdf-${idx}`,
           categoria: '',
           nome: it.nome,
           specs: it.specs,

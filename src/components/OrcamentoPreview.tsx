@@ -57,6 +57,11 @@ export interface PreviewMotor {
   // Issue #23: motor REMOVIDO. Cliente não quer o motor — UI mostra "✕ REMOVIDO"
   // com botão "Restaurar". Em renderMode (PDF), a linha é OCULTA (não aparece no PDF).
   removido?: boolean
+  // TRUE = acionamento é MOTORREDUTOR (rótulo "X CV motorredutor" em vez de "X CV N polos").
+  // Decidido em agruparMotores (spec do item + polos=0) e propagado pro preview, PDF e DOCX.
+  // Antes cada renderizador redecidia sozinho: o PDF só olhava polos===0 e trocava
+  // "motorredutor" por "4 polos"/"2 polos" no misturador horizontal.
+  motorredutor?: boolean
 }
 
 // Motor do catálogo central (catalogo_motores). Passado pra o picker de troca.
@@ -1561,7 +1566,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       // Caso 1 cobre quando vendedor troca o motor via modal pra motorredutor.
                       const itemCarrinho = carrinho.find(it => it.uid === m.item_uid)
                       const specMotor = itemCarrinho?.specs?.find(s => /motorredutor|moto\s*redutor/i.test(s))
-                      const ehMotorredutor = m.polos === 0 || !!specMotor
+                      const ehMotorredutor = m.motorredutor === true || m.polos === 0 || !!specMotor
                       const tipoMotor = ehMotorredutor ? 'motorredutor' : `${m.polos} polos`
                       return (
                         <tr key={`${m.cv}-${m.polos}-${idx}`} className="border-t border-gray-200">

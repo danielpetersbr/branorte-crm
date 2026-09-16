@@ -222,6 +222,10 @@ interface MotorAgrupado {
   // Issue #23: motor REMOVIDO pelo vendedor (cliente não quer). Não conta no total,
   // mostra como "removido" no preview com botão de restaurar. Esconde no renderMode (PDF).
   removido?: boolean
+  // Acionamento é MOTORREDUTOR: rótulo "X CV motorredutor" no lugar de "X CV N polos".
+  // Decidido AQUI (spec do item + polos=0) e propagado pro preview, PDF e DOCX — antes
+  // cada renderizador redecidia e o PDF, que só olhava polos===0, escrevia "4 polos".
+  motorredutor?: boolean
 }
 
 // Peneira PASSIVA (jogo de peneira, par de peneiras, peneira de moinho) não tem
@@ -306,6 +310,7 @@ function agruparMotores(
             por_conta_cliente: mePorConta,
             incluso_real: meInclusoManual,
             removido: meRemovido,
+            motorredutor: me.polos === 0 || /motorredutor|moto\s*redutor/i.test(me.descricao ?? ''),
           })
         }
       })
@@ -388,6 +393,7 @@ function agruparMotores(
           por_conta_cliente: isPorConta(0),
           incluso_real: tratarComoIncluso || isInclusoManual(0),
           removido: isRemovido(0),
+          motorredutor: motorPolos === 0 || eMotorredutor,
         })
         if (!temMotoresExtras) {
           linhas.push({
@@ -397,6 +403,7 @@ function agruparMotores(
             por_conta_cliente: isPorConta(1),
             incluso_real: tratarComoIncluso || isInclusoManual(1),
             removido: isRemovido(1),
+            motorredutor: motorPolos === 0 || eMotorredutor,
           })
         }
       }
@@ -414,6 +421,7 @@ function agruparMotores(
           por_conta_cliente: porContaCliente,
           incluso_real: inclusoReal,
           removido: motorRemovido,
+          motorredutor: motorPolos === 0 || eMotorredutor,
         })
       }
     }
