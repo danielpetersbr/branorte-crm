@@ -704,7 +704,7 @@ function buildMotores(motores: CustomDocxMotor[], voltagem: 'monofasico' | 'trif
         margins: { top: 60, bottom: 60, left: 80, right: 80 },
         children: [new Paragraph({ children: [
           r('•  ', { color: '9CA3AF', size: 20 }),
-          r(`${m.cv} CV ${(m.motorredutor || m.polos === 0) ? 'motorredutor' : `${m.polos} polos`}${m.redutor ? ` + Redutor ${m.redutor.modelo}` : ''}`, { size: 20, bold: true }),
+          r(`${m.cv} CV ${(m.motorredutor || m.polos === 0) ? 'motorredutor' : `${m.polos} polos`}`, { size: 20, bold: true }),
           ...(m.item_nome ? [r(` · ${m.item_nome}`, { size: 20, color: '6B7280', italics: true })] : []),
           ...(m.qtd > 1 ? [r(` (×${m.qtd})`, { size: 20, color: '6B7280' })] : []),
         ] })],

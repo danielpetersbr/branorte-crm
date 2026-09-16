@@ -151,7 +151,7 @@ export function gerarOrcamentoPdf(input: PdfInput): jsPDF {
       startY: y,
       head: [['TIPO', 'NOVO']],
       body: input.motores.map(m => [
-        `${m.cv} CV ${(m.motorredutor || m.polos === 0) ? 'motorredutor' : `${m.polos} polos`}${m.redutor ? ` + Redutor ${m.redutor.modelo}` : ''}`,
+        `${m.cv} CV ${(m.motorredutor || m.polos === 0) ? 'motorredutor' : `${m.polos} polos`}`,
         `R$ ${formatBRL(m.valor)}`,
       ]),
       foot: [['TOTAL', `R$ ${formatBRL(input.total_motores)}`]],

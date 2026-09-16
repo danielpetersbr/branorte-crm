@@ -111,8 +111,8 @@ interface CarrinhoItem {
 
   /** Redutor aplicado a um motor deste item (catalogo_motorredutor — Q50…Q130).
    *  Chave do mapa: 'main' = motor único do item; String(motorIndex) = multi-motor
-   *  (0/1 do spec, 100+N dos motores_extras). O valor SOMA na linha do motor na
-   *  tabela MOTORES (linha única "X CV Y polos + Redutor QNN"). */
+   *  (0/1 do spec, 100+N dos motores_extras). O valor SOMA na linha do motor, que
+   *  passa a se chamar "X CV motorredutor" na tabela MOTORES. */
   redutores?: Record<string, RedutorAplicado>
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
@@ -243,8 +243,8 @@ interface MotorAgrupado {
   // Decidido AQUI (spec do item + polos=0) e propagado pro preview, PDF e DOCX — antes
   // cada renderizador redecidia e o PDF, que só olhava polos===0, escrevia "4 polos".
   motorredutor?: boolean
-  // Redutor aplicado a este motor. O valor já está somado em valor_unit/valor_total —
-  // a linha vira "X CV Y polos + Redutor QNN" com um valor único (decisão do Daniel, 16/09).
+  // Redutor aplicado a este motor. O valor já está somado em valor_unit/valor_total
+  // e a linha vira "X CV motorredutor" (motorredutor: true) — decisão do Daniel, 16/09.
   redutor?: RedutorAplicado
 }
 
@@ -260,15 +260,20 @@ function redutorKey(motorIndex?: number): string {
   return motorIndex == null ? 'main' : String(motorIndex)
 }
 
-// Soma o redutor na linha do motor (decisão do Daniel, 16/09: linha única
-// "X CV Y polos + Redutor QNN" com valor somado, em vez de linha separada).
+// Soma o redutor na linha do motor (decisão do Daniel, 16/09: linha única com
+// valor somado, em vez de linha separada).
+//
+// Motor + redutor = MOTORREDUTOR: a linha passa a se chamar "X CV motorredutor"
+// (mesmo texto que a Caçamba de Pesagem já usava), sem os polos e sem citar o
+// modelo — só que com o valor somado no lugar de "incluso". O modelo (Q50…Q130)
+// segue visível no modal do motor e no tooltip da prévia.
 // Motor REMOVIDO não cobra redutor — a linha inteira sai do orçamento.
 // Motor INCLUSO / POR CONTA DO CLIENTE segue cobrando o redutor: quem fornece o
 // redutor é a Branorte, então o valor não pode sumir junto com o do motor.
 function comRedutor(linha: MotorAgrupado, red?: RedutorAplicado): MotorAgrupado {
   if (!red || linha.removido) return linha
   const v = linha.valor_total + Number(red.valor || 0)
-  return { ...linha, redutor: red, valor_unit: v, valor_total: v }
+  return { ...linha, redutor: red, motorredutor: true, valor_unit: v, valor_total: v }
 }
 
 function agruparMotores(
