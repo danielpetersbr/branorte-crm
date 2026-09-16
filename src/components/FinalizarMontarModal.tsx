@@ -172,6 +172,8 @@ interface Props {
   saveMode?: 'update' | 'alt' | 'new'
   // Dados do orçamento pai para criação de ALT
   parentOrcamento?: { id: number; numero: string; numero_base: string; cliente_nome?: string | null } | null
+  /** Descrição já salva do orçamento em edição — repovoa o campo ao reabrir. */
+  descricaoSalva?: string | null
   // Valores iniciais carregados do orçamento sendo editado (pra pre-popular cliente/observacoes/etc)
   initialModal?: {
     cliente_nome: string
@@ -237,7 +239,7 @@ function baixarBlob(blob: Blob, nome: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen, saveMode = 'new', parentOrcamento, salvoOrigem = null, removidoManual }: Props) {
+export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editingId, initialModal, autoSubmitOnOpen, saveMode = 'new', parentOrcamento, descricaoSalva, salvoOrigem = null, removidoManual }: Props) {
   const { profile } = useAuth()
   const { data: vendorsAtivos } = useVendors()
   const vendedorResponsavel = useMemo(
@@ -279,14 +281,20 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   const [buscaVar, setBuscaVar] = useState('')
   const sugestao = useMemo(() => sugerirDescricao(snapshot), [snapshot])
   // Em modo 'alt' (criar alteracao), pre-preenche com prefix "(Alteração)" pra avisar.
-  // Em outros casos, deixa VAZIO de proposito: forca vendedor a confirmar/digitar
+  // Editando um orcamento JA SALVO, repovoa com a descricao gravada — ela e o que
+  // esta no nome do arquivo, e reescrever do zero renomeava o arquivo sem querer
+  // (ate 16/09/2026 o texto nao era salvo e o campo voltava vazio).
+  // Criando do zero, deixa VAZIO de proposito: forca vendedor a confirmar/digitar
   // antes de salvar (vide validacao em handleGerar). Sugestao fica no placeholder.
   useEffect(() => {
-    if (!open) return
-    if (saveMode === 'alt' && !descricaoTocada) {
-      setDescricao('(Alteração) ' + sugestao)
+    if (!open || descricaoTocada) return
+    const salva = descricaoSalva?.trim()
+    if (saveMode === 'alt') {
+      setDescricao('(Alteração) ' + (salva || sugestao))
+    } else if (salva) {
+      setDescricao(salva)
     }
-  }, [open, saveMode, sugestao, descricaoTocada])
+  }, [open, saveMode, sugestao, descricaoTocada, descricaoSalva])
 
   const [pdfAltaQualidade, setPdfAltaQualidade] = useState(false)
 
@@ -890,8 +898,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
       setStep(stepLabel, 10)
       // Modo edição vs criação: 'update'+editingId → UPDATE (mantém numero/sequencial), 'alt' → ALT, senão INSERT
       // Modo alt: cria nova versão (ALT) vinculada ao pai
+      // Mesma expressão do nome do arquivo (descricao || sugestao): salva o texto
+      // que o vendedor de fato usou, pra reabrir a edição com ele preenchido.
+      const descricaoFinal = (descricao.trim() || sugestao).trim() || null
       const payloadComum = {
         vendedor_nome: vendedorResponsavel.nome,
+        descricao: descricaoFinal,
         cliente_nome: cliNome.trim(),
         cliente_dados: cliDados,
         // Data do cabeçalho escolhida na prévia (ou hoje). Sem isso o PDF saía
