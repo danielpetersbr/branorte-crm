@@ -63,7 +63,8 @@ export interface PreviewMotor {
   // "motorredutor" por "4 polos"/"2 polos" no misturador horizontal.
   motorredutor?: boolean
   // Redutor aplicado ao motor (catalogo_motorredutor). O valor JÁ vem somado em
-  // valor_total — a linha mostra "X CV Y polos + Redutor QNN" com valor único.
+  // valor_total e a linha vira "X CV motorredutor" (motorredutor chega true junto).
+  // O modelo (Q50…Q130) aparece no modal do motor e no tooltip, não no rótulo.
   redutor?: { modelo: string; valor: number }
 }
 
@@ -1598,17 +1599,14 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                 type="button"
                                 onClick={() => { setMotorBusca(''); setTrocarMotorIdx(aberto ? null : idx) }}
                                 className="font-semibold underline decoration-dotted underline-offset-2 decoration-gray-400 hover:decoration-emerald-500 hover:text-emerald-700 cursor-pointer print:no-underline print:text-gray-800"
-                                title="Clique pra trocar o motor"
+                                title={m.redutor
+                                  ? `Redutor ${m.redutor.modelo} aplicado (R$ ${formatBRLBare(m.redutor.valor)}) — clique pra trocar o motor ou o redutor`
+                                  : 'Clique pra trocar o motor'}
                               >
                                 {m.cv} CV {tipoMotor}
                               </button>
                             ) : (
                               <span className="font-semibold">{m.cv} CV {tipoMotor}</span>
-                            )}
-                            {/* Redutor aplicado pelo vendedor: entra no MESMO rótulo do motor,
-                                com o valor já somado na coluna (decisão do Daniel, 16/09). */}
-                            {m.redutor && (
-                              <span className="font-semibold"> + Redutor {m.redutor.modelo}</span>
                             )}
                             {/* Quando item tem 2 motores, identifica o secundario pelo papel
                                 descrito na spec (ex: exaustor, agitador, motorredutor auxiliar).
