@@ -16,8 +16,10 @@ import {
   useJanelas,
   useSalvarJanela,
   useApagarJanela,
+  useSalvarAcessoConfig,
   type JanelaAcesso,
 } from '@/hooks/useAcesso'
+import { useAcessoConfig } from '@/hooks/useLocalizacaoObrigatoria'
 
 const DIAS = [
   { n: 1, l: 'Seg' },
@@ -231,7 +233,29 @@ export function AdminAcessos() {
                               <Badge className="ml-2 bg-warning-bg text-warning">bloqueado</Badge>
                             )}
                           </td>
-                          <td className="px-3 py-1.5 text-ink-muted">{local(e)}</td>
+                          <td className="px-3 py-1.5 text-ink-muted">
+                            {local(e)}
+                            {e.lat != null && e.lon != null && (
+                              <a
+                                href={`https://www.google.com/maps?q=${e.lat},${e.lon}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="ml-1.5 text-accent hover:underline"
+                                title={
+                                  e.precisao_m
+                                    ? `GPS · precisão ~${Math.round(e.precisao_m)} m`
+                                    : 'GPS'
+                                }
+                              >
+                                ver no mapa
+                              </a>
+                            )}
+                            {e.geo_estado === 'denied' && (
+                              <Badge className="ml-1.5 bg-warning-bg text-warning">
+                                negou GPS
+                              </Badge>
+                            )}
+                          </td>
                           <td className="px-3 py-1.5 font-mono text-[11px] text-ink-faint">
                             {e.ip ?? '—'}
                           </td>
@@ -390,6 +414,72 @@ function PainelSessoes() {
   )
 }
 
+const PAPEIS_GATE = ['vendor', 'marketing', 'visualizador', 'representante', 'mapa', 'consultor']
+
+function PainelLocalizacao() {
+  const { data: cfg } = useAcessoConfig()
+  const salvar = useSalvarAcessoConfig()
+  const ligado = !!cfg?.exigir_localizacao
+  const papeis = cfg?.papeis_obrigatorios ?? []
+
+  const togglePapel = (p: string) =>
+    salvar.mutate({
+      exigir_localizacao: ligado,
+      papeis_obrigatorios: papeis.includes(p) ? papeis.filter(x => x !== p) : [...papeis, p],
+    })
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-[13px] font-medium text-ink flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5" />
+            Exigir localização para usar o sistema
+          </h3>
+          <p className="text-[12px] text-ink-muted mt-1 max-w-xl">
+            Quem não permitir a localização não entra. O navegador mostra um pedido de
+            autorização — <strong>não existe captura silenciosa</strong>, a pessoa vê e aceita.
+            Administradores nunca são exigidos.
+          </p>
+        </div>
+        <Button
+          variant={ligado ? 'danger' : 'primary'}
+          loading={salvar.isPending}
+          onClick={() => salvar.mutate({ exigir_localizacao: !ligado, papeis_obrigatorios: papeis })}
+        >
+          {ligado ? 'Desligar exigência' : 'Ligar exigência'}
+        </Button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] text-ink-muted mr-1">Exigir de:</span>
+        {PAPEIS_GATE.map(p => (
+          <Button
+            key={p}
+            size="sm"
+            variant={papeis.includes(p) ? 'primary' : 'secondary'}
+            onClick={() => togglePapel(p)}
+          >
+            {p}
+          </Button>
+        ))}
+      </div>
+
+      {ligado && (
+        <p className="mt-3 text-[12px] text-warning">
+          Ativo. Quem já tinha negado a localização no navegador precisa liberar no cadeado da
+          barra de endereço — a tela explica o caminho.
+        </p>
+      )}
+      {salvar.isError && (
+        <p className="mt-2 text-[12px] text-danger">
+          Não salvou: {(salvar.error as Error)?.message}
+        </p>
+      )}
+    </Card>
+  )
+}
+
 function PainelJanelas({
   usuarios,
 }: {
@@ -415,6 +505,8 @@ function PainelJanelas({
 
   return (
     <div className="space-y-4">
+      <PainelLocalizacao />
+
       <Card className="p-4">
         <p className="text-[13px] text-ink-muted">
           <Clock className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
