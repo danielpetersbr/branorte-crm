@@ -54,6 +54,11 @@ export interface PreviewMotor {
   // o que mascarava bugs onde o catálogo de motores não tinha match e o valor saía 0
   // silenciosamente cobrado como "incluso" (vendedor reclamou: "não colocou o valor do motor").
   incluso_real?: boolean
+  // TRUE = o valor deste motor foi SOMADO no preco do equipamento pelo botao
+  // "somar no valor do equipamento". A linha mostra "incluso" como qualquer outro
+  // incluso; a flag diz ao modal que o gesto a oferecer e "tirar do equipamento"
+  // (que devolve o valor) em vez do "reverter incluso" simples.
+  embutido_no_equip?: boolean
   // Issue #23: motor REMOVIDO. Cliente não quer o motor — UI mostra "✕ REMOVIDO"
   // com botão "Restaurar". Em renderMode (PDF), a linha é OCULTA (não aparece no PDF).
   removido?: boolean
@@ -263,6 +268,10 @@ export interface OrcamentoPreviewProps {
   // Marca motor como INCLUSO no preço do equipamento (não cobra à parte, mostra "incluso").
   // Override manual pra quando a auto-detecção por spec não pegou. Toggle: isIncluso=true ativa.
   onMotorIncluso?: (itemUid: string, isIncluso: boolean, motorIndex?: number) => void
+  // SOMA o valor do motor no preco do equipamento e marca o motor como incluso —
+  // o total do orcamento nao muda, o motor so deixa de ser linha cobrada.
+  // embutir=false devolve o valor (volta a cobrar o motor a parte).
+  onEmbutirMotorNoEquip?: (itemUid: string, embutir: boolean, motorIndex?: number) => void
   // Issue #23: remove motor do item (cliente não quer). Subtrai valor_motor do total;
   // se incluso no preço, recalcula valor_equipamento. Restore: onRestaurarMotor.
   onRemoverMotor?: (itemUid: string, motorIndex?: number) => void
@@ -424,7 +433,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onToggleIncluso, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
-    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onAdicionarMotorAvulso,
+    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onEmbutirMotorNoEquip, onAdicionarMotorAvulso,
     onRemoverMotor, onRestaurarMotor, onEditarPrecoMotor,
     redutoresDisponiveis, onAplicarRedutor,
     vendedoresContato, vendedorResponsavelNome,
@@ -1576,6 +1585,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       // (sem match no catálogo de motores, etc) NÃO é incluso — mostra warning
                       // pra vendedor preencher em vez de silenciosamente cobrar como "incluso".
                       const incluso = !porContaCliente && !removido && m.incluso_real === true
+                      // Motor cujo valor ja foi somado no preco do equipamento (botao do modal).
+                      const embutidoNoEquip = m.embutido_no_equip === true
+                      // Quanto esse motor custa hoje na tabela (todas as linhas do mesmo
+                      // item + motorIndex, ja com redutor). E o valor que o botao vai jogar
+                      // pra dentro do preco do equipamento.
+                      const valorParaEmbutir = motoresAgrupados
+                        .filter(x => x.item_uid === m.item_uid
+                          && (m.motorIndex == null ? x.motorIndex == null : x.motorIndex === m.motorIndex)
+                          && !x.removido && !x.por_conta_cliente)
+                        .reduce((acc, x) => acc + (x.valor_total || 0), 0)
                       // Valor do MOTOR sozinho (o redutor soma na mesma linha). Com redutor
                       // aplicado a linha sempre tem valor visível, então o warning "definir
                       // valor" fica só pro caso de linha realmente zerada.
@@ -1679,8 +1698,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         {porContaCliente ? '↩ Reverter (Branorte volta a cobrar motor)' : '💵 Marcar como POR CONTA DO CLIENTE'}
                                       </button>
                                     )}
-                                    {/* Marcar como INCLUSO (motor já vai no preço do equipamento) — não vale pra avulso */}
-                                    {onMotorIncluso && m.item_uid && !m.item_uid.startsWith('avulso:') && (
+                                    {/* Marcar como INCLUSO (motor já vai no preço do equipamento) — não vale pra avulso.
+                                        Some quando o motor foi SOMADO no equipamento: ali o gesto de reverter
+                                        é o de baixo (que devolve o valor), senão o valor ficaria preso no
+                                        equipamento e o motor voltaria a ser cobrado à parte. */}
+                                    {onMotorIncluso && m.item_uid && !m.item_uid.startsWith('avulso:') && !embutidoNoEquip && (
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -1695,6 +1717,31 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                         title="Motor já vai no preço do equipamento — não cobra à parte, mostra 'incluso'."
                                       >
                                         {incluso ? '↩ Reverter (cobrar motor à parte)' : '✅ Marcar como INCLUSO (não cobrar)'}
+                                      </button>
+                                    )}
+                                    {/* SOMAR NO EQUIPAMENTO: marca incluso E joga o valor do motor
+                                        dentro do preço do equipamento. O total do orçamento NÃO muda —
+                                        o motor só deixa de aparecer como linha cobrada. */}
+                                    {onEmbutirMotorNoEquip && m.item_uid && !m.item_uid.startsWith('avulso:')
+                                      && (embutidoNoEquip || valorParaEmbutir > 0) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onEmbutirMotorNoEquip(m.item_uid!, !embutidoNoEquip, m.motorIndex)
+                                          setTrocarMotorIdx(null)
+                                        }}
+                                        className={`mt-2 w-full px-2 py-1.5 rounded text-[11px] border transition-colors ${
+                                          embutidoNoEquip
+                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                                            : 'bg-white border-emerald-400 text-emerald-700 hover:bg-emerald-50 font-semibold'
+                                        }`}
+                                        title={embutidoNoEquip
+                                          ? 'Tira o valor do motor de dentro do preço do equipamento e volta a cobrá-lo como linha separada.'
+                                          : 'Soma o valor do motor no preço do equipamento e marca como incluso. O total do orçamento não muda.'}
+                                      >
+                                        {embutidoNoEquip
+                                          ? '↩ Tirar do valor do equipamento (voltar a cobrar à parte)'
+                                          : `➕ SOMAR no valor do equipamento (R$ ${formatBRLBare(valorParaEmbutir)})`}
                                       </button>
                                     )}
                                     {/* Issue #23: REMOVER motor (cliente não quer motor algum) */}

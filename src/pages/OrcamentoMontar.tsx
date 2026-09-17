@@ -14,6 +14,7 @@ import {
   type CatalogoItem, type CatalogoMotor, type CatalogoAcessorio, type MotorExtra,
 } from '@/hooks/useCatalogo'
 import { valorPorVoltagem } from '@/lib/motor-do-preco'
+import { valorCobradoDoMotor, embutirMotorNoItem, devolverMotorDoItem, totalEmbutidoNoItem } from '@/lib/motor-no-equipamento'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
 import { montarItensFiname, aplicarAcrescimoFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
@@ -108,6 +109,13 @@ interface CarrinhoItem {
    *  motorIndex (multi-motor). */
   motor_incluso_manual?: boolean
   motores_incluso_idx?: number[]
+  /** Motor EMBUTIDO no preco do equipamento pelo botao "somar no valor do equipamento"
+   *  (modal Trocar Motor). Diferente de motor_incluso_manual puro: alem de parar de
+   *  cobrar o motor a parte, SOMA o valor dele em valor/valor_original, entao o total
+   *  do orcamento NAO muda — o motor so deixa de ser linha e vira preco do equipamento.
+   *  Chave = redutorKey(motorIndex) ('main' | '0' | '1' | '100+N'); valor = quanto foi
+   *  somado POR UNIDADE do item (reverter subtrai exatamente esse valor). */
+  motores_embutidos?: Record<string, number>
 
   /** Redutor aplicado a um motor deste item (catalogo_motorredutor — Q50…Q130).
    *  Chave do mapa: 'main' = motor único do item; String(motorIndex) = multi-motor
@@ -236,6 +244,10 @@ interface MotorAgrupado {
   // "incluso" a partir de valor_total===0 — o que mostrava "incluso" pra motor avulso
   // sem match no catálogo (vendedor reclamou: "não colocou o valor do motor, colocou como incluso").
   incluso_real?: boolean
+  // TRUE quando o valor deste motor foi SOMADO no preco do equipamento pelo botao
+  // "somar no valor do equipamento" do modal. A linha mostra "incluso" como qualquer
+  // outro; a flag diz ao modal que o gesto de reverter e o que DEVOLVE o valor.
+  embutido_no_equip?: boolean
   // Issue #23: motor REMOVIDO pelo vendedor (cliente não quer). Não conta no total,
   // mostra como "removido" no preview com botão de restaurar. Esconde no renderMode (PDF).
   removido?: boolean
@@ -299,6 +311,7 @@ function agruparMotores(
         item_nome: 'Motor avulso', item_uid: `avulso:${ma.id}`,
         por_conta_cliente: !!ma.por_conta_cliente,
         incluso_real: false,
+        embutido_no_equip: false,
         removido: false,
       }, ma.redutor))
     }
@@ -316,6 +329,11 @@ function agruparMotores(
     const isPorConta = (idx?: number) => !!it.motor_por_conta_cliente || (idx != null && porContaIdx.includes(idx))
     // Override manual de "incluso" feito pelo vendedor no modal Trocar Motor.
     const isInclusoManual = (idx?: number) => !!it.motor_incluso_manual || (idx != null && inclusoManualIdx.includes(idx))
+    // Motor cujo valor JA foi somado no preco do equipamento (botao "somar no equipamento").
+    // A linha continua mostrando "incluso" (o valor vive no equipamento agora); a flag
+    // serve pro modal saber que o gesto a reverter e o de embutir, nao o de "incluso" simples.
+    const embutidosMap = it.motores_embutidos ?? {}
+    const isEmbutido = (idx?: number) => embutidosMap[redutorKey(idx)] != null
 
     // ── MOTORES EXTRAS (multi-motor, ex: misturador c/ aquecimento) ──
     // Aparecem como linha SEPARADA na tabela MOTORES TRIFÁSICOS, com o
@@ -350,6 +368,7 @@ function agruparMotores(
             motorIndex: meIdx,
             por_conta_cliente: mePorConta,
             incluso_real: meInclusoManual,
+            embutido_no_equip: isEmbutido(meIdx),
             removido: meRemovido,
             motorredutor: me.polos === 0 || /motorredutor|moto\s*redutor/i.test(me.descricao ?? ''),
           }, it.redutores?.[redutorKey(meIdx)]))
@@ -433,6 +452,7 @@ function agruparMotores(
           item_nome: nomeItem, item_uid: it.uid, motorIndex: 0,
           por_conta_cliente: isPorConta(0),
           incluso_real: tratarComoIncluso || isInclusoManual(0),
+          embutido_no_equip: isEmbutido(0),
           removido: isRemovido(0),
           motorredutor: motorPolos === 0 || eMotorredutor,
         }, it.redutores?.[redutorKey(0)]))
@@ -443,6 +463,7 @@ function agruparMotores(
             item_nome: nomeItem, item_uid: it.uid, motorIndex: 1,
             por_conta_cliente: isPorConta(1),
             incluso_real: tratarComoIncluso || isInclusoManual(1),
+            embutido_no_equip: isEmbutido(1),
             removido: isRemovido(1),
             motorredutor: motorPolos === 0 || eMotorredutor,
           }, it.redutores?.[redutorKey(1)]))
@@ -461,6 +482,7 @@ function agruparMotores(
           item_nome: nomeItem, item_uid: it.uid,
           por_conta_cliente: porContaCliente,
           incluso_real: inclusoReal,
+          embutido_no_equip: isEmbutido(),
           removido: motorRemovido,
           motorredutor: motorPolos === 0 || eMotorredutor,
         }, it.redutores?.[redutorKey()]))
@@ -1966,16 +1988,20 @@ export function OrcamentoMontar() {
   // multiplicar o motor. Retorna 0 quando o motor é avulso (linha separada), não há
   // preço linkado, ou não há motor incluso — nesses casos o valor base já é só equipamento.
   function motorContributionDoItem(it: CarrinhoItem): number {
+    // Motor embutido A MAO pelo vendedor (botao "somar no valor do equipamento") conta
+    // como porcao de motor tambem: inox/tungstenio nao multiplicam esse pedaco e remover
+    // o motor tira esse valor do equipamento junto.
+    const embutidoManual = totalEmbutidoNoItem(it)
     const precoLinkado = it.preco_branorte_id
       ? (precos ?? []).find(p => p.id === it.preco_branorte_id)
       : null
-    if (!precoLinkado) return 0
+    if (!precoLinkado) return embutidoManual
     const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
     const { valor: valorComMotor, motorIncluso } = valorPorVoltagem(precoLinkado, voltagemEfetiva)
-    if (!motorIncluso) return 0
+    if (!motorIncluso) return embutidoManual
     const equipV = precoLinkado.valor_equipamento != null ? Number(precoLinkado.valor_equipamento) : 0
     const portion = valorComMotor - equipV
-    return portion > 0 ? portion : 0
+    return (portion > 0 ? portion : 0) + embutidoManual
   }
 
   function toggleInox(uid: string, tipo?: '304' | '316' | false) {
@@ -2224,6 +2250,16 @@ export function OrcamentoMontar() {
   // parte, mostra "incluso". Override manual pra quando a auto-detecção por spec não pegou.
   function marcarMotorIncluso(itemUid: string, isIncluso: boolean, motorIndex?: number) {
     if (itemUid.startsWith('avulso:')) return // avulso não tem equipamento pra "incluir"
+    // Guarda-corpo: se o motor foi SOMADO no equipamento, "desmarcar incluso" por este
+    // caminho deixaria o valor preso no equipamento E voltaria a cobrar o motor a parte
+    // (cobranca dupla). Delega pro reverter certo, que tira o valor do equipamento.
+    if (!isIncluso) {
+      const alvo = carrinho.find(it => it.uid === itemUid)
+      if (alvo && (alvo.motores_embutidos ?? {})[redutorKey(motorIndex)] != null) {
+        embutirMotorNoEquipamento(itemUid, false, motorIndex)
+        return
+      }
+    }
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       if (motorIndex == null) return { ...it, motor_incluso_manual: isIncluso }
@@ -2233,6 +2269,31 @@ export function OrcamentoMontar() {
         : cur.filter(i => i !== motorIndex)
       return { ...it, motores_incluso_idx: next }
     }))
+  }
+
+  // Botao "somar no valor do equipamento" do modal Trocar Motor: pega o valor do motor
+  // (ja com redutor, se houver) e SOMA no preco do equipamento, marcando o motor como
+  // incluso. O total do orcamento nao muda — o motor so deixa de ser linha cobrada e
+  // passa a estar no preco do equipamento. Reverter subtrai exatamente o que foi somado.
+  function embutirMotorNoEquipamento(itemUid: string, embutir: boolean, motorIndex?: number) {
+    if (itemUid.startsWith('avulso:')) return  // motor avulso nao tem equipamento pra embutir
+    const key = redutorKey(motorIndex)
+
+    if (embutir) {
+      // Valor cobrado hoje por esse motor: soma das linhas da tabela MOTORES desse
+      // (item, motorIndex). Sao qtd_item x motor_qtd linhas, ja com redutor somado e
+      // com override manual de preco aplicado.
+      const totalCobrado = valorCobradoDoMotor(motoresAgrupados, itemUid, motorIndex)
+      if (totalCobrado <= 0) return  // motor sem valor cobrado: nao ha o que somar
+      setCarrinho(c => c.map(it => it.uid === itemUid
+        ? embutirMotorNoItem(it, key, totalCobrado, motorIndex)
+        : it))
+      return
+    }
+
+    setCarrinho(c => c.map(it => it.uid === itemUid
+      ? devolverMotorDoItem(it, key, motorIndex)
+      : it))
   }
 
   // Aplica (ou tira, com red = null) um redutor no motor da linha. O valor do redutor
@@ -2430,8 +2491,14 @@ export function OrcamentoMontar() {
       const equipVolt = (motorRemovidoIncluso && precoLinkado!.valor_equipamento != null)
         ? Number(precoLinkado!.valor_equipamento)
         : novoValor
-      const valorAtualizado = podeRecalcularValor ? Math.round(equipVolt) : it.valor
-      const valorOriginalAtualizado = podeRecalcularValor ? Math.round(equipVolt) : it.valor_original
+      // Motor embutido a mao ("somar no valor do equipamento") vive DENTRO de valor/
+      // valor_original. O recalculo por voltagem le o preco puro do equipamento em
+      // precos_branorte, entao sem somar o embutido de volta o valor sumiria do total.
+      // Mantemos o valor embutido na troca (o preco do motor mono/trif pode diferir):
+      // pra cotar o motor na nova voltagem, o vendedor reverte e embute de novo.
+      const embutidoDoItem = totalEmbutidoNoItem(it)
+      const valorAtualizado = podeRecalcularValor ? Math.round(equipVolt) + embutidoDoItem : it.valor
+      const valorOriginalAtualizado = podeRecalcularValor ? Math.round(equipVolt) + embutidoDoItem : it.valor_original
       const preRemocaoAtualizado = motorRemovidoIncluso ? Math.round(novoValor) : it.valor_pre_remocao
       const motorEfetivoVal = (motorInclusoPorPreco || incluso)
         ? 0
@@ -2639,6 +2706,7 @@ export function OrcamentoMontar() {
           motores_removidos_idx: itAny.motores_removidos_idx ?? undefined,
           motor_incluso_manual: !!itAny.motor_incluso_manual,
           motores_incluso_idx: itAny.motores_incluso_idx ?? undefined,
+          motores_embutidos: itAny.motores_embutidos ?? undefined,
           redutores: itAny.redutores ?? undefined,
         })
         return
@@ -3763,6 +3831,7 @@ export function OrcamentoMontar() {
                 onTrocarMotor={trocarMotorDoItem}
                 onMotorPorContaCliente={marcarMotorPorContaCliente}
                 onMotorIncluso={marcarMotorIncluso}
+                onEmbutirMotorNoEquip={finameMode ? undefined : embutirMotorNoEquipamento}
                 onRemoverMotor={removerMotorDoItem}
                 redutoresDisponiveis={redutoresDisponiveis}
                 onAplicarRedutor={finameMode ? undefined : aplicarRedutorNoMotor}
@@ -4085,6 +4154,7 @@ export function OrcamentoMontar() {
             motores_removidos_idx: c.motores_removidos_idx,
             motor_incluso_manual: c.motor_incluso_manual,
             motores_incluso_idx: c.motores_incluso_idx,
+            motores_embutidos: c.motores_embutidos,
             redutores: c.redutores,
           })),
           motoresAgrupados: motoresAgrupadosFinal,
