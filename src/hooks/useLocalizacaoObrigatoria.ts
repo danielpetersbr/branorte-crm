@@ -15,6 +15,10 @@ export interface EstadoLocalizacao {
   exigida: boolean
   estado: EstadoGeo
   coords: Coordenadas | null
+  /** true quando localizou, mas com raio maior que o exigido em acesso_config */
+  precisaoRuim: boolean
+  /** raio máximo aceito, em metros (null = sem exigência) */
+  precisaoMaxima: number | null
   /** dispara o popup do navegador (só funciona a partir de um clique do usuário) */
   pedir: () => void
 }
@@ -22,6 +26,7 @@ export interface EstadoLocalizacao {
 export interface AcessoConfig {
   exigir_localizacao: boolean
   papeis_obrigatorios: string[]
+  precisao_maxima_m: number | null
 }
 
 export function useAcessoConfig() {
@@ -30,10 +35,14 @@ export function useAcessoConfig() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('acesso_config')
-        .select('exigir_localizacao,papeis_obrigatorios')
+        .select('exigir_localizacao,papeis_obrigatorios,precisao_maxima_m')
         .maybeSingle()
       if (error) throw error
-      return (data ?? { exigir_localizacao: false, papeis_obrigatorios: [] }) as AcessoConfig
+      return (data ?? {
+        exigir_localizacao: false,
+        papeis_obrigatorios: [],
+        precisao_maxima_m: null,
+      }) as AcessoConfig
     },
     staleTime: 5 * 60_000,
   })
@@ -67,26 +76,73 @@ export function useLocalizacaoObrigatoria(): EstadoLocalizacao {
     profile.role !== 'admin' &&
     (cfg.papeis_obrigatorios ?? []).includes(profile.role)
 
+  /** Precisão que já serve pra dizer "está neste endereço". */
+  const META_PRECISAO_M = 100
+  /** Tempo máximo perseguindo uma leitura melhor. */
+  const JANELA_MS = 12_000
+
+  /**
+   * Captura a MELHOR leitura possível, não a primeira.
+   *
+   * `getCurrentPosition` devolve a primeira coisa que o sistema tem — em geral
+   * a estimativa por IP, com quilômetros de erro. `watchPosition` continua
+   * emitindo enquanto o aparelho refina (GPS fixando satélite, varredura de
+   * Wi-Fi), então guardamos a de menor `accuracy` dentro da janela.
+   *
+   * `enableHighAccuracy: true` liga o GPS no celular; `maximumAge: 0` proíbe
+   * cache — sem isso o navegador devolve a leitura velha e larga de sempre.
+   */
   const capturar = () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setEstado('indisponivel')
       return
     }
-    navigator.geolocation.getCurrentPosition(
+    setEstado('checando')
+    let melhor: Coordenadas | null = null
+    let encerrado = false
+    let watchId: number | null = null
+
+    const encerrar = () => {
+      if (encerrado) return
+      encerrado = true
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+      if (melhor) {
+        setCoords(melhor)
+        setEstado('granted')
+      } else {
+        setEstado('erro')
+      }
+    }
+
+    watchId = navigator.geolocation.watchPosition(
       pos => {
-        setCoords({
+        const acc = Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null
+        const atual: Coordenadas = {
           lat: pos.coords.latitude,
           lon: pos.coords.longitude,
-          precisao_m: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
-        })
-        setEstado('granted')
+          precisao_m: acc,
+        }
+        const piorQueAtual = melhor?.precisao_m ?? Number.POSITIVE_INFINITY
+        if (acc === null || acc < piorQueAtual) melhor = atual
+        // Boa o bastante: para de gastar bateria e segue a vida.
+        if (acc !== null && acc <= META_PRECISAO_M) encerrar()
       },
       err => {
-        // 1 = PERMISSION_DENIED · 2 = POSITION_UNAVAILABLE · 3 = TIMEOUT
-        setEstado(err.code === 1 ? 'denied' : 'erro')
+        if (encerrado) return
+        if (err.code === 1) {
+          // PERMISSION_DENIED é definitivo — não adianta esperar.
+          encerrado = true
+          if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+          setEstado('denied')
+          return
+        }
+        // POSITION_UNAVAILABLE / TIMEOUT: se já houver alguma leitura, vale ela.
+        encerrar()
       },
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 5 * 60_000 },
+      { enableHighAccuracy: true, timeout: JANELA_MS, maximumAge: 0 },
     )
+
+    window.setTimeout(encerrar, JANELA_MS)
   }
 
   // Descobre o estado SEM disparar o popup (Permissions API), e só captura
@@ -125,5 +181,11 @@ export function useLocalizacaoObrigatoria(): EstadoLocalizacao {
     }
   }, [])
 
-  return { exigida, estado, coords, pedir: capturar }
+  const precisaoMaxima = cfg?.precisao_maxima_m ?? null
+  const precisaoRuim =
+    precisaoMaxima !== null &&
+    coords !== null &&
+    (coords.precisao_m === null || coords.precisao_m > precisaoMaxima)
+
+  return { exigida, estado, coords, precisaoRuim, precisaoMaxima, pedir: capturar }
 }
