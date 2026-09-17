@@ -14,7 +14,7 @@ import {
   type CatalogoItem, type CatalogoMotor, type CatalogoAcessorio, type MotorExtra,
 } from '@/hooks/useCatalogo'
 import { valorPorVoltagem } from '@/lib/motor-do-preco'
-import { valorCobradoDoMotor, embutirMotorNoItem, devolverMotorDoItem, totalEmbutidoNoItem } from '@/lib/motor-no-equipamento'
+import { valorCobradoDoMotor, linhasDoMotor, embutirMotorNoItem, devolverMotorDoItem, ajustarEmbutidoPorRedutor, totalEmbutidoNoItem } from '@/lib/motor-no-equipamento'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
 import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
 import { montarItensFiname, aplicarAcrescimoFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
@@ -282,8 +282,12 @@ function redutorKey(motorIndex?: number): string {
 // Motor REMOVIDO não cobra redutor — a linha inteira sai do orçamento.
 // Motor INCLUSO / POR CONTA DO CLIENTE segue cobrando o redutor: quem fornece o
 // redutor é a Branorte, então o valor não pode sumir junto com o do motor.
+// Motor SOMADO no equipamento é a exceção: ali o valor do redutor já foi pro preço
+// do equipamento (aplicarRedutorNoMotor cuida disso), então cobrar na linha seria
+// cobrar duas vezes — a linha mostra "incluso" (pedido do Daniel, 17/09).
 function comRedutor(linha: MotorAgrupado, red?: RedutorAplicado): MotorAgrupado {
   if (!red || linha.removido) return linha
+  if (linha.embutido_no_equip) return { ...linha, redutor: red, motorredutor: true }
   const v = linha.valor_total + Number(red.valor || 0)
   return { ...linha, redutor: red, motorredutor: true, valor_unit: v, valor_total: v }
 }
@@ -2305,12 +2309,24 @@ export function OrcamentoMontar() {
       return
     }
     const key = redutorKey(motorIndex)
+    // Quantas linhas da tabela MOTORES sao deste motor: o redutor custa por motor, entao
+    // e por essa contagem que ele entra no orcamento (e no preco do equipamento).
+    const nLinhas = linhasDoMotor(motoresAgrupados, itemUid, motorIndex).length
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
+      const valorAntes = Number(it.redutores?.[key]?.valor || 0)
+      const valorDepois = Number(red?.valor || 0)
       const next = { ...(it.redutores ?? {}) }
       if (red) next[key] = red
       else delete next[key]
-      return { ...it, redutores: Object.keys(next).length ? next : undefined }
+      const comNovoRedutor = { ...it, redutores: Object.keys(next).length ? next : undefined }
+      // Motor removido nao cobra redutor em lugar nenhum — nao mexe no equipamento.
+      const removido = !!it.motor_removido
+        || (motorIndex != null && (it.motores_removidos_idx ?? []).includes(motorIndex))
+      if (removido) return comNovoRedutor
+      // Motor SOMADO no equipamento: o redutor acompanha pra dentro do preco.
+      // Motor normal: devolve intacto e o redutor segue cobrado na linha.
+      return ajustarEmbutidoPorRedutor(comNovoRedutor, key, valorAntes, valorDepois, nLinhas)
     }))
   }
 

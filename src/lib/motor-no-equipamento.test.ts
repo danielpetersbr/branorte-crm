@@ -2,8 +2,10 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   valorCobradoDoMotor,
+  linhasDoMotor,
   embutirMotorNoItem,
   devolverMotorDoItem,
+  ajustarEmbutidoPorRedutor,
   totalEmbutidoNoItem,
   type LinhaMotorEmbutivel,
   type ItemEmbutivel,
@@ -135,5 +137,80 @@ describe('embutir e devolver', () => {
     const depois = embutirMotorNoItem(antes, 'main', 1000)   // 333,33 por unidade
     assert.equal(depois.valor, 12678)                        // 12345 + 333
     assert.equal(devolverMotorDoItem(depois, 'main').valor, 12345)
+  })
+})
+
+describe('redutor num motor já somado no equipamento', () => {
+  // Caso real do Daniel (17/09): Misturador Vertical 2000 kg com o motor de 10 CV já
+  // somado no equipamento. Aplicou o redutor Q130 (R$ 4.924,00) e ele voltou a aparecer
+  // cobrado na tabela MOTORES, em vez de ir pro preço do equipamento junto com o motor.
+  test('aplicar redutor leva o valor pro equipamento', () => {
+    const embutido = embutirMotorNoItem(item({ valor: 39458, valor_original: 39458 }), 'main', 4924)
+    const comRedutor = ajustarEmbutidoPorRedutor(embutido, 'main', 0, 4924, 1)
+    assert.equal(comRedutor.valor, embutido.valor + 4924)
+    assert.deepEqual(comRedutor.motores_embutidos, { main: 4924 + 4924 })
+  })
+
+  test('tirar o redutor devolve o valor', () => {
+    let it = embutirMotorNoItem(item({ valor: 30000, valor_original: 30000 }), 'main', 1732)
+    const soMotor = it.valor
+    it = ajustarEmbutidoPorRedutor(it, 'main', 0, 4924, 1)
+    it = ajustarEmbutidoPorRedutor(it, 'main', 4924, 0, 1)
+    assert.equal(it.valor, soMotor)
+    assert.deepEqual(it.motores_embutidos, { main: 1732 })
+  })
+
+  test('trocar Q75 por Q130 move só a diferença', () => {
+    let it = embutirMotorNoItem(item({ valor: 30000, valor_original: 30000 }), 'main', 1732)
+    it = ajustarEmbutidoPorRedutor(it, 'main', 0, 1686, 1)      // Q75
+    const comQ75 = it.valor
+    it = ajustarEmbutidoPorRedutor(it, 'main', 1686, 4924, 1)   // Q130
+    assert.equal(it.valor, comQ75 + (4924 - 1686))
+  })
+
+  test('reverter o motor devolve motor E redutor de uma vez', () => {
+    const antes = item({ valor: 30000, valor_original: 30000 })
+    let it = embutirMotorNoItem(antes, 'main', 1732)
+    it = ajustarEmbutidoPorRedutor(it, 'main', 0, 4924, 1)
+    assert.equal(it.valor, 36656)
+    const revertido = devolverMotorDoItem(it, 'main')
+    assert.equal(revertido.valor, antes.valor)
+    assert.equal(revertido.valor_original, antes.valor_original)
+  })
+
+  test('motor NÃO embutido não é tocado — o redutor segue cobrado na linha', () => {
+    const it = item()
+    assert.equal(ajustarEmbutidoPorRedutor(it, 'main', 0, 4924, 1), it)
+  })
+
+  test('o redutor custa por motor: 2 linhas cobram 2 redutores', () => {
+    const it = embutirMotorNoItem(item({ valor: 30000, valor_original: 30000, qtd: 2 }), 'main', 4000)
+    const comRed = ajustarEmbutidoPorRedutor(it, 'main', 0, 1000, 2)   // 2 linhas
+    assert.equal(comRed.valor, it.valor + 1000)                        // +1000 por unidade
+    assert.equal(comRed.valor * comRed.qtd, (it.valor * 2) + 2000)     // 2 redutores no total
+  })
+
+  test('multi-motor: o redutor do índice 1 não mexe no embutido do 0', () => {
+    let it = embutirMotorNoItem(item({ valor: 30000, valor_original: 30000 }), '0', 5000, 0)
+    it = embutirMotorNoItem(it, '1', 800, 1)
+    it = ajustarEmbutidoPorRedutor(it, '1', 0, 1306, 1)
+    assert.deepEqual(it.motores_embutidos, { '0': 5000, '1': 800 + 1306 })
+  })
+
+  test('motor sem linha na tabela não move valor nenhum', () => {
+    const it = embutirMotorNoItem(item(), 'main', 1732)
+    assert.equal(ajustarEmbutidoPorRedutor(it, 'main', 0, 4924, 0), it)
+  })
+})
+
+describe('linhasDoMotor', () => {
+  test('conta as linhas do motor sem filtrar flag (o redutor custa por motor)', () => {
+    const linhas: LinhaMotorEmbutivel[] = [
+      { item_uid: 'A', valor_total: 0, removido: true },
+      { item_uid: 'A', valor_total: 0 },
+      { item_uid: 'B', valor_total: 500 },
+    ]
+    assert.equal(linhasDoMotor(linhas, 'A').length, 2)
+    assert.equal(valorCobradoDoMotor(linhas, 'A'), 0)
   })
 })

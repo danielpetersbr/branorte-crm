@@ -1772,6 +1772,11 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                           {m.redutor && (
                                             <span className="normal-case text-emerald-700 ml-1">· atual: {m.redutor.modelo}</span>
                                           )}
+                                          {embutidoNoEquip && (
+                                            <span className="block normal-case font-normal text-emerald-700 mt-0.5">
+                                              O valor do redutor vai pro preço do equipamento, junto com o motor.
+                                            </span>
+                                          )}
                                         </div>
                                         <div className="flex flex-wrap gap-1">
                                           {redutoresDisponiveis
@@ -1907,7 +1912,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               // Motor por conta do cliente / incluso MAS com redutor aplicado:
                               // quem fornece o redutor é a Branorte, então a linha mostra o
                               // valor do redutor (senão a cobrança sumia junto com a do motor).
-                              : (porContaCliente || incluso) && m.redutor
+                              // Exceção: motor SOMADO no equipamento — ali o redutor foi pro
+                              // preço do equipamento junto, então a linha só diz "incluso".
+                              : (porContaCliente || incluso) && m.redutor && !embutidoNoEquip
                                 ? (
                                   <span title={`Motor ${porContaCliente ? 'por conta do cliente' : 'incluso no equipamento'} — valor refere-se ao redutor ${m.redutor.modelo}`}>
                                     R$ {formatBRLBare(m.valor_total)}
