@@ -40,12 +40,23 @@ export function valorCobradoDoMotor(
   itemUid: string,
   motorIndex?: number,
 ): number {
-  return linhas
-    .filter(m => m.item_uid === itemUid
-      && (motorIndex == null ? m.motorIndex == null : m.motorIndex === motorIndex)
-      && !m.removido
-      && !m.por_conta_cliente)
+  return linhasDoMotor(linhas, itemUid, motorIndex)
+    .filter(m => !m.removido && !m.por_conta_cliente)
     .reduce((acc, m) => acc + (Number(m.valor_total) || 0), 0)
+}
+
+/**
+ * Todas as linhas da tabela MOTORES que são DESTE motor — sem filtrar flag nenhuma.
+ * São qtd_do_item × motor_qtd linhas (a tabela lista um motor por linha). Serve pra
+ * saber por quantas vezes um valor por-motor (o redutor) entra no orçamento.
+ */
+export function linhasDoMotor(
+  linhas: LinhaMotorEmbutivel[],
+  itemUid: string,
+  motorIndex?: number,
+): LinhaMotorEmbutivel[] {
+  return linhas.filter(m => m.item_uid === itemUid
+    && (motorIndex == null ? m.motorIndex == null : m.motorIndex === motorIndex))
 }
 
 /**
@@ -97,6 +108,36 @@ export function devolverMotorDoItem<T extends ItemEmbutivel>(
     ...(motorIndex == null
       ? { motor_incluso_manual: false }
       : { motores_incluso_idx: (it.motores_incluso_idx ?? []).filter(i => i !== motorIndex) }),
+  }
+}
+
+/**
+ * Redutor aplicado, trocado ou tirado num motor que JÁ está somado no equipamento:
+ * o valor do redutor tem que acompanhar o motor pra dentro do preço do equipamento,
+ * senão ele volta a aparecer cobrado na tabela MOTORES (pedido do Daniel, 17/09).
+ *
+ * O redutor custa `valor` POR MOTOR e a tabela lista um motor por linha, então o que
+ * entra no orçamento é valor × nº de linhas; o item guarda o valor por unidade, daí a
+ * divisão pela quantidade. Item sem esse motor embutido volta intacto — aí o redutor
+ * segue cobrado na linha, como sempre foi.
+ */
+export function ajustarEmbutidoPorRedutor<T extends ItemEmbutivel>(
+  it: T,
+  chave: string,
+  valorRedutorAntes: number,
+  valorRedutorDepois: number,
+  linhasDesseMotor: number,
+): T {
+  const embutido = (it.motores_embutidos ?? {})[chave]
+  if (embutido == null) return it                       // motor não embutido: nada a fazer
+  const deltaTotal = (valorRedutorDepois - valorRedutorAntes) * linhasDesseMotor
+  const delta = Math.round(deltaTotal / Math.max(1, it.qtd))
+  if (delta === 0) return it
+  return {
+    ...it,
+    valor: it.valor + delta,
+    valor_original: it.valor_original + delta,
+    motores_embutidos: { ...(it.motores_embutidos ?? {}), [chave]: embutido + delta },
   }
 }
 
