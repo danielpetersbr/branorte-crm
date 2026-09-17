@@ -743,9 +743,12 @@ export function useAtendimentos(filters: AtendimentoFilters) {
         if (list.length === 0) return { rows: [], total: 0, truncado: false }
         query = query.in('telefone_norm', list)
       }
-      // Filtra por data de CHEGADA do lead (created_at)
-      if (range.from) query = query.gte('created_at', range.from)
-      if (range.to)   query = query.lte('created_at', range.to)
+      // Filtra por ATIVIDADE no periodo (last_message_at), nao pela chegada.
+      // FIX 17/09/2026: com created_at o cliente RECORRENTE sumia da lista — ele volta,
+      // o webhook ATUALIZA a linha antiga (created_at velho) e o lead do dia ficava invisivel.
+      // Eram 9 de 33 num dia e 95 na semana. Os KPIs ja usavam last_message_at: era divergencia interna.
+      if (range.from) query = query.gte('last_message_at', range.from)
+      if (range.to)   query = query.lte('last_message_at', range.to)
       if (filters.uf) {
         const ddds = Object.entries(DDD_TO_UF)
           .filter(([, uf]) => uf === filters.uf)
@@ -853,8 +856,8 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
   }
   if (filters?.data) {
     const range = dateRangeFromPreset(filters.data)
-    if (range.from) q = q.gte('created_at', range.from)
-    if (range.to)   q = q.lte('created_at', range.to)
+    if (range.from) q = q.gte('last_message_at', range.from)
+    if (range.to)   q = q.lte('last_message_at', range.to)
   }
   if (filters?.origem) {
     const origemMap: Record<string, string[]> = {
@@ -1168,8 +1171,8 @@ export function useAtendimentosFunil(filters: Omit<AtendimentoFilters, 'status_r
         }
       }
       const range = dateRangeFromPreset(filters.data)
-      if (range.from) query = query.gte('created_at', range.from)
-      if (range.to)   query = query.lte('created_at', range.to)
+      if (range.from) query = query.gte('last_message_at', range.from)
+      if (range.to)   query = query.lte('last_message_at', range.to)
 
       const { data, error } = await query
       if (error) throw error
