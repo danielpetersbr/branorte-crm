@@ -100,6 +100,14 @@ export function LocalizacaoObrigatoria({ estado }: { estado: EstadoLocalizacao }
             <p className="text-center text-ink-faint">
               No celular: menu do navegador → Configurações do site → Localização.
             </p>
+            <div className="pt-1 flex flex-wrap gap-2 justify-center">
+              <Button variant="primary" onClick={estado.reavaliar} loading={estado.estado === 'checando'}>
+                Já liberei — verificar
+              </Button>
+              <Button variant="secondary" onClick={() => window.location.reload()}>
+                Recarregar página
+              </Button>
+            </div>
           </div>
         ) : (
           <>

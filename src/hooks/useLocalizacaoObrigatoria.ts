@@ -21,6 +21,8 @@ export interface EstadoLocalizacao {
   precisaoMaxima: number | null
   /** dispara o popup do navegador (só funciona a partir de um clique do usuário) */
   pedir: () => void
+  /** relê a permissão depois que a pessoa mexeu no cadeado do navegador */
+  reavaliar: () => void
 }
 
 export interface AcessoConfig {
@@ -44,7 +46,10 @@ export function useAcessoConfig() {
         precisao_maxima_m: null,
       }) as AcessoConfig
     },
-    staleTime: 5 * 60_000,
+    // ⚠️ Curto de propósito: se o gate travar alguém indevidamente, desligar no
+    // banco tem que soltar a pessoa rápido, sem depender de ela limpar cache.
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   })
 }
 
@@ -145,6 +150,34 @@ export function useLocalizacaoObrigatoria(): EstadoLocalizacao {
     window.setTimeout(encerrar, JANELA_MS)
   }
 
+  /**
+   * Relê a permissão atual.
+   *
+   * ⚠️ Existe porque o `onchange` da Permissions API NÃO é confiável no Chrome
+   * quando a pessoa muda a permissão pelo cadeado da barra de endereço: o
+   * toggle vira "Permitir" e a página continua achando que está negada. Sem um
+   * caminho manual, a pessoa libera, nada acontece, e fica presa na tela de
+   * bloqueio — foi exatamente o que travou o marketing em 17/09/2026.
+   */
+  const reavaliar = () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setEstado('indisponivel')
+      return
+    }
+    if (!navigator.permissions?.query) {
+      capturar()
+      return
+    }
+    navigator.permissions
+      .query({ name: 'geolocation' as PermissionName })
+      .then(st => {
+        if (st.state === 'granted') capturar()
+        else if (st.state === 'prompt') capturar() // dispara o popup: veio de clique
+        else setEstado('denied')
+      })
+      .catch(() => capturar())
+  }
+
   // Descobre o estado SEM disparar o popup (Permissions API), e só captura
   // sozinho se já estiver concedido — senão o popup nasceria sem contexto.
   useEffect(() => {
@@ -158,26 +191,46 @@ export function useLocalizacaoObrigatoria(): EstadoLocalizacao {
       setEstado('prompt')
       return
     }
+    let st: PermissionStatus | null = null
     navigator.permissions
       .query({ name: 'geolocation' as PermissionName })
-      .then(st => {
+      .then(status => {
         if (!vivo) return
-        setEstado(st.state as EstadoGeo)
-        if (st.state === 'granted' && !jaPediu.current) {
+        st = status
+        setEstado(status.state as EstadoGeo)
+        if (status.state === 'granted' && !jaPediu.current) {
           jaPediu.current = true
           capturar()
         }
-        st.onchange = () => {
+        status.onchange = () => {
           if (!vivo) return
-          setEstado(st.state as EstadoGeo)
-          if (st.state === 'granted') capturar()
+          setEstado(status.state as EstadoGeo)
+          if (status.state === 'granted') capturar()
         }
       })
       .catch(() => {
         if (vivo) setEstado('prompt')
       })
+
+    // Rede de segurança pro onchange que não dispara: ao voltar pra aba,
+    // reconsulta. Cobre o caso de mexer no cadeado e clicar de volta na página.
+    const aoFocar = () => {
+      if (!vivo || !navigator.permissions?.query) return
+      navigator.permissions
+        .query({ name: 'geolocation' as PermissionName })
+        .then(atual => {
+          if (!vivo) return
+          if (atual.state === 'granted') capturar()
+          else setEstado(atual.state as EstadoGeo)
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('focus', aoFocar)
+
     return () => {
       vivo = false
+      window.removeEventListener('focus', aoFocar)
+      if (st) st.onchange = null
     }
   }, [])
 
@@ -187,5 +240,5 @@ export function useLocalizacaoObrigatoria(): EstadoLocalizacao {
     coords !== null &&
     (coords.precisao_m === null || coords.precisao_m > precisaoMaxima)
 
-  return { exigida, estado, coords, precisaoRuim, precisaoMaxima, pedir: capturar }
+  return { exigida, estado, coords, precisaoRuim, precisaoMaxima, pedir: capturar, reavaliar }
 }
