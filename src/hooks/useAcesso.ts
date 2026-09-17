@@ -202,7 +202,11 @@ export function useDerrubarSessoes() {
 export function useSalvarAcessoConfig() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (c: { exigir_localizacao: boolean; papeis_obrigatorios: string[] }) => {
+    mutationFn: async (c: {
+      exigir_localizacao: boolean
+      papeis_obrigatorios: string[]
+      precisao_maxima_m: number | null
+    }) => {
       const { error } = await supabase
         .from('acesso_config')
         .update({ ...c, atualizado_em: new Date().toISOString() })

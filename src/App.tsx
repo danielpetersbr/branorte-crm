@@ -520,7 +520,7 @@ function AppRoutes() {
   // Gate de localização (ligado em /admin/acessos). Só barra quem ainda não
   // decidiu ou negou — 'indisponivel' e 'erro' passam, porque navegador velho
   // ou GPS fora do ar não é motivo pra impedir a pessoa de trabalhar.
-  if (geo.exigida && (geo.estado === 'prompt' || geo.estado === 'denied')) {
+  if (geo.exigida && (geo.estado === 'prompt' || geo.estado === 'denied' || geo.precisaoRuim)) {
     return <LocalizacaoObrigatoria estado={geo} />
   }
 

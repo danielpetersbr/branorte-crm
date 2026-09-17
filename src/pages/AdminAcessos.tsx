@@ -416,6 +416,14 @@ function PainelSessoes() {
 
 const PAPEIS_GATE = ['vendor', 'marketing', 'visualizador', 'representante', 'mapa', 'consultor']
 
+const PRECISOES: Array<{ v: number | null; l: string }> = [
+  { v: null, l: 'qualquer' },
+  { v: 1000, l: 'até 1 km' },
+  { v: 300, l: 'até 300 m' },
+  { v: 100, l: 'até 100 m' },
+  { v: 50, l: 'até 50 m (só celular)' },
+]
+
 function PainelLocalizacao() {
   const { data: cfg } = useAcessoConfig()
   const salvar = useSalvarAcessoConfig()
@@ -426,6 +434,7 @@ function PainelLocalizacao() {
     salvar.mutate({
       exigir_localizacao: ligado,
       papeis_obrigatorios: papeis.includes(p) ? papeis.filter(x => x !== p) : [...papeis, p],
+      precisao_maxima_m: cfg?.precisao_maxima_m ?? null,
     })
 
   return (
@@ -445,7 +454,13 @@ function PainelLocalizacao() {
         <Button
           variant={ligado ? 'danger' : 'primary'}
           loading={salvar.isPending}
-          onClick={() => salvar.mutate({ exigir_localizacao: !ligado, papeis_obrigatorios: papeis })}
+          onClick={() =>
+            salvar.mutate({
+              exigir_localizacao: !ligado,
+              papeis_obrigatorios: papeis,
+              precisao_maxima_m: cfg?.precisao_maxima_m ?? null,
+            })
+          }
         >
           {ligado ? 'Desligar exigência' : 'Ligar exigência'}
         </Button>
@@ -463,6 +478,34 @@ function PainelLocalizacao() {
             {p}
           </Button>
         ))}
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-border">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-ink-muted mr-1">Precisão exigida:</span>
+          {PRECISOES.map(p => (
+            <Button
+              key={String(p.v)}
+              size="sm"
+              variant={(cfg?.precisao_maxima_m ?? null) === p.v ? 'primary' : 'secondary'}
+              onClick={() =>
+                salvar.mutate({
+                  exigir_localizacao: ligado,
+                  papeis_obrigatorios: papeis,
+                  precisao_maxima_m: p.v,
+                })
+              }
+            >
+              {p.l}
+            </Button>
+          ))}
+        </div>
+        <p className="text-[12px] text-ink-muted mt-2 max-w-xl">
+          Leitura com raio maior que o escolhido <strong>não vale como localizado</strong> — a
+          pessoa vê como melhorar e tenta de novo.{' '}
+          <strong>Celular chega a 10–50 m; PC de mesa ligado por cabo, raramente passa de 1 km</strong>{' '}
+          (só tem o IP). Ligar o Wi-Fi do computador é o que mais melhora.
+        </p>
       </div>
 
       {ligado && (
