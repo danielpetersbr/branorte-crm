@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { MapPin, Monitor, Smartphone, ShieldAlert, Clock, Trash2, Plus } from 'lucide-react'
+import { MapPin, Monitor, Smartphone, ShieldAlert, Clock, Trash2, Plus, LogOut } from 'lucide-react'
 import {
   useAcessoEventos,
   useQuemEstaOnline,
+  useSessoesAtivas,
+  useDerrubarSessoes,
   useJanelas,
   useSalvarJanela,
   useApagarJanela,
@@ -57,7 +59,7 @@ function useUsuarios() {
 }
 
 export function AdminAcessos() {
-  const [aba, setAba] = useState<'online' | 'trilha' | 'janelas'>('online')
+  const [aba, setAba] = useState<'online' | 'trilha' | 'sessoes' | 'janelas'>('online')
   const [dias, setDias] = useState(7)
   const [filtroEmail, setFiltroEmail] = useState('')
   const [filtroRota, setFiltroRota] = useState('')
@@ -87,6 +89,7 @@ export function AdminAcessos() {
         {([
           ['online', 'Quem está usando'],
           ['trilha', 'Trilha de páginas'],
+          ['sessoes', 'Sessões abertas'],
           ['janelas', 'Horário de acesso'],
         ] as const).map(([k, label]) => (
           <Button key={k} variant={aba === k ? 'primary' : 'secondary'} size="sm" onClick={() => setAba(k)}>
@@ -259,7 +262,130 @@ export function AdminAcessos() {
         </div>
       )}
 
+      {aba === 'sessoes' && <PainelSessoes />}
+
       {aba === 'janelas' && <PainelJanelas usuarios={usuarios.data ?? []} />}
+    </div>
+  )
+}
+
+function PainelSessoes() {
+  const sessoes = useSessoesAtivas()
+  const derrubar = useDerrubarSessoes()
+  const [confirmando, setConfirmando] = useState<string | null>(null)
+
+  // Uma linha por PESSOA (a sessão é por dispositivo/navegador — o que importa
+  // pro admin é quantas estão abertas e desde quando a mais antiga).
+  const porPessoa = useMemo(() => {
+    const m = new Map<string, { email: string; papel: string; n: number; ips: Set<string>; maisAntiga: string; ultimo: string }>()
+    for (const s of sessoes.data ?? []) {
+      const atual = m.get(s.user_id)
+      if (!atual) {
+        m.set(s.user_id, {
+          email: s.email,
+          papel: s.papel,
+          n: 1,
+          ips: new Set(s.ip ? [s.ip] : []),
+          maisAntiga: s.criada_em,
+          ultimo: s.ultimo_uso,
+        })
+      } else {
+        atual.n++
+        if (s.ip) atual.ips.add(s.ip)
+        if (s.criada_em < atual.maisAntiga) atual.maisAntiga = s.criada_em
+        if (s.ultimo_uso > atual.ultimo) atual.ultimo = s.ultimo_uso
+      }
+    }
+    return [...m.entries()].sort((a, b) => b[1].ultimo.localeCompare(a[1].ultimo))
+  }, [sessoes.data])
+
+  const diasDe = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <p className="text-[13px] text-ink-muted">
+          <ShieldAlert className="w-3.5 h-3.5 inline mr-1 -mt-0.5 text-warning" />
+          As sessões deste projeto <strong>não expiram sozinhas</strong>. Tirar o papel de alguém
+          não o desconecta — quem desconecta é <em>Derrubar</em>. Depois de derrubar, a pessoa cai
+          na próxima renovação do token (até 1 h).
+        </p>
+      </Card>
+
+      <Card className="p-0 overflow-hidden">
+        {sessoes.isLoading ? (
+          <PageLoading />
+        ) : !porPessoa.length ? (
+          <p className="p-6 text-[13px] text-ink-muted">Nenhuma sessão ativa.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead className="bg-surface-2 text-ink-muted">
+                <tr>
+                  <th className="text-left px-4 py-2 font-medium">Pessoa</th>
+                  <th className="text-left px-4 py-2 font-medium">Papel</th>
+                  <th className="text-left px-4 py-2 font-medium">Sessões</th>
+                  <th className="text-left px-4 py-2 font-medium">IPs</th>
+                  <th className="text-left px-4 py-2 font-medium">Aberta há</th>
+                  <th className="text-left px-4 py-2 font-medium">Último uso</th>
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {porPessoa.map(([userId, p]) => (
+                  <tr key={userId} className="border-t border-border">
+                    <td className="px-4 py-2 text-ink">{p.email}</td>
+                    <td className="px-4 py-2">
+                      <Badge className="bg-surface-2 text-ink-muted">{p.papel}</Badge>
+                    </td>
+                    <td className="px-4 py-2 text-ink-muted">{p.n}</td>
+                    <td className="px-4 py-2 font-mono text-[11px] text-ink-faint">
+                      {[...p.ips].join(', ') || '—'}
+                    </td>
+                    <td className="px-4 py-2 text-ink-muted">
+                      {diasDe(p.maisAntiga) > 30 ? (
+                        <span className="text-warning">{diasDe(p.maisAntiga)} dias</span>
+                      ) : (
+                        `${diasDe(p.maisAntiga)} dias`
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-ink-muted">{quando(p.ultimo)}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      {confirmando === userId ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            loading={derrubar.isPending}
+                            onClick={() =>
+                              derrubar.mutate(userId, { onSettled: () => setConfirmando(null) })
+                            }
+                          >
+                            Confirmar
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setConfirmando(null)}>
+                            Cancelar
+                          </Button>
+                        </>
+                      ) : (
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmando(userId)}>
+                          <LogOut className="w-3.5 h-3.5" />
+                          Derrubar
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {derrubar.isError && (
+          <p className="p-3 text-[12px] text-danger">
+            Não derrubou: {(derrubar.error as Error)?.message}
+          </p>
+        )}
+      </Card>
     </div>
   )
 }

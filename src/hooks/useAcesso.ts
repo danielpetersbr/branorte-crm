@@ -134,6 +134,54 @@ export function useQuemEstaOnline() {
   })
 }
 
+export interface SessaoAtiva {
+  session_id: string
+  user_id: string
+  email: string
+  papel: string
+  ip: string | null
+  user_agent: string | null
+  criada_em: string
+  ultimo_uso: string
+}
+
+/**
+ * Sessões vivas no Supabase Auth.
+ *
+ * ⚠️ Vem por RPC porque `auth.sessions` não é exposto pelo PostgREST. O guard
+ * de admin está DENTRO da função (SECURITY DEFINER bypassa RLS).
+ *
+ * É aqui que se vê o problema estrutural: as sessões deste projeto não expiram
+ * (`not_after` nulo), então elas se acumulam por meses — tirar o papel de
+ * alguém NÃO o desconecta. Quem desconecta é o botão de derrubar.
+ */
+export function useSessoesAtivas() {
+  return useQuery({
+    queryKey: ['acesso_sessoes'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('sessoes_ativas')
+      if (error) throw error
+      return (data ?? []) as SessaoAtiva[]
+    },
+    refetchInterval: 60_000,
+  })
+}
+
+export function useDerrubarSessoes() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { data, error } = await supabase.rpc('derrubar_sessoes', { p_user: userId })
+      if (error) throw error
+      return data as number
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['acesso_sessoes'] })
+      qc.invalidateQueries({ queryKey: ['acesso_online'] })
+    },
+  })
+}
+
 export function useJanelas() {
   return useQuery({
     queryKey: ['acesso_janelas'],
