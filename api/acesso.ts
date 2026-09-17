@@ -53,9 +53,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data: u, error: uErr } = await supa.auth.getUser(auth)
   if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt' })
 
-  const body = (req.body || {}) as { rota?: string; plataforma?: string }
+  const body = (req.body || {}) as {
+    rota?: string
+    plataforma?: string
+    geo_estado?: string | null
+    lat?: number | null
+    lon?: number | null
+    precisao_m?: number | null
+  }
   const rota = String(body.rota || '').slice(0, 200)
   if (!rota) return res.status(400).json({ error: 'rota_obrigatoria' })
+
+  // Coordenada só entra se for número dentro do intervalo válido — o corpo vem
+  // do cliente, então nada aqui é confiável por vir "do nosso app".
+  const numOuNull = (v: unknown, min: number, max: number): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : null
+  const lat = numOuNull(body.lat, -90, 90)
+  const lon = numOuNull(body.lon, -180, 180)
+  const ESTADOS_GEO = ['granted', 'denied', 'prompt', 'indisponivel', 'erro', 'checando']
+  const geoEstado =
+    typeof body.geo_estado === 'string' && ESTADOS_GEO.includes(body.geo_estado)
+      ? body.geo_estado
+      : null
 
   // 1) O banco decide se pode. Fail-open se a chamada falhar.
   let liberado = true
@@ -82,6 +101,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     user_agent: (h(req, 'user-agent') || '').slice(0, 400) || null,
     plataforma: body.plataforma === 'mobile' ? 'mobile' : 'desktop',
     bloqueado: !liberado,
+    lat,
+    lon,
+    precisao_m: lat !== null ? numOuNull(body.precisao_m, 0, 1_000_000) : null,
+    geo_estado: geoEstado,
   }
 
   let registrado = true

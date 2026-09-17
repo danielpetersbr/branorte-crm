@@ -16,6 +16,8 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useTrilhaAcesso } from '@/hooks/useAcesso'
 import { AcessoBloqueado } from '@/components/AcessoBloqueado'
+import { useLocalizacaoObrigatoria } from '@/hooks/useLocalizacaoObrigatoria'
+import { LocalizacaoObrigatoria } from '@/components/LocalizacaoObrigatoria'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { InstallPrompt } from '@/components/InstallPrompt'
 import { NovaVersaoBanner } from '@/components/NovaVersaoBanner'
@@ -244,7 +246,8 @@ function AppRoutes() {
   // antecipados (rotas públicas, portal, pendente) e hook depois de return
   // quebra a ordem dos hooks entre renders. O hook só dispara quando há sessão
   // aprovada — nas rotas públicas ele não faz nada.
-  const bloqueio = useTrilhaAcesso()
+  const geo = useLocalizacaoObrigatoria()
+  const bloqueio = useTrilhaAcesso({ estado: geo.estado, coords: geo.coords })
 
   // Rota pública /print — usada pelo Puppeteer pra renderizar OrcamentoPreview
   // sem chrome do app. Dados injetados via window.__BRANORTE_PRINT__ pelo Puppeteer.
@@ -512,6 +515,13 @@ function AppRoutes() {
   // o dado de verdade é a RLS no Postgres — o DevTools passa por cima daqui.
   if (bloqueio.bloqueado) {
     return <AcessoBloqueado estado={bloqueio} />
+  }
+
+  // Gate de localização (ligado em /admin/acessos). Só barra quem ainda não
+  // decidiu ou negou — 'indisponivel' e 'erro' passam, porque navegador velho
+  // ou GPS fora do ar não é motivo pra impedir a pessoa de trabalhar.
+  if (geo.exigida && (geo.estado === 'prompt' || geo.estado === 'denied')) {
+    return <LocalizacaoObrigatoria estado={geo} />
   }
 
   // Aprovado → app

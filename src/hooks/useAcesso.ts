@@ -29,6 +29,10 @@ export interface AcessoEvento {
   plataforma: string | null
   bloqueado: boolean
   at: string
+  lat: number | null
+  lon: number | null
+  precisao_m: number | null
+  geo_estado: string | null
 }
 
 export interface EstadoBloqueio {
@@ -44,7 +48,10 @@ export interface EstadoBloqueio {
  * chamada existe pra registrar a passagem e dar uma tela decente a quem está
  * fora de hora, não pra ser a fechadura.
  */
-export function useTrilhaAcesso(): EstadoBloqueio {
+export function useTrilhaAcesso(geo?: {
+  estado: string
+  coords: { lat: number; lon: number; precisao_m: number | null } | null
+}): EstadoBloqueio {
   const loc = useLocation()
   const { session, profile } = useAuth()
   const [estado, setEstado] = useState<EstadoBloqueio>({ bloqueado: false, janela: null })
@@ -54,6 +61,9 @@ export function useTrilhaAcesso(): EstadoBloqueio {
   const token = session?.access_token
   const rota = loc.pathname
   const pronto = !!token && !!profile?.approved_at
+  // Entra na dependência como string pra não redisparar a cada render por
+  // identidade de objeto — só quando a coordenada muda de verdade.
+  const geoChave = geo?.coords ? `${geo.coords.lat},${geo.coords.lon}` : geo?.estado ?? ''
 
   useEffect(() => {
     if (!pronto) return
@@ -67,7 +77,14 @@ export function useTrilhaAcesso(): EstadoBloqueio {
     fetch('/api/acesso', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ rota, plataforma }),
+      body: JSON.stringify({
+        rota,
+        plataforma,
+        geo_estado: geo?.estado ?? null,
+        lat: geo?.coords?.lat ?? null,
+        lon: geo?.coords?.lon ?? null,
+        precisao_m: geo?.coords?.precisao_m ?? null,
+      }),
     })
       .then(r => (r.ok ? r.json() : null))
       .then(j => {
@@ -81,7 +98,7 @@ export function useTrilhaAcesso(): EstadoBloqueio {
     return () => {
       cancelado = true
     }
-  }, [rota, token, pronto])
+  }, [rota, token, pronto, geoChave])
 
   return estado
 }
@@ -179,6 +196,20 @@ export function useDerrubarSessoes() {
       qc.invalidateQueries({ queryKey: ['acesso_sessoes'] })
       qc.invalidateQueries({ queryKey: ['acesso_online'] })
     },
+  })
+}
+
+export function useSalvarAcessoConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (c: { exigir_localizacao: boolean; papeis_obrigatorios: string[] }) => {
+      const { error } = await supabase
+        .from('acesso_config')
+        .update({ ...c, atualizado_em: new Date().toISOString() })
+        .eq('id', true)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['acesso_config'] }),
   })
 }
 
