@@ -14,6 +14,8 @@ import { Signup } from '@/pages/Signup'
 import { Pendente } from '@/pages/Pendente'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
+import { useTrilhaAcesso } from '@/hooks/useAcesso'
+import { AcessoBloqueado } from '@/components/AcessoBloqueado'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { InstallPrompt } from '@/components/InstallPrompt'
 import { NovaVersaoBanner } from '@/components/NovaVersaoBanner'
@@ -48,6 +50,7 @@ const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
 const GuiaAdmin = lazy(() => import('@/pages/GuiaAdmin').then(m => ({ default: m.GuiaAdmin })))
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
+const AdminAcessos = lazy(() => import('@/pages/AdminAcessos').then(m => ({ default: m.AdminAcessos })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
 const IaAtendente = lazy(() => import('@/pages/IaAtendente').then(m => ({ default: m.IaAtendente })))
 const FluxosFunil = lazy(() => import('@/pages/FluxosFunil').then(m => ({ default: m.FluxosFunil })))
@@ -237,6 +240,11 @@ function AppRoutes() {
   const { session, profile, loading, profileError } = useAuth()
   const can = useCan()
   const loc = useLocation()
+  // ⚠️ Tem que ficar AQUI, no topo: este componente tem dezenas de `return`
+  // antecipados (rotas públicas, portal, pendente) e hook depois de return
+  // quebra a ordem dos hooks entre renders. O hook só dispara quando há sessão
+  // aprovada — nas rotas públicas ele não faz nada.
+  const bloqueio = useTrilhaAcesso()
 
   // Rota pública /print — usada pelo Puppeteer pra renderizar OrcamentoPreview
   // sem chrome do app. Dados injetados via window.__BRANORTE_PRINT__ pelo Puppeteer.
@@ -499,6 +507,13 @@ function AppRoutes() {
     return <Navigate to={rotasDoPapel[0]} replace />
   }
 
+  // Fora da janela de horário do usuário (regra de /admin/acessos).
+  // Isto é a CORTESIA: explica o horário em vez de dar tela quebrada. Quem barra
+  // o dado de verdade é a RLS no Postgres — o DevTools passa por cima daqui.
+  if (bloqueio.bloqueado) {
+    return <AcessoBloqueado estado={bloqueio} />
+  }
+
   // Aprovado → app
   // Layout envolve <Outlet> em <Suspense> pra carregar chunks lazy de cada página.
   return (
@@ -627,6 +642,9 @@ function AppRoutes() {
         )}
         {can('menu.admin_permissoes') && (
           <Route path="/admin/permissoes" element={<AdminPermissoes />} />
+        )}
+        {can('menu.admin_acessos') && (
+          <Route path="/admin/acessos" element={<AdminAcessos />} />
         )}
         {can('menu.admin_transportador_funcoes') && (
           <Route path="/admin/transportador-funcoes" element={<AdminTransportadorFuncoes />} />

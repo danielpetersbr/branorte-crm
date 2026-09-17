@@ -48,6 +48,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.fluxos_funil', label: 'Fluxos do Funil (admin)', group: 'Menu' },
   { key: 'menu.admin_usuarios', label: 'Admin: Usuários', group: 'Menu' },
   { key: 'menu.admin_permissoes', label: 'Admin: Permissões', group: 'Menu' },
+  { key: 'menu.admin_acessos', label: 'Admin: Acessos (quem entrou, de onde, horário)', group: 'Menu' },
   { key: 'menu.admin_transportador_funcoes', label: 'Admin: Funções Transportador', group: 'Menu' },
   { key: 'menu.roadmap', label: 'Roadmap & Feedback', group: 'Menu' },
   { key: 'menu.ia_teste', label: 'Testar a IA (arena + apontamentos)', group: 'Menu' },
