@@ -49,7 +49,12 @@ const fmtR$ = (n: number | null | undefined) =>
     style: 'currency', currency: 'BRL', maximumFractionDigits: 0,
   }).format(n)
 
-const fmtPct = (n: number | null | undefined) => (n == null ? '—' : `${n}%`)
+// Intl, não template string: `${4.2}%` sai "4.2%" com PONTO, ao lado de "37,7" que o
+// fmtN já localiza com vírgula. Duas pontuações na mesma tabela.
+const fmtPct = (n: number | null | undefined) =>
+  n == null
+    ? '—'
+    : `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(n)}%`
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
