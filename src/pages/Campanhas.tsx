@@ -27,6 +27,10 @@ type Campanha = {
   campanha: string; conjunto: string; anuncios: number
   leads: number; orcamentos: number; vendas: number; faturamento: number
 }
+type OndeRoda = {
+  codigo: string; campanhas: number; conjuntos: number
+  anuncios: number; ativos: number; onde: string | null
+}
 type AnuncioReal = {
   ad_id: string; titulo: string | null; anuncio: string | null
   conjunto: string | null; campanha: string | null
@@ -143,6 +147,18 @@ export function Campanhas() {
     },
   })
 
+  // mapa do Meta: em quais campanhas cada código roda. Não depende de período.
+  const ondeRoda = useQuery({
+    queryKey: ['campanhas-por-codigo'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('campanhas_por_codigo')
+      if (error) throw error
+      const m = new Map<string, OndeRoda>()
+      for (const r of (data ?? []) as OndeRoda[]) m.set(r.codigo, r)
+      return m
+    },
+  })
+
   const meta = (origens.data ?? []).find(o => o.origem === 'Meta ADS')
   const totalLeads = (origens.data ?? []).reduce((s, o) => s + Number(o.leads || 0), 0)
   const totalOrc = (origens.data ?? []).reduce((s, o) => s + Number(o.orcamentos || 0), 0)
@@ -225,16 +241,28 @@ export function Campanhas() {
 
       <Secao
         titulo="Por código do anúncio"
-        subtitulo="O código sai do texto da primeira mensagem. Serve para produto, mas anúncios do MESMO produto se misturam num código só."
+        subtitulo="O código sai do texto da primeira mensagem — serve para produto, não para anúncio. “Onde roda” vem do Meta: em amarelo, o código está em mais de uma campanha ao mesmo tempo, então o lead dele NÃO pode ser creditado a uma campanha só (passe o mouse para ver quais)."
       >
-        <Tabela cabecalho={['Código / anúncio', 'Leads', 'Qualificou', '%', 'Orçamentos', 'Vendas', 'Vendido']}>
-          {(criativos.data ?? []).map(c => (
+        <Tabela cabecalho={['Código / anúncio', 'Onde roda', 'Leads', 'Qualificou', '%', 'Orçamentos', 'Vendas', 'Vendido']}>
+          {(criativos.data ?? []).map(c => {
+            const onde = ondeRoda.data?.get(c.criativo)
+            return (
             <tr key={c.criativo} className="border-b border-border last:border-0">
               <td className="px-4 py-3">
                 <span className="font-medium">{c.criativo}</span>
                 {c.anuncio && <span className="text-muted-foreground"> · {c.anuncio}</span>}
                 {c.ativo_ultimos_7d && (
                   <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-surface-2">ativo</span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-right whitespace-nowrap" title={onde?.onde ?? ''}>
+                {onde ? (
+                  <span className={onde.campanhas > 1 ? 'text-amber-500' : 'text-muted-foreground'}>
+                    {onde.campanhas === 1 ? '1 campanha' : `${onde.campanhas} campanhas`}
+                    <span className="text-muted-foreground"> · {onde.conjuntos} conj.</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
                 )}
               </td>
               <td className="px-4 py-3 text-right tabular-nums">{fmtN(c.leads)}</td>
@@ -244,7 +272,8 @@ export function Campanhas() {
               <td className="px-4 py-3 text-right tabular-nums">{fmtN(c.vendas)}</td>
               <td className="px-4 py-3 text-right tabular-nums">{fmtR$(c.valor_vendido)}</td>
             </tr>
-          ))}
+            )
+          })}
         </Tabela>
       </Secao>
 
@@ -254,10 +283,14 @@ export function Campanhas() {
       >
         {(campanhas.data ?? []).length === 0 ? (
           <Aviso>
-            <b>Ainda sem dado aqui.</b> Duas coisas alimentam esta seção: o clique no anúncio
-            (já está ligado na Reply desde 18/09 — enche sozinho conforme os clientes chegam)
-            e o mapa <i>anúncio → conjunto → campanha</i>, que vem do Meta e ainda precisa ser
-            carregado, por token da API ou pela exportação do Gerenciador.
+            <b>O mapa do Meta já está carregado</b> — 125 anúncios, 82 conjuntos e 14 campanhas,
+            vindos da exportação do Gerenciador em 18/09. O que falta é o <b>clique</b>: só ele
+            diz de qual anúncio (e portanto de qual campanha) veio cada cliente. A automação foi
+            publicada em 18/09 e esta tabela enche sozinha conforme os clientes chegam.
+            <br /><br />
+            Não dá para adiantar pelo código <i>&amp;nn</i>: o mesmo código roda em até
+            <b> 4 campanhas ao mesmo tempo</b>, então somar por ele seria inventar o número.
+            É o que a coluna “Onde roda” mostra na tabela acima.
           </Aviso>
         ) : (
           <Tabela cabecalho={['Campanha', 'Conjunto', 'Anúncios', 'Leads', 'Orçamentos', 'Vendas', 'Faturamento']}>
