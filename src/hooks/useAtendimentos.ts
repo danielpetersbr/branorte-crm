@@ -226,6 +226,53 @@ export function useOrcamentosPorTelefone(phones: (string | null | undefined)[], 
   })
 }
 
+// ─── Anúncio de onde o cliente veio ────────────────────────────────────────────
+// Vem do clique que a Reply grava (automação "Anúncio clicado", 18/09/2026), já
+// cruzado com o mapa do Meta pra trazer conjunto e campanha. Só existe pra quem
+// chegou DEPOIS de 18/09 — antes disso o ad_id nunca foi gravado em lugar nenhum.
+export type AnuncioLead = {
+  ad_id: string | null
+  anuncio: string | null
+  conjunto: string | null
+  campanha: string | null
+  titulo: string | null
+  visto_em: string | null
+}
+export type AnuncioPhoneMap = Record<string, AnuncioLead>
+
+export function useAnuncioPorTelefone(phones: (string | null | undefined)[], enabled = true) {
+  const canons = [...new Set(phones.map(foneCanon).filter((c): c is string => !!c))]
+  return useQuery({
+    queryKey: ['anuncio-por-telefone', canons.slice().sort().join(',')],
+    enabled: enabled && canons.length > 0,
+    queryFn: async (): Promise<AnuncioPhoneMap> => {
+      if (canons.length === 0) return {}
+      const { data, error } = await (supabase as any).rpc('anuncio_por_telefone_canon', { p_canons: canons })
+      if (error) throw error
+      const map: AnuncioPhoneMap = {}
+      for (const row of (data ?? []) as any[]) {
+        if (!row.fone_canon) continue
+        map[String(row.fone_canon)] = {
+          ad_id: row.ad_id ?? null,
+          anuncio: row.anuncio ?? null,
+          conjunto: row.conjunto ?? null,
+          campanha: row.campanha ?? null,
+          titulo: row.titulo ?? null,
+          visto_em: row.visto_em ?? null,
+        }
+      }
+      return map
+    },
+    staleTime: 60_000,
+  })
+}
+
+export function lookupAnuncio(map: AnuncioPhoneMap | undefined, phone?: string | null): AnuncioLead | null {
+  if (!map) return null
+  const c = foneCanon(phone)
+  return c ? (map[c] ?? null) : null
+}
+
 // ─── Mensagem que o cliente envia ao vendedor no botão FALAR COM CONSULTOR ──────
 // Já enviada (gravada em mensagem_clique) ou a prévia do que sairia, montada no banco
 // por montar_mensagem_cliente() a partir do anúncio/animal/quantidade/origem do lead.

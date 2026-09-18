@@ -20,7 +20,7 @@ import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { resumoUtil, limparEquipamento } from '@/lib/atendimentos-texto'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useQualificacaoPorTelefone, lookupQualificacao, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useAnuncioPorTelefone, lookupAnuncio, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useQualificacaoPorTelefone, lookupQualificacao, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
 
@@ -403,6 +403,7 @@ export function Atendimentos() {
   const { data: waLabelsMap } = useWaLabelsByPhones(phonesAtuais)
   // Indicador automático "orçamento gerado" cruzando o telefone com orcamentos_gerados.
   const { data: orcMap } = useOrcamentosPorTelefone(phonesAtuais)
+  const { data: anuncioMap } = useAnuncioPorTelefone(phonesAtuais)
   // Indicador automático "vendido" cruzando o telefone → orçamento → pedido (venda).
   const { data: vendaMap } = useVendasPorTelefone(phonesAtuais)
   // Mensagem que o cliente manda pro vendedor ao tocar no botão (já enviada ou prévia).
@@ -998,6 +999,7 @@ export function Atendimentos() {
                     <th className="w-[126px]">Telefone</th>
                     <th className="hidden lg:table-cell w-[88px]">Origem</th>
                     <th className="hidden 2xl:table-cell w-[86px]">Criativo</th>
+                    <th className="hidden 2xl:table-cell w-[120px]" title="Anúncio real de onde o cliente veio — capturado no clique (a partir de 18/09/2026). Embaixo, a campanha do Meta.">Anúncio</th>
                     <th className="hidden lg:table-cell w-[130px]">Motivo</th>
                     <th className="hidden 2xl:table-cell w-[96px]" title="Pra que serve a fábrica: consumo, venda ou os dois (Ana V16.24)">Finalidade</th>
                     <th className="hidden 2xl:table-cell w-[78px]">Animal</th>
@@ -1173,6 +1175,23 @@ export function Atendimentos() {
                           ) : (
                             <EmptyCell />
                           )}
+                        </td>
+                        {/* ANÚNCIO REAL — do clique gravado pela Reply, já com a campanha do Meta */}
+                        <td className="hidden 2xl:table-cell px-1.5 py-2.5 overflow-hidden">
+                          {(() => {
+                            const a = lookupAnuncio(anuncioMap, r.telefone)
+                            if (!a) return <EmptyCell />
+                            const nome = a.anuncio || a.titulo || a.ad_id
+                            const detalhe = [a.campanha, a.conjunto].filter(Boolean).join(' · ')
+                            return (
+                              <div className="min-w-0" title={detalhe || undefined}>
+                                <div className="text-[11px] truncate">{nome}</div>
+                                {a.campanha && (
+                                  <div className="text-[10px] text-ink-faint truncate">{a.campanha}</div>
+                                )}
+                              </div>
+                            )
+                          })()}
                         </td>
                         {/* MOTIVO DO CONTATO + nome do equipamento (o_que_precisa OU criativo) */}
                         <td className="hidden lg:table-cell px-1.5 py-2.5 overflow-hidden">
@@ -1577,7 +1596,7 @@ export function Atendimentos() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={20} className="px-4 py-16 text-center">
+                      <td colSpan={21} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <div className="h-10 w-10 rounded-full bg-surface-2 flex items-center justify-center">
                             <Inbox className="h-5 w-5 text-ink-faint" />
