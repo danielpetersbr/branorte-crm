@@ -26,6 +26,7 @@ export const FEATURE_CATALOG: Array<{
   description?: string
 }> = [
   { key: 'menu.dashboard', label: 'Dashboard', group: 'Menu' },
+  { key: 'menu.campanhas', label: 'Análise de Campanhas (leads, orçamentos e venda por anúncio)', group: 'Menu' },
   { key: 'menu.atendimentos', label: 'Atendimentos', group: 'Menu' },
   { key: 'menu.contatos', label: 'Contatos', group: 'Menu' },
   { key: 'menu.funil', label: 'Funil', group: 'Menu' },

@@ -25,6 +25,7 @@ import { NovaVersaoBanner } from '@/components/NovaVersaoBanner'
 // Páginas grandes ou pouco-acessadas vão lazy pra reduzir bundle inicial
 // (era 2.9MB tudo junto). Cada uma carrega só quando vendedor navega pra ela.
 const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })))
+const Campanhas = lazy(() => import('@/pages/Campanhas').then(m => ({ default: m.Campanhas })))
 const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.Contacts })))
 const Consulta = lazy(() => import('@/pages/Consulta').then(m => ({ default: m.Consulta })))
 const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m => ({ default: m.ConsultaHistorico })))
@@ -534,6 +535,7 @@ function AppRoutes() {
         <Route path="/" element={<HomeRouter />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/analytics" element={<Analytics />} />
+        {can('menu.campanhas') && <Route path="/campanhas" element={<Campanhas />} />}
         <Route path="/contatos" element={<Contacts />} />
         {can('due_diligence.consultar') && (
           <>
