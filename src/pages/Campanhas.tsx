@@ -27,6 +27,14 @@ type Campanha = {
   campanha: string; conjunto: string; anuncios: number
   leads: number; orcamentos: number; vendas: number; faturamento: number
 }
+type Estrutura = {
+  campanha: string; conjuntos: number; anuncios: number; ativos: number; codigos: string | null
+}
+type Clique = {
+  quando: string; nome: string | null; telefone: string | null; ad_id: string | null
+  anuncio: string | null; campanha: string | null
+  codigo_na_mensagem: string | null; origem: string | null
+}
 type OndeRoda = {
   codigo: string; campanhas: number; conjuntos: number
   anuncios: number; ativos: number; onde: string | null
@@ -144,6 +152,26 @@ export function Campanhas() {
       const { data, error } = await supabase.rpc('anuncio_real_do_lead', { p_dias: dias })
       if (error) throw error
       return (data ?? []) as AnuncioReal[]
+    },
+  })
+
+  // estrutura das campanhas, direto do mapa do Meta (não depende de clique)
+  const estrutura = useQuery({
+    queryKey: ['painel-campanhas-estrutura'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('painel_campanhas_estrutura')
+      if (error) throw error
+      return (data ?? []) as Estrutura[]
+    },
+  })
+
+  // cliques em anúncio que já chegaram — com ou sem ad_id
+  const cliques = useQuery({
+    queryKey: ['cliques-em-anuncio', dias],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('cliques_em_anuncio', { p_dias: dias })
+      if (error) throw error
+      return (data ?? []) as Clique[]
     },
   })
 
@@ -282,16 +310,30 @@ export function Campanhas() {
         subtitulo="Soma o dinheiro por campanha do Meta."
       >
         {(campanhas.data ?? []).length === 0 ? (
-          <Aviso>
-            <b>O mapa do Meta já está carregado</b> — 125 anúncios, 82 conjuntos e 14 campanhas,
-            vindos da exportação do Gerenciador em 18/09. O que falta é o <b>clique</b>: só ele
-            diz de qual anúncio (e portanto de qual campanha) veio cada cliente. A automação foi
-            publicada em 18/09 e esta tabela enche sozinha conforme os clientes chegam.
-            <br /><br />
-            Não dá para adiantar pelo código <i>&amp;nn</i>: o mesmo código roda em até
-            <b> 4 campanhas ao mesmo tempo</b>, então somar por ele seria inventar o número.
-            É o que a coluna “Onde roda” mostra na tabela acima.
-          </Aviso>
+          <div className="space-y-3">
+            <Tabela cabecalho={['Campanha', 'Conjuntos', 'Anúncios', 'Ativos hoje', 'Códigos que rodam nela']}>
+              {(estrutura.data ?? []).map(e => (
+                <tr key={e.campanha} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3 font-medium">{e.campanha}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{fmtN(e.conjuntos)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{fmtN(e.anuncios)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {e.ativos > 0
+                      ? <span className="text-accent font-medium">{fmtN(e.ativos)}</span>
+                      : <span className="text-muted-foreground">0</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">{e.codigos || '—'}</td>
+                </tr>
+              ))}
+            </Tabela>
+            <Aviso>
+              Esta é a <b>estrutura</b> das campanhas, direto do Meta — onde está cada anúncio e
+              quantos estão no ar. O que ainda <b>não</b> dá para somar aqui é lead, orçamento e
+              venda por campanha: para isso é preciso saber de qual anúncio veio cada cliente, e a
+              Reply não entrega esse número (testado em 18/09). Somar pelo código <i>&amp;nn</i>{' '}
+              seria inventar — o mesmo código roda em até <b>4 campanhas ao mesmo tempo</b>.
+            </Aviso>
+          </div>
         ) : (
           <Tabela cabecalho={['Campanha', 'Conjunto', 'Anúncios', 'Leads', 'Orçamentos', 'Vendas', 'Faturamento']}>
             {(campanhas.data ?? []).map((c, i) => (
@@ -314,11 +356,37 @@ export function Campanhas() {
         subtitulo="Aqui cada anúncio fica separado — é o número do anúncio no Meta, não o código deduzido do texto."
       >
         {(reais.data ?? []).length === 0 ? (
-          <Aviso>
-            <b>Começa a encher a partir de agora.</b> A automação “Anúncio clicado” foi publicada
-            em 18/09 e grava o anúncio no momento em que a pessoa clica e chama no WhatsApp.
-            Quem chegou antes disso não tem como ser recuperado — aparece só na seção por código.
-          </Aviso>
+          <div className="space-y-3">
+            {(cliques.data ?? []).length > 0 && (
+              <Tabela cabecalho={['Quando', 'Quem clicou', 'Anúncio', 'Campanha', 'Código na mensagem', 'Origem']}>
+                {(cliques.data ?? []).map((c, i) => (
+                  <tr key={`${c.telefone}-${c.quando}-${i}`} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {new Date(c.quando).toLocaleString('pt-BR', {
+                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="px-4 py-3 text-right">{c.nome || c.telefone || '—'}</td>
+                    <td className="px-4 py-3 text-right">{c.anuncio || c.ad_id || <span className="text-muted-foreground">não informado</span>}</td>
+                    <td className="px-4 py-3 text-right">{c.campanha || <span className="text-muted-foreground">—</span>}</td>
+                    <td className="px-4 py-3 text-right">{c.codigo_na_mensagem || <span className="text-muted-foreground">—</span>}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{c.origem || '—'}</td>
+                  </tr>
+                ))}
+              </Tabela>
+            )}
+            <Aviso>
+              <b>Estes são os cliques em anúncio que já chegaram</b> — cada linha é alguém que
+              tocou num anúncio e caiu no WhatsApp 4502. Serve para saber <i>quem</i> veio de
+              anúncio e <i>quando</i>.
+              <br /><br />
+              A coluna Anúncio aparece “não informado” porque a Reply dispara o aviso no mesmo
+              segundo em que cria o contato, antes da primeira mensagem — e o número do anúncio
+              não vem em nenhuma variável dela. Quem já era cliente antes chega com o código
+              preenchido. Assim que o suporte da Reply indicar onde esse número sai, estas
+              colunas passam a preencher sozinhas.
+            </Aviso>
+          </div>
         ) : (
           <Tabela cabecalho={['Anúncio', 'Conjunto', 'Campanha', 'Leads', 'Orçamentos', 'Vendas', 'Faturamento']}>
             {(reais.data ?? []).map(r => (
