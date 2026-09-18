@@ -27,6 +27,10 @@ type Campanha = {
   campanha: string; conjunto: string; anuncios: number
   leads: number; orcamentos: number; vendas: number; faturamento: number
 }
+type PorCampanha = {
+  campanha: string; codigos: string | null; leads: number; qualificou: number
+  orcamentos: number; vendas: number; valor_vendido: number; atribuicao: string
+}
 type Estrutura = {
   campanha: string; conjuntos: number; anuncios: number; ativos: number; codigos: string | null
 }
@@ -152,6 +156,16 @@ export function Campanhas() {
       const { data, error } = await supabase.rpc('anuncio_real_do_lead', { p_dias: dias })
       if (error) throw error
       return (data ?? []) as AnuncioReal[]
+    },
+  })
+
+  // atribuição por campanha usando o código da mensagem — só onde ele é inequívoco
+  const porCampanha = useQuery({
+    queryKey: ['painel-campanha-por-codigo', dias],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('painel_campanha_por_codigo', { p_dias: dias })
+      if (error) throw error
+      return (data ?? []) as PorCampanha[]
     },
   })
 
@@ -311,6 +325,40 @@ export function Campanhas() {
       >
         {(campanhas.data ?? []).length === 0 ? (
           <div className="space-y-3">
+            <Tabela cabecalho={['Campanha', 'Códigos', 'Leads', 'Qualificou', 'Orçamentos', 'Vendas', 'Vendido']}>
+              {(porCampanha.data ?? []).map((c, i) => {
+                const certa = c.atribuicao === 'certa'
+                return (
+                  <tr key={`${c.campanha}-${i}`} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3">
+                      <span className={certa ? 'font-medium' : 'text-muted-foreground'}>{c.campanha}</span>
+                      {!certa && (
+                        <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-surface-2 text-amber-500">
+                          {c.atribuicao === 'ambigua' ? 'não dá para atribuir' : 'fora do mapa'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right text-muted-foreground text-[11px]">{c.codigos || '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{fmtN(c.leads)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {fmtN(c.qualificou)}
+                      <span className="text-muted-foreground text-[11px]">
+                        {' '}({fmtPct(c.leads ? Math.round((c.qualificou / c.leads) * 1000) / 10 : null)})
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">{fmtN(c.orcamentos)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{fmtN(c.vendas)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{fmtR$(c.valor_vendido)}</td>
+                  </tr>
+                )
+              })}
+            </Tabela>
+            <Aviso>
+              Esta soma vem do <b>código que chega na mensagem</b> do cliente — o único carimbo que
+              sobrevive do anúncio até o CRM. Ele só é usado quando aquele código existe em{' '}
+              <b>uma campanha só</b>. Onde o mesmo código roda em mais de uma campanha, o lead cai
+              na linha <i>“não dá para atribuir”</i> em vez de ser chutado para uma delas.
+            </Aviso>
             <Tabela cabecalho={['Campanha', 'Conjuntos', 'Anúncios', 'Ativos hoje', 'Códigos que rodam nela']}>
               {(estrutura.data ?? []).map(e => (
                 <tr key={e.campanha} className="border-b border-border last:border-0">
