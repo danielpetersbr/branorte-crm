@@ -1,7 +1,21 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
+import { EscritorioGestor } from '@/components/EscritorioGestor'
 import { supabase } from '@/lib/supabase'
+import {
+  criarAlertasGestor,
+  criarResumoGestor,
+  escolherVendedorInicial,
+  estaNoExpedienteGestor,
+  formatarMetricaGestor,
+  mesaTemSuperficieClicavelGestor,
+  nomeCanonicoVendedorGestor,
+  normalizarFatorCotaGestor,
+  normalizarMetricaFonteGestor,
+  resolverEstadoFonteGestor,
+  type VendedorGestor,
+} from '@/lib/escritorio-gestor'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Building2, X, MousePointerClick, UserPlus, Move, Check, RotateCw, Pencil } from 'lucide-react'
 
@@ -12,6 +26,11 @@ import { Building2, X, MousePointerClick, UserPlus, Move, Check, RotateCw, Penci
 // ============================================================================
 
 type VendedorLite = { vendedor_nome: string; online: boolean }
+export type CotaVendedorGestor = {
+  parados_topo: number
+  fator_cota: number
+  cortado_por_cota: boolean
+}
 type Pessoa = { nome: string; setor: string | null }
 type Ocupante = { nome: string; tipo: 'vendedor' | 'outro'; online: boolean; setor: string | null }
 type Pos = { x: number; y: number }
@@ -33,6 +52,18 @@ const STATUS_CFG: Record<LiveStatus['status'], { dot: string; label: string; glo
   versao_antiga: { dot: 'bg-amber-400',   label: 'recarregar' },
   desconectado:  { dot: 'bg-red-400',     label: 'desconectado', fade: true },
   desligado:     { dot: 'bg-slate-500',   label: 'desligado',    fade: true },
+}
+
+const STATUS_CURTO: Record<LiveStatus['status'], string> = {
+  ativo: 'trabalhando',
+  ocioso: 'parado',
+  aguardando: 'aguardando',
+  wa_fechado: 'WA fechado',
+  verificar_wa: 'verificar WA',
+  lento: 'lento',
+  versao_antiga: 'recarregar',
+  desconectado: 'offline',
+  desligado: 'desligado',
 }
 
 const VB = { w: 644, h: 642 }
@@ -131,64 +162,6 @@ function fmtDurInativo(min: number): string {
   if (min < 1) return 'agora'
   const h = Math.floor(min / 60), m = Math.round(min % 60)
   return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`
-}
-
-// Critérios do Ranking do dia (ordenação + cor da barra/valor)
-const RANK_METRICAS = [
-  { key: 'atendimentos', label: 'Atend.', icon: '💬', cor: 'text-violet-300', bar: 'bg-violet-400' },
-  { key: 'leads',        label: 'Leads',  icon: '📥', cor: 'text-emerald-300', bar: 'bg-emerald-400' },
-  { key: 'orcamentos',   label: 'Orç.',   icon: '📄', cor: 'text-sky-300',    bar: 'bg-sky-400' },
-  { key: 'vendido',      label: 'Vend.',  icon: '✅', cor: 'text-green-300',  bar: 'bg-green-500' },
-  { key: 'conversao',    label: 'Conv.',  icon: '🎯', cor: 'text-amber-300',  bar: 'bg-amber-400' },
-] as const
-
-// Linha do ranking (dia e mês) — pódio pro top 3, destaque pro líder, consistente entre os dois painéis
-function RankRow({ pos, nome, online, display, val, maxVal, cor, bar, stats }: {
-  pos: number
-  nome: string
-  online?: boolean
-  display: string | number
-  val: number
-  maxVal: number
-  cor: string
-  bar: string
-  stats: Array<{ icon: string; val: number | string; cor?: string; title?: string }>
-}) {
-  const top = pos < 3
-  const tier =
-    pos === 0 ? { row: 'bg-gradient-to-r from-amber-400/[0.14] to-transparent ring-1 ring-amber-400/30 border-l-2 border-l-amber-400', medal: '🥇' } :
-    pos === 1 ? { row: 'bg-gradient-to-r from-slate-300/[0.10] to-transparent ring-1 ring-slate-300/20 border-l-2 border-l-slate-300', medal: '🥈' } :
-    pos === 2 ? { row: 'bg-gradient-to-r from-orange-400/[0.10] to-transparent ring-1 ring-orange-400/20 border-l-2 border-l-orange-400', medal: '🥉' } :
-                { row: 'bg-white/[0.03] border border-white/5', medal: '' }
-  const pctBar = val > 0 ? Math.max((val / maxVal) * 100, 5) : 0
-  return (
-    <div className={`rounded-lg px-2 py-1 ${tier.row}`}>
-      <div className="flex items-center gap-2">
-        <span className="w-6 shrink-0 flex items-center justify-center">
-          {top
-            ? <span className="text-base leading-none">{tier.medal}</span>
-            : <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-white/5 text-ink-faint text-[10.5px] font-bold tabular-nums">{pos + 1}</span>}
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <span className={`font-semibold text-ink truncate flex items-center gap-1 ${pos === 0 ? 'text-[12.5px]' : 'text-[12px]'}`}>
-              {nome}
-              {online && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_1px_rgba(16,185,129,.6)]" title="online" />}
-            </span>
-            <span className={`font-extrabold tabular-nums shrink-0 ${cor} ${pos === 0 ? 'text-[15px]' : 'text-[12px]'}`}>{display}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mt-0.5">
-            <div className={`h-full ${bar} rounded-full transition-all`} style={{ width: `${pctBar}%` }} />
-          </div>
-          <div className="flex items-center gap-2 text-[9.5px] mt-0.5 text-ink-muted">
-            {stats.map((s, k) => (
-              <span key={k} className={s.cor} title={s.title}>{s.icon}{s.val}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // Ícone/cor por etiqueta de destino (feed de atividade ao vivo)
@@ -355,7 +328,13 @@ function FunilCard({ f, nome, below, open }: { f: FunilCardData; nome: string; b
   )
 }
 
-export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[]; live?: Record<string, LiveStatus> }) {
+export function EscritorioMapa({ vendedores, live, efetivo, cotaAtiva, cotaZero }: {
+  vendedores: VendedorLite[]
+  live?: Record<string, LiveStatus>
+  efetivo?: Record<string, CotaVendedorGestor>
+  cotaAtiva: boolean
+  cotaZero: number
+}) {
   const qc = useQueryClient()
   const plantaRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<string | null>(null)
@@ -372,12 +351,19 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const [localRot, setLocalRot] = useState<Record<string, number>>({})
   const [draft, setDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [cardAberto, setCardAberto] = useState<string | null>(null) // funil fixado por clique (mobile)
-  const [rankMetric, setRankMetric] = useState<'atendimentos' | 'leads' | 'orcamentos' | 'vendido' | 'conversao'>('atendimentos')
+  const [vendedorSelecionado, setVendedorSelecionado] = useState<string | null>(null)
+  const [agoraMs, setAgoraMs] = useState(() => Date.now())
+
+  useEffect(() => {
+    const relogio = window.setInterval(() => setAgoraMs(Date.now()), 30_000)
+    return () => window.clearInterval(relogio)
+  }, [])
 
   const { data: dados } = useQuery<{ assign: Record<string, string>; pos: Record<string, Pos>; rot: Record<string, number> }>({
     queryKey: ['escritorio-mesas'],
     queryFn: async () => {
-      const { data } = await supabase.from('escritorio_mesas').select('mesa_id, vendedor_nome, pos_x, pos_y, pos_rot')
+      const { data, error } = await supabase.from('escritorio_mesas').select('mesa_id, vendedor_nome, pos_x, pos_y, pos_rot')
+      if (error) throw error
       const assign: Record<string, string> = {}
       const pos: Record<string, Pos> = {}
       const rot: Record<string, number> = {}
@@ -397,7 +383,8 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const { data: paredes } = useQuery<Array<Rect & { id: number }>>({
     queryKey: ['escritorio-paredes'],
     queryFn: async () => {
-      const { data } = await supabase.from('escritorio_paredes').select('id, x, y, w, h').order('id')
+      const { data, error } = await supabase.from('escritorio_paredes').select('id, x, y, w, h').order('id')
+      if (error) throw error
       return (data ?? []) as Array<Rect & { id: number }>
     },
   })
@@ -446,18 +433,20 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const { data: pessoas } = useQuery<Pessoa[]>({
     queryKey: ['escritorio-pessoas'],
     queryFn: async () => {
-      const { data } = await supabase.from('escritorio_pessoas')
+      const { data, error } = await supabase.from('escritorio_pessoas')
         .select('nome, setor').eq('ativo', true).order('ordem')
+      if (error) throw error
       return (data ?? []) as Pessoa[]
     },
   })
 
   // Orçamentos feitos hoje por vendedor (orcamentos_gerados guarda nome completo → casa por 1º nome)
-  const { data: orcHoje } = useQuery<Record<string, number>>({
+  const { data: orcHoje, isSuccess: orcHojeSuccess, dataUpdatedAt: orcHojeUpdatedAt } = useQuery<Record<string, number>>({
     queryKey: ['escritorio-orcamentos-hoje'],
     queryFn: async () => {
       const inicio = new Date(); inicio.setHours(0, 0, 0, 0)
-      const { data } = await supabase.from('orcamentos_gerados').select('vendedor_nome').gte('created_at', inicio.toISOString())
+      const { data, error } = await supabase.from('orcamentos_gerados').select('vendedor_nome').gte('created_at', inicio.toISOString())
+      if (error) throw error
       const m: Record<string, number> = {}
       for (const r of (data ?? []) as Array<{ vendedor_nome: string | null }>) {
         const k = (r.vendedor_nome ?? '').trim().split(/\s+/)[0]?.toUpperCase()
@@ -470,10 +459,11 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const orcDe = (nome: string) => orcHoje?.[(nome.split(/\s+/)[0] || '').toUpperCase()] ?? 0
 
   // Leads recebidos hoje — MESMA fonte da página Atendimentos (auditoria.atendimentos_por_cliente, created_at hoje)
-  const { data: leadsHoje } = useQuery<Record<string, number>>({
+  const { data: leadsHoje, isSuccess: leadsHojeSuccess, dataUpdatedAt: leadsHojeUpdatedAt } = useQuery<Record<string, number>>({
     queryKey: ['escritorio-leads-hoje'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_leads_hoje')
+      const { data, error } = await supabase.rpc('escritorio_leads_hoje')
+      if (error) throw error
       const m: Record<string, number> = {}
       for (const r of (data ?? []) as Array<{ vend: string; leads: number }>) m[r.vend] = r.leads
       return m
@@ -490,10 +480,11 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   // ligou" está travado (LIGACAO_REGUA_CONFIAVEL=false). O DESFECHO é outro campo e é
   // confiável — dá pra dizer que o cliente atendeu sem saber quem discou.
   type LigProsp = { atendidas: number; ligTotal: number; puxados: number; trabalhados: number }
-  const { data: ligProsp } = useQuery<Record<string, LigProsp>>({
+  const { data: ligProsp, isSuccess: ligProspSuccess, dataUpdatedAt: ligProspUpdatedAt } = useQuery<Record<string, LigProsp>>({
     queryKey: ['escritorio-lig-prospec-hoje'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_ligacoes_prospec_hoje')
+      const { data, error } = await supabase.rpc('escritorio_ligacoes_prospec_hoje')
+      if (error) throw error
       const m: Record<string, LigProsp> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
         m[r.vend] = { atendidas: r.lig_atendidas ?? 0, ligTotal: r.lig_total ?? 0, puxados: r.prospec_puxados ?? 0, trabalhados: r.prospec_trabalhados ?? 0 }
@@ -506,10 +497,11 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
 
   // Funil ao vivo por vendedor (etiquetas do heartbeat via RPC) — QUENTE/NOVO LEAD/etc.
   type Funil = { aberto: number; prospec: number; novoLead: number; tentativa: number; followup: number; quente: number; orcamento: number; vendido: number; perdidos: number; totalChats: number; atendimentos: number; msgs: number }
-  const { data: funil } = useQuery<Record<string, Funil>>({
+  const { data: funil, isSuccess: funilSuccess, dataUpdatedAt: funilUpdatedAt } = useQuery<Record<string, Funil>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_funil_vivo')
+      const { data, error } = await supabase.rpc('escritorio_funil_vivo')
+      if (error) throw error
       const m: Record<string, Funil> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
         m[r.vendedor_nome] = { aberto: r.aberto, prospec: r.prospec, novoLead: r.novo_lead, tentativa: r.tentativa, followup: r.followup, quente: r.quente, orcamento: r.orcamento, vendido: r.vendido, perdidos: r.perdidos, totalChats: r.total_chats, atendimentos: r.atendimentos, msgs: r.msgs }
@@ -537,81 +529,87 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     return inv
   }, [assignMap])
 
-  // ----- Painel do gestor: KPIs do dia, líder e alerta de parados -----
-  const hora = new Date().getHours()
-  const expediente = hora >= 7 && hora < 19
-  const ALERTA_STATUS = ['wa_fechado', 'verificar_wa', 'desconectado']
-  const kpis = useMemo(() => {
-    let leads = 0, orc = 0, quentes = 0, ativos = 0, parados = 0, atend = 0, followup = 0
-    for (const v of vendedores) {
-      const n = v.vendedor_nome
-      leads += leadsDe(n)
-      orc += orcDe(n)
-      quentes += funil?.[n]?.quente ?? 0
-      followup += funil?.[n]?.followup ?? 0
-      atend += funil?.[n]?.atendimentos ?? 0
-      const st = live?.[n]?.status
-      if (st === 'ativo') ativos++
-      if (expediente && st && ALERTA_STATUS.includes(st)) parados++
-    }
-    return { leads, orc, quentes, ativos, total: vendedores.length, parados, atend, followup }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendedores, live, funil, orcHoje, leadsHoje, expediente])
-  const leader = useMemo(() => {
-    let best: string | null = null, bo = -1, bl = -1
-    for (const v of vendedores) {
-      const o = orcDe(v.vendedor_nome), l = leadsDe(v.vendedor_nome)
-      if (o > bo || (o === bo && l > bl)) { best = v.vendedor_nome; bo = o; bl = l }
-    }
-    return (bo > 0 || bl > 0) ? best : null
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendedores, orcHoje, leadsHoje])
+  // ----- Painel do gestor: uma normalização por vendedor, preservando fonte ausente como null -----
+  const expediente = estaNoExpedienteGestor(agoraMs)
+  const vendedoresGestor = useMemo<VendedorGestor[]>(() => vendedores
+    .filter(v => infoDe[v.vendedor_nome]?.tipo !== 'outro')
+    .map(v => {
+      const nome = v.vendedor_nome
+      const f = funil?.[nome]
+      const lp = ligProspDe(nome)
+      const quota = efetivo?.[nome]
+      const ls = live?.[nome]
+      const status = ls?.status ?? 'desligado'
+      return {
+        nome,
+        status,
+        statusLabel: STATUS_CFG[status].label,
+        pingSec: ls?.pingSec ?? null,
+        versao: ls?.versao ?? null,
+        atendimentos: normalizarMetricaFonteGestor(funilSuccess, f?.atendimentos),
+        leads: normalizarMetricaFonteGestor(leadsHojeSuccess, leadsDe(nome)),
+        orcamentos: normalizarMetricaFonteGestor(orcHojeSuccess, orcDe(nome)),
+        ligacoesAtendidas: normalizarMetricaFonteGestor(ligProspSuccess, lp?.atendidas),
+        ligacoesTotal: normalizarMetricaFonteGestor(ligProspSuccess, lp?.ligTotal),
+        followup: normalizarMetricaFonteGestor(funilSuccess, f?.followup),
+        quentes: normalizarMetricaFonteGestor(funilSuccess, f?.quente),
+        carteiraAberta: normalizarMetricaFonteGestor(funilSuccess, f?.aberto),
+        carteiraTotal: normalizarMetricaFonteGestor(funilSuccess, f?.totalChats),
+        parados: quota ? quota.parados_topo : null,
+        fatorCota: normalizarFatorCotaGestor(cotaAtiva, quota?.fator_cota),
+        cortadoPorCota: cotaAtiva && !!quota?.cortado_por_cota,
+      }
+    }), [vendedores, infoDe, live, funil, funilSuccess, ligProsp, ligProspSuccess, efetivo, cotaAtiva, leadsHoje, leadsHojeSuccess, orcHoje, orcHojeSuccess])
+  const vendedorGestorDe = useMemo(() => Object.fromEntries(vendedoresGestor.map(v => [v.nome, v])), [vendedoresGestor])
+  const alertasGestor = useMemo(
+    () => criarAlertasGestor(vendedoresGestor, { expediente, cotaAtiva, cotaZero }),
+    [vendedoresGestor, expediente, cotaAtiva, cotaZero],
+  )
+  const vendedoresEmAtencao = useMemo(
+    () => new Set(alertasGestor.filter(alerta => alerta.nivel !== 'positivo').map(alerta => alerta.vendedor)),
+    [alertasGestor],
+  )
+  const resumoGestor = useMemo(() => criarResumoGestor(vendedoresGestor, alertasGestor), [vendedoresGestor, alertasGestor])
 
-  // Ranking do dia: vendedores com todas as métricas; ordena pelo critério escolhido (rankMetric).
-  const ranking = useMemo(() => {
-    return vendedores
-      .map(v => {
-        const n = v.vendedor_nome
-        const f = funil?.[n]
-        const vendido = f?.vendido ?? 0, perdidos = f?.perdidos ?? 0
-        return {
-          nome: n, online: v.online,
-          atendimentos: f?.atendimentos ?? 0,
-          leads: leadsDe(n),
-          orcamentos: orcDe(n),
-          aberto: f?.aberto ?? 0,
-          quente: f?.quente ?? 0,
-          vendido, perdidos,
-          conversao: vendido + perdidos > 0 ? vendido / (vendido + perdidos) : 0,
-          msgs: f?.msgs ?? 0,
-        }
-      })
-      .sort((a, b) => (b[rankMetric] as number) - (a[rankMetric] as number) || b.atendimentos - a.atendimentos)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendedores, funil, orcHoje, leadsHoje, rankMetric])
+  useEffect(() => {
+    setVendedorSelecionado(atual => {
+      if (atual && vendedoresGestor.some(vendedor => vendedor.nome === atual)) return atual
+      return escolherVendedorInicial(vendedoresGestor, alertasGestor)
+    })
+  }, [vendedoresGestor, alertasGestor])
 
-  // Ranking do MÊS — atend/leads/orçamentos agregados no mês corrente (RPC escritorio_ranking_mes).
-  const { data: rankingMesRaw } = useQuery<Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>>({
+  // Fonte mensal — atend/leads/orçamentos agregados no mês corrente (RPC escritorio_ranking_mes).
+  const { data: rankingMesRaw, isSuccess: rankingMesSuccess, isError: rankingMesError, dataUpdatedAt: rankingMesUpdatedAt } = useQuery<Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>>({
     queryKey: ['escritorio-ranking-mes'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_ranking_mes')
+      const { data, error } = await supabase.rpc('escritorio_ranking_mes')
+      if (error) throw error
       return (data ?? []) as Array<{ vend: string; atendimentos: number; leads: number; orcamentos: number }>
     },
     refetchInterval: 120_000,
   })
-  const [rankMetricMes, setRankMetricMes] = useState<'atendimentos' | 'leads' | 'orcamentos'>('atendimentos')
+
+  const rankingMesEstado = resolverEstadoFonteGestor(rankingMesSuccess, rankingMesError)
   const rankingMes = useMemo(() => {
-    const online = new Set(vendedores.filter(v => v.online).map(v => (v.vendedor_nome.split(/\s+/)[0] || '').toUpperCase()))
-    return [...(rankingMesRaw ?? [])]
-      .map(r => ({ ...r, online: online.has((r.vend || '').toUpperCase()) }))
-      .sort((a, b) => (b[rankMetricMes] as number) - (a[rankMetricMes] as number) || b.atendimentos - a.atendimentos)
-  }, [rankingMesRaw, vendedores, rankMetricMes])
+    if (!rankingMesSuccess) return []
+    const nomesGestor = vendedoresGestor.map(vendedor => vendedor.nome)
+    return (rankingMesRaw ?? []).flatMap(r => {
+      const nome = nomeCanonicoVendedorGestor(r.vend, nomesGestor)
+      return nome ? [{
+        nome,
+        atendimentos: r.atendimentos,
+        leads: r.leads,
+        orcamentos: r.orcamentos,
+      }] : []
+    })
+  }, [rankingMesRaw, rankingMesSuccess, vendedoresGestor])
 
   // Último heartbeat (sync) de cada vendedor — pra contar há quanto tempo está inativo (vermelho).
-  const { data: ultimoSync } = useQuery<Record<string, number>>({
+  const { data: ultimoSync, isSuccess: ultimoSyncSuccess } = useQuery<Record<string, number>>({
     queryKey: ['escritorio-ultimo-sync'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_ultimo_sync')
+      const { data, error } = await supabase.rpc('escritorio_ultimo_sync')
+      if (error) throw error
       const m: Record<string, number> = {}
       for (const r of (data ?? []) as Array<{ vendedor_nome: string; ultimo_sync: string }>) {
         if (r.vendedor_nome && r.ultimo_sync) m[r.vendedor_nome] = new Date(r.ultimo_sync).getTime()
@@ -620,6 +618,23 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
     },
     refetchInterval: 60_000,
   })
+
+  const ultimaAtualizacaoMs = useMemo(() => {
+    const heartbeatMaisRecente = ultimoSyncSuccess ? Math.max(0, ...Object.values(ultimoSync ?? {})) : 0
+    const fontes = [
+      funilSuccess ? funilUpdatedAt : 0,
+      leadsHojeSuccess ? leadsHojeUpdatedAt : 0,
+      orcHojeSuccess ? orcHojeUpdatedAt : 0,
+      ligProspSuccess ? ligProspUpdatedAt : 0,
+      rankingMesSuccess ? rankingMesUpdatedAt : 0,
+      heartbeatMaisRecente,
+    ]
+    const maisRecente = Math.max(...fontes)
+    return maisRecente > 0 ? maisRecente : null
+  }, [funilSuccess, funilUpdatedAt, leadsHojeSuccess, leadsHojeUpdatedAt, orcHojeSuccess, orcHojeUpdatedAt, ligProspSuccess, ligProspUpdatedAt, rankingMesSuccess, rankingMesUpdatedAt, ultimoSync, ultimoSyncSuccess])
+  const ultimaAtualizacaoLabel = ultimaAtualizacaoMs == null
+    ? '—'
+    : new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(ultimaAtualizacaoMs)
 
   function posDe(id: string): Pos {
     if (localPos[id]) return localPos[id]
@@ -716,9 +731,12 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   }
   function clicarMesa(mesaId: string) {
     if (selected) { soltarNaMesa(mesaId, selected); return }
-    // clique no vendedor (sem ninguém selecionado) = fixa/desfixa o card de funil (pra mobile)
+    // No modo normal, a mesa controla o detalhe gerencial e mantém o FunilCard fixável no mobile.
     const nm = assignMap[mesaId]
-    if (nm && infoDe[nm]?.tipo !== 'outro') setCardAberto(c => (c === nm ? null : nm))
+    if (nm && infoDe[nm]?.tipo !== 'outro') {
+      setVendedorSelecionado(nm)
+      setCardAberto(c => (c === nm ? null : nm))
+    }
   }
 
   // Modo posicionar: arrasta a estação livremente e salva ao soltar.
@@ -798,16 +816,17 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
 
   const naoSentados = ocupantes.filter(o => !sentadoEm[o.nome])
 
-  return (
+  const mapaEscritorio: ReactNode = (
     <Card className="p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
           <h2 className="text-sm font-semibold text-ink flex items-center gap-2 flex-wrap">
             <Building2 className="h-4 w-4 text-accent" />
-            Escritório — quem senta em cada mesa
+            Escritório do time
             <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-300 px-1.5 py-0.5 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> AO VIVO
             </span>
+            <span className="text-[9px] font-medium text-ink-faint">Última atualização: {ultimaAtualizacaoLabel}</span>
           </h2>
           <p className="text-[10px] text-ink-muted mt-0.5 flex items-center gap-1">
             <MousePointerClick className="h-3 w-3" />
@@ -821,14 +840,16 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {modo === 'paredes' && (
             <>
-              <button onClick={() => { if (confirm('Copiar o desenho padrão atual pra você editar (substitui o que tiver)?')) seedPadrao.mutate() }}
+              <button type="button" onClick={() => { if (confirm('Copiar o desenho padrão atual pra você editar (substitui o que tiver)?')) seedPadrao.mutate() }}
                 className="text-[10px] px-2 py-1 rounded-full border border-border text-ink-muted hover:border-accent hover:text-accent">partir do padrão</button>
-              <button onClick={() => { if (confirm('Apagar TODAS as paredes desenhadas?')) limparParedes.mutate() }}
+              <button type="button" onClick={() => { if (confirm('Apagar TODAS as paredes desenhadas?')) limparParedes.mutate() }}
                 className="text-[10px] px-2 py-1 rounded-full border border-border text-ink-muted hover:border-red-400 hover:text-red-400">limpar tudo</button>
             </>
           )}
           <button
+            type="button"
             onClick={() => { setModo(m => m === 'paredes' ? 'normal' : 'paredes'); setSelected(null) }}
+            aria-pressed={modo === 'paredes'}
             className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border font-semibold transition-colors ${
               modo === 'paredes' ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:border-accent hover:text-accent'
             }`}
@@ -836,7 +857,9 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             {modo === 'paredes' ? <><Check className="h-3 w-3" /> Concluir</> : <><Pencil className="h-3 w-3" /> Paredes</>}
           </button>
           <button
+            type="button"
             onClick={() => { setModo(m => m === 'mesas' ? 'normal' : 'mesas'); setSelected(null) }}
+            aria-pressed={editLayout}
             className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border font-semibold transition-colors ${
               editLayout ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:border-accent hover:text-accent'
             }`}
@@ -845,24 +868,6 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           </button>
         </div>
       </div>
-
-      {/* Painel do gestor — KPIs do dia */}
-      {modo === 'normal' && (
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Leads recebidos hoje pelo time">📥 {kpis.leads}<span className="text-ink-faint font-normal text-[10px] ml-0.5">leads</span></span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-sky-500/12 ring-1 ring-sky-400/30 text-sky-200" title="Orçamentos feitos hoje pelo time">📄 {kpis.orc}<span className="text-ink-faint font-normal text-[10px] ml-0.5">orçam.</span></span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-violet-500/12 ring-1 ring-violet-400/30 text-violet-200" title="Atendimentos hoje — chats trabalhados pelo time">💬 {kpis.atend}<span className="text-ink-faint font-normal text-[10px] ml-0.5">atend.</span></span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-indigo-500/12 ring-1 ring-indigo-400/30 text-indigo-200" title="Contatos na etiqueta FOLLOW UP do time">🔔 {kpis.followup}<span className="text-ink-faint font-normal text-[10px] ml-0.5">follow up</span></span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-orange-500/12 ring-1 ring-orange-400/30 text-orange-200" title="Leads QUENTES no funil do time (cobre quem deixou esfriar)">🔥 {kpis.quentes}<span className="text-ink-faint font-normal text-[10px] ml-0.5">quentes</span></span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-emerald-500/12 ring-1 ring-emerald-400/30 text-emerald-200" title="Vendedores ativos agora / total">🟢 {kpis.ativos}/{kpis.total}<span className="text-ink-faint font-normal text-[10px] ml-0.5">ativos</span></span>
-          {kpis.parados > 0 && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-red-500/15 ring-1 ring-red-400/40 text-red-200 animate-pulse" title="Em horário comercial com WhatsApp fechado/desconectado — liga pra eles">🚨 {kpis.parados}<span className="text-red-200/80 font-normal text-[10px] ml-0.5">parados</span></span>
-          )}
-          {leader && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold bg-amber-500/15 ring-1 ring-amber-400/40 text-amber-200 ml-auto" title="Líder do dia — mais orçamentos (depois leads)">👑 {nomeCurto(leader)}</span>
-          )}
-        </div>
-      )}
 
       {/* Paleta de pessoas (arrastáveis) — escondida no modo posicionar */}
       {!editLayout && (
@@ -875,31 +880,38 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             return (
               <span
                 key={o.nome}
-                draggable
-                onDragStart={e => { e.dataTransfer.setData('text/plain', o.nome); setDragging(o.nome) }}
-                onDragEnd={() => setDragging(null)}
-                onClick={() => setSelected(isSel ? null : o.nome)}
-                title={sentado ? `Já está na ${sentadoEm[o.nome]} — arraste pra mudar` : 'Arraste pra uma mesa'}
-                className={`group inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border text-[11px] font-semibold cursor-grab active:cursor-grabbing transition-all ${
+                className={`group inline-flex items-center rounded-full border text-[11px] font-semibold transition-all ${
                   isSel ? 'border-accent bg-accent/15 text-accent ring-1 ring-accent' :
                   sentado ? 'border-border bg-surface-2/60 text-ink-muted opacity-70' :
                   isOutro ? 'border-purple-400/40 bg-surface text-ink hover:border-purple-400' :
                   'border-accent/40 bg-surface text-ink hover:border-accent'
                 }`}
               >
-                <Avatar name={o.nome} size="xs" />
-                {o.nome}
-                {isOutro && o.setor && (
-                  <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 leading-none">{o.setor.toUpperCase()}</span>
-                )}
-                {sentado && !isOutro && <span className="text-[8px] text-emerald-400">●</span>}
+                <button
+                  type="button"
+                  draggable
+                  onDragStart={e => { e.dataTransfer.setData('text/plain', o.nome); setDragging(o.nome) }}
+                  onDragEnd={() => setDragging(null)}
+                  onClick={() => setSelected(isSel ? null : o.nome)}
+                  aria-pressed={isSel}
+                  aria-label={`${isSel ? 'Desmarcar' : 'Selecionar'} ${o.nome}${sentado ? `, sentado na ${sentadoEm[o.nome]}` : ', sem mesa'}`}
+                  className={`inline-flex items-center gap-1.5 py-1 pl-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isOutro ? 'pr-1' : 'pr-2'} cursor-grab active:cursor-grabbing`}
+                >
+                  <Avatar name={o.nome} size="xs" />
+                  {o.nome}
+                  {isOutro && o.setor && (
+                    <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-purple-500/20 text-purple-300 leading-none">{o.setor.toUpperCase()}</span>
+                  )}
+                  {sentado && !isOutro && <span className="text-[8px] text-emerald-400" aria-hidden="true">●</span>}
+                </button>
                 {isOutro && (
                   <button
-                    onClick={e => { e.stopPropagation(); if (confirm(`Remover ${o.nome} do escritório?`)) removerPessoa.mutate(o.nome) }}
-                    title="Remover do cadastro"
-                    className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-red-400 transition-opacity"
+                    type="button"
+                    onClick={() => { if (confirm(`Remover ${o.nome} do escritório?`)) removerPessoa.mutate(o.nome) }}
+                    aria-label={`Remover ${o.nome} do cadastro`}
+                    className="mr-1 opacity-0 transition-opacity text-ink-faint hover:text-red-400 group-hover:opacity-100 focus:opacity-100"
                   >
-                    <X className="h-2.5 w-2.5" />
+                    <X className="h-2.5 w-2.5" aria-hidden="true" />
                   </button>
                 )}
               </span>
@@ -911,19 +923,21 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
               <input
                 autoFocus value={novoNome} onChange={e => setNovoNome(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && novoNome.trim()) addPessoa.mutate({ nome: novoNome, setor: novoSetor }) }}
+                aria-label="Nome da nova pessoa"
                 placeholder="Nome" className="w-20 bg-transparent text-[11px] text-ink placeholder:text-ink-faint focus:outline-none"
               />
               <input
                 value={novoSetor} onChange={e => setNovoSetor(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && novoNome.trim()) addPessoa.mutate({ nome: novoNome, setor: novoSetor }) }}
+                aria-label="Setor da nova pessoa"
                 placeholder="Setor" className="w-16 bg-transparent text-[11px] text-ink placeholder:text-ink-faint focus:outline-none border-l border-border pl-1"
               />
-              <button onClick={() => addPessoa.mutate({ nome: novoNome, setor: novoSetor })} disabled={!novoNome.trim()}
+              <button type="button" onClick={() => addPessoa.mutate({ nome: novoNome, setor: novoSetor })} disabled={!novoNome.trim()}
                 className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/20 text-accent disabled:opacity-40">ok</button>
-              <button onClick={() => { setAddOpen(false); setNovoNome(''); setNovoSetor('') }} className="text-ink-faint hover:text-ink"><X className="h-3 w-3" /></button>
+              <button type="button" onClick={() => { setAddOpen(false); setNovoNome(''); setNovoSetor('') }} aria-label="Cancelar nova pessoa" className="text-ink-faint hover:text-ink"><X className="h-3 w-3" aria-hidden="true" /></button>
             </span>
           ) : (
-            <button onClick={() => setAddOpen(true)}
+            <button type="button" onClick={() => setAddOpen(true)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-dashed border-border text-[11px] text-ink-muted hover:border-accent hover:text-accent">
               <UserPlus className="h-3 w-3" /> pessoa
             </button>
@@ -935,9 +949,6 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         </div>
       )}
 
-      {/* Planta + ranking do dia, lado a lado */}
-      <div className="flex flex-col lg:flex-row gap-3 items-start">
-      <div className="flex-1 min-w-0 w-full">
       {/* Planta (vista de cima) */}
       <div
         ref={plantaRef}
@@ -987,25 +998,33 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
           const info = nome ? infoDe[nome] : undefined
           const isOutro = info?.tipo === 'outro'
           const ls = nome && !isOutro ? live?.[nome] : undefined
-          const cfg = ls ? STATUS_CFG[ls.status] : undefined
+          const cfg = !isOutro ? STATUS_CFG[ls?.status ?? 'desligado'] : undefined
+          const gestor = nome && !isOutro ? vendedorGestorDe[nome] : undefined
           const fade = !!cfg?.fade && modo === 'normal'
-          const alerta = !isOutro && modo === 'normal' && expediente && !!ls && ALERTA_STATUS.includes(ls.status)
-          const quente = !isOutro && nome ? (funil?.[nome]?.quente ?? 0) : 0
+          const alerta = !isOutro && modo === 'normal' && !!nome && vendedoresEmAtencao.has(nome)
+          const selecionadoMesa = !isOutro && nome === vendedorSelecionado
           const inativoMin = (!isOutro && nome && ls?.status && OFFLINE_STATUSES.has(ls.status) && ultimoSync?.[nome])
-            ? minutosUteisInativo(ultimoSync[nome], Date.now()) : null
+            ? minutosUteisInativo(ultimoSync[nome], agoraMs) : null
           const isOver = overMesa === m.id
           const p = posDe(m.id)
           const left = pct(p.x - DESK_W / 2, VB.w)
           const top = pct(p.y - DESK_H / 2, VB.h)
           const width = pct(DESK_W, VB.w)
           const height = pct(DESK_H, VB.h)
+          const tipoOcupante = nome ? (isOutro ? 'outro' : 'vendedor') : null
+          const superficieClicavel = mesaTemSuperficieClicavelGestor(modo, tipoOcupante, !!selected)
+          const rotacaoMesa = { transform: `rotate(${rotDe(m.id)}deg)`, transition: girando === m.id ? 'none' : 'transform .12s' }
+          const conteudoMesa = (
+            <div className="w-full h-full" style={rotacaoMesa}>
+              <Workstation tipo={isOutro ? 'outro' : 'vendedor'} empty={!nome} name={nome ?? m.id} ativo={ls?.status === 'ativo'} />
+            </div>
+          )
           return (
             <div
               key={m.id}
               onDragOver={editLayout ? undefined : e => { e.preventDefault(); setOverMesa(m.id) }}
               onDragLeave={editLayout ? undefined : () => setOverMesa(o => (o === m.id ? null : o))}
               onDrop={editLayout ? undefined : e => { e.preventDefault(); soltarNaMesa(m.id, e.dataTransfer.getData('text/plain') || dragging) }}
-              onClick={editLayout ? undefined : () => clicarMesa(m.id)}
               onPointerDown={editLayout ? e => iniciarMover(e, m.id) : undefined}
               title={nome
                 ? (isOutro
@@ -1017,24 +1036,48 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                 isOver ? 'ring-2 ring-accent bg-accent/15 scale-105 z-10' :
                 nome ? 'hover:bg-white/5' :
                 'border border-dashed border-ink/20 hover:border-accent/60 hover:bg-accent/5 cursor-pointer'
-              } ${alerta ? 'ring-2 ring-red-500/70 animate-pulse' : ''}`}
+              } ${alerta ? 'ring-2 ring-red-500/70 animate-pulse' : ''} ${selecionadoMesa ? 'outline outline-2 outline-accent outline-offset-2' : ''}`}
               style={{ left, top, width, height, touchAction: editLayout ? 'none' : undefined, pointerEvents: modo === 'paredes' ? 'none' : undefined }}
             >
-              <div
-                draggable={!!nome && !editLayout}
-                onDragStart={e => { if (nome && !editLayout) { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
-                onDragEnd={() => setDragging(null)}
-                className={`w-full h-full transition-opacity ${nome && !editLayout ? 'cursor-grab active:cursor-grabbing' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
-                style={{ transform: `rotate(${rotDe(m.id)}deg)`, transition: girando === m.id ? 'none' : 'transform .12s' }}
-              >
-                <Workstation tipo={isOutro ? 'outro' : 'vendedor'} empty={!nome} name={nome ?? m.id} ativo={ls?.status === 'ativo'} />
-              </div>
+              {superficieClicavel ? (
+                <button
+                  type="button"
+                  draggable={!!nome}
+                  onDragStart={e => { if (nome) { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
+                  onDragEnd={() => setDragging(null)}
+                  onClick={() => clicarMesa(m.id)}
+                  aria-pressed={nome && !isOutro ? selecionadoMesa : undefined}
+                  aria-label={nome && !isOutro
+                    ? `${nome}; status ${gestor?.statusLabel ?? 'desligado'}; Atendimentos hoje: ${formatarMetricaGestor(gestor?.atendimentos ?? null)}; Leads recebidos hoje: ${formatarMetricaGestor(gestor?.leads ?? null)}; Orçamentos hoje: ${formatarMetricaGestor(gestor?.orcamentos ?? null)}`
+                    : nome
+                      ? `Mesa ${idx + 1}, ocupada por ${nome}${info?.setor ? `, setor ${info.setor}` : ''}`
+                      : `Mesa ${idx + 1}, vazia`}
+                  className={`w-full h-full border-0 bg-transparent p-0 transition-opacity focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${nome ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${fade ? 'opacity-40 grayscale' : ''}`}
+                >
+                  {conteudoMesa}
+                </button>
+              ) : (
+                <div
+                  draggable={!!nome && modo === 'normal'}
+                  onDragStart={e => { if (nome && modo === 'normal') { e.dataTransfer.setData('text/plain', nome); setDragging(nome) } }}
+                  onDragEnd={() => setDragging(null)}
+                  role={modo === 'normal' && isOutro ? 'group' : undefined}
+                  tabIndex={modo === 'normal' && isOutro ? 0 : undefined}
+                  aria-label={modo === 'normal' && isOutro && nome
+                    ? `Mesa ${idx + 1}, ocupada por ${nome}${info?.setor ? `, setor ${info.setor}` : ''}. Arraste para mover.`
+                    : undefined}
+                  className={`w-full h-full transition-opacity ${nome && modo === 'normal' ? 'cursor-grab active:cursor-grabbing' : ''} ${editLayout ? 'pointer-events-none' : ''} ${isOutro ? 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent' : ''} ${fade ? 'opacity-40 grayscale' : ''}`}
+                >
+                  {conteudoMesa}
+                </div>
+              )}
 
               {/* Handle de girar (só no modo posicionar) */}
               {editLayout && (
                 <button
+                  type="button"
                   onPointerDown={e => iniciarGirar(e, m.id)}
-                  title="Girar a mesa"
+                  aria-label={`Girar mesa ${idx + 1}`}
                   /* `text-black` fixo não serve aos dois temas: o accent claro é
                      escuro (preto dá 3,95:1) e o escuro é claro (branco dá 3,20:1).
                      Invertido por tema: 5,31:1 no claro, 6,56:1 no escuro. */
@@ -1046,51 +1089,30 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
 
               {nome ? (
                 <>
-                  {!editLayout && leader === nome && (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[15px] leading-none z-20" title="Líder do dia (mais orçamentos, depois leads)">👑</span>
-                  )}
                   {/* status (vendedor) ou setor (outro) no topo-direito */}
                   {isOutro ? (
-                    <span className="absolute -top-1.5 right-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/50 ring-1 ring-purple-300/40 text-purple-50 leading-none">
+                    <span className="pointer-events-none absolute -top-1.5 right-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/50 ring-1 ring-purple-300/40 text-purple-50 leading-none">
                       {abreviaSetor(info?.setor ?? null)}
                     </span>
                   ) : (
-                    <span
-                      className={`absolute top-1 right-1 h-3 w-3 rounded-full ring-2 ring-black/50 ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
-                      title={cfg?.label ?? 'sem sinal'}
-                    />
+                    <span className="pointer-events-none absolute -top-1.5 right-0 inline-flex items-center gap-1 rounded bg-black/75 px-1 py-0.5 text-[7px] font-bold leading-none text-white ring-1 ring-white/15">
+                      <span
+                        className={`h-2 w-2 rounded-full ${cfg?.dot ?? 'bg-slate-500'} ${cfg?.glow ? 'shadow-[0_0_8px_2px_rgba(16,185,129,0.8)] animate-pulse' : ''}`}
+                        aria-hidden="true"
+                      />
+                      {STATUS_CURTO[ls?.status ?? 'desligado']}
+                    </span>
                   )}
                   {/* nome + números do dia (sempre visíveis) */}
-                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 flex flex-col items-center gap-0.5 max-w-[170%]">
+                  <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -bottom-1.5 flex flex-col items-center gap-0.5 max-w-[170%]">
                     <span className="px-2 py-0.5 rounded-md bg-black/60 ring-1 ring-white/10 text-[11px] font-bold text-white truncate leading-tight max-w-full">
                       {nomeCurto(nome)}
                     </span>
                     {!isOutro && !editLayout && (
-                      // Badge fixo = só números do DIA (leads/orç/atend/follow/quente).
-                      // A carteira (👥 aberto) saiu daqui pra não dominar/estourar — fica no hover (FunilCard).
-                      <span className="flex items-stretch rounded-md bg-black/75 ring-1 ring-white/10 overflow-hidden text-[10.5px] font-extrabold leading-none divide-x divide-white/10 shadow-md shadow-black/40 max-w-full">
-                        <span className="px-1.5 py-1 text-emerald-300 flex items-center gap-0.5" title="leads que chegaram hoje (fonte: página Atendimentos)">📥{leadsDe(nome)}</span>
-                        <span className="px-1.5 py-1 text-sky-300 flex items-center gap-0.5" title="orçamentos feitos hoje">📄{orcDe(nome)}</span>
-                        <span className="px-1.5 py-1 text-violet-300 flex items-center gap-0.5" title="atendimentos hoje (chats trabalhados no dia)">💬{funil?.[nome]?.atendimentos ?? 0}</span>
-                        <span className="px-1.5 py-1 text-indigo-300 flex items-center gap-0.5" title="contatos na etiqueta FOLLOW UP">🔔{funil?.[nome]?.followup ?? 0}</span>
-                        {/* Ligações ATENDIDAS hoje. Não é "ligações que ele fez": a direção da
-                            chamada é errada em 7% dos casos (medido), então dizer "fez" seria
-                            cobrar a pessoa errada. Atendida = Completed + AcceptedElsewhere —
-                            esta última é atendida NO CELULAR, e ignorá-la puniria quem atende
-                            no telefone. */}
-                        <span className="px-1.5 py-1 text-teal-300 flex items-center gap-0.5"
-                              title={`ligações ATENDIDAS pelo cliente hoje: ${ligProspDe(nome)?.atendidas ?? 0} de ${ligProspDe(nome)?.ligTotal ?? 0} chamadas.\n\nConta "atendida no celular" também.\nNão diz quem discou — a direção da chamada não é confiável (7% vêm trocadas).`}>
-                          📞{ligProspDe(nome)?.atendidas ?? 0}
-                        </span>
-                        {/* Prospecção puxada hoje. Mostro TRABALHADOS (quem ele encostou) e o
-                            total puxado só no tooltip: medido em 19/08, o LUCAS puxou 43 e
-                            devolveu 42 clicando PRÓXIMO. Número cheio faria quem mais descarta
-                            parecer quem mais produz. */}
-                        <span className="px-1.5 py-1 text-amber-300 flex items-center gap-0.5"
-                              title={`prospecção de hoje: ${ligProspDe(nome)?.trabalhados ?? 0} contato(s) trabalhado(s) de ${ligProspDe(nome)?.puxados ?? 0} puxado(s).\n\nTrabalhado = ele encostou no contato (mandou mensagem/agiu).\nPuxado sem trabalhar = clicou PRÓXIMO e devolveu pro pool.`}>
-                          🎯{ligProspDe(nome)?.trabalhados ?? 0}<span className="opacity-45 font-bold">/{ligProspDe(nome)?.puxados ?? 0}</span>
-                        </span>
-                        {quente > 0 && <span className="px-1.5 py-1 text-orange-300 flex items-center gap-0.5" title="leads quentes no funil">🔥{quente}</span>}
+                      <span className="flex items-stretch rounded-md bg-black/75 ring-1 ring-white/10 overflow-hidden text-[8px] font-extrabold leading-none divide-x divide-white/10 shadow-md shadow-black/40 max-w-[180%] whitespace-nowrap">
+                        <span className="px-1 py-1 text-violet-300">Atend. {formatarMetricaGestor(gestor?.atendimentos ?? null)}</span>
+                        <span className="px-1 py-1 text-emerald-300">Leads {formatarMetricaGestor(gestor?.leads ?? null)}</span>
+                        <span className="px-1 py-1 text-sky-300">Orç. {formatarMetricaGestor(gestor?.orcamentos ?? null)}</span>
                       </span>
                     )}
                     {!isOutro && !editLayout && inativoMin != null && (
@@ -1101,9 +1123,10 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                   </div>
                   {!editLayout && (
                     <button
+                      type="button"
                       onClick={e => { e.stopPropagation(); limpar.mutate(m.id) }}
-                      title="Tirar da mesa"
-                      className="absolute top-0 left-0 opacity-0 group-hover:opacity-100 text-ink-faint hover:text-red-400 bg-surface/70 rounded-full transition-opacity"
+                      aria-label={`Tirar ${nome} da mesa ${idx + 1}`}
+                      className="absolute top-0 left-0 z-30 opacity-0 group-hover:opacity-100 focus:opacity-100 text-ink-faint hover:text-red-400 bg-surface/70 rounded-full transition-opacity"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -1113,7 +1136,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
                   )}
                 </>
               ) : (
-                <span className="absolute inset-0 flex items-center justify-center text-[15px] font-bold text-ink/30">{idx + 1}</span>
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[15px] font-bold text-ink/30">{idx + 1}</span>
               )}
             </div>
           )
@@ -1122,108 +1145,31 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         {/* Botões de apagar parede (modo paredes, só nas customizadas) */}
         {modo === 'paredes' && temCustom && (paredes ?? []).map(p => (
           <button
+            type="button"
             key={`del-${p.id}`}
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); delParede.mutate(p.id) }}
-            title="Apagar esta parede"
+            aria-label="Apagar esta parede"
             className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] leading-none shadow ring-1 ring-black/40 z-30 hover:bg-red-600"
             style={{ left: pct(p.x, VB.w), top: pct(p.y, VB.h) }}
           >×</button>
         ))}
       </div>
-      </div>{/* /flex-1 (mapa) */}
-
-      {/* Coluna de RANKING do dia — ao lado do mapa */}
-      <aside className="w-full lg:w-72 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
-        <div className="flex items-baseline justify-between gap-2 mb-2">
-          <h3 className="text-sm font-bold text-ink">🏆 Ranking do dia</h3>
-          {ranking[0] && <span className="text-[10px] text-ink-faint truncate">líder <span className="text-amber-300 font-semibold">{ranking[0].nome}</span></span>}
-        </div>
-        {/* critério de ordenação */}
-        <div className="flex flex-wrap gap-1 mb-2">
-          {RANK_METRICAS.map(m => (
-            <button key={m.key} onClick={() => setRankMetric(m.key)}
-              className={`text-[10px] px-1.5 py-1 rounded-md border font-semibold transition-colors ${rankMetric === m.key ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:text-ink'}`}
-              title={`Ordenar por ${m.label}`}>
-              {m.icon} {m.label}
-            </button>
-          ))}
-        </div>
-        <div className="space-y-1">
-          {ranking.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem vendedores.</div>}
-          {(() => {
-            const cfg = RANK_METRICAS.find(m => m.key === rankMetric)!
-            const maxVal = Math.max(1, ...ranking.map(r => r[rankMetric] as number))
-            return ranking.map((r, i) => {
-              const val = r[rankMetric] as number
-              const display = rankMetric === 'conversao' ? `${Math.round(val * 100)}%` : val
-              return (
-                <RankRow key={r.nome} pos={i} nome={r.nome} online={r.online} display={display} val={val} maxVal={maxVal} cor={cfg.cor} bar={cfg.bar}
-                  stats={[
-                    { icon: '💬', val: r.atendimentos, title: 'atendimentos hoje' },
-                    { icon: '📥', val: r.leads, title: 'leads hoje' },
-                    { icon: '📄', val: r.orcamentos, title: 'orçamentos hoje' },
-                    { icon: '✅', val: r.vendido, title: 'vendidos' },
-                    ...(r.quente > 0 ? [{ icon: '🔥', val: r.quente, cor: 'text-orange-300', title: 'leads quentes' }] : []),
-                  ]}
-                />
-              )
-            })
-          })()}
-        </div>
-
-      </aside>
-
-      {/* Coluna de RANKING do mês — ao lado do ranking do dia */}
-      <aside className="w-full lg:w-72 shrink-0 rounded-xl border border-border bg-surface-2/30 p-3">
-        <div className="flex items-baseline justify-between gap-2 mb-2">
-          <h3 className="text-sm font-bold text-ink">📅 Ranking do mês</h3>
-          {rankingMes[0] && <span className="text-[10px] text-ink-faint truncate">líder <span className="text-amber-300 font-semibold">{rankingMes[0].vend}</span></span>}
-        </div>
-        <div className="flex flex-wrap gap-1 mb-2">
-          {RANK_METRICAS.filter(m => m.key === 'atendimentos' || m.key === 'leads' || m.key === 'orcamentos').map(m => (
-            <button key={m.key} onClick={() => setRankMetricMes(m.key as 'atendimentos' | 'leads' | 'orcamentos')}
-              className={`text-[10px] px-1.5 py-1 rounded-md border font-semibold transition-colors ${rankMetricMes === m.key ? 'border-accent bg-accent/15 text-accent' : 'border-border text-ink-muted hover:text-ink'}`}
-              title={`Ordenar por ${m.label}`}>
-              {m.icon} {m.label}
-            </button>
-          ))}
-        </div>
-        <div className="space-y-1">
-          {rankingMes.length === 0 && <div className="text-[11px] text-ink-faint text-center py-4">Sem dados do mês.</div>}
-          {(() => {
-            const cfg = RANK_METRICAS.find(m => m.key === rankMetricMes)!
-            const maxVal = Math.max(1, ...rankingMes.map(r => r[rankMetricMes] as number))
-            return rankingMes.map((r, i) => {
-              const val = r[rankMetricMes] as number
-              return (
-                <RankRow key={r.vend} pos={i} nome={r.vend} online={r.online} display={val} val={val} maxVal={maxVal} cor={cfg.cor} bar={cfg.bar}
-                  stats={[
-                    { icon: '💬', val: r.atendimentos, title: 'atendimentos no mês' },
-                    { icon: '📥', val: r.leads, title: 'leads no mês' },
-                    { icon: '📄', val: r.orcamentos, title: 'orçamentos no mês' },
-                  ]}
-                />
-              )
-            })
-          })()}
-        </div>
-      </aside>
-      </div>{/* /flex (mapa + ranking) */}
-
-      {/* Legenda do estado ao vivo */}
-      {modo === 'normal' && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[10px] text-ink-muted justify-center">
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_5px_1px_rgba(16,185,129,.7)]" /> trabalhando</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-yellow-300" /> aberto, parado</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> aguardando WA</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-orange-400" /> WA fechado</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> lento</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> desconectado</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" /> desligado</span>
-          <span className="flex items-center gap-1.5 text-ink-faint flex-wrap">por boneco (hoje): <span className="text-emerald-300 font-bold">📥leads</span> · <span className="text-sky-300 font-bold">📄orçam.</span> · <span className="text-violet-300 font-bold">💬atend.</span> · <span className="text-indigo-300 font-bold">🔔follow up</span> · <span className="text-orange-300 font-bold">🔥quentes</span> · <span className="text-cyan-300">👥carteira (passe o mouse)</span></span>
-        </div>
-      )}
     </Card>
+  )
+
+  return (
+    <div className="space-y-3">
+      <EscritorioGestor
+        vendedores={vendedoresGestor}
+        resumo={resumoGestor}
+        alertas={alertasGestor}
+        rankingMes={rankingMes}
+        rankingMesEstado={rankingMesEstado}
+        selecionado={vendedorSelecionado}
+        onSelecionar={setVendedorSelecionado}
+        mapa={mapaEscritorio}
+      />
+    </div>
   )
 }
