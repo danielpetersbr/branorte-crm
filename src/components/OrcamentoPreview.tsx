@@ -47,6 +47,10 @@ export interface PreviewMotor {
   item_nome?: string  // se vier, mostra "de qual item" o motor é
   item_uid?: string   // uid do CarrinhoItem origem — usado pelo onTrocarMotor
   motorIndex?: number // 0=principal, 1=secundário (quando item tem 2 motores)
+  // Voltagem EFETIVA deste motor (já resolvida em agruparMotores). Orçamento misto:
+  // a tabela sai em DUAS seções — MOTORES MONOFÁSICOS e MOTORES TRIFÁSICOS.
+  // Ausente = usa a voltagem global do orçamento (orçamentos antigos).
+  voltagem?: 'monofasico' | 'trifasico'
   por_conta_cliente?: boolean  // motor comprado pelo cliente — coluna mostra "por conta do cliente"
   // Bug #25: TRUE = motor GENUINAMENTE incluso no preço do equipamento
   // (motorredutor + spec "(incluso)" OU item linkado com valor_com_motor preenchido).
@@ -263,6 +267,9 @@ export interface OrcamentoPreviewProps {
   // Troca de motor: lista de motores do catálogo central + callback ao escolher
   motoresDisponiveis?: MotorCatalogoOption[]
   onTrocarMotor?: (itemUid: string, novoMotor: MotorCatalogoOption, motorIndex?: number) => void
+  // Voltagem de UM motor só (orçamento misto: um motor mono, outro trifásico).
+  // Toggle Mono/Trif na própria linha da tabela de motores.
+  onVoltagemMotor?: (itemUid: string, motorIndex: number | undefined, nova: 'monofasico' | 'trifasico') => void
   // Marca motor como "por conta do cliente" (não cobra, mostra texto). Toggle: passar isPorConta=true ativa.
   onMotorPorContaCliente?: (itemUid: string, isPorConta: boolean, motorIndex?: number) => void
   // Marca motor como INCLUSO no preço do equipamento (não cobra à parte, mostra "incluso").
@@ -433,7 +440,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onToggleIncluso, onTogglePorConta,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
-    motoresDisponiveis, onTrocarMotor, onMotorPorContaCliente, onMotorIncluso, onEmbutirMotorNoEquip, onAdicionarMotorAvulso,
+    motoresDisponiveis, onTrocarMotor, onVoltagemMotor, onMotorPorContaCliente, onMotorIncluso, onEmbutirMotorNoEquip, onAdicionarMotorAvulso,
     onRemoverMotor, onRestaurarMotor, onEditarPrecoMotor,
     redutoresDisponiveis, onAplicarRedutor,
     vendedoresContato, vendedorResponsavelNome,
@@ -524,7 +531,6 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
   const totalComDesconto = Math.max(0, totalGeral - _descontoVal)
   const totalParcelasBase = desconto?.manterValorParcelas ? totalGeral : totalComDesconto
 
-  const motoresTitle = voltagem === 'monofasico' ? 'Motores Monofásicos:' : 'Motores Trifásicos:'
   // No FINAME, mostra só "VALOR TOTAL DA PROPOSTA" (sem o "DE EQUIPAMENTOS" redundante).
   const mostrarTotalEquip = !finameMode && (carrinho.length > 1 || acessorios !== null)
   const hoje = dataEmissao || new Date().toLocaleDateString('pt-BR')
@@ -1033,18 +1039,25 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       )}
                       {/* Badge da voltagem do motor — visivel ao lado de cada item.
                           Mono = laranja, Tri = azul. Compacto pra nao ocupar muito espaco. */}
-                      {!renderMode && it.motor_cv != null && (
+                      {!renderMode && it.motor_cv != null && (() => {
+                        // Orçamento misto: mostra a voltagem DO MOTOR deste item (a linha
+                        // correspondente da tabela de motores), não a global.
+                        const linhaDoItem = motoresAgrupados.find(mm => mm.item_uid === it.uid && mm.motorIndex == null)
+                          ?? motoresAgrupados.find(mm => mm.item_uid === it.uid)
+                        const voltItem = linhaDoItem?.voltagem ?? voltagem
+                        return (
                         <span
                           className={`inline-flex items-center gap-0.5 ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider align-middle ${
-                            voltagem === 'monofasico'
+                            voltItem === 'monofasico'
                               ? 'bg-orange-100 text-orange-700 border border-orange-300'
                               : 'bg-emerald-100 text-emerald-700 border border-emerald-300'
                           }`}
-                          title={`Motor ${voltagem === 'monofasico' ? 'monofásico (220V)' : 'trifásico (220/380/660V)'}`}
+                          title={`Motor ${voltItem === 'monofasico' ? 'monofásico (220V)' : 'trifásico (220/380/660V)'}`}
                         >
-                          ⚡{voltagem === 'monofasico' ? 'Mono' : 'Trif'}
+                          ⚡{voltItem === 'monofasico' ? 'Mono' : 'Trif'}
                         </span>
-                      )}
+                        )
+                      })()}
                       {!renderMode && onToggleInox && it.uid && (() => {
                         const inoxMenuId = `inox-menu-${it.uid}`
                         const isOpen = inoxMenuOpen === it.uid
@@ -1499,19 +1512,41 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
               Se TODOS estão removidos, a seção MOTORES TRIFÁSICOS é omitida do PDF.
               Em modo edição, a seção também aparece VAZIA quando dá pra adicionar motor
               avulso (senão o botão "+ Adicionar motor avulso" ficaria inalcançável). */}
-          {((renderMode ? motoresAgrupados.filter(m => !m.removido) : motoresAgrupados).length > 0
-            || (!renderMode && !!onAdicionarMotorAvulso && !!motoresDisponiveis?.length)) && (() => {
-            const opcoesTensao: (220 | 380 | 660)[] = voltagem === 'monofasico' ? [220] : [220, 380, 660]
+          {(() => {
+            const visiveis = renderMode ? motoresAgrupados.filter(m => !m.removido) : motoresAgrupados
+            const podeAddAvulso = !renderMode && !!onAdicionarMotorAvulso && !!motoresDisponiveis?.length
+            if (visiveis.length === 0 && !podeAddAvulso) return null
+            // ORÇAMENTO MISTO: cada motor tem a sua voltagem (PreviewMotor.voltagem).
+            // A tabela sai em uma seção por voltagem presente — MOTORES TRIFÁSICOS e
+            // MOTORES MONOFÁSICOS —, cada uma com a sua tensão e o seu TOTAL.
+            // Orçamento antigo (sem voltagem na linha) cai na voltagem global: 1 seção só.
+            // O índice ORIGINAL vai junto: trocarMotorIdx indexa o array inteiro.
+            const comIdx = motoresAgrupados.map((m, idx) => ({ m, idx }))
+            const voltDaLinha = (m: PreviewMotor) => m.voltagem ?? voltagem
+            const gruposBase = (['trifasico', 'monofasico'] as const)
+              .map(v => ({ volt: v, linhas: comIdx.filter(({ m }) => voltDaLinha(m) === v) }))
+              .filter(g => g.linhas.length > 0)
+            // Nenhuma linha (só o botão de motor avulso): mostra a seção vazia da voltagem global.
+            const grupos = gruposBase.length > 0 ? gruposBase : [{ volt: voltagem, linhas: [] as typeof comIdx }]
+            return grupos.map((grupo, grupoIdx) => {
+            const ehUltimoGrupo = grupoIdx === grupos.length - 1
+            const opcoesTensao: (220 | 380 | 660)[] = grupo.volt === 'monofasico' ? [220] : [220, 380, 660]
             // Monofásico só aceita 220V - corrige se tiver tensão inválida salva
-            const tensaoEfetiva = voltagem === 'monofasico' && tensaoMotores && tensaoMotores !== 220 ? 220 : tensaoMotores
-            const tensaoInteractive = !renderMode && !!onUpdateTensaoMotores
+            const tensaoEfetiva = grupo.volt === 'monofasico' && tensaoMotores && tensaoMotores !== 220 ? 220 : tensaoMotores
+            // A tensão é UMA só no orçamento (tensaoMotores). Num orçamento misto, quem
+            // manda nela é a tabela TRIFÁSICA — a monofásica é sempre 220V, então lá o
+            // botão vira texto (clicar mudaria a tensão da outra tabela).
+            const ehMisto = grupos.length > 1
+            const tensaoInteractive = !renderMode && !!onUpdateTensaoMotores && !(ehMisto && grupo.volt === 'monofasico')
             const tensaoLabel = tensaoEfetiva ? `${tensaoEfetiva}V` : 'tensão a confirmar'
+            const tituloGrupo = grupo.volt === 'monofasico' ? 'Motores Monofásicos' : 'Motores Trifásicos'
+            const totalDoGrupo = grupo.linhas.reduce((acc, { m }) => acc + (m.valor_total || 0), 0)
             return (
-              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+              <div key={grupo.volt} data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                 <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
-                      {motoresTitle.replace(':', '')}
+                      {tituloGrupo}
                     </span>
                     {tensaoInteractive ? (
                       <span className="inline-flex gap-1 items-center">
@@ -1574,7 +1609,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {motoresAgrupados.map((m, idx) => {
+                    {grupo.linhas.map(({ m, idx }) => {
                       const porContaCliente = !!m.por_conta_cliente
                       const removido = !!m.removido
                       // Issue #23: motor removido NÃO aparece no PDF (renderMode oculta a linha).
@@ -1643,6 +1678,31 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               <span className="text-gray-500"> · <span className="italic">{m.item_nome}</span></span>
                             )}
                             {m.qtd > 1 && <span className="text-gray-500"> (×{m.qtd})</span>}
+
+                            {/* ORÇAMENTO MISTO: voltagem DESTE motor. Clique alterna mono/trif
+                                só nesta linha — o toggle Mono/Trif do topo continua valendo pro
+                                orçamento inteiro (e zera estes ajustes quando usado).
+                                Item com inversor não entra: ali o motor é sempre trifásico. */}
+                            {!renderMode && !!onVoltagemMotor && m.item_uid && !itemCarrinho?.usa_inversor && (() => {
+                              const voltLinha = m.voltagem ?? voltagem
+                              const ehMono = voltLinha === 'monofasico'
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => onVoltagemMotor!(m.item_uid!, m.motorIndex, ehMono ? 'trifasico' : 'monofasico')}
+                                  className={`ml-2 align-middle text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border transition-colors print:hidden ${
+                                    ehMono
+                                      ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                                      : 'bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100'
+                                  }`}
+                                  title={ehMono
+                                    ? 'Este motor está MONOFÁSICO — clique pra deixar trifásico'
+                                    : 'Este motor está TRIFÁSICO — clique pra deixar monofásico'}
+                                >
+                                  ⚡ {ehMono ? 'Mono' : 'Trif'}
+                                </button>
+                              )
+                            })()}
 
                             {/* Modal de troca de motor — portal pro body pra escapar do overflow/sticky do preview */}
                             {aberto && podeTrocar && m.item_uid && motoresDisponiveis && createPortal(
@@ -1839,7 +1899,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                                       // Ex: 50 CV só existe em trifásico — num orçamento monofásico o vendedor
                                       // selecionava o trifásico sem perceber e o preço saía trocado (ou a linha
                                       // zerava "a confirmar" ao reaplicar a voltagem).
-                                      const voltEfetiva = itemCarrinho?.usa_inversor ? 'trifasico' : voltagem
+                                      // Orçamento misto: a voltagem que manda aqui é a DESTA linha.
+                                      const voltEfetiva = itemCarrinho?.usa_inversor ? 'trifasico' : (m.voltagem ?? voltagem)
                                       const lista = motoresDisponiveis
                                         .slice()
                                         .sort((a, b) =>
@@ -1946,16 +2007,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         </tr>
                       )
                     })}
-                    {motoresAgrupados.length > 0 && (
+                    {grupo.linhas.length > 0 && (
                       <tr className="border-t-2 border-gray-700 font-bold">
                         <td className="py-2 text-gray-900">TOTAL</td>
                         <td className="py-2 text-right text-gray-900 tabular-nums">
-                          {totalMotores > 0
-                            ? `R$ ${formatBRLBare(totalMotores)}`
+                          {totalDoGrupo > 0
+                            ? `R$ ${formatBRLBare(totalDoGrupo)}`
                             // Bug #25: só mostra "tudo incluso" se TODOS os motores forem
                             // realmente inclusos (ou por conta do cliente / removidos).
                             // Se algum estiver sem valor (semValor), mostra "—" pra não enganar.
-                            : motoresAgrupados.every(mm => !!mm.incluso_real || !!mm.por_conta_cliente || !!mm.removido)
+                            : grupo.linhas.every(({ m: mm }) => !!mm.incluso_real || !!mm.por_conta_cliente || !!mm.removido)
                               ? <span className="text-gray-400 italic text-[13px]">tudo incluso</span>
                               : <span className="text-gray-400 italic text-[13px]">—</span>}
                         </td>
@@ -1964,8 +2025,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </tbody>
                 </table>
 
-                {/* + ADICIONAR MOTOR AVULSO — motor vendido sem equipamento. Só edição (some no PDF). */}
-                {!renderMode && !!onAdicionarMotorAvulso && !!motoresDisponiveis?.length && (
+                {/* + ADICIONAR MOTOR AVULSO — motor vendido sem equipamento. Só edição (some no PDF).
+                    Orçamento misto: aparece uma vez só, embaixo da última tabela. */}
+                {ehUltimoGrupo && !renderMode && !!onAdicionarMotorAvulso && !!motoresDisponiveis?.length && (
                   <>
                     <button
                       type="button"
@@ -2059,6 +2121,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 )}
               </div>
             )
+            })
           })()}
 
           {/* COMPONENTES ADICIONAIS — itens NÃO fabricados pela Branorte (painel, balança, célula de carga…) */}

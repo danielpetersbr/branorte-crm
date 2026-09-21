@@ -122,6 +122,11 @@ interface CarrinhoItem {
    *  (0/1 do spec, 100+N dos motores_extras). O valor SOMA na linha do motor, que
    *  passa a se chamar "X CV motorredutor" na tabela MOTORES. */
   redutores?: Record<string, RedutorAplicado>
+  /** Voltagem POR MOTOR (orçamento misto: um motor mono, outro trifásico).
+   *  Chave = redutorKey(motorIndex) ('main' | '0' | '1' | '100+N'); ausente = usa a
+   *  voltagem global do orçamento (o toggle Mono/Trif do topo). `usa_inversor` continua
+   *  mandando mais que tudo: inversor sempre cota trifásico. */
+  motores_voltagem?: Record<string, Voltagem>
   /** ID em precos_branorte (quando item veio de lá). Usado pra recalcular valor ao trocar voltagem. */
   preco_branorte_id?: number | null
   /** Snapshot dos motores extras do item de catálogo (multi-motor, ex: misturador c/ aquecimento).
@@ -147,6 +152,8 @@ export interface MotorAvulsoOrc {
   polos: number
   qtd: number
   por_conta_cliente?: boolean
+  /** Voltagem só deste motor avulso. Ausente = voltagem global do orçamento. */
+  voltagem?: Voltagem
   /** Redutor aplicado a este motor avulso (soma no valor da linha). */
   redutor?: RedutorAplicado
 }
@@ -258,6 +265,9 @@ interface MotorAgrupado {
   // Redutor aplicado a este motor. O valor já está somado em valor_unit/valor_total
   // e a linha vira "X CV motorredutor" (motorredutor: true) — decisão do Daniel, 16/09.
   redutor?: RedutorAplicado
+  // Voltagem EFETIVA desta linha (já resolvida: override do motor > inversor > global).
+  // A tabela de motores separa MONOFÁSICOS de TRIFÁSICOS por este campo.
+  voltagem?: Voltagem
 }
 
 // Peneira PASSIVA (jogo de peneira, par de peneiras, peneira de moinho) não tem
@@ -270,6 +280,28 @@ function peneiraSemMotor(nome: string): boolean {
 // Chave do redutor no mapa CarrinhoItem.redutores. motorIndex undefined = motor único.
 function redutorKey(motorIndex?: number): string {
   return motorIndex == null ? 'main' : String(motorIndex)
+}
+
+// Voltagem do motor que o vendedor escolheu no modal "Trocar motor" (a lista mostra
+// as duas voltagens). null quando a opção não traz voltagem reconhecível.
+function voltagemDoMotorEscolhido(m: { voltagem?: string | null }): Voltagem | null {
+  if (m?.voltagem === 'monofasico') return 'monofasico'
+  if (m?.voltagem === 'trifasico') return 'trifasico'
+  return null
+}
+
+// Voltagem EFETIVA de UM motor. Orçamento misto: cada motor pode ser mono ou trifásico,
+// independente do toggle global. Ordem de precedência:
+//   1. usa_inversor → sempre trifásico (o inversor faz mono virar trif)
+//   2. override do próprio motor (motores_voltagem[key], gravado pelo toggle da linha)
+//   3. voltagem global do orçamento
+export function voltagemDoMotor(
+  it: Pick<CarrinhoItem, 'usa_inversor' | 'motores_voltagem'>,
+  motorIndex: number | undefined,
+  global: Voltagem,
+): Voltagem {
+  if (it.usa_inversor) return 'trifasico'
+  return it.motores_voltagem?.[redutorKey(motorIndex)] ?? global
 }
 
 // Soma o redutor na linha do motor (decisão do Daniel, 16/09: linha única com
@@ -304,8 +336,9 @@ function agruparMotores(
   // item_uid "avulso:<id>" identifica a linha pros handlers (trocar troca cv/polos,
   // remover DELETA a entrada). Preço ao vivo pelo catálogo conforme voltagem.
   for (const ma of motoresAvulsos) {
+    const voltAvulso: Voltagem = ma.voltagem ?? voltagem
     const match = motores
-      ? acharMotorCompativel(motores, Number(ma.cv), ma.polos, voltagem, voltagem === 'monofasico')
+      ? acharMotorCompativel(motores, Number(ma.cv), ma.polos, voltAvulso, voltAvulso === 'monofasico')
       : null
     const valorUnit = ma.por_conta_cliente ? 0 : (match ? Number(match.valor) : 0)
     for (let i = 0; i < (ma.qtd || 1); i++) {
@@ -317,6 +350,7 @@ function agruparMotores(
         incluso_real: false,
         embutido_no_equip: false,
         removido: false,
+        voltagem: voltAvulso,
       }, ma.redutor))
     }
   }
@@ -349,7 +383,7 @@ function agruparMotores(
         const meIdx = 100 + extraArrIdx
         const meRemovido = isRemovido(meIdx)
         const mePorConta = isPorConta(meIdx)
-        const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
+        const voltagemEfetiva = voltagemDoMotor(it, meIdx, voltagem)
         const motorMatch = motores
           ? acharMotorCompativel(motores, Number(me.cv), me.polos, voltagemEfetiva, voltagemEfetiva === 'monofasico')
           : null
@@ -374,6 +408,7 @@ function agruparMotores(
             incluso_real: meInclusoManual,
             embutido_no_equip: isEmbutido(meIdx),
             removido: meRemovido,
+            voltagem: voltagemEfetiva,
             motorredutor: me.polos === 0 || /motorredutor|moto\s*redutor/i.test(me.descricao ?? ''),
           }, it.redutores?.[redutorKey(meIdx)]))
         }
@@ -434,9 +469,12 @@ function agruparMotores(
       // Antes: ambas linhas usavam `valorMotor` (= motor_valor_unit do principal) — exaustor
       // ficava com valor errado e não atualizava ao trocar CV. Corrigido buscando o preço
       // de cada CV no catálogo de motores via acharMotorCompativel.
-      const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : voltagem
-      const motor1Cat = motores ? acharMotorCompativel(motores, cv1, motorPolos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
-      const motor2Cat = motores ? acharMotorCompativel(motores, cv2, motorPolos, voltagemEfetiva, voltagemEfetiva === 'monofasico') : null
+      // Cada motor da spec tem voltagem própria (misto: o principal trifásico e o
+      // auxiliar monofásico, por exemplo).
+      const volt1 = voltagemDoMotor(it, 0, voltagem)
+      const volt2 = voltagemDoMotor(it, 1, voltagem)
+      const motor1Cat = motores ? acharMotorCompativel(motores, cv1, motorPolos, volt1, volt1 === 'monofasico') : null
+      const motor2Cat = motores ? acharMotorCompativel(motores, cv2, motorPolos, volt2, volt2 === 'monofasico') : null
       const tratarComoIncluso = eIncluso && (eMotorredutor || inclusoDireto)
       // Preço base de cada CV; zera POR motorIndex (0/1) conforme por-conta/removido,
       // pra marcar/remover UM motor não zerar o outro.
@@ -458,6 +496,7 @@ function agruparMotores(
           incluso_real: tratarComoIncluso || isInclusoManual(0),
           embutido_no_equip: isEmbutido(0),
           removido: isRemovido(0),
+          voltagem: volt1,
           motorredutor: motorPolos === 0 || eMotorredutor,
         }, it.redutores?.[redutorKey(0)]))
         if (!temMotoresExtras) {
@@ -469,6 +508,7 @@ function agruparMotores(
             incluso_real: tratarComoIncluso || isInclusoManual(1),
             embutido_no_equip: isEmbutido(1),
             removido: isRemovido(1),
+            voltagem: volt2,
             motorredutor: motorPolos === 0 || eMotorredutor,
           }, it.redutores?.[redutorKey(1)]))
         }
@@ -488,6 +528,7 @@ function agruparMotores(
           incluso_real: inclusoReal,
           embutido_no_equip: isEmbutido(),
           removido: motorRemovido,
+          voltagem: voltagemDoMotor(it, undefined, voltagem),
           motorredutor: motorPolos === 0 || eMotorredutor,
         }, it.redutores?.[redutorKey()]))
       }
@@ -2409,15 +2450,27 @@ export function OrcamentoMontar() {
     if (itemUid.startsWith('avulso:')) {
       const id = itemUid.slice('avulso:'.length)
       setMotoresAvulsos(ms => ms.map(m =>
-        m.id === id ? { ...m, cv: Number(novoMotor.cv), polos: novoMotor.polos } : m
+        m.id === id
+          ? { ...m, cv: Number(novoMotor.cv), polos: novoMotor.polos, voltagem: voltagemDoMotorEscolhido(novoMotor) ?? m.voltagem }
+          : m
       ))
       return
     }
+    // O modal lista motores das DUAS voltagens. Escolher um monofásico num orçamento
+    // trifásico (ou o contrário) é o gesto de "esse motor aqui é mono" — grava o
+    // override, senão o preço voltava a ser resolvido pela voltagem global.
+    const voltEscolhida = voltagemDoMotorEscolhido(novoMotor)
     setCarrinho(c => c.map(it => {
       if (it.uid !== itemUid) return it
       const incluso = motorJaInclusoNoItem(it.specs)
       const novoCv = Number(novoMotor.cv)
       const novoPolos = novoMotor.polos
+      // Carimba a voltagem do motor escolhido NESTE motor (chave por motorIndex).
+      const comVolt = (base: CarrinhoItem): CarrinhoItem => (
+        voltEscolhida && !base.usa_inversor
+          ? { ...base, motores_voltagem: { ...(base.motores_voltagem ?? {}), [redutorKey(motorIndex)]: voltEscolhida } }
+          : base
+      )
 
       // Motor EXTRA (motorIndex 100+N): troca só o N-ésimo de motores_extras_snapshot,
       // sem tocar no motor principal / spec / nome. Antes caía no ramo "motor único"
@@ -2428,7 +2481,7 @@ export function OrcamentoMontar() {
         if (arr[extraArrIdx]) {
           arr[extraArrIdx] = { ...arr[extraArrIdx], cv: novoCv, polos: novoPolos }
         }
-        return { ...it, motores_extras_snapshot: arr }
+        return comVolt({ ...it, motores_extras_snapshot: arr })
       }
 
       // Item com múltiplos motores na spec (ex: misturador c/ aquecimento, pré-limpeza):
@@ -2451,13 +2504,13 @@ export function OrcamentoMontar() {
             novasSpecs[specIdx] = novaSpec
             // Atualiza motor_cv só pro principal (index 0); secundários ficam só no spec.
             const newMainCv = motorIndex === 0 ? novoCv : it.motor_cv
-            return { ...it, specs: novasSpecs, motor_cv: newMainCv }
+            return comVolt({ ...it, specs: novasSpecs, motor_cv: newMainCv })
           }
         }
       }
 
       // Motor único: troca tudo como antes
-      return {
+      return comVolt({
         ...it,
         motor_cv: novoCv,
         motor_polos: novoPolos,
@@ -2465,17 +2518,18 @@ export function OrcamentoMontar() {
         specs: atualizarSpecsComMotor(it.specs, novoCv, novoPolos),
         nome: atualizarNomeComMotor(it.nome, novoCv),
         nome_custom: it.nome_custom ? atualizarNomeComMotor(it.nome_custom, novoCv) : it.nome_custom,
-      }
+      })
     }))
   }
 
-  function aplicarVoltagem(novaVoltagem: Voltagem) {
-    setVoltagem(novaVoltagem)
-    if (!motores) return
-    setCarrinho(c => c.map(it => {
+  // Recalcula UM item pra uma voltagem: polos, preço do motor e — quando o motor vem
+  // embutido no preço do equipamento (precos_branorte) — o preço do próprio item.
+  // Usado pelo toggle global (todos os itens) e pelo toggle de UMA linha de motor
+  // (orçamento misto). Exige `motores` carregado; o chamador garante.
+  function recalcItemPorVoltagem(it: CarrinhoItem, voltagemEfetiva: Voltagem): CarrinhoItem {
+    {
+      if (!motores) return it
       if (!it.motor_cv || !it.motor_polos) return it
-      // Item com inversor: cotar sempre como trifásico, polos não muda.
-      const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : novaVoltagem
       // Monofásico NÃO existe em 6 polos, mas existe em 2 e em 4 (10 motores ativos
       // em cada, de 1 a 15 CV). Só cai pra 4 polos quando não há motor mono cadastrado
       // no nº de polos do equipamento — antes forçava 4 sempre que polos !== 4, e isso
@@ -2530,6 +2584,47 @@ export function OrcamentoMontar() {
         valor_pre_remocao: preRemocaoAtualizado,
         specs: polosMudou ? atualizarSpecsComMotor(it.specs, it.motor_cv, polosFinais) : it.specs,
       }
+    }
+  }
+
+  // Toggle Mono/Trif do TOPO: vale pro orçamento inteiro e LIMPA os overrides por motor
+  // (é o gesto "tudo monofásico" / "tudo trifásico"). Pra misturar, o vendedor usa o
+  // toggle da linha do motor na tabela de MOTORES.
+  function aplicarVoltagem(novaVoltagem: Voltagem) {
+    setVoltagem(novaVoltagem)
+    if (!motores) return
+    setCarrinho(c => c.map(it => {
+      if (!it.motor_cv || !it.motor_polos) return it
+      const semOverride = it.motores_voltagem ? { ...it, motores_voltagem: undefined } : it
+      // Item com inversor: cotar sempre como trifásico, polos não muda.
+      const voltagemEfetiva: Voltagem = it.usa_inversor ? 'trifasico' : novaVoltagem
+      return recalcItemPorVoltagem(semOverride, voltagemEfetiva)
+    }))
+    setMotoresAvulsos(ms => ms.map(m => (m.voltagem ? { ...m, voltagem: undefined } : m)))
+  }
+
+  // Orçamento MISTO: define a voltagem de UM motor só (linha da tabela de motores),
+  // sem mexer nos outros nem no toggle global.
+  //  - motor avulso → grava na própria entrada (preço re-resolve pelo catálogo)
+  //  - motor principal do item → grava o override E recalcula polos/preço do motor e
+  //    do equipamento (quando o motor vem embutido no preço do precos_branorte)
+  //  - motor multi/extra (0, 1, 100+N) → só o override: agruparMotores já resolve o
+  //    preço ao vivo pelo catálogo na voltagem de cada motor
+  function definirVoltagemMotor(itemUid: string, motorIndex: number | undefined, nova: Voltagem) {
+    if (itemUid.startsWith('avulso:')) {
+      const id = itemUid.slice('avulso:'.length)
+      setMotoresAvulsos(ms => ms.map(m => (m.id === id ? { ...m, voltagem: nova } : m)))
+      return
+    }
+    setCarrinho(c => c.map(it => {
+      if (it.uid !== itemUid) return it
+      // Inversor manda mais que o toggle: o motor segue trifásico.
+      if (it.usa_inversor) return it
+      const comOverride: CarrinhoItem = {
+        ...it,
+        motores_voltagem: { ...(it.motores_voltagem ?? {}), [redutorKey(motorIndex)]: nova },
+      }
+      return motorIndex == null ? recalcItemPorVoltagem(comOverride, nova) : comOverride
     }))
   }
 
@@ -2724,6 +2819,8 @@ export function OrcamentoMontar() {
           motores_incluso_idx: itAny.motores_incluso_idx ?? undefined,
           motores_embutidos: itAny.motores_embutidos ?? undefined,
           redutores: itAny.redutores ?? undefined,
+          // Orçamento misto salvo: devolve a voltagem de cada motor.
+          motores_voltagem: itAny.motores_voltagem ?? undefined,
         })
         return
       }
@@ -3384,7 +3481,7 @@ export function OrcamentoMontar() {
                     ? 'bg-warning text-white shadow-sm'
                     : 'text-ink-muted hover:bg-surface-3'
                 }`}
-                title="Motor monofásico (220V)"
+                title="Todos os motores monofásicos (220V). Pra misturar, use o botão Mono/Trif na linha de cada motor, na tabela de MOTORES."
               >
                 Mono
               </button>
@@ -3395,7 +3492,7 @@ export function OrcamentoMontar() {
                     ? 'bg-info text-white shadow-sm'
                     : 'text-ink-muted hover:bg-surface-3'
                 }`}
-                title="Motor trifásico (220/380/660V)"
+                title="Todos os motores trifásicos (220/380/660V). Pra misturar, use o botão Mono/Trif na linha de cada motor, na tabela de MOTORES."
               >
                 Trif
               </button>
@@ -3845,6 +3942,7 @@ export function OrcamentoMontar() {
                 }}
                 motoresDisponiveis={motores ?? []}
                 onTrocarMotor={trocarMotorDoItem}
+                onVoltagemMotor={finameMode ? undefined : definirVoltagemMotor}
                 onMotorPorContaCliente={marcarMotorPorContaCliente}
                 onMotorIncluso={marcarMotorIncluso}
                 onEmbutirMotorNoEquip={finameMode ? undefined : embutirMotorNoEquipamento}
@@ -4172,6 +4270,9 @@ export function OrcamentoMontar() {
             motores_incluso_idx: c.motores_incluso_idx,
             motores_embutidos: c.motores_embutidos,
             redutores: c.redutores,
+            // Orçamento misto: a voltagem escolhida motor a motor precisa voltar
+            // igual na próxima edição (senão tudo cai na voltagem global de novo).
+            motores_voltagem: c.motores_voltagem,
           })),
           motoresAgrupados: motoresAgrupadosFinal,
           // Decisões do vendedor que precisam voltar iguais na próxima edição.

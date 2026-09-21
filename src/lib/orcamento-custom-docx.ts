@@ -37,6 +37,8 @@ export interface CustomDocxMotor {
   motorredutor?: boolean
   /** Redutor que acompanha o motor — valor já somado em valor_total. */
   redutor?: { modelo: string; valor: number }
+  /** Voltagem DESTE motor (orçamento misto). Ausente = voltagem global do orçamento. */
+  voltagem?: 'monofasico' | 'trifasico'
 }
 
 export interface CustomDocxCliente {
@@ -1264,10 +1266,22 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
     blocos.push(buildValorTotalEquip(opts.totalEquip))
   }
 
-  // Motores
+  // Motores — orçamento MISTO sai em uma tabela por voltagem (MOTORES TRIFÁSICOS e
+  // MOTORES MONOFÁSICOS), cada uma com o seu total. Orçamento de voltagem única
+  // (e os antigos, sem voltagem na linha) sai como sempre: uma tabela só.
   if (opts.motores.length > 0) {
-    blocos.push(buildMotores(opts.motores, opts.voltagem, opts.totalMotores, opts.tensaoMotores))
-    blocos.push(paragrafoVazio(80))
+    const gruposMotor = (['trifasico', 'monofasico'] as const)
+      .map(v => ({ volt: v, linhas: opts.motores.filter(m => (m.voltagem ?? opts.voltagem) === v) }))
+      .filter(g => g.linhas.length > 0)
+    for (const g of gruposMotor) {
+      const totalGrupo = g.linhas.reduce((acc, m) => acc + (m.valor_total || 0), 0)
+      // Monofásico só existe em 220V — a tensão global (380/660) não vale pra essa tabela.
+      const tensaoGrupo = g.volt === 'monofasico'
+        ? (opts.tensaoMotores ? 220 : null)
+        : (opts.tensaoMotores ?? null)
+      blocos.push(buildMotores(g.linhas, g.volt, totalGrupo, tensaoGrupo))
+      blocos.push(paragrafoVazio(80))
+    }
   }
 
   // Componentes extras
