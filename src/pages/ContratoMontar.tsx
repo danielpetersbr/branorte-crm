@@ -754,6 +754,34 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
             </label>
           </div>
         )}
+        {(() => {
+          // O parser so preenche a forma onde o orcamento DIZ. Sem explicar isso,
+          // a coluna meio vazia parece bug — e o vendedor fica sem saber se o
+          // sistema errou ou se o dado nunca existiu.
+          const vazias = dados.parcelas.filter(p => !p.metodo.trim()).length
+            + (dados.entrada && !dados.entrada.metodo.trim() ? 1 : 0)
+          if (vazias === 0 || dados.parcelas.length === 0) return null
+          return (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-2.5 mb-3 text-[12px] text-amber-800">
+              <b>{vazias} sem forma de pagamento.</b> A forma é lida do que está escrito no orçamento —
+              onde ele não disse, fica em branco pra você escolher, em vez de o sistema chutar.
+              <button
+                onClick={() => {
+                  set({
+                    parcelas: dados.parcelas.map(p => (p.metodo.trim() ? p : { ...p, metodo: 'BOLETO' })),
+                    ...(dados.entrada && !dados.entrada.metodo.trim()
+                      ? { entrada: { ...dados.entrada, metodo: 'BOLETO' } }
+                      : {}),
+                  })
+                }}
+                className="ml-2 font-semibold underline hover:no-underline"
+              >
+                preencher os vazios com BOLETO
+              </button>
+            </div>
+          )
+        })()}
+
         {dados.parcelas.length === 0 ? (
           dados.formaPagamentoTexto ? (
             <div className="rounded-md border border-border bg-surface-2 p-3">
