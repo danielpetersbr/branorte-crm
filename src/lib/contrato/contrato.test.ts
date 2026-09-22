@@ -199,8 +199,21 @@ describe('orcamento 2026-2629 — condicao escrita a mao', () => {
     assert.ok(!camposPendentes(d).includes('CPF do comprador'))
   })
 
-  it('exige garantidor mesmo sem quadro de parcelas', () => {
-    assert.equal(d.garantidor.incluir, true)
+  it('pessoa fisica NAO nasce com garantidor', () => {
+    // O comprador PF ja responde com o proprio patrimonio: garantidor so agrega
+    // sendo outra pessoa, e isso o vendedor decide caso a caso.
+    assert.equal(d.comprador.tipoPessoa, 'pf')
+    assert.equal(d.garantidor.incluir, false)
+  })
+
+  it('empresa nasce COM garantidor', () => {
+    const pj = contratoDoOrcamento({
+      ...ORC_2629,
+      cliente_dados: { ...(ORC_2629 as any).cliente_dados, cnpj: '12.345.678/0001-90' },
+    } as unknown as OrcamentoGerado)
+    assert.equal(pj.comprador.tipoPessoa, 'pj')
+    // sem o socio como devedor solidario, so o patrimonio da empresa responde
+    assert.equal(pj.garantidor.incluir, true)
   })
 })
 

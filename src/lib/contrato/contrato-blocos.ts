@@ -851,11 +851,10 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     }
   }
 
-  b.push(p(`Anexo I – Orçamento nº ${d.orcamentoNumero}, de ${d.orcamentoData}.`, { spaceAfter: 60 }))
-  b.push(p('Anexo II – Nota fiscal de venda com números de série (a integrar por ocasião da entrega).', { spaceAfter: 60 }))
-  if (temParcelas) {
-    b.push(p(`Anexo III – Notas promissórias nºs 1/${d.parcelas.length} a ${d.parcelas.length}/${d.parcelas.length}, vinculadas ao contrato.`))
-  }
+  // A lista de anexos no rodape era so um indice de conveniencia: cada anexo ja
+  // e' definido dentro da clausula que o cria (o orcamento no preambulo, a nota
+  // fiscal no 1.2, as promissorias no 2.4). Tirar nao muda nada juridicamente e
+  // deixa o fecho limpo, com as assinaturas por ultimo.
 
   return b
 }
