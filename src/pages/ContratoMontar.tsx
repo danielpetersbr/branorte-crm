@@ -651,27 +651,6 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
             </select>
           </label>
         </div>
-        <div className="mt-3 pt-3 border-t border-border">
-          <span className="block text-[11px] font-semibold text-ink-muted mb-1.5">Como vai ser assinado</span>
-          <div className="flex flex-wrap gap-4">
-            <label className="inline-flex items-center gap-2 text-[13px] cursor-pointer">
-              <input type="radio" name="assinatura" checked={dados.assinatura === 'digital'}
-                onChange={() => set({ assinatura: 'digital' })} className="h-4 w-4 accent-accent" />
-              Digital (gov.br, Clicksign, certificado)
-            </label>
-            <label className="inline-flex items-center gap-2 text-[13px] cursor-pointer">
-              <input type="radio" name="assinatura" checked={dados.assinatura === 'papel'}
-                onChange={() => set({ assinatura: 'papel' })} className="h-4 w-4 accent-accent" />
-              No papel, à caneta
-            </label>
-          </div>
-          <p className="text-[11px] text-ink-muted mt-1.5">
-            {dados.assinatura === 'digital'
-              ? 'Sai sem campo de testemunha: assinado em plataforma que confere a integridade, a lei dispensa as duas e o contrato continua valendo como título executivo (art. 784, § 4º do CPC).'
-              : 'Sai com os campos das duas testemunhas. No papel elas são obrigatórias — sem elas o contrato deixa de ser título executivo e a cobrança vira ação comum, bem mais lenta.'}
-          </p>
-        </div>
-
         <div className="flex flex-wrap gap-4 mt-3">
           <label className="inline-flex items-center gap-2 text-[13px] cursor-pointer">
             <input type="checkbox" checked={dados.montagemInclusa}
