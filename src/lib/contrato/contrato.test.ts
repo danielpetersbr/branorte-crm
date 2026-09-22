@@ -138,7 +138,7 @@ describe('contrato a partir do orcamento 2026-2774', () => {
   it('aponta o que falta preencher', () => {
     const faltam = camposPendentes(d)
     assert.ok(faltam.includes('CNPJ do comprador'))
-    assert.ok(faltam.includes('Nome da mãe'))
+    assert.ok(faltam.includes('Estado civil'))
     assert.ok(faltam.includes('Nome do garantidor'))
   })
 })
@@ -208,5 +208,28 @@ describe('parse que NAO fecha com o preco', () => {
     assert.equal(d.parcelas.length, 0)
     assert.ok(d.formaPagamentoTexto.includes('a combinar'))
     assert.equal(d.pagamentoAntecipado, false)
+  })
+})
+
+
+describe('forma de pagamento herdada e campos opcionais', () => {
+  const d = contratoDoOrcamento(ORC_2629)
+
+  it('herda BOLETO do "saldo restante em boletos" pras parcelas seguintes', () => {
+    // 21/12, 21/01 ... 21/06 vieram depois de "saldo restante em boletos:"
+    const boletos = d.parcelas.filter(p => p.metodo === 'BOLETO')
+    assert.equal(boletos.length, 7)
+    assert.equal(d.parcelas[8].metodo, 'BOLETO')
+  })
+
+  it('mantem PIX onde estava escrito', () => {
+    assert.equal(d.parcelas[1].metodo, 'PIX')
+  })
+
+  it('nao exige RG, nascimento nem nome da mae', () => {
+    const faltam = camposPendentes(d)
+    assert.ok(!faltam.includes('RG'))
+    assert.ok(!faltam.includes('Data de nascimento'))
+    assert.ok(!faltam.includes('Nome da mãe'))
   })
 })

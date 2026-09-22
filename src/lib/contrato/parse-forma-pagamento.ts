@@ -23,7 +23,7 @@ export interface ParcelaLida {
 }
 
 export interface FormaPagamentoLida {
-  entrada: { valor: number; vencimento: string } | null
+  entrada: { valor: number; vencimento: string; metodo: string } | null
   parcelas: ParcelaLida[]
   soma: number
 }
@@ -31,6 +31,16 @@ export interface FormaPagamentoLida {
 const RE_VALOR = /R\$\s*([\d.]+,\d{2}|\d+(?:\.\d{3})*(?:,\d{2})?)/
 const RE_DATA = /(\d{2}\/\d{2}\/\d{4})/
 const RE_METODO = /\b(pix|boleto|boletos|dinheiro|transfer[êe]ncia|ted|doc|cart[ãa]o|cheque|financiamento|finame)\b/i
+
+/** "boletos" -> BOLETO, "transferencia" -> TED, etc. */
+function normalizarMetodo(bruto: string): string {
+  const m = bruto.toUpperCase()
+  if (m.startsWith('BOLETO')) return 'BOLETO'
+  if (m.startsWith('TRANSFER') || m === 'TED' || m === 'DOC') return 'TED'
+  if (m.startsWith('CART')) return 'CARTÃO'
+  if (m === 'FINAME' || m === 'FINANCIAMENTO') return 'FINAME'
+  return m
+}
 
 function paraNumero(txt: string): number {
   // "42.823,00" -> 42823.00 ; "5.000" -> 5000
@@ -54,20 +64,27 @@ export function parseFormaPagamento(texto: string, total: number): FormaPagament
   if (pedacos.length === 0) return null
 
   const lidas: ParcelaLida[] = []
+  // O metodo e' HERDADO. Quem escreve "saldo restante em boletos: 21/12 R$ 5.000;
+  // 21/01 R$ 5.000; ..." diz "boleto" uma vez e o resto da lista segue nele —
+  // cada parcela isolada nao repete a palavra. Sem herdar, so a primeira da serie
+  // saia preenchida e as outras oito ficavam com a coluna Forma em branco.
+  let metodoCorrente = ''
   for (const pedaco of pedacos) {
+    const mm = RE_METODO.exec(pedaco)
+    if (mm) metodoCorrente = normalizarMetodo(mm[1])
+
     const mv = RE_VALOR.exec(pedaco)
-    if (!mv) continue                     // trecho sem valor ("saldo restante em boletos:") e' so rotulo
+    if (!mv) continue                     // trecho sem valor ("saldo restante em boletos:") so muda o metodo
     const valor = paraNumero(mv[1])
     if (valor <= 0) continue
 
     const md = RE_DATA.exec(pedaco)
     const noPedido = /no\s+pedido|na\s+assinatura|entrada|sinal/i.test(pedaco)
-    const mm = RE_METODO.exec(pedaco)
 
     lidas.push({
       vencimento: md ? md[1] : '',
       valor,
-      metodo: mm ? mm[1].toUpperCase().replace('BOLETOS', 'BOLETO') : '',
+      metodo: metodoCorrente,
       noPedido: noPedido && !md,
     })
   }
@@ -82,7 +99,7 @@ export function parseFormaPagamento(texto: string, total: number): FormaPagament
   const parcelas: ParcelaLida[] = []
   for (const p of lidas) {
     if (!entrada && p.noPedido) {
-      entrada = { valor: p.valor, vencimento: '' }
+      entrada = { valor: p.valor, vencimento: '', metodo: p.metodo }
       continue
     }
     parcelas.push(p)
