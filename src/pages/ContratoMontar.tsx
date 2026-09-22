@@ -22,7 +22,7 @@ import {
   type ContratoDados, type ContratoPessoa, type ContratoGarantidor, type TipoPessoa,
 } from '@/lib/contrato/contrato-dados'
 import { gerarContratoDocx, nomeArquivoContrato } from '@/lib/contrato/contrato-docx'
-import { docxParaPdfServer } from '@/lib/docx-to-pdf-server'
+import { gerarContratoHtml } from '@/lib/contrato/contrato-html'
 import { formatBRL } from '@/lib/contrato/extenso'
 
 // ── UI base ──────────────────────────────────────────────────────────────────
@@ -173,9 +173,50 @@ function useDadosContratoCliente(clienteId: number | null) {
   })
 }
 
+/**
+ * PDF pelo Chrome do proprio projeto (/api/contrato-pdf) — o caminho antigo
+ * passava pelo ConvertAPI, que virou 401 em 22/09/2026 e derrubava o botao.
+ * O HTML sai dos MESMOS blocos do .docx, entao Word e PDF nao divergem.
+ */
+async function gerarPdfNoServidor(dados: ContratoDados): Promise<Blob> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('sessão expirada — relogue')
+
+  const res = await fetch('/api/contrato-pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ html: gerarContratoHtml(dados) }),
+  })
+  if (!res.ok) {
+    let detalhe = String(res.status)
+    try {
+      const j = await res.json()
+      detalhe = j.detail || j.error || detalhe
+    } catch { /* resposta sem json */ }
+    throw new Error(detalhe)
+  }
+  return await res.blob()
+}
+
 // ── editor do contrato ───────────────────────────────────────────────────────
 
 const ESTADOS_CIVIS = ['solteiro(a)', 'casado(a)', 'divorciado(a)', 'viúvo(a)', 'união estável']
+const FORMAS_PAGAMENTO = ['BOLETO', 'PIX', 'TED', 'DINHEIRO', 'CHEQUE', 'CARTÃO', 'FINAME']
+
+function SelectForma({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className={`w-full px-1.5 py-1 text-[12px] rounded outline-none border
+        ${value ? 'border-transparent hover:border-border bg-transparent' : 'border-amber-300 bg-amber-50'}
+        focus:border-accent`}
+    >
+      <option value="">—</option>
+      {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
+    </select>
+  )
+}
 
 function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVoltar: () => void }) {
   const { data: orc, isLoading } = useOrcamentoGerado(orcamentoId)
@@ -225,10 +266,7 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
     setGerando(tipo)
     setMsg(null)
     try {
-      const docx = await gerarContratoDocx(dados)
-      const blob = tipo === 'pdf'
-        ? await docxParaPdfServer(docx, nomeArquivoContrato(dados, 'docx'))
-        : docx
+      const blob = tipo === 'pdf' ? await gerarPdfNoServidor(dados) : await gerarContratoDocx(dados)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -361,8 +399,8 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
         destaque
         titulo={ehPJ ? 'Representante legal (quem assina pela empresa)' : 'Dados pessoais do comprador'}
         subtitulo={ehPJ
-          ? 'O orçamento não tem esses dados. São obrigatórios pra protesto e execução — e ficam guardados no cliente.'
-          : 'Completam o CPF que já está acima. São obrigatórios pra protesto e execução — e ficam guardados no cliente.'}
+          ? 'Estado civil e profissão são o que a lei pede pra executar (art. 319 do CPC). RG, nascimento e nome da mãe são opcionais — ajudam na cobrança. Tudo fica guardado no cliente.'
+          : 'Estado civil e profissão são o que a lei pede pra executar (art. 319 do CPC). RG, nascimento e nome da mãe são opcionais — ajudam na cobrança. Tudo fica guardado no cliente.'}
       >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           {ehPJ && (
@@ -372,18 +410,18 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
           {ehPJ && (
             <Campo destaque label="CPF" value={dados.comprador.representante.cpf} onChange={v => setRep({ cpf: v })} />
           )}
-          <Campo destaque label="RG / órgão emissor" value={dados.comprador.representante.rg} onChange={v => setRep({ rg: v })} />
+          <Campo label="RG / órgão emissor (opcional)" value={dados.comprador.representante.rg} onChange={v => setRep({ rg: v })} />
           {!ehPJ && (
-            <Campo destaque label="Data de nascimento" value={dados.comprador.representante.nascimento}
+            <Campo label="Data de nascimento (opcional)" value={dados.comprador.representante.nascimento}
               onChange={v => setRep({ nascimento: v })} placeholder="DD/MM/AAAA" />
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {ehPJ && (
-            <Campo destaque label="Data de nascimento" value={dados.comprador.representante.nascimento}
+            <Campo label="Data de nascimento (opcional)" value={dados.comprador.representante.nascimento}
               onChange={v => setRep({ nascimento: v })} placeholder="DD/MM/AAAA" />
           )}
-          <Campo destaque label="Nome da mãe" value={dados.comprador.representante.mae}
+          <Campo label="Nome da mãe (opcional)" value={dados.comprador.representante.mae}
             onChange={v => setRep({ mae: v })} largura="md:col-span-2" />
           <label className="block">
             <span className="block text-[11px] font-semibold text-ink-muted mb-1">Estado civil</span>
@@ -435,12 +473,12 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
               <Campo destaque label="Nome completo" value={dados.garantidor.nome}
                 onChange={v => setGar({ nome: v })} largura="md:col-span-2" />
               <Campo destaque label="CPF" value={dados.garantidor.cpf} onChange={v => setGar({ cpf: v })} />
-              <Campo destaque label="RG / órgão emissor" value={dados.garantidor.rg} onChange={v => setGar({ rg: v })} />
+              <Campo label="RG / órgão emissor (opcional)" value={dados.garantidor.rg} onChange={v => setGar({ rg: v })} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-              <Campo destaque label="Data de nascimento" value={dados.garantidor.nascimento}
+              <Campo label="Data de nascimento (opcional)" value={dados.garantidor.nascimento}
                 onChange={v => setGar({ nascimento: v })} placeholder="DD/MM/AAAA" />
-              <Campo destaque label="Nome da mãe" value={dados.garantidor.mae}
+              <Campo label="Nome da mãe (opcional)" value={dados.garantidor.mae}
                 onChange={v => setGar({ mae: v })} largura="md:col-span-2" />
               <label className="block">
                 <span className="block text-[11px] font-semibold text-ink-muted mb-1">Estado civil</span>
@@ -583,6 +621,17 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
               onChange={v => set({ entrada: { ...dados.entrada!, vencimento: v } })} placeholder="DD/MM/AAAA" />
             <Campo label="Entrada — valor (R$)" value={String(dados.entrada.valor)}
               onChange={v => set({ entrada: { ...dados.entrada!, valor: Number(v.replace(',', '.')) || 0 } })} />
+            <label className="block">
+              <span className="block text-[11px] font-semibold text-ink-muted mb-1">Entrada — forma</span>
+              <select
+                value={dados.entrada.metodo}
+                onChange={e => set({ entrada: { ...dados.entrada!, metodo: e.target.value } })}
+                className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
+              >
+                <option value="">—</option>
+                {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </label>
           </div>
         )}
         {dados.parcelas.length === 0 ? (
@@ -616,7 +665,7 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
                   <th className="text-center px-2 py-1.5 font-semibold text-ink-muted w-20">Parcela</th>
                   <th className="text-center px-2 py-1.5 font-semibold text-ink-muted w-40">Vencimento</th>
                   <th className="text-right px-2 py-1.5 font-semibold text-ink-muted w-40">Valor (R$)</th>
-                  <th className="text-left px-2 py-1.5 font-semibold text-ink-muted">Forma</th>
+                  <th className="text-left px-2 py-1.5 font-semibold text-ink-muted w-32">Forma</th>
                 </tr>
               </thead>
               <tbody>
@@ -641,7 +690,16 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
                         }}
                         className="w-full px-1.5 py-1 text-[12px] text-right tabular-nums border border-transparent hover:border-border focus:border-accent rounded bg-transparent outline-none" />
                     </td>
-                    <td className="px-2 py-1 text-ink-muted">{pc.metodo}</td>
+                    <td className="px-2 py-1">
+                      <SelectForma
+                        value={pc.metodo}
+                        onChange={v => {
+                          const novas = [...dados.parcelas]
+                          novas[idx] = { ...pc, metodo: v }
+                          set({ parcelas: novas })
+                        }}
+                      />
+                    </td>
                   </tr>
                 ))}
                 <tr className="bg-surface-2 font-bold">

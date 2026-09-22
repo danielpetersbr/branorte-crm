@@ -87,7 +87,7 @@ export interface ContratoDados {
   descontoValor: number       // 0 quando nao ha desconto
   somaItens: number           // pra alertar divergencia com o total
 
-  entrada: { valor: number; vencimento: string } | null
+  entrada: { valor: number; vencimento: string; metodo: string } | null
   parcelas: ContratoParcela[]
   /** Texto livre do orcamento. Vale quando nao ha quadro de parcelas legivel. */
   formaPagamentoTexto: string
@@ -383,7 +383,7 @@ export function contratoDoOrcamento(
     const valor = calcValor(p)
     const venc = vencimentoDe(p)
     if (idx === 0 && (p?.dataTipo === 'no_pedido' || p?.dataTipo === 'apos_pedido') && brutas.length > 1) {
-      entrada = { valor, vencimento: venc }
+      entrada = { valor, vencimento: venc, metodo: p?.metodo || '' }
       return
     }
     parcelas.push({
@@ -401,7 +401,9 @@ export function contratoDoOrcamento(
   if (parcelas.length === 0 && !entrada && formaTexto) {
     const lida = parseFormaPagamento(formaTexto, totalLiquido)
     if (lida) {
-      if (lida.entrada) entrada = { valor: lida.entrada.valor, vencimento: dataVendaBR || '' }
+      if (lida.entrada) {
+        entrada = { valor: lida.entrada.valor, vencimento: dataVendaBR || '', metodo: lida.entrada.metodo }
+      }
       lida.parcelas.forEach(pl => {
         parcelas.push({
           numero: String(parcelas.length + 1),
@@ -502,15 +504,16 @@ export function camposPendentes(d: ContratoDados): string[] {
 
   if (ehPJ && !r.nome) faltam.push('Nome do representante legal')
   if (ehPJ && !r.cpf) faltam.push('CPF do representante legal')
-  if (!r.rg) faltam.push('RG')
-  if (!r.nascimento) faltam.push('Data de nascimento')
-  if (!r.mae) faltam.push('Nome da mãe')
+  // RG, nascimento e nome da mae NAO sao exigidos: o art. 319 do CPC pede nome,
+  // estado civil, profissao, CPF, e-mail e domicilio. Os tres ajudam na cobranca
+  // (homonimo, consulta em biro), mas cobrar como pendencia so trava o vendedor.
   if (!r.estadoCivil) faltam.push('Estado civil')
 
   if (d.garantidor.incluir) {
     if (!d.garantidor.nome) faltam.push('Nome do garantidor')
     if (!d.garantidor.cpf) faltam.push('CPF do garantidor')
     if (!d.garantidor.endereco) faltam.push('Endereço do garantidor')
+    if (!d.garantidor.estadoCivil) faltam.push('Estado civil do garantidor')
     if (/casad/i.test(d.garantidor.estadoCivil) && !d.garantidor.conjugeNome) {
       faltam.push('Cônjuge do garantidor (garantidor casado)')
     }
