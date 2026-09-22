@@ -3,7 +3,8 @@
 // motores que saem em bloco proprio, parcela "no pedido" que vira entrada e
 // vencimento calculado a partir do prazo de entrega em dias uteis.
 
-import { describe, it, expect } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
 import { contratoDoOrcamento, camposPendentes } from './contrato-dados'
 import { valorPorExtenso, numeroPorExtenso } from './extenso'
 import type { OrcamentoGerado } from '@/hooks/useOrcamentoBuilder'
@@ -59,15 +60,15 @@ const ORC_2774 = {
 
 describe('extenso', () => {
   it('escreve numero redondo e composto', () => {
-    expect(numeroPorExtenso(1000)).toBe('mil')
-    expect(numeroPorExtenso(100)).toBe('cem')
-    expect(numeroPorExtenso(182524)).toBe('cento e oitenta e dois mil, quinhentos e vinte e quatro')
+    assert.equal(numeroPorExtenso(1000), 'mil')
+    assert.equal(numeroPorExtenso(100), 'cem')
+    assert.equal(numeroPorExtenso(182524), 'cento e oitenta e dois mil, quinhentos e vinte e quatro')
   })
 
   it('escreve valor com centavos', () => {
-    expect(valorPorExtenso(22816)).toBe('vinte e dois mil, oitocentos e dezesseis reais')
-    expect(valorPorExtenso(1.5)).toBe('um real e cinquenta centavos')
-    expect(valorPorExtenso(42700.2)).toBe('quarenta e dois mil e setecentos reais e vinte centavos')
+    assert.equal(valorPorExtenso(22816), 'vinte e dois mil, oitocentos e dezesseis reais')
+    assert.equal(valorPorExtenso(1.5), 'um real e cinquenta centavos')
+    assert.equal(valorPorExtenso(42700.2), 'quarenta e dois mil e setecentos reais e vinte centavos')
   })
 })
 
@@ -75,69 +76,137 @@ describe('contrato a partir do orcamento 2026-2774', () => {
   const d = contratoDoOrcamento(ORC_2774)
 
   it('usa o preco COM desconto — e nao o total bruto gravado', () => {
-    expect(d.totalBruto).toBe(53945.2)
-    expect(d.descontoValor).toBe(11245)
-    expect(d.valorTotal).toBe(42700.2)
+    assert.equal(d.totalBruto, 53945.2)
+    assert.equal(d.descontoValor, 11245)
+    assert.equal(d.valorTotal, 42700.2)
   })
 
   it('fecha a conta: soma das linhas = preco do contrato', () => {
-    expect(Math.abs(d.somaItens - d.valorTotal)).toBeLessThan(0.05)
+    assert.ok(Math.abs(d.somaItens - d.valorTotal) < 0.05)
   })
 
   it('traz os motores como linha propria', () => {
     const motores = d.itens.find(i => i.descricao.startsWith('Motores'))
-    expect(motores).toBeTruthy()
-    expect(motores!.valorLinha).toBe(8976)
-    expect(motores!.descricao).toContain('2 CV 4 polos')
+    assert.ok(motores)
+    assert.equal(motores!.valorLinha, 8976)
+    assert.ok(motores!.descricao.includes('2 CV 4 polos'))
   })
 
   it('NAO diz "motor incluso" quando o motor e cobrado a parte', () => {
     const triturador = d.itens.find(i => i.descricao.startsWith('TRITURADOR'))!
-    expect(triturador.descricao).toContain('motor orçado à parte')
-    expect(triturador.descricao).not.toContain('incluso')
+    assert.ok(triturador.descricao.includes('motor orçado à parte'))
+    assert.ok(!triturador.descricao.includes('incluso'))
   })
 
   it('escreve CV com virgula, como em pt-BR', () => {
     const mist = d.itens.find(i => i.descricao.startsWith('MISTURADOR'))!
-    expect(mist.descricao).toContain('1,5 CV')
-    expect(mist.descricao).not.toContain('1.5 CV')
+    assert.ok(mist.descricao.includes('1,5 CV'))
+    assert.ok(!mist.descricao.includes('1.5 CV'))
   })
 
   it('leva acessorios e componentes extras pra tabela', () => {
-    expect(d.itens.some(i => i.descricao.startsWith('Acessórios'))).toBe(true)
-    expect(d.itens.some(i => i.descricao.includes('Painel Elétrico'))).toBe(true)
+    assert.equal(d.itens.some(i => i.descricao.startsWith('Acessórios')), true)
+    assert.equal(d.itens.some(i => i.descricao.includes('Painel Elétrico')), true)
   })
 
   it('a parcela "no pedido" vira entrada e sobram 4 parcelas', () => {
-    expect(d.entrada).toBeTruthy()
-    expect(d.entrada!.valor).toBe(8540.03)
-    expect(d.entrada!.vencimento).toBe('22/09/2026')
-    expect(d.parcelas).toHaveLength(4)
+    assert.ok(d.entrada)
+    assert.equal(d.entrada!.valor, 8540.03)
+    assert.equal(d.entrada!.vencimento, '22/09/2026')
+    assert.equal(d.parcelas.length, 4)
   })
 
   it('calcula vencimento com prazo de entrega em dias uteis', () => {
     // 22/09/2026 + 60 dias uteis = 15/12/2026 (na NF)
-    expect(d.parcelas[0].vencimento).toBe('15/12/2026')
+    assert.equal(d.parcelas[0].vencimento, '15/12/2026')
     // +30 dias uteis depois da NF
-    expect(d.parcelas[1].vencimento).toBe('26/01/2027')
+    assert.equal(d.parcelas[1].vencimento, '26/01/2027')
   })
 
   it('a soma de entrada + parcelas fecha com o preco', () => {
     const soma = d.entrada!.valor + d.parcelas.reduce((s, p) => s + p.valor, 0)
-    expect(Math.abs(soma - d.valorTotal)).toBeLessThan(0.05)
+    assert.ok(Math.abs(soma - d.valorTotal) < 0.05)
   })
 
   it('le prazo, frete e montagem do orcamento', () => {
-    expect(d.prazoEntrega).toBe('60')
-    expect(d.prazoTipo).toBe('úteis')
-    expect(d.freteFob).toBe(true)
-    expect(d.montagemInclusa).toBe(false)
+    assert.equal(d.prazoEntrega, '60')
+    assert.equal(d.prazoTipo, 'úteis')
+    assert.equal(d.freteFob, true)
+    assert.equal(d.montagemInclusa, false)
   })
 
   it('aponta o que falta preencher', () => {
     const faltam = camposPendentes(d)
-    expect(faltam).toContain('CNPJ do comprador')
-    expect(faltam).toContain('Nome da mãe')
-    expect(faltam).toContain('Nome do garantidor')
+    assert.ok(faltam.includes('CNPJ do comprador'))
+    assert.ok(faltam.includes('Nome da mãe'))
+    assert.ok(faltam.includes('Nome do garantidor'))
+  })
+})
+
+// ── caso real 2026-2629 (Breno): condicao de pagamento escrita A MAO ─────────
+// Sem ler o texto, o contrato tratava 10 parcelas como pagamento a vista e
+// desligava a reserva de dominio pelo item 3.7.
+
+const ORC_2629 = {
+  id: 1918, numero: '2026 - 2629', data_emissao: '2026-09-15', data_venda: null,
+  vendedor_nome: 'DANIEL', cliente_id: 1, cliente_nome: 'Breno Fabres Álvares da Cunha',
+  cliente_dados: {
+    ac: 'Fazenda Sinuelo', ie: '223/1090346', cep: '97870-000', cnpj: '003.691.590-47',
+    fone: '(51) 99692-3378', email: 'financeiro@albaagro.com', bairro: 'Interior',
+    cidade: 'Santo Antônio das Missões - RS', ie_tipo: 'estadual', endereco: 'VL Itaroquem, s/n',
+  },
+  itens: [{ letra: 'A', qtd: 1, nome: 'SILO METÁLICO', specs: [], valor: 69662 }],
+  motores: [], acessorios: null, montagem: null, motores_avulsos: null,
+  componentes_extras: null, desconto: null, parcelas: null, forma_pagamento_cfg: null,
+  forma_pagamento: 'R$ 5.000,00 no pedido; R$ 14.700,00 até 10/10/2026; 21/11/2026 R$ 6.000,00 via PIX; saldo restante em boletos: 21/12/2026 R$ 5.000,00; 21/01/2027 R$ 5.000,00; 21/02/2027 R$ 5.000,00; 21/03/2027 R$ 5.000,00; 21/04/2027 R$ 5.000,00; 21/05/2027 R$ 5.000,00; 21/06/2027 R$ 42.823,00 (quitação).',
+  total_equipamentos: 69662, total_motores: 28861, total_proposta: 98523,
+  prazo_entrega: '60 dias (corridos)', frete_tipo: 'FOB', status: 'enviado',
+} as unknown as OrcamentoGerado
+
+describe('orcamento 2026-2629 — condicao escrita a mao', () => {
+  const d = contratoDoOrcamento(ORC_2629)
+
+  it('NAO trata venda parcelada como pagamento antecipado', () => {
+    assert.equal(d.pagamentoAntecipado, false)
+  })
+
+  it('le as 10 parcelas do texto livre e fecha com o preco', () => {
+    assert.ok(d.entrada)
+    assert.equal(d.entrada!.valor, 5000)
+    assert.equal(d.parcelas.length, 9)
+    const soma = d.entrada!.valor + d.parcelas.reduce((s, p) => s + p.valor, 0)
+    assert.equal(soma, 98523)
+  })
+
+  it('pega data e valor de cada parcela', () => {
+    assert.equal(d.parcelas[0].vencimento, '10/10/2026'); assert.equal(d.parcelas[0].valor, 14700)
+    assert.equal(d.parcelas[1].vencimento, '21/11/2026'); assert.equal(d.parcelas[1].valor, 6000); assert.equal(d.parcelas[1].metodo, 'PIX')
+    assert.equal(d.parcelas[8].vencimento, '21/06/2027'); assert.equal(d.parcelas[8].valor, 42823)
+  })
+
+  it('separa a UF grudada no nome da cidade', () => {
+    assert.equal(d.comprador.cidade, 'Santo Antônio das Missões')
+    assert.equal(d.comprador.uf, 'RS')
+    assert.equal(d.comarca, 'Santo Antônio das Missões/RS')
+  })
+
+  it('pessoa fisica: o CPF do comprador ja preenche o do signatario', () => {
+    assert.equal(d.comprador.tipoPessoa, 'pf')
+    assert.equal(d.comprador.representante.cpf, '003.691.590-47')
+    assert.ok(!camposPendentes(d).includes('CPF do comprador'))
+  })
+
+  it('exige garantidor mesmo sem quadro de parcelas', () => {
+    assert.equal(d.garantidor.incluir, true)
+  })
+})
+
+describe('parse que NAO fecha com o preco', () => {
+  it('devolve null e o contrato usa o texto original', () => {
+    const orc = { ...ORC_2629, forma_pagamento: 'entrada de R$ 1.000,00 e o resto a combinar' } as unknown as OrcamentoGerado
+    const d = contratoDoOrcamento(orc)
+    assert.equal(d.parcelas.length, 0)
+    assert.ok(d.formaPagamentoTexto.includes('a combinar'))
+    assert.equal(d.pagamentoAntecipado, false)
   })
 })
