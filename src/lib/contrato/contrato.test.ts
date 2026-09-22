@@ -259,3 +259,25 @@ describe('data base e garantidor = comprador', () => {
     assert.ok(!faltam.includes('Endereço do garantidor'))
   })
 })
+
+describe('modo de assinatura', () => {
+  it('digital nao imprime testemunha e cita o § 4º do art. 784', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)
+    assert.equal(d.assinatura, 'digital')          // default
+    const txt = montarBlocosContrato(d).map(b => ('txt' in b ? b.txt : '')).join('\n')
+    assert.ok(!txt.includes('TESTEMUNHAS:'))
+    assert.ok(txt.includes('§ 4º'))
+    assert.ok(txt.includes('por meio eletrônico'))
+  })
+
+  it('papel imprime as duas testemunhas e cita o inciso III', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)
+    d.assinatura = 'papel'
+    const txt = montarBlocosContrato(d).map(b => ('txt' in b ? b.txt : '')).join('\n')
+    assert.ok(txt.includes('TESTEMUNHAS:'))
+    assert.ok(txt.includes('por 2 (duas) testemunhas'))
+    assert.ok(txt.includes('3 (três) vias'))
+  })
+})

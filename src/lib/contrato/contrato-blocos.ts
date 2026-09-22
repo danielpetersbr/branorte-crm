@@ -773,8 +773,11 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'deste contrato, comunicando a COMPRADORA.'))
   b.push(p('16.4. Este contrato obriga as partes, seus herdeiros e sucessores a qualquer título.'))
   b.push(p(
-    '16.5. O presente instrumento, assinado pelas partes e por 2 (duas) testemunhas, constitui título ' +
-    'executivo extrajudicial, na forma do art. 784, inciso III, do Código de Processo Civil.'))
+    (d.assinatura === 'papel'
+      ? '16.5. O presente instrumento, assinado pelas partes e por 2 (duas) testemunhas, constitui título ' +
+        'executivo extrajudicial, na forma do art. 784, inciso III, do Código de Processo Civil.'
+      : '16.5. O presente instrumento constitui título executivo extrajudicial, na forma do art. 784, ' +
+        'inciso III e § 4º, do Código de Processo Civil.')))
   b.push(p(
     '16.6. As partes admitem a assinatura deste contrato por meio eletrônico, com utilização de ' +
     'certificado digital ICP-Brasil, do assinador eletrônico oficial do Governo Federal (gov.br) e/ou de ' +
@@ -806,8 +809,11 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'medidas de recuperação da posse dos equipamentos, que poderão ser propostas no foro da situação dos ' +
     'bens, a critério da VENDEDORA.'))
   b.push(p(
-    'E, por estarem justas e contratadas, as partes assinam o presente instrumento em 3 (três) vias de ' +
-    'igual teor e forma, na presença das testemunhas abaixo.'))
+    (d.assinatura === 'papel'
+      ? 'E, por estarem justas e contratadas, as partes assinam o presente instrumento em 3 (três) vias de ' +
+        'igual teor e forma, na presença das testemunhas abaixo.'
+      : 'E, por estarem justas e contratadas, as partes assinam o presente instrumento por meio eletrônico, ' +
+        'na forma do item 16.6, produzindo os mesmos efeitos de um documento físico.')))
   b.push(p(`Grão-Pará/SC, ${dataPorExtenso(d.dataContrato)}.`, { center: true }))
 
   // ── assinaturas ──
@@ -832,10 +838,15 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     }
   }
 
-  b.push({ k: 'p', txt: 'TESTEMUNHAS:', bold: true, spaceBefore: true })
-  for (const n of ['1.', '2.']) {
-    b.push(p(`${n} ______________________________________________________________________________________`, { spaceAfter: 60 }))
-    b.push(p('Nome: ____________________________________________ CPF: __________________________', { spaceAfter: 200 }))
+  // Testemunha so entra na via de papel. Assinado em plataforma que confere a
+  // integridade, o art. 784, § 4o do CPC dispensa — e campo de testemunha vazio
+  // num contrato assinado digitalmente so levanta duvida na hora de executar.
+  if (d.assinatura === 'papel') {
+    b.push({ k: 'p', txt: 'TESTEMUNHAS:', bold: true, spaceBefore: true })
+    for (const n of ['1.', '2.']) {
+      b.push(p(`${n} ______________________________________________________________________________________`, { spaceAfter: 60 }))
+      b.push(p('Nome: ____________________________________________ CPF: __________________________', { spaceAfter: 200 }))
+    }
   }
 
   b.push(p(`Anexo I – Orçamento nº ${d.orcamentoNumero}, de ${d.orcamentoData}.`, { spaceAfter: 60 }))
