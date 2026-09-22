@@ -107,6 +107,13 @@ export interface ContratoDados {
   dataContrato: string        // ISO AAAA-MM-DD
   multaPct: number
   usoImagem: boolean
+  /**
+   * Como o contrato vai ser assinado. 'digital' dispensa as testemunhas sem
+   * perder a executividade (art. 784, § 4o do CPC, Lei 14.620/2023); 'papel'
+   * EXIGE as duas, senao o contrato deixa de ser titulo executivo e a cobranca
+   * vira acao de conhecimento.
+   */
+  assinatura: 'digital' | 'papel'
 }
 
 // ── datas ────────────────────────────────────────────────────────────────────
@@ -492,6 +499,7 @@ export function contratoDoOrcamento(
     dataContrato: hojeIso,
     multaPct: 10,
     usoImagem: true,
+    assinatura: 'digital',
   }
 }
 
