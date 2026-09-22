@@ -147,6 +147,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/contrato', label: 'Montar Contrato', icon: FileSignature, permKey: 'menu.orcamentos' },
+      { to: '/orcamentos/contratos', label: 'Contratos Feitos', icon: BookCheck, permKey: 'menu.orcamentos' },
     ],
   },
   {
