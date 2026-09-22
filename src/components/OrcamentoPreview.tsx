@@ -8,7 +8,7 @@ import { Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BRLInput } from '@/components/ui/BRLInput'
-import { calcularMontagem, MONTAGEM_PADRAO, type MontagemCfg } from '@/lib/orcamento-montagem'
+import { calcularMontagem, inclusosMontagem, MONTAGEM_PADRAO, type MontagemCfg } from '@/lib/orcamento-montagem'
 import { letraItem } from '@/lib/utils'
 import { OBS_POR_CONTA_DEFAULT } from '@/lib/orcamento-defaults'
 
@@ -2419,6 +2419,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             // montagemBase = proposta SEM a montagem. Nao da pra derivar do totalGeral,
             // que ja traz a montagem dentro dele — quem chama passa explicito.
             const real = calcularMontagem(montagem, montagemBase)
+            const inclusos = inclusosMontagem(montagem, montagemBase)
 
             function patch(campo: keyof MontagemCfg, valor: number | boolean) {
               if (!onUpdateMontagem) return
@@ -2481,19 +2482,25 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                 )}
 
-                {/* NO PDF O CLIENTE VE SO O TOTAL. A quebra (quantas pessoas, quantos
-                    dias, quanto e hotel, quanto e passagem) e conta INTERNA: exposta
-                    ela vira negociacao item a item com o cliente. Pedido do Daniel,
-                    22/09/2026. `interactive` ja e false em renderMode (PDF/DOCX). */}
+                {/* NO PDF: o cliente ve O QUE ESTA INCLUSO (deslocamento, passagem
+                    aerea, hotel...) e UM valor fechado. O quanto de cada um — e as
+                    pessoas e os dias por tras — e conta INTERNA: exposta ela vira
+                    negociacao item a item. Pedido do Daniel, 22/09/2026.
+                    `interactive` ja e false em renderMode (PDF/DOCX). */}
                 {!interactive ? (
                   <table className="w-full text-[16px] border-collapse">
                     <tbody>
                       <tr>
-                        <td className="py-1.5 text-gray-800">
+                        <td className="py-1.5 text-gray-800 align-top">
                           <span className="text-gray-400 mr-1.5">•</span>
                           <span className="font-semibold">Montagem dos equipamentos</span>
+                          {inclusos && (
+                            <div className="text-[14px] text-gray-600 mt-0.5 ml-4">
+                              Inclui {inclusos}.
+                            </div>
+                          )}
                         </td>
-                        <td className="py-1.5 text-right text-gray-900 tabular-nums font-bold w-[160px]">
+                        <td className="py-1.5 text-right text-gray-900 tabular-nums font-bold w-[160px] align-top">
                           R$ {formatBRLBare(real.total)}
                         </td>
                       </tr>
@@ -3461,7 +3468,16 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             <SectionHeader>Observação <span className="text-gray-400 font-normal normal-case tracking-normal text-[14px]">— por conta do cliente</span></SectionHeader>
             <div className="text-[14.5px] text-gray-800 space-y-0.5 pl-2">
               {(() => {
-                const linhas = obsPorConta ?? OBS_POR_CONTA_DEFAULT
+                // CONTRADICAO NO DOCUMENTO: a lista historica traz "Montagem dos
+                // equipamentos orcados acima (se necessario)" como POR CONTA DO
+                // CLIENTE. Se o orcamento esta COBRANDO montagem, o cliente lia as
+                // duas coisas no mesmo PDF — o valor cobrado e "e por sua conta".
+                // Com montagem no orcamento, essa linha sai sozinha.
+                const linhasBase = obsPorConta ?? OBS_POR_CONTA_DEFAULT
+                const cobrandoMontagem = calcularMontagem(montagem, montagemBase).total > 0
+                const linhas = cobrandoMontagem
+                  ? linhasBase.filter(l => !/montagem\s+dos\s+equipamentos/i.test(l))
+                  : linhasBase
                 const podeEditar = !renderMode && !!onUpdateObsPorConta
                 const commit = (novas: string[]) => onUpdateObsPorConta && onUpdateObsPorConta(novas)
                 return (
@@ -3478,7 +3494,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               onChange={(e) => setEditingObsValor(e.target.value)}
                               onBlur={() => {
                                 const v = editingObsValor.trim()
-                                const base = obsPorConta ?? OBS_POR_CONTA_DEFAULT
+                                // `linhas` (ja sem a montagem, quando ela e cobrada) e a
+                                // base: senao o indice `i` do map apontaria pra outra linha.
+                                const base = linhas
                                 if (v && v !== s) {
                                   const novas = base.slice()
                                   novas[i] = v
@@ -3506,7 +3524,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                               {podeEditar && (
                                 <button
                                   type="button"
-                                  onClick={() => commit((obsPorConta ?? OBS_POR_CONTA_DEFAULT).filter((_, j) => j !== i))}
+                                  onClick={() => commit(linhas.filter((_, j) => j !== i))}
                                   className="opacity-0 group-hover/obs:opacity-100 text-red-400 hover:text-red-600 print:hidden shrink-0"
                                   title="Excluir esta linha"
                                 >
@@ -3522,7 +3540,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       <button
                         type="button"
                         onClick={() => {
-                          const base = obsPorConta ?? OBS_POR_CONTA_DEFAULT
+                          const base = linhas
                           const novas = [...base, 'Nova observação']
                           commit(novas)
                           setEditingObsValor('Nova observação')
