@@ -267,7 +267,7 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'produtivo, e não como destinatária final. As partes reconhecem, em consequência, que esta contratação ' +
     'é regida pelo Código Civil e pela legislação empresarial aplicável, não configurando relação de consumo.'))
   b.push(p(
-    '1.6. Os desenhos, projetos, memórias de cálculo, dimensionamentos, layouts, manuais e demais ' +
+    '1.6. Os desenhos, projetos, memórias de cálculo, dimensionamentos, layouts, instruções técnicas e demais ' +
     'documentos técnicos fornecidos pela VENDEDORA permanecem de sua propriedade intelectual exclusiva, ' +
     'sendo cedidos à COMPRADORA em caráter não exclusivo e apenas para a instalação, operação e ' +
     'manutenção dos equipamentos objeto deste contrato. É vedada à COMPRADORA a reprodução, a cópia, a ' +
@@ -441,9 +441,8 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'pagamento integral do preço.'))
   b.push(p(
     '4.4. No ato da entrega será lavrado Termo de Entrega e Recebimento, assinado pelas partes, no qual ' +
-    'constarão a data da tradição, o estado dos equipamentos, seus números de série e a entrega do manual ' +
-    'de instruções prevista no item 6.4, iniciando-se dali a contagem da garantia técnica prevista na ' +
-    'Cláusula Nona.'))
+    'constarão a data da tradição, o estado dos equipamentos e seus números de série, iniciando-se dali a ' +
+    'contagem da garantia técnica prevista na Cláusula Nona.'))
   b.push(p(
     '4.4.1. Eventuais divergências de quantidade, avarias aparentes ou faltas deverão ser registradas no ' +
     'Termo de Entrega e Recebimento e no canhoto do conhecimento de transporte, e comunicadas por escrito ' +
@@ -487,7 +486,7 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'serviços vigente da VENDEDORA.'))
   b.push(p(
     '5.5. A montagem, quando a cargo da COMPRADORA ou de terceiro por ela contratado, deverá observar ' +
-    'rigorosamente os projetos e manuais fornecidos, sob pena de perda da garantia prevista na Cláusula ' +
+    'rigorosamente os projetos e as instruções técnicas fornecidos, sob pena de perda da garantia prevista na Cláusula ' +
     'Nona quanto aos vícios decorrentes da montagem irregular.'))
   b.push(p(
     '5.6. NÃO INTEGRAM o fornecimento, salvo quando expressamente orçados como item próprio, correndo por ' +
@@ -517,15 +516,17 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     '6.3. São igualmente de responsabilidade exclusiva da COMPRADORA: o treinamento e a capacitação dos ' +
     'operadores e dos profissionais de manutenção; o fornecimento e a exigência de uso dos equipamentos de ' +
     'proteção individual; a sinalização e a delimitação das áreas; os procedimentos de bloqueio e ' +
-    'etiquetagem durante a manutenção; e a manutenção preventiva conforme o manual.'))
+    'etiquetagem durante a manutenção; e a manutenção preventiva dos equipamentos.'))
   b.push(p(
-    '6.4. A VENDEDORA entregará à COMPRADORA, no ato da entrega dos equipamentos, o manual de instruções, ' +
-    'operação, manutenção e segurança, cuja entrega constará expressamente do Termo de Entrega e Recebimento.'))
+    '6.4. A COMPRADORA obriga-se a operar e a manter os equipamentos conforme as especificações técnicas ' +
+    'constantes do Orçamento (Anexo I) e as instruções técnicas fornecidas pela VENDEDORA, que poderão ser ' +
+    'solicitadas a qualquer tempo.'))
   b.push(p(
     '6.5. A COMPRADORA responde integralmente por todo e qualquer dano pessoal ou material decorrente da ' +
     'colocação dos equipamentos em operação sem as adequações previstas no item 6.2, da remoção, ' +
     'inutilização ou desativação de proteções e dispositivos de segurança, da operação por pessoal não ' +
-    'treinado ou do descumprimento do manual, obrigando-se a manter a VENDEDORA indene e a ressarci-la de ' +
+    'treinado ou do descumprimento das instruções técnicas e das especificações do equipamento, ' +
+    'obrigando-se a manter a VENDEDORA indene e a ressarci-la de ' +
     'quaisquer valores que esta venha a despender a esse título, inclusive em ações regressivas, custas e ' +
     'honorários.'))
   b.push(p(
@@ -595,8 +596,9 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'de responsabilidade da COMPRADORA.'))
   b.push(p(
     '9.4. A garantia não abrange, cessando de pleno direito, os danos decorrentes de: transporte e ' +
-    'descarga; montagem realizada por terceiros em desacordo com os projetos e manuais; operação por ' +
-    'pessoal não treinado ou em desacordo com o manual; sobrecarga ou uso de material de processo fora das ' +
+    'descarga; montagem realizada por terceiros em desacordo com os projetos e as instruções técnicas ' +
+    'fornecidos; operação por pessoal não treinado ou em desacordo com as especificações do equipamento; ' +
+    'sobrecarga ou uso de material de processo fora das ' +
     'especificações ou com corpos estranhos; falta de manutenção preventiva; oscilação, ' +
     'subdimensionamento ou ausência de proteção na rede elétrica; uso de peças não originais; e ' +
     'intervenção, reparo ou modificação realizados por terceiros sem autorização escrita da VENDEDORA.'))
