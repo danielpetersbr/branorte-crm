@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { MontagemCfg } from '@/lib/orcamento-montagem'
 import { supabase } from '@/lib/supabase'
 
 export interface OrcamentoItem {
@@ -136,8 +137,9 @@ export interface OrcamentoGerado {
   total_motores: number
   total_proposta: number
   componentes_extras: Array<{ id: string; nome: string; valor: number }> | null
-  // Bloco de montagem (roadmap #69). O "valor" SOMA no total_proposta.
-  montagem: { titulo: string; itens: string[]; valor: number; tituloCliente: string; itensCliente: string[] } | null
+  // Montagem da fabrica no cliente (mao de obra + viagem da equipe). O total
+  // dela JA esta somado em total_proposta. Ver src/lib/orcamento-montagem.ts.
+  montagem: MontagemCfg | null
   // Motores avulsos (sem equipamento host) — migration 2026-07-07
   motores_avulsos: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
   balanca_dispensada: boolean | null
@@ -624,7 +626,7 @@ export interface CriarOrcamentoInput {
   componentes_extras?: Array<{ id: string; nome: string; valor: number }> | null
   // Motores avulsos (sem equipamento host) — migration 2026-07-07
   motores_avulsos?: Array<{ id: string; cv: number; polos: number; qtd: number; por_conta_cliente?: boolean }> | null
-  montagem?: { titulo: string; itens: string[]; valor: number; tituloCliente: string; itensCliente: string[] } | null
+  montagem?: MontagemCfg | null
   // Vendedor dispensou a balança auto-adicionada pela Caçamba de Pesagem.
   balanca_dispensada?: boolean | null
   // Foto principal do orçamento (URL pública no Storage após upload)
@@ -866,6 +868,8 @@ export function useCriarAlteracao() {
         prazo_entrega: rest.prazo_entrega ?? null,
         status: rest.status ?? 'rascunho',
         componentes_extras: rest.componentes_extras ?? null,
+        // Faltava no UPDATE (so existia no INSERT): reabrir e salvar apagava a montagem.
+        montagem: rest.montagem ?? null,
         motores_avulsos: rest.motores_avulsos ?? null,
         balanca_dispensada: rest.balanca_dispensada ?? false,
         obs_por_conta: rest.obs_por_conta ?? null,

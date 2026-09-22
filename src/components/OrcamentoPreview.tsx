@@ -8,6 +8,7 @@ import { Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BRLInput } from '@/components/ui/BRLInput'
+import { calcularMontagem, MONTAGEM_PADRAO, type MontagemCfg } from '@/lib/orcamento-montagem'
 import { letraItem } from '@/lib/utils'
 import { OBS_POR_CONTA_DEFAULT } from '@/lib/orcamento-defaults'
 
@@ -163,6 +164,11 @@ export interface OrcamentoPreviewProps {
   valorAcessorios: number
   /** Valor fixo definido antes de o carrinho mudar — pede conferencia (nao sai no PDF). */
   acessoriosDesatualizados?: boolean
+  /** Montagem da fabrica no cliente. null = nao oferecida neste orcamento. */
+  montagem?: MontagemCfg | null
+  onUpdateMontagem?: (cfg: MontagemCfg | null) => void
+  /** Total da proposta SEM a montagem — base do % de mao de obra. */
+  montagemBase?: number
   componentesExtras?: PreviewComponenteExtra[]
   onUpdateComponentesExtras?: (items: PreviewComponenteExtra[]) => void
   // Sugestões puxadas do cadastro (precos_branorte) — apresentadas no popover "+ Adicionar"
@@ -438,6 +444,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     marcaMotores = null, onUpdateMarcaMotores,
     desconto, onUpdateDesconto,
     onAddAcessorios, onAddItem, onEditAcessorios, onRemoveAcessorios, onRemove, onFotoChange, onUpdateNome, onUpdateSpec, onAddSpec, onRemoveSpec, onUpdateValor, onToggleInox, onToggleTungstenio, onUpdateQtd, onUpdateTerm, onMoverItem, onTrocarItem, onToggleBrinde, onToggleIncluso, onTogglePorConta,
+    montagem = null, onUpdateMontagem, montagemBase = 0,
     componentesExtras = [], onUpdateComponentesExtras, componentesAdicionaisCatalogo = [],
     parcelas, onUpdateParcelas,
     motoresDisponiveis, onTrocarMotor, onVoltagemMotor, onMotorPorContaCliente, onMotorIncluso, onEmbutirMotorNoEquip, onAdicionarMotorAvulso,
@@ -2403,6 +2410,139 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             )
           })()}
 
+          {/* MONTAGEM DA FABRICA — mao de obra + viagem da equipe ate o cliente.
+              Soma no total da proposta. Base do % = total SEM a montagem. */}
+          {(() => {
+            const interactive = !renderMode && !!onUpdateMontagem
+            if (!montagem?.ativo && !interactive) return null
+
+            // montagemBase = proposta SEM a montagem. Nao da pra derivar do totalGeral,
+            // que ja traz a montagem dentro dele — quem chama passa explicito.
+            const real = calcularMontagem(montagem, montagemBase)
+
+            function patch(campo: keyof MontagemCfg, valor: number | boolean) {
+              if (!onUpdateMontagem) return
+              onUpdateMontagem({ ...(montagem ?? MONTAGEM_PADRAO), [campo]: valor } as MontagemCfg)
+            }
+
+            if (!montagem?.ativo) {
+              return (
+                <div className="mt-3 print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateMontagem?.({ ...MONTAGEM_PADRAO, ativo: true })}
+                    className="text-[12px] px-3 py-1.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-semibold transition-all"
+                  >+ Adicionar montagem</button>
+                </div>
+              )
+            }
+
+            // FUNCAO que devolve JSX, NAO componente. Um componente declarado aqui
+            // dentro nasce com identidade nova a cada render: o React desmonta e
+            // remonta o <input>, e o vendedor PERDE O FOCO a cada tecla digitada.
+            function numCampo(label: string, campo: keyof MontagemCfg, sufixo?: string) {
+              return (
+                <label key={campo} className="flex items-center gap-1.5 text-[13px] text-gray-600">
+                  <span className="font-semibold">{label}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={String(montagem?.[campo] ?? 0)}
+                    onChange={e => patch(campo, Math.max(0, Number(e.target.value) || 0))}
+                    className="w-14 text-center text-[14px] font-bold text-gray-900 bg-white border border-gray-300 rounded px-1 py-0.5 outline-none focus:border-emerald-500"
+                  />
+                  {sufixo && <span className="text-gray-400">{sufixo}</span>}
+                </label>
+              )
+            }
+
+            return (
+              <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                <div className="flex items-center justify-between gap-3 pb-2 border-b-2 border-gray-800 mb-2.5">
+                  <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">
+                    Montagem
+                  </span>
+                  {interactive && (
+                    <button
+                      type="button"
+                      onClick={() => onUpdateMontagem?.(null)}
+                      className="print:hidden text-[11px] text-red-500 hover:text-white hover:bg-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 font-semibold transition-all"
+                      title="Tirar a montagem deste orçamento"
+                    >Remover</button>
+                  )}
+                </div>
+
+                {interactive && (
+                  <div className="print:hidden flex flex-wrap items-center gap-x-5 gap-y-2 mb-3 pb-3 border-b border-dashed border-gray-300">
+                    {numCampo('Pessoas', 'pessoas')}
+                    {numCampo('Dias', 'dias', '(ida + montagem + volta)')}
+                    {numCampo('Carros', 'carros')}
+                    {numCampo('Mão de obra', 'percentualMaoObra', '%')}
+                  </div>
+                )}
+
+                <table className="w-full text-[16px] border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px]">Item</th>
+                      {interactive && <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[13px] w-[130px]">Unitário</th>}
+                      <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px] w-[160px]">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {real.linhas.length === 0 && (
+                      <tr className="border-t border-gray-200">
+                        <td colSpan={interactive ? 3 : 2} className="py-2 text-[13px] text-gray-400 italic">
+                          Preencha pessoas e dias pra montagem entrar na proposta.
+                        </td>
+                      </tr>
+                    )}
+                    {real.linhas.map(linha => {
+                      const campoUnit: Partial<Record<typeof linha.chave, keyof MontagemCfg>> = {
+                        estadia: 'estadiaDia',
+                        alimentacao: 'alimentacaoDia',
+                        passagem: 'passagemPessoa',
+                        deslocamento: 'deslocamentoDia',
+                      }
+                      const campo = campoUnit[linha.chave]
+                      return (
+                        <tr key={linha.chave} className="border-t border-gray-200">
+                          <td className="py-1.5 text-gray-800">
+                            <span className="text-gray-400 mr-1.5">•</span>
+                            <span className="font-semibold">{linha.rotulo}</span>
+                            <span className="text-[13px] text-gray-500 ml-2">{linha.detalhe}</span>
+                          </td>
+                          {interactive && (
+                            <td className="py-1.5 text-right print:hidden">
+                              {campo ? (
+                                <BRLInput
+                                  value={Number(montagem?.[campo] ?? 0)}
+                                  onChange={v => patch(campo, Math.max(0, v))}
+                                  prefix
+                                  className="w-24 text-[14px] font-semibold"
+                                  title="Valor unitário — edite se a cotação do dia for outra"
+                                />
+                              ) : (
+                                <span className="text-[13px] text-gray-400 italic">{montagem?.percentualMaoObra ?? 0}%</span>
+                              )}
+                            </td>
+                          )}
+                          <td className="py-1.5 text-right text-gray-800 tabular-nums font-semibold">
+                            R$ {formatBRLBare(linha.valor)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    <tr className="border-t-2 border-gray-700 font-bold">
+                      <td className="py-2 text-gray-900">TOTAL DA MONTAGEM</td>
+                      {interactive && <td className="print:hidden"></td>}
+                      <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(real.total)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
           {/* VALOR TOTAL DA PROPOSTA */}
           {(() => {
             // Reusa _descontoVal/totalComDesconto (linhas ~383-388) que JÁ respeitam
