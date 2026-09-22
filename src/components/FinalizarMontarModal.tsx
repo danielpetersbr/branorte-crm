@@ -22,6 +22,7 @@ import {
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 import { montarNotaTxt } from '@/lib/orcamento-docx'
 import { startGeneration, updateGeneration, finishGeneration } from '@/lib/generation-progress'
+import { calcularMontagem, montagemParaSalvar, type MontagemCfg } from '@/lib/orcamento-montagem'
 import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
@@ -142,6 +143,8 @@ export interface CarrinhoSnapshot {
     pct?: number
     valor?: number
   }>
+  // Montagem da fabrica no cliente. O total dela ja esta dentro de totalGeral.
+  montagem?: MontagemCfg | null
   // Componentes adicionais (não fabricados pela Branorte) — painel, balança, célula de carga…
   componentesExtras?: Array<{ id: string; nome: string; valor: number }>
   // Motores AVULSOS (sem equipamento host) — linhas extras na tabela de motores.
@@ -341,6 +344,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   // (uploadOrcamentoViaServer chama onProgress várias vezes — manteria a barra
   // estável mesmo se mensagens chegarem fora de ordem).
   // Também atualiza o store global (overlay persiste entre navegações).
+  // Base do % de mao de obra da montagem: a proposta SEM a montagem dentro.
+  // Mesma conta que OrcamentoMontar faz (totalSemMontagem).
+  const montagemBaseCalc = snapshot.totalEquip + snapshot.totalMotores
+    + (snapshot.componentesExtras ?? []).reduce((acc, c) => acc + (Number(c.valor) || 0), 0)
+
   function setStep(label: string, pct: number) {
     setGerandoStep(label)
     setGerandoProgress(p => Math.max(p, Math.min(99, pct)))
@@ -940,6 +948,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           ? snapshot.parcelas
           : (removidoManual?.parcelas ? null : (salvoOrigem?.parcelas ?? null)),
         componentes_extras: snapshot.componentesExtras ?? null,
+        // Carimba o total junto: quem le o orcamento pronto (contrato) nao
+        // consegue refazer a base do %.
+        montagem: montagemParaSalvar(snapshot.montagem, montagemBaseCalc),
         // Motores avulsos (migration 2026-07-07) — round-trip ao reabrir/editar
         motores_avulsos: snapshot.motoresAvulsos?.length ? snapshot.motoresAvulsos : null,
         balanca_dispensada: snapshot.balancaDispensada ?? false,
@@ -1052,6 +1063,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         desconto: snapshot.desconto ?? null,
         parcelas: snapshot.parcelas ?? [],
         componentesExtras: snapshot.componentesExtras ?? [],
+        montagem: snapshot.montagem ?? null,
+        montagemBase: montagemBaseCalc,
         vendedoresContato,
         vendedorResponsavelNome: profile?.display_name || null,
         // Modo FINAME: mostra o código FINAME e suprime imagens nos renderizadores
@@ -1115,6 +1128,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // Componentes adicionais (painel, frete, Difal): entram no totalProposta,
           // então PRECISAM aparecer no DOCX, senão o total não fecha com os itens.
           componentesExtras: snapshot.componentesExtras ?? [],
+          // Montagem soma no total da proposta — sem ela no DOCX o total nao fecha.
+          montagem: calcularMontagem(snapshot.montagem, montagemBaseCalc)
+            .linhas.map(l => ({ nome: `${l.rotulo} (${l.detalhe})`, valor: l.valor })),
           // Paridade DOCX↔PDF: desconto (com base), frete e tensão também no DOCX.
           desconto: snapshot.desconto ?? null,
           tensaoMotores: snapshot.tensaoMotores ?? null,

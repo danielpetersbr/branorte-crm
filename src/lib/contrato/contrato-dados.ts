@@ -12,6 +12,7 @@
 import type { OrcamentoGerado, OrcamentoItem } from '@/hooks/useOrcamentoBuilder'
 import { dataBR } from './extenso'
 import { parseFormaPagamento } from './parse-forma-pagamento'
+import { totalMontagemSalva } from '@/lib/orcamento-montagem'
 
 export type TipoPessoa = 'pj' | 'produtor_rural' | 'pf'
 
@@ -272,12 +273,13 @@ export function contratoDoOrcamento(
   }
 
   // montagem (soma no total quando tem valor)
-  if (orc.montagem && orc.montagem.valor > 0) {
+  const montagemValor = totalMontagemSalva(orc.montagem)
+  if (montagemValor > 0) {
     itens.push({
       letra: `${LETRAS[i] ?? '?'})`,
-      descricao: orc.montagem.tituloCliente || orc.montagem.titulo || 'Montagem dos itens orçados',
+      descricao: 'Montagem dos equipamentos orçados',
       qtd: 1,
-      valorLinha: orc.montagem.valor,
+      valorLinha: montagemValor,
       rotulo: null,
     })
     i++
@@ -492,7 +494,7 @@ export function contratoDoOrcamento(
     prazoEntrega: prazoDias ? String(prazoDias) : '',
     prazoTipo: uteis ? 'úteis' : 'corridos',
     freteFob: (orc.frete_tipo ?? 'FOB') !== 'CIF',
-    montagemInclusa: !!(orc.montagem && (orc.montagem.valor > 0 || (orc.montagem.itens || []).length > 0)),
+    montagemInclusa: totalMontagemSalva(orc.montagem) > 0,
 
     localInstalacao: '',
     comarca: cidade && uf ? `${cidade}/${uf}` : '',

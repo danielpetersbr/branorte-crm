@@ -92,6 +92,8 @@ export interface GerarCustomDocxOpts {
   // Foto/rascunho do bloco "Observações" (URL pública). Opcional.
   observacoesFoto?: string | null
   componentesExtras?: Array<{ nome: string; valor: number }>
+  /** Linhas da montagem, ja calculadas (mao de obra, estadia, passagem...). */
+  montagem?: Array<{ nome: string; valor: number }> | null
   desconto?: { tipo: 'pct' | 'valor'; valor: number; base?: 'total' | 'equipamento'; manterValorParcelas?: boolean } | null
   parcelas?: CustomDocxParcela[]
   vendedoresContato?: Array<{ nome: string; telefone: string }>
@@ -596,10 +598,13 @@ function buildAcessorios(acc: CustomDocxAcessorios, letra: string): Table {
 // NUNCA existia: o campo nunca era passado, então o if ficava falso e a tabela sumia
 // do DOCX — mas o valor seguia somado no total → total não fechava. Agora existe e o
 // campo é passado (ver gerarOrcamentoCustomDocx no FinalizarMontarModal).
-function buildComponentesExtras(componentes: Array<{ nome: string; valor: number }>): Table {
+function buildComponentesExtras(
+  componentes: Array<{ nome: string; valor: number }>,
+  tituloTexto = 'COMPONENTES ADICIONAIS',
+): Table {
   const total = componentes.reduce((s, c) => s + (Number(c.valor) || 0), 0)
   const titulo = new Paragraph({
-    children: [r('COMPONENTES ADICIONAIS', { bold: true, size: 22, color: '111827' })],
+    children: [r(tituloTexto, { bold: true, size: 22, color: '111827' })],
     spacing: { after: 120 },
   })
   const linhas: Paragraph[] = componentes.map(c => new Paragraph({
@@ -1287,6 +1292,13 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   // Componentes extras
   if (opts.componentesExtras && opts.componentesExtras.length > 0) {
     blocos.push(buildComponentesExtras(opts.componentesExtras))
+    blocos.push(paragrafoVazio(80))
+  }
+
+  // Montagem da fabrica (mao de obra + viagem da equipe). Soma no total da
+  // proposta, entao precisa sair no DOCX senao o total nao fecha com os itens.
+  if (opts.montagem && opts.montagem.length > 0) {
+    blocos.push(buildComponentesExtras(opts.montagem, 'MONTAGEM'))
     blocos.push(paragrafoVazio(80))
   }
 

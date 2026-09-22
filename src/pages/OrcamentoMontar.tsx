@@ -35,6 +35,7 @@ import {
 } from '@/lib/calcChupim'
 import { useTransportadorFuncoes, useCriarTransportadorFuncao, type TransportadorFuncao } from '@/hooks/useTransportadorFuncoes'
 import { useMotoresRedutorAdmin } from '@/hooks/useMotoresAdmin'
+import { calcularMontagem, normalizarMontagem, MONTAGEM_PADRAO, type MontagemCfg } from '@/lib/orcamento-montagem'
 import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 import { decidirDestinoPasta } from '@/lib/orcamento-folder-scan'
 
@@ -699,6 +700,9 @@ export function OrcamentoMontar() {
   // Componentes adicionais (NÃO fabricados pela Branorte) — painel elétrico, balança, célula de carga, etc.
   // Cada item: nome livre + valor R$. Vai pro totalGeral mas NÃO é "equipamento" nem "motor".
   const [componentesExtras, setComponentesExtras] = useState<ComponenteExtra[]>([])
+  // Montagem da fabrica no cliente (mao de obra + viagem da equipe). null = nao
+  // oferecida neste orcamento. Ver src/lib/orcamento-montagem.ts.
+  const [montagem, setMontagem] = useState<MontagemCfg | null>(null)
   // Motores avulsos (sem equipamento) — viram linha na tabela de motores.
   const [motoresAvulsos, setMotoresAvulsos] = useState<MotorAvulsoOrc[]>([])
   // Vendedor removeu manualmente a Balança Eletrônica que a Caçamba de Pesagem
@@ -742,6 +746,7 @@ export function OrcamentoMontar() {
     observacoesTxt,
     observacoesFoto,
     componentesExtras,
+    montagem,
     motoresAvulsos,
     balancaDispensada,
     obsPorConta,
@@ -751,7 +756,7 @@ export function OrcamentoMontar() {
     carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataEmissaoTxt, dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
     parcelasPagamento, fotoPrincipal, observacoesTxt, observacoesFoto,
-    componentesExtras, motoresAvulsos, balancaDispensada, obsPorConta,
+    componentesExtras, montagem, motoresAvulsos, balancaDispensada, obsPorConta,
     motorPrecoOverride, exportPct,
   ])
 
@@ -827,6 +832,7 @@ export function OrcamentoMontar() {
     setObservacoesTxt((prev as any).observacoesTxt ?? '')
     setObservacoesFoto((prev as any).observacoesFoto ?? null)
     setComponentesExtras(prev.componentesExtras ?? [])
+    setMontagem(normalizarMontagem((prev as any).montagem))
     setMotoresAvulsos((prev as any).motoresAvulsos ?? [])
     setBalancaDispensada((prev as any).balancaDispensada ?? false)
     setObsPorConta((prev as any).obsPorConta ?? null)
@@ -872,6 +878,7 @@ export function OrcamentoMontar() {
     setObservacoesTxt((d as any).observacoesTxt ?? '')
     setObservacoesFoto((d as any).observacoesFoto ?? null)
     setComponentesExtras(d.componentesExtras ?? [])
+    setMontagem(normalizarMontagem((d as any).montagem))
     setMotoresAvulsos((d as any).motoresAvulsos ?? [])
     setBalancaDispensada((d as any).balancaDispensada ?? false)
     setObsPorConta((d as any).obsPorConta ?? null)
@@ -1097,7 +1104,14 @@ export function OrcamentoMontar() {
     () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
     [componentesExtras],
   )
-  const totalGeral = totalEquip + totalMotores + totalComponentesExtras
+  // Base do % de mao de obra = proposta SEM a montagem (senao o 10% comeria a si mesmo).
+  const totalSemMontagem = totalEquip + totalMotores + totalComponentesExtras
+  const montagemCalc = useMemo(
+    () => calcularMontagem(montagem, totalSemMontagem),
+    [montagem, totalSemMontagem],
+  )
+  const totalMontagem = montagemCalc.total
+  const totalGeral = totalSemMontagem + totalMontagem
 
   const aiSnapshot = useMemo<OrcamentoAISnapshot>(() => {
     const modeloSalvo = orcamentoEditando?.modelo_id
@@ -3003,6 +3017,8 @@ export function OrcamentoMontar() {
     // Não inferir do primeiro item — orçamentos antigos não tinham hero.
     // Hidrata componentes extras + observacoes + termos
     if (o.componentes_extras) setComponentesExtras(o.componentes_extras as any)
+    // Montagem da fabrica (migration 2026-09-22) — null quando o orcamento nao oferece.
+    setMontagem(normalizarMontagem((o as any).montagem))
     // Motores avulsos (migration 2026-07-07) — restaura ao reabrir
     setMotoresAvulsos(Array.isArray((o as any).motores_avulsos) ? (o as any).motores_avulsos : [])
     // Dispensa da balança (migration 2026-06-26): se o vendedor removeu a balança
@@ -3922,6 +3938,9 @@ export function OrcamentoMontar() {
                   else if (!tinha && temAgora) setBalancaDispensada(false)
                   setComponentesExtras(novos)
                 }}
+                montagem={finameMode ? null : montagem}
+                montagemBase={totalSemMontagem}
+                onUpdateMontagem={finameMode ? undefined : setMontagem}
                 componentesAdicionaisCatalogo={componentesAdicionaisCatalogo}
                 tensaoMotores={tensaoMotores}
                 onUpdateTensaoMotores={setTensaoMotores}
@@ -4308,6 +4327,8 @@ export function OrcamentoMontar() {
           },
           parcelas: parcelasPagamento,
           componentesExtras: componentesExtrasFinal,
+          // FINAME reescreve os valores dos itens — a montagem fica fora dessa transformacao.
+          montagem: finameMode ? null : montagem,
           // FINAME embute o valor dos avulsos nos equipamentos → não persiste como avulso
           motoresAvulsos: finameMode ? [] : motoresAvulsos,
           balancaDispensada,
