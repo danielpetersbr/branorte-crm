@@ -151,6 +151,27 @@ export function calcularMontagem(cfg: MontagemCfg | null | undefined, baseMaoObr
   return { linhas, total: linhas.reduce((s, l) => s + l.valor, 0), base }
 }
 
+/**
+ * Frase do que a montagem INCLUI, pro cliente ler no PDF: os itens que entraram,
+ * sem o valor de cada um. Ele precisa saber que passagem e hotel estão na conta
+ * (valoriza a proposta) sem conseguir fatiar item a item na negociação.
+ * Pedido do Daniel, 22/09/2026.
+ */
+const ROTULO_CLIENTE: Record<MontagemChave, string> = {
+  mao_obra: 'mão de obra',
+  estadia: 'estadia',
+  alimentacao: 'alimentação',
+  passagem: 'passagem aérea',
+  deslocamento: 'deslocamento',
+}
+
+export function inclusosMontagem(cfg: MontagemCfg | null | undefined, baseMaoObra: number): string {
+  const nomes = calcularMontagem(cfg, baseMaoObra).linhas.map(l => ROTULO_CLIENTE[l.chave])
+  if (nomes.length === 0) return ''
+  if (nomes.length === 1) return nomes[0]
+  return `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`
+}
+
 /** Só o total — atalho pros cálculos de total geral. */
 export function totalMontagem(cfg: MontagemCfg | null | undefined, baseMaoObra: number): number {
   return calcularMontagem(cfg, baseMaoObra).total

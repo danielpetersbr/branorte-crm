@@ -22,7 +22,7 @@ import {
 import { construirFormaPagamento, type TipoPagamento, type FormaPagamentoConfig } from '@/lib/forma-pagamento'
 import { montarNotaTxt } from '@/lib/orcamento-docx'
 import { startGeneration, updateGeneration, finishGeneration } from '@/lib/generation-progress'
-import { calcularMontagem, montagemParaSalvar, type MontagemCfg } from '@/lib/orcamento-montagem'
+import { calcularMontagem, inclusosMontagem, montagemParaSalvar, type MontagemCfg } from '@/lib/orcamento-montagem'
 import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
@@ -1129,11 +1129,16 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // então PRECISAM aparecer no DOCX, senão o total não fecha com os itens.
           componentesExtras: snapshot.componentesExtras ?? [],
           // Montagem soma no total da proposta — sem ela no DOCX o total nao fecha.
-          // UMA linha com o total: a quebra (pessoas, dias, hotel, passagem) e conta
-          // INTERNA e nao vai pro cliente. Mesma regra da preview/PDF.
+          // O cliente ve O QUE ESTA INCLUSO e UM valor fechado; o quanto de cada um
+          // (e as pessoas e os dias) e conta INTERNA. Mesma regra da preview/PDF.
           montagem: (() => {
             const total = calcularMontagem(snapshot.montagem, montagemBaseCalc).total
-            return total > 0 ? [{ nome: 'Montagem dos equipamentos', valor: total }] : []
+            if (total <= 0) return []
+            const inclui = inclusosMontagem(snapshot.montagem, montagemBaseCalc)
+            return [{
+              nome: inclui ? `Montagem dos equipamentos — inclui ${inclui}` : 'Montagem dos equipamentos',
+              valor: total,
+            }]
           })(),
           // Paridade DOCX↔PDF: desconto (com base), frete e tensão também no DOCX.
           desconto: snapshot.desconto ?? null,

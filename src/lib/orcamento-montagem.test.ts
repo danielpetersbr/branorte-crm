@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { calcularMontagem, normalizarMontagem, MONTAGEM_PADRAO, type MontagemCfg } from './orcamento-montagem.ts'
+import { calcularMontagem, inclusosMontagem, normalizarMontagem, MONTAGEM_PADRAO, type MontagemCfg } from './orcamento-montagem.ts'
 
 const cfg = (over: Partial<MontagemCfg> = {}): MontagemCfg => ({ ...MONTAGEM_PADRAO, ...over })
 
@@ -60,4 +60,22 @@ test('normalizar preenche campo que faltou no JSONB antigo', () => {
   assert.equal(n.passagemPessoa, 5_000)
   assert.equal(n.ativo, true)
   assert.equal(normalizarMontagem(null), null)
+})
+
+test('inclusos: lista o que entrou, sem valor, com "e" no fim', () => {
+  const r = inclusosMontagem(cfg({ pessoas: 2, dias: 15, carros: 1 }), 92_126.9)
+  assert.equal(r, 'mão de obra, estadia, alimentação, passagem aérea e deslocamento')
+  assert.doesNotMatch(r, /\d/)       // nenhum numero vaza
+  assert.doesNotMatch(r, /R\$/)
+})
+
+test('inclusos: so cita o que REALMENTE entrou', () => {
+  // sem carro e sem base: some deslocamento e mao de obra
+  assert.equal(inclusosMontagem(cfg({ pessoas: 1, dias: 3, carros: 0 }), 0),
+    'estadia, alimentação e passagem aérea')
+  // so passagem
+  assert.equal(inclusosMontagem(cfg({ pessoas: 1, dias: 0, carros: 0 }), 0), 'passagem aérea')
+  // nada ligado
+  assert.equal(inclusosMontagem(cfg({ ativo: false }), 100_000), '')
+  assert.equal(inclusosMontagem(null, 100_000), '')
 })
