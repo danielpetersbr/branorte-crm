@@ -119,6 +119,15 @@ function qualificacaoComprador(d: ContratoDados): string {
 
 function qualificacaoGarantidor(d: ContratoDados): string {
   const g = d.garantidor
+  // Garantidor = proprio comprador: repetir a qualificacao inteira polui o
+  // preambulo e ainda arrisca divergir dos dados de cima se alguem editar um lado.
+  if (g.mesmoQueComprador) {
+    return (
+      'GARANTIDOR: o próprio COMPRADOR, acima qualificado, que assina este instrumento também na ' +
+      'qualidade de devedor solidário de todas as obrigações nele assumidas, respondendo com seu ' +
+      'patrimônio pessoal, sem benefício de ordem.'
+    )
+  }
   const doc = [
     `inscrito no CPF sob o nº ${vazio(g.cpf, 'CPF')}`,
     g.rg.trim() ? `portador do RG nº ${g.rg.trim()}` : '',
@@ -670,7 +679,9 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
   if (d.garantidor.incluir) {
     b.push(clausula('CLÁUSULA DÉCIMA SEGUNDA – DA GARANTIA PESSOAL'))
     b.push(p(
-      '12.1. O GARANTIDOR, qualificado no preâmbulo, declara-se, por meio deste instrumento e na forma dos ' +
+      (d.garantidor.mesmoQueComprador
+        ? '12.1. O COMPRADOR, na qualidade de GARANTIDOR, declara-se, por meio deste instrumento e na forma dos '
+        : '12.1. O GARANTIDOR, qualificado no preâmbulo, declara-se, por meio deste instrumento e na forma dos ') +
       'arts. 264 e 265 do Código Civil, devedor solidário de todas as obrigações assumidas pela COMPRADORA ' +
       'neste contrato, principais e acessórias, incluindo o preço, encargos, multas, despesas e ' +
       'honorários, respondendo com seu patrimônio pessoal, sem benefício de ordem e sem qualquer limitação ' +
@@ -782,15 +793,16 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
 
   // ── assinaturas ──
   b.push(...assinatura('METALÚRGICA BBA LTDA. – VENDEDORA', 'CNPJ 16.935.999/0001-09'))
+  const mesmo = d.garantidor.incluir && d.garantidor.mesmoQueComprador
   b.push(...assinatura(
-    `${vazio(c.nome, 'NOME DA COMPRADORA')} – COMPRADORA`,
+    `${vazio(c.nome, 'NOME DA COMPRADORA')} – ${mesmo ? 'COMPRADOR(A) E GARANTIDOR(A)' : 'COMPRADORA'}`,
     `${c.tipoPessoa === 'pj' ? 'CNPJ' : 'CPF'} ${vazio(c.cnpj, '—')}`))
   if (c.tipoPessoa !== 'pj' && /casad/i.test(c.representante.estadoCivil)) {
     b.push(...assinatura(
       `${vazio(c.representante.conjugeNome, 'NOME DO CÔNJUGE')} – ANUÊNCIA CONJUGAL`,
       `CPF ${vazio(c.representante.conjugeCpf, '—')}`))
   }
-  if (d.garantidor.incluir) {
+  if (d.garantidor.incluir && !mesmo) {
     b.push(...assinatura(
       `${vazio(d.garantidor.nome, 'NOME DO GARANTIDOR')} – GARANTIDOR`,
       `CPF ${vazio(d.garantidor.cpf, '—')}`))

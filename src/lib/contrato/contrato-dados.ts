@@ -49,6 +49,8 @@ export interface ContratoComprador {
 
 export interface ContratoGarantidor extends ContratoPessoa {
   incluir: boolean
+  /** O garantidor e' o proprio comprador (caso comum em venda pra pessoa fisica). */
+  mesmoQueComprador: boolean
   endereco: string
   cidadeUf: string
   cep: string
@@ -346,7 +348,13 @@ export function contratoDoOrcamento(
   const somaItens = itens.reduce((s, it) => s + it.valorLinha, 0)
 
   // ── parcelas ─────────────────────────────────────────────────────────────
-  const dataVendaBR = dataBR(orc.data_venda) || dataBR(orc.data_emissao)
+  // A base do parcelamento e' a data da VENDA. Faltando ela, vale HOJE — o dia em
+  // que o contrato esta sendo feito. Usar a data de emissao do orcamento jogava
+  // os vencimentos pra tras: orcamento de 15/09 assinado em 22/09 fazia a parcela
+  // "no pedido" vencer uma semana antes da assinatura.
+  const hoje = new Date()
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
+  const dataVendaBR = dataBR(orc.data_venda) || dataBR(hojeIso)
   const prazoTxt = orc.prazo_entrega || ''
   const prazoDias = parsePrazoDias(prazoTxt)
   const uteis = prazoEhUteis(prazoTxt)
@@ -419,9 +427,6 @@ export function contratoDoOrcamento(
   const tipoPessoa = tipoPessoaDe(orc)
   const enderecoCompleto = [cd.endereco, cd.bairro].filter(Boolean).join(', ')
 
-  const hoje = new Date()
-  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
-
   return {
     orcamentoId: orc.id,
     orcamentoNumero: orc.numero,
@@ -458,6 +463,7 @@ export function contratoDoOrcamento(
     garantidor: {
       ...pessoaVazia(),
       incluir: parcelas.length > 0 || !!formaTexto,
+      mesmoQueComprador: false,
       endereco: '',
       cidadeUf: cidade && uf ? `${cidade}/${uf}` : '',
       cep: cd.cep || '',
@@ -509,7 +515,7 @@ export function camposPendentes(d: ContratoDados): string[] {
   // (homonimo, consulta em biro), mas cobrar como pendencia so trava o vendedor.
   if (!r.estadoCivil) faltam.push('Estado civil')
 
-  if (d.garantidor.incluir) {
+  if (d.garantidor.incluir && !d.garantidor.mesmoQueComprador) {
     if (!d.garantidor.nome) faltam.push('Nome do garantidor')
     if (!d.garantidor.cpf) faltam.push('CPF do garantidor')
     if (!d.garantidor.endereco) faltam.push('Endereço do garantidor')
