@@ -518,16 +518,21 @@ export function camposPendentes(d: ContratoDados): string[] {
 
   if (ehPJ && !r.nome) faltam.push('Nome do representante legal')
   if (ehPJ && !r.cpf) faltam.push('CPF do representante legal')
-  // RG, nascimento e nome da mae NAO sao exigidos: o art. 319 do CPC pede nome,
-  // estado civil, profissao, CPF, e-mail e domicilio. Os tres ajudam na cobranca
-  // (homonimo, consulta em biro), mas cobrar como pendencia so trava o vendedor.
-  if (!r.estadoCivil) faltam.push('Estado civil')
+  // Nada aqui e' requisito de VALIDADE do contrato. Estado civil e profissao sao
+  // requisito da peticao inicial (art. 319 do CPC), que o advogado supre na hora
+  // de executar; RG, nascimento e filiacao so ajudam a identificar homonimo.
+  // Estado civil so vira pendencia no garantidor que NAO e' o comprador — e ali
+  // porque decide se o conjuge precisa assinar (ver abaixo).
 
   if (d.garantidor.incluir && !d.garantidor.mesmoQueComprador) {
     if (!d.garantidor.nome) faltam.push('Nome do garantidor')
     if (!d.garantidor.cpf) faltam.push('CPF do garantidor')
     if (!d.garantidor.endereco) faltam.push('Endereço do garantidor')
-    if (!d.garantidor.estadoCivil) faltam.push('Estado civil do garantidor')
+    // Art. 1.647, III do CC: outorga conjugal e' exigida pra prestar AVAL/FIANCA
+    // de terceiro. Garantidor que e' o proprio comprador e' devedor principal,
+    // nao avalista — por isso a trava so vale pro garantidor de fora (ja filtrado
+    // pelo mesmoQueComprador na condicao deste bloco).
+    if (!d.garantidor.estadoCivil) faltam.push('Estado civil do garantidor (define se o cônjuge assina)')
     if (/casad/i.test(d.garantidor.estadoCivil) && !d.garantidor.conjugeNome) {
       faltam.push('Cônjuge do garantidor (garantidor casado)')
     }

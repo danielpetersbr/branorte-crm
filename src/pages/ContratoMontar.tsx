@@ -235,10 +235,23 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
 
   const [dados, setDados] = useState<ContratoDados | null>(null)
   const [gerando, setGerando] = useState<'docx' | 'pdf' | null>(null)
+  // Pessoa fisica: nome, CPF e endereco ja estao no bloco de cima e o resto e'
+  // opcional — bloco nasce fechado. Empresa precisa de quem assina por ela, entao abre.
+  const [dadosPessoaisAbertos, setDadosPessoaisAbertos] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
 
   // Monta o contrato quando o orçamento (e os dados salvos do cliente) chegam.
+  // Abre o bloco sozinho quando e' empresa (precisa do representante) ou quando o
+  // cliente ja tem dados guardados — senao o vendedor nao ve o que ja esta la.
+  useEffect(() => {
+    if (!dados) return
+    const r = dados.comprador.representante
+    if (dados.comprador.tipoPessoa === 'pj' || r.rg || r.nascimento || r.mae || r.estadoCivil || r.profissao) {
+      setDadosPessoaisAbertos(true)
+    }
+  }, [dados?.comprador.tipoPessoa, dados?.comprador.representante])
+
   useEffect(() => {
     if (salvo) { setDados(salvo.dados); return }
     if (!orc) return
@@ -413,13 +426,27 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
         )}
       </Bloco>
 
-      {/* REPRESENTANTE — destacado */}
+      {/* REPRESENTANTE — opcional na pessoa física */}
+      {!dadosPessoaisAbertos ? (
+        <button
+          onClick={() => setDadosPessoaisAbertos(true)}
+          className="w-full text-left rounded-lg border border-dashed border-border bg-surface px-4 py-3 mb-4 hover:border-accent/50 hover:bg-surface-2/40 transition"
+        >
+          <span className="text-[13px] font-semibold text-ink-muted">
+            + Adicionar dados pessoais do comprador <span className="font-normal">(opcional)</span>
+          </span>
+          <p className="text-[11px] text-ink-faint mt-0.5">
+            RG, data de nascimento, nome da mãe, estado civil e profissão. Nome, CPF e endereço já estão
+            acima — nada disso é exigido pra o contrato valer, mas ajuda numa eventual cobrança.
+          </p>
+        </button>
+      ) : (
       <Bloco
         destaque
-        titulo={ehPJ ? 'Representante legal (quem assina pela empresa)' : 'Dados pessoais do comprador'}
+        titulo={ehPJ ? 'Representante legal (quem assina pela empresa)' : 'Dados pessoais do comprador (opcional)'}
         subtitulo={ehPJ
-          ? 'Estado civil e profissão são o que a lei pede pra executar (art. 319 do CPC). RG, nascimento e nome da mãe são opcionais — ajudam na cobrança. Tudo fica guardado no cliente.'
-          : 'Estado civil e profissão são o que a lei pede pra executar (art. 319 do CPC). RG, nascimento e nome da mãe são opcionais — ajudam na cobrança. Tudo fica guardado no cliente.'}
+          ? 'Quem assina pela empresa. Nome e CPF são necessários; o resto ajuda numa eventual cobrança. Tudo fica guardado no cliente.'
+          : 'Nada aqui é exigido pra o contrato valer — o que não for preenchido simplesmente não aparece no documento. Fica guardado no cliente.'}
       >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           {ehPJ && (
@@ -443,18 +470,17 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
           <Campo label="Nome da mãe (opcional)" value={dados.comprador.representante.mae}
             onChange={v => setRep({ mae: v })} largura="md:col-span-2" />
           <label className="block">
-            <span className="block text-[11px] font-semibold text-ink-muted mb-1">Estado civil</span>
+            <span className="block text-[11px] font-semibold text-ink-muted mb-1">Estado civil (opcional)</span>
             <select
               value={dados.comprador.representante.estadoCivil}
               onChange={e => setRep({ estadoCivil: e.target.value })}
-              className={`w-full px-2.5 py-1.5 text-[13px] border rounded-md outline-none
-                ${dados.comprador.representante.estadoCivil ? 'border-border bg-surface-2' : 'border-amber-400 bg-amber-50'}`}
+              className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
             >
               <option value="">—</option>
               {ESTADOS_CIVIS.map(e => <option key={e} value={e}>{e}</option>)}
             </select>
           </label>
-          <Campo destaque label="Profissão" value={dados.comprador.representante.profissao}
+          <Campo label="Profissão (opcional)" value={dados.comprador.representante.profissao}
             onChange={v => setRep({ profissao: v })} />
         </div>
         {!ehPJ && repCasado && (
@@ -466,6 +492,8 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
           </div>
         )}
       </Bloco>
+
+      )}
 
       {/* GARANTIDOR — destacado */}
       <Bloco
