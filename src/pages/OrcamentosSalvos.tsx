@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Edit3, Search, FileText, Calendar, User, DollarSign, ChevronRight } from 'lucide-react'
+import { Edit3, Search, FileText, FileSignature, Calendar, User, DollarSign, ChevronRight } from 'lucide-react'
 import { useOrcamentosGerados, type OrcamentoGeradoLista } from '@/hooks/useOrcamentoBuilder'
 import { supabase } from '@/lib/supabase'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -82,14 +82,24 @@ function OrcamentoRow({ o, isAlt }: { o: OrcamentoGeradoLista; isAlt?: boolean }
         </span>
       </td>
       <td className="px-3 py-2 text-center">
-        <Link
-          to={`/orcamentos/montar?id=${o.id}`}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 text-[12px] font-bold transition"
-          title="Abrir e editar este orçamento"
-        >
-          <Edit3 className="h-3.5 w-3.5" />
-          Editar
-        </Link>
+        <span className="inline-flex items-center gap-1.5">
+          <Link
+            to={`/orcamentos/montar?id=${o.id}`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 text-[12px] font-bold transition"
+            title="Abrir e editar este orçamento"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+            Editar
+          </Link>
+          <Link
+            to={`/orcamentos/contrato?orcamento=${o.id}`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-surface-2 text-ink-muted border border-border hover:bg-surface-3 hover:text-ink text-[12px] font-bold transition"
+            title="Gerar o contrato de compra e venda a partir deste orçamento"
+          >
+            <FileSignature className="h-3.5 w-3.5" />
+            Contrato
+          </Link>
+        </span>
       </td>
     </tr>
   )
@@ -151,14 +161,24 @@ function OrcamentoGroupRow({ group }: { group: OrcamentoGroup }) {
           })()}
         </td>
         <td className="px-3 py-2 text-center">
-          <Link
-            to={`/orcamentos/montar?id=${group.parent.id}`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 text-[12px] font-bold transition"
-            title="Abrir e editar este orçamento"
-          >
-            <Edit3 className="h-3.5 w-3.5" />
-            Editar
-          </Link>
+          <span className="inline-flex items-center gap-1.5">
+            <Link
+              to={`/orcamentos/montar?id=${group.parent.id}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent/15 text-accent border border-accent/30 hover:bg-accent/25 text-[12px] font-bold transition"
+              title="Abrir e editar este orçamento"
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+              Editar
+            </Link>
+            <Link
+              to={`/orcamentos/contrato?orcamento=${group.parent.id}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-surface-2 text-ink-muted border border-border hover:bg-surface-3 hover:text-ink text-[12px] font-bold transition"
+              title="Gerar o contrato de compra e venda a partir deste orçamento"
+            >
+              <FileSignature className="h-3.5 w-3.5" />
+              Contrato
+            </Link>
+          </span>
         </td>
       </tr>
       {expanded && group.alts.map(alt => (
