@@ -494,7 +494,11 @@ export function contratoDoOrcamento(
     freteFob: (orc.frete_tipo ?? 'FOB') !== 'CIF',
     montagemInclusa: !!(orc.montagem && (orc.montagem.valor > 0 || (orc.montagem.itens || []).length > 0)),
 
-    localInstalacao: '',
+    // O equipamento quase sempre e' instalado no endereco do proprio cliente —
+    // deixar vazio so obrigava o vendedor a redigitar o que ja estava na tela.
+    // Inclui o nome da propriedade (campo `ac` da agenda) quando houver.
+    localInstalacao: [cd.ac, enderecoCompleto, cidade && uf ? `${cidade}/${uf}` : '']
+      .map(x => (x || '').trim()).filter(Boolean).join(', '),
     comarca: cidade && uf ? `${cidade}/${uf}` : '',
     dataContrato: hojeIso,
     multaPct: 10,
