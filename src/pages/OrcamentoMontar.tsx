@@ -1104,14 +1104,7 @@ export function OrcamentoMontar() {
     () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
     [componentesExtras],
   )
-  // Base do % de mao de obra = proposta SEM a montagem (senao o 10% comeria a si mesmo).
-  const totalSemMontagem = totalEquip + totalMotores + totalComponentesExtras
-  const montagemCalc = useMemo(
-    () => calcularMontagem(montagem, totalSemMontagem),
-    [montagem, totalSemMontagem],
-  )
-  const totalMontagem = montagemCalc.total
-  const totalGeral = totalSemMontagem + totalMontagem
+  const totalGeral = totalEquip + totalMotores + totalComponentesExtras
 
   const aiSnapshot = useMemo<OrcamentoAISnapshot>(() => {
     const modeloSalvo = orcamentoEditando?.modelo_id
@@ -1265,7 +1258,18 @@ export function OrcamentoMontar() {
   const totalEquipExib = totalItemsExib + valorAcessoriosExib
   // Componentes adicionais NÃO levam o +10% de exportação (são valores que o
   // vendedor já digita no preço final). Só equipamentos/motores/acessórios levam.
-  const totalGeralExib = totalEquipExib + totalMotoresExib + totalComponentesExtras
+  const totalSemMontagemExib = totalEquipExib + totalMotoresExib + totalComponentesExtras
+  // MONTAGEM entra AQUI, no total "Exib" — é ele que alimenta a preview, o PDF/DOCX e o
+  // total_proposta salvo. Somar no `totalGeral` acima não faz nada: ninguém o consome.
+  // A base do % é a proposta SEM a montagem (senão o 10% comeria a si mesmo), já com o
+  // fator de exportação aplicado nos equipamentos; as despesas de viagem entram pelo
+  // valor cheio, mesma regra dos componentes adicionais.
+  const montagemCalc = useMemo(
+    () => calcularMontagem(montagem, totalSemMontagemExib),
+    [montagem, totalSemMontagemExib],
+  )
+  const totalMontagem = montagemCalc.total
+  const totalGeralExib = totalSemMontagemExib + totalMontagem
 
   // ─── MODO FINAME ──────────────────────────────────────────────────────────
   // Transformação NÃO-destrutiva derivada do estado atual (pós-exportação):
@@ -3939,7 +3943,7 @@ export function OrcamentoMontar() {
                   setComponentesExtras(novos)
                 }}
                 montagem={finameMode ? null : montagem}
-                montagemBase={totalSemMontagem}
+                montagemBase={totalSemMontagemExib}
                 onUpdateMontagem={finameMode ? undefined : setMontagem}
                 componentesAdicionaisCatalogo={componentesAdicionaisCatalogo}
                 tensaoMotores={tensaoMotores}

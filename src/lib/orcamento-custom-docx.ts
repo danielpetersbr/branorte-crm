@@ -616,7 +616,8 @@ function buildComponentesExtras(
       r(`R$ ${formatBRL(Number(c.valor) || 0)}`, { size: 20, color: '111827' }),
     ],
   }))
-  const totalPara = new Paragraph({
+  // Uma linha so (caso da MONTAGEM): o TOTAL repetiria o mesmo numero logo abaixo.
+  const totalPara = componentes.length === 1 ? null : new Paragraph({
     tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
     spacing: { before: 120, after: 40 },
     border: { top: { style: BorderStyle.SINGLE, size: 6, color: 'D1D5DB', space: 4 } },
@@ -641,7 +642,7 @@ function buildComponentesExtras(
         cantSplit: true,
         children: [new TableCell({
           margins: { top: 160, bottom: 160, left: 200, right: 200 },
-          children: [titulo, ...linhas, totalPara],
+          children: [titulo, ...linhas, ...(totalPara ? [totalPara] : [])],
         })],
       }),
     ],

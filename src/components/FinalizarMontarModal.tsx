@@ -344,8 +344,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   // (uploadOrcamentoViaServer chama onProgress várias vezes — manteria a barra
   // estável mesmo se mensagens chegarem fora de ordem).
   // Também atualiza o store global (overlay persiste entre navegações).
-  // Base do % de mao de obra da montagem: a proposta SEM a montagem dentro.
-  // Mesma conta que OrcamentoMontar faz (totalSemMontagem).
+  // Base do % de mao de obra: a proposta SEM a montagem dentro. O snapshot ja vem
+  // com o fator de exportacao aplicado, entao bate com `totalSemMontagemExib` da tela.
   const montagemBaseCalc = snapshot.totalEquip + snapshot.totalMotores
     + (snapshot.componentesExtras ?? []).reduce((acc, c) => acc + (Number(c.valor) || 0), 0)
 
@@ -1129,8 +1129,12 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           // então PRECISAM aparecer no DOCX, senão o total não fecha com os itens.
           componentesExtras: snapshot.componentesExtras ?? [],
           // Montagem soma no total da proposta — sem ela no DOCX o total nao fecha.
-          montagem: calcularMontagem(snapshot.montagem, montagemBaseCalc)
-            .linhas.map(l => ({ nome: `${l.rotulo} (${l.detalhe})`, valor: l.valor })),
+          // UMA linha com o total: a quebra (pessoas, dias, hotel, passagem) e conta
+          // INTERNA e nao vai pro cliente. Mesma regra da preview/PDF.
+          montagem: (() => {
+            const total = calcularMontagem(snapshot.montagem, montagemBaseCalc).total
+            return total > 0 ? [{ nome: 'Montagem dos equipamentos', valor: total }] : []
+          })(),
           // Paridade DOCX↔PDF: desconto (com base), frete e tensão também no DOCX.
           desconto: snapshot.desconto ?? null,
           tensaoMotores: snapshot.tensaoMotores ?? null,
