@@ -471,7 +471,11 @@ export function contratoDoOrcamento(
 
     garantidor: {
       ...pessoaVazia(),
-      incluir: parcelas.length > 0 || !!formaTexto,
+      // Pessoa fisica ja responde com o proprio patrimonio: garantidor so agrega
+      // sendo OUTRA pessoa, e isso o vendedor decide caso a caso. Empresa e'
+      // diferente — sem o socio como devedor solidario, so o patrimonio da
+      // pessoa juridica responde, entao ali ja nasce marcado.
+      incluir: (parcelas.length > 0 || !!formaTexto) && tipoPessoa === 'pj',
       mesmoQueComprador: false,
       endereco: '',
       cidadeUf: cidade && uf ? `${cidade}/${uf}` : '',

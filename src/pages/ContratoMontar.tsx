@@ -495,27 +495,42 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
 
       )}
 
-      {/* GARANTIDOR — destacado */}
-      <Bloco
-        destaque={dados.garantidor.incluir}
-        titulo="Garantidor (devedor solidário)"
-        subtitulo="Em venda parcelada o garantidor é o que dá força ao contrato: responde com o patrimônio pessoal e avaliza as promissórias."
-      >
-        <label className="inline-flex items-center gap-2 text-[13px] mb-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={dados.garantidor.incluir}
-            onChange={e => setGar({ incluir: e.target.checked })}
-            className="h-4 w-4 accent-amber-500"
-          />
-          Incluir garantidor neste contrato
-          <span className="text-ink-faint text-[11px]">
-            (desmarque só em venda à vista, com pagamento antes da entrega)
+      {/* GARANTIDOR — opcional, no mesmo padrão dos dados pessoais */}
+      {!dados.garantidor.incluir ? (
+        <button
+          onClick={() => setGar({ incluir: true })}
+          className="w-full text-left rounded-lg border border-dashed border-border bg-surface px-4 py-3 mb-4 hover:border-accent/50 hover:bg-surface-2/40 transition"
+        >
+          <span className="text-[13px] font-semibold text-ink-muted">
+            + Adicionar garantidor <span className="font-normal">(devedor solidário)</span>
           </span>
-        </label>
+          <p className="text-[11px] text-ink-faint mt-0.5">
+            {ehPJ
+              ? 'O sócio respondendo com o patrimônio pessoal. Sem isso, só o patrimônio da empresa responde pela dívida.'
+              : 'Outra pessoa respondendo junto — cônjuge, filho, sócio, um familiar. O comprador já responde com o patrimônio dele; o garantidor acrescenta um segundo.'}
+          </p>
+        </button>
+      ) : (
+      <Bloco
+        destaque
+        titulo="Garantidor (devedor solidário)"
+        subtitulo="Responde com o patrimônio pessoal, junto com o comprador, e avaliza as promissórias."
+      >
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <span className="text-[12px] text-ink-muted">
+            {ehPJ ? 'Quem responde pessoalmente pela dívida da empresa.' : 'Quem responde junto com o comprador.'}
+          </span>
+          <button
+            onClick={() => setGar({ incluir: false, mesmoQueComprador: false })}
+            className="text-[12px] text-ink-muted hover:text-danger underline"
+          >
+            remover garantidor
+          </button>
+        </div>
 
-        {dados.garantidor.incluir && (
+        {(
           <>
+            {ehPJ && (
             <label className="inline-flex items-center gap-2 text-[13px] mb-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -546,27 +561,36 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
                 }}
                 className="h-4 w-4 accent-amber-500"
               />
-              É o próprio comprador
+              É o sócio que assina pela empresa
               <span className="text-ink-faint text-[11px]">(copia os dados de cima)</span>
             </label>
+            )}
+
+            {!ehPJ && !dados.garantidor.mesmoQueComprador && (
+              <p className="text-[12px] text-ink-muted mb-3">
+                O comprador é pessoa física e <b>já responde com o patrimônio dele</b> — não precisa
+                figurar também como garantidor. Aqui entra <b>outra pessoa</b>: cônjuge, filho, sócio, um
+                familiar. É isso que coloca um segundo patrimônio respondendo pela dívida. Não havendo
+                ninguém, desmarque “Incluir garantidor”.
+              </p>
+            )}
 
             {dados.garantidor.mesmoQueComprador && (
               <div className="rounded-md border border-border bg-surface-2 p-3 mb-1 text-[12px]">
                 <p className="text-ink">
-                  <b>{dados.garantidor.nome || '[nome do comprador]'}</b> assina como comprador e como devedor
-                  solidário. O preâmbulo não repete a qualificação: escreve “o próprio COMPRADOR, acima qualificado”.
+                  <b>{dados.garantidor.nome || '[nome do sócio]'}</b> assina pela empresa e também como devedor
+                  solidário, respondendo com o patrimônio pessoal dele.
                 </p>
                 <p className="text-ink-muted mt-1.5">
-                  Vale saber: sendo o comprador pessoa física, ele já responde com o patrimônio dele de qualquer
-                  jeito. O garantidor pesa mesmo quando é <b>outra pessoa</b> — cônjuge, sócio, um familiar — porque
-                  aí são dois patrimônios respondendo.
+                  É o que dá força ao contrato numa venda pra pessoa jurídica: sem isso, só o patrimônio da
+                  empresa responde.
                 </p>
               </div>
             )}
           </>
         )}
 
-        {dados.garantidor.incluir && !dados.garantidor.mesmoQueComprador && (
+        {!dados.garantidor.mesmoQueComprador && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
               <Campo destaque label="Nome completo" value={dados.garantidor.nome}
@@ -612,6 +636,8 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
           </>
         )}
       </Bloco>
+
+      )}
 
       {/* CONDIÇÕES */}
       <Bloco titulo="Condições do contrato" subtitulo="Prazo, frete e montagem vieram do orçamento. Local de instalação, comarca e data são do contrato.">
