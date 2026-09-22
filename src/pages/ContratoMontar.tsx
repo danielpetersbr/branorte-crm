@@ -24,6 +24,7 @@ import {
 import { gerarContratoDocx, nomeArquivoContrato } from '@/lib/contrato/contrato-docx'
 import { gerarContratoHtml } from '@/lib/contrato/contrato-html'
 import { formatBRL } from '@/lib/contrato/extenso'
+import { useContrato, useSalvarContrato } from '@/hooks/useContratos'
 
 // ── UI base ──────────────────────────────────────────────────────────────────
 
@@ -218,9 +219,18 @@ function SelectForma({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVoltar: () => void }) {
-  const { data: orc, isLoading } = useOrcamentoGerado(orcamentoId)
-  const clienteId = orc?.cliente_id ?? null
+function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
+  orcamentoId: number | null
+  contratoId: number | null
+  onVoltar: () => void
+}) {
+  // Contrato salvo abre do BANCO, nao do orcamento: o orcamento pode ter sido
+  // editado depois, e o contrato tem que reabrir exatamente como foi feito.
+  const { data: salvo, isLoading: carregandoContrato } = useContrato(contratoId)
+  const { data: orc, isLoading } = useOrcamentoGerado(contratoId ? null : orcamentoId)
+  const salvarContrato = useSalvarContrato()
+  const [idSalvo, setIdSalvo] = useState<number | null>(contratoId)
+  const clienteId = orc?.cliente_id ?? salvo?.cliente_id ?? null
   const { data: salvos, isLoading: carregandoSalvos } = useDadosContratoCliente(clienteId)
 
   const [dados, setDados] = useState<ContratoDados | null>(null)
@@ -230,12 +240,13 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
 
   // Monta o contrato quando o orçamento (e os dados salvos do cliente) chegam.
   useEffect(() => {
+    if (salvo) { setDados(salvo.dados); return }
     if (!orc) return
     if (clienteId && carregandoSalvos) return
     setDados(contratoDoOrcamento(orc, salvos ?? null))
-  }, [orc, salvos, clienteId, carregandoSalvos])
+  }, [orc, salvo, salvos, clienteId, carregandoSalvos])
 
-  if (isLoading || !dados) return <PageLoading />
+  if (isLoading || carregandoContrato || !dados) return <PageLoading />
 
   const set = (patch: Partial<ContratoDados>) => setDados(d => (d ? { ...d, ...patch } : d))
   const setComprador = (patch: Partial<ContratoDados['comprador']>) =>
@@ -275,7 +286,15 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
       a.click()
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(url), 5000)
-      setMsg({ tipo: 'ok', texto: `Contrato gerado em ${tipo.toUpperCase()}.` })
+      // Gerou = existe. Guarda (ou atualiza) pra aparecer em Contratos Feitos e
+      // poder ser reaberto depois, inclusive pra controlar o registro no RTD.
+      try {
+        const id = await salvarContrato.mutateAsync({ id: idSalvo, dados, status: 'gerado' })
+        setIdSalvo(id)
+        setMsg({ tipo: 'ok', texto: `Contrato gerado em ${tipo.toUpperCase()} e guardado em Contratos Feitos.` })
+      } catch (e: any) {
+        setMsg({ tipo: 'ok', texto: `Contrato gerado em ${tipo.toUpperCase()}. (não consegui guardar: ${e?.message || e})` })
+      }
     } catch (e: any) {
       setMsg({ tipo: 'erro', texto: `Falhou ao gerar ${tipo.toUpperCase()}: ${e?.message || e}` })
     } finally {
@@ -315,7 +334,7 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
       {/* cabeçalho */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <button onClick={onVoltar} className="inline-flex items-center gap-1 text-[13px] text-ink-muted hover:text-ink">
-          <ChevronLeft className="h-4 w-4" /> Trocar orçamento
+          <ChevronLeft className="h-4 w-4" /> {contratoId ? 'Voltar' : 'Trocar orçamento'}
         </button>
         <div className="text-[13px] text-ink-muted">
           Orçamento <span className="font-mono font-bold text-accent">{dados.orcamentoNumero}</span>
@@ -807,6 +826,24 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
           Gerar em PDF
         </button>
         <button
+          onClick={async () => {
+            if (!dados) return
+            setMsg(null)
+            try {
+              const id = await salvarContrato.mutateAsync({ id: idSalvo, dados, status: 'rascunho' })
+              setIdSalvo(id)
+              setMsg({ tipo: 'ok', texto: 'Contrato guardado. Está em Contratos Feitos.' })
+            } catch (e: any) {
+              setMsg({ tipo: 'erro', texto: `Não consegui guardar: ${e?.message || e}` })
+            }
+          }}
+          disabled={salvarContrato.isPending}
+          className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-md border border-border hover:bg-surface-2 disabled:opacity-50"
+        >
+          {salvarContrato.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Guardar contrato
+        </button>
+        <button
           onClick={salvarNoCliente}
           disabled={salvando || !clienteId}
           title={clienteId ? 'Guarda representante e garantidor no cliente' : 'Orçamento sem cliente vinculado na agenda'}
@@ -834,6 +871,8 @@ export function ContratoMontar() {
   const [searchParams, setSearchParams] = useSearchParams()
   const orcParam = searchParams.get('orcamento')
   const orcamentoId = orcParam ? Number(orcParam) : null
+  const contParam = searchParams.get('contrato')
+  const contratoId = contParam ? Number(contParam) : null
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
@@ -848,12 +887,15 @@ export function ContratoMontar() {
           <Link to="/orcamentos/salvos" className="text-accent hover:underline inline-flex items-center gap-1">
             <User className="h-3 w-3" /> ver orçamentos
           </Link>
+          {' · '}
+          <Link to="/orcamentos/contratos" className="text-accent hover:underline">contratos feitos</Link>
         </p>
       </header>
 
-      {orcamentoId ? (
+      {orcamentoId || contratoId ? (
         <EditorContrato
           orcamentoId={orcamentoId}
+          contratoId={contratoId}
           onVoltar={() => setSearchParams({})}
         />
       ) : (
