@@ -296,3 +296,12 @@ describe('qualificacao sem estado civil e profissao', () => {
     assert.ok(txt.includes('Breno Fabres Álvares da Cunha, brasileiro, inscrito no CPF'))
   })
 })
+
+describe('local de instalacao', () => {
+  it('vem preenchido com o endereco do cliente', () => {
+    const d = contratoDoOrcamento(ORC_2629)
+    assert.equal(d.localInstalacao,
+      'Fazenda Sinuelo, VL Itaroquem, s/n, Interior, Santo Antônio das Missões/RS')
+    assert.ok(!camposPendentes(d).includes('Local de instalação'))
+  })
+})
