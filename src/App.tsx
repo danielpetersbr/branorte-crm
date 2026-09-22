@@ -64,6 +64,7 @@ const MotoresAdmin = lazy(() => import('@/pages/MotoresAdmin').then(m => ({ defa
 const PrecosBranorte = lazy(() => import('@/pages/PrecosBranorte').then(m => ({ default: m.PrecosBranorte })))
 const OrcamentosConversao = lazy(() => import('@/pages/OrcamentosConversao').then(m => ({ default: m.OrcamentosConversao })))
 const OrcamentosSalvos = lazy(() => import('@/pages/OrcamentosSalvos').then(m => ({ default: m.OrcamentosSalvos })))
+const ContratoMontar = lazy(() => import('@/pages/ContratoMontar').then(m => ({ default: m.ContratoMontar })))
 const Roadmap = lazy(() => import('@/pages/Roadmap').then(m => ({ default: m.Roadmap })))
 const IaTeste = lazy(() => import('@/pages/IaTeste').then(m => ({ default: m.IaTeste })))
 const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
@@ -377,7 +378,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/precos', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/precos', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/contrato', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
   if (profile.role === 'vendor') {
     const p = loc.pathname
     // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
@@ -549,6 +550,7 @@ function AppRoutes() {
         <Route path="/orcamentos/novo" element={<Navigate to="/orcamentos/montar" replace />} />
         <Route path="/orcamentos/montar" element={<OrcamentoMontar />} />
         <Route path="/orcamentos/salvos" element={<OrcamentosSalvos />} />
+        <Route path="/orcamentos/contrato" element={<ContratoMontar />} />
         <Route path="/orcamentos/catalogo-admin" element={<CatalogoAdmin />} />
         <Route path="/orcamentos/motores" element={<MotoresAdmin />} />
         <Route path="/orcamentos/precos" element={<PrecosBranorte />} />

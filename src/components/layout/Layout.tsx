@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
 import { useEffect, useState, Suspense } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -146,6 +146,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List, permKey: 'menu.orcamentos' },
+      { to: '/orcamentos/contrato', label: 'Montar Contrato', icon: FileSignature, permKey: 'menu.orcamentos' },
     ],
   },
   {
