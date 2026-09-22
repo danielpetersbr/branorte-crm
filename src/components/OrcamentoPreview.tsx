@@ -2481,18 +2481,37 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                 )}
 
+                {/* NO PDF O CLIENTE VE SO O TOTAL. A quebra (quantas pessoas, quantos
+                    dias, quanto e hotel, quanto e passagem) e conta INTERNA: exposta
+                    ela vira negociacao item a item com o cliente. Pedido do Daniel,
+                    22/09/2026. `interactive` ja e false em renderMode (PDF/DOCX). */}
+                {!interactive ? (
+                  <table className="w-full text-[16px] border-collapse">
+                    <tbody>
+                      <tr>
+                        <td className="py-1.5 text-gray-800">
+                          <span className="text-gray-400 mr-1.5">•</span>
+                          <span className="font-semibold">Montagem dos equipamentos</span>
+                        </td>
+                        <td className="py-1.5 text-right text-gray-900 tabular-nums font-bold w-[160px]">
+                          R$ {formatBRLBare(real.total)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                ) : (
                 <table className="w-full text-[16px] border-collapse">
                   <thead>
                     <tr>
                       <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px]">Item</th>
-                      {interactive && <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[13px] w-[130px]">Unitário</th>}
+                      <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[13px] w-[130px]">Unitário</th>
                       <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px] w-[160px]">Valor</th>
                     </tr>
                   </thead>
                   <tbody>
                     {real.linhas.length === 0 && (
                       <tr className="border-t border-gray-200">
-                        <td colSpan={interactive ? 3 : 2} className="py-2 text-[13px] text-gray-400 italic">
+                        <td colSpan={3} className="py-2 text-[13px] text-gray-400 italic">
                           Preencha pessoas e dias pra montagem entrar na proposta.
                         </td>
                       </tr>
@@ -2512,21 +2531,19 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             <span className="font-semibold">{linha.rotulo}</span>
                             <span className="text-[13px] text-gray-500 ml-2">{linha.detalhe}</span>
                           </td>
-                          {interactive && (
-                            <td className="py-1.5 text-right print:hidden">
-                              {campo ? (
-                                <BRLInput
-                                  value={Number(montagem?.[campo] ?? 0)}
-                                  onChange={v => patch(campo, Math.max(0, v))}
-                                  prefix
-                                  className="w-24 text-[14px] font-semibold"
-                                  title="Valor unitário — edite se a cotação do dia for outra"
-                                />
-                              ) : (
-                                <span className="text-[13px] text-gray-400 italic">{montagem?.percentualMaoObra ?? 0}%</span>
-                              )}
-                            </td>
-                          )}
+                          <td className="py-1.5 text-right print:hidden">
+                            {campo ? (
+                              <BRLInput
+                                value={Number(montagem?.[campo] ?? 0)}
+                                onChange={v => patch(campo, Math.max(0, v))}
+                                prefix
+                                className="w-24 text-[14px] font-semibold"
+                                title="Valor unitário — edite se a cotação do dia for outra"
+                              />
+                            ) : (
+                              <span className="text-[13px] text-gray-400 italic">{montagem?.percentualMaoObra ?? 0}%</span>
+                            )}
+                          </td>
                           <td className="py-1.5 text-right text-gray-800 tabular-nums font-semibold">
                             R$ {formatBRLBare(linha.valor)}
                           </td>
@@ -2535,11 +2552,12 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     })}
                     <tr className="border-t-2 border-gray-700 font-bold">
                       <td className="py-2 text-gray-900">TOTAL DA MONTAGEM</td>
-                      {interactive && <td className="print:hidden"></td>}
+                      <td className="print:hidden"></td>
                       <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(real.total)}</td>
                     </tr>
                   </tbody>
                 </table>
+                )}
               </div>
             )
           })()}
