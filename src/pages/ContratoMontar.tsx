@@ -469,6 +469,58 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
 
         {dados.garantidor.incluir && (
           <>
+            <label className="inline-flex items-center gap-2 text-[13px] mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={dados.garantidor.mesmoQueComprador}
+                onChange={e => {
+                  const marcado = e.target.checked
+                  if (!marcado) { setGar({ mesmoQueComprador: false }); return }
+                  // Copia o comprador pro garantidor: caso mais comum em venda
+                  // pra pessoa fisica, em que o comprador e' o proprio avalista.
+                  const c = dados.comprador
+                  const r = c.representante
+                  setGar({
+                    mesmoQueComprador: true,
+                    nome: r.nome || c.nome,
+                    cpf: r.cpf || c.cnpj,
+                    rg: r.rg,
+                    nascimento: r.nascimento,
+                    mae: r.mae,
+                    estadoCivil: r.estadoCivil,
+                    profissao: r.profissao,
+                    nacionalidade: r.nacionalidade,
+                    conjugeNome: r.conjugeNome,
+                    conjugeCpf: r.conjugeCpf,
+                    endereco: [c.endereco, c.cidade && c.uf ? `${c.cidade}/${c.uf}` : ''].filter(Boolean).join(', '),
+                    cidadeUf: c.cidade && c.uf ? `${c.cidade}/${c.uf}` : '',
+                    cep: c.cep,
+                  })
+                }}
+                className="h-4 w-4 accent-amber-500"
+              />
+              É o próprio comprador
+              <span className="text-ink-faint text-[11px]">(copia os dados de cima)</span>
+            </label>
+
+            {dados.garantidor.mesmoQueComprador && (
+              <div className="rounded-md border border-border bg-surface-2 p-3 mb-1 text-[12px]">
+                <p className="text-ink">
+                  <b>{dados.garantidor.nome || '[nome do comprador]'}</b> assina como comprador e como devedor
+                  solidário. O preâmbulo não repete a qualificação: escreve “o próprio COMPRADOR, acima qualificado”.
+                </p>
+                <p className="text-ink-muted mt-1.5">
+                  Vale saber: sendo o comprador pessoa física, ele já responde com o patrimônio dele de qualquer
+                  jeito. O garantidor pesa mesmo quando é <b>outra pessoa</b> — cônjuge, sócio, um familiar — porque
+                  aí são dois patrimônios respondendo.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {dados.garantidor.incluir && !dados.garantidor.mesmoQueComprador && (
+          <>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
               <Campo destaque label="Nome completo" value={dados.garantidor.nome}
                 onChange={v => setGar({ nome: v })} largura="md:col-span-2" />

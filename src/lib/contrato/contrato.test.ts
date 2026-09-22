@@ -233,3 +233,29 @@ describe('forma de pagamento herdada e campos opcionais', () => {
     assert.ok(!faltam.includes('Nome da mãe'))
   })
 })
+
+describe('data base e garantidor = comprador', () => {
+  it('a base do parcelamento e HOJE quando o orcamento nao tem data de venda', () => {
+    const d = contratoDoOrcamento(ORC_2629)   // data_venda: null, emissao 15/09
+    const hoje = new Date()
+    const hojeBR = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`
+    assert.equal(d.entrada!.vencimento, hojeBR)
+    assert.notEqual(d.entrada!.vencimento, '15/09/2026')  // nao usa a data do orcamento
+  })
+
+  it('a data do contrato e a de hoje', () => {
+    const d = contratoDoOrcamento(ORC_2629)
+    const hoje = new Date()
+    const iso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
+    assert.equal(d.dataContrato, iso)
+  })
+
+  it('garantidor = comprador nao vira pendencia', () => {
+    const d = contratoDoOrcamento(ORC_2629)
+    d.garantidor.mesmoQueComprador = true
+    const faltam = camposPendentes(d)
+    assert.ok(!faltam.includes('Nome do garantidor'))
+    assert.ok(!faltam.includes('CPF do garantidor'))
+    assert.ok(!faltam.includes('Endereço do garantidor'))
+  })
+})
