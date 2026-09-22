@@ -11,7 +11,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  FileSignature, Search, AlertTriangle, FileText, Download, Save,
+  FileSignature, Search, AlertTriangle, FileText, Save,
   ChevronLeft, User, Loader2, CheckCircle2,
 } from 'lucide-react'
 import { useOrcamentosGerados, useOrcamentoGerado } from '@/hooks/useOrcamentoBuilder'
@@ -21,7 +21,7 @@ import {
   contratoDoOrcamento, camposPendentes,
   type ContratoDados, type ContratoPessoa, type ContratoGarantidor, type TipoPessoa,
 } from '@/lib/contrato/contrato-dados'
-import { gerarContratoDocx, nomeArquivoContrato } from '@/lib/contrato/contrato-docx'
+import { nomeArquivoContrato } from '@/lib/contrato/contrato-docx'
 import { gerarContratoHtml } from '@/lib/contrato/contrato-html'
 import { formatBRL } from '@/lib/contrato/extenso'
 import { useContrato, useSalvarContrato } from '@/hooks/useContratos'
@@ -234,7 +234,7 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
   const { data: salvos, isLoading: carregandoSalvos } = useDadosContratoCliente(clienteId)
 
   const [dados, setDados] = useState<ContratoDados | null>(null)
-  const [gerando, setGerando] = useState<'docx' | 'pdf' | null>(null)
+  const [gerando, setGerando] = useState<'pdf' | null>(null)
   // Pessoa fisica: nome, CPF e endereco ja estao no bloco de cima e o resto e'
   // opcional — bloco nasce fechado. Empresa precisa de quem assina por ela, entao abre.
   const [dadosPessoaisAbertos, setDadosPessoaisAbertos] = useState(false)
@@ -285,12 +285,12 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
   const repCasado = /casad|estável/i.test(dados.comprador.representante.estadoCivil)
   const garCasado = /casad|estável/i.test(dados.garantidor.estadoCivil)
 
-  async function baixar(tipo: 'docx' | 'pdf') {
+  async function baixar(tipo: 'pdf') {
     if (!dados) return
     setGerando(tipo)
     setMsg(null)
     try {
-      const blob = tipo === 'pdf' ? await gerarPdfNoServidor(dados) : await gerarContratoDocx(dados)
+      const blob = await gerarPdfNoServidor(dados)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -370,7 +370,8 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
           </div>
           <p className="text-[12px] text-amber-800/90">{pendentes.join(' · ')}</p>
           <p className="text-[11px] text-amber-700 mt-1">
-            Dá pra gerar mesmo assim: o que faltar sai marcado entre colchetes no documento, pra você completar no Word.
+            Dá pra gerar mesmo assim — o que faltar sai marcado entre colchetes no PDF. Mas PDF não se edita:
+            se for imprimir pra assinar, preencha aqui antes.
           </p>
         </div>
       )}
@@ -670,11 +671,12 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
           </label>
           <label className="block">
             <span className="block text-[11px] font-semibold text-ink-muted mb-1">Multa por atraso</span>
-            <select value={String(dados.multaPct)} onChange={e => set({ multaPct: Number(e.target.value) })}
-              className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-surface-2 focus:border-accent outline-none">
-              <option value="10">10% (padrão da casa)</option>
-              <option value="2">2% (padrão do contrato JELMAX)</option>
-            </select>
+            <input
+              value="10% + juros de 1% ao mês"
+              readOnly
+              title="Padrão da casa. Entre empresas e na compra como bem de produção, 10% é válido — o teto de 2% é do Código de Defesa do Consumidor, que o item 1.5 afasta."
+              className="w-full px-2.5 py-1.5 text-[13px] border border-border rounded-md bg-surface-2 text-ink-muted outline-none cursor-default"
+            />
           </label>
         </div>
         <div className="flex flex-wrap gap-4 mt-3">
@@ -871,20 +873,12 @@ function EditorContrato({ orcamentoId, contratoId, onVoltar }: {
       {/* AÇÕES */}
       <div className="sticky bottom-0 bg-surface border-t border-border py-3 flex flex-wrap items-center gap-3">
         <button
-          onClick={() => baixar('docx')}
+          onClick={() => baixar('pdf')}
           disabled={!!gerando}
           className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-bold rounded-md bg-accent text-white hover:opacity-90 disabled:opacity-50"
         >
-          {gerando === 'docx' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
-          Gerar contrato (Word)
-        </button>
-        <button
-          onClick={() => baixar('pdf')}
-          disabled={!!gerando}
-          className="inline-flex items-center gap-2 px-4 py-2 text-[13px] font-bold rounded-md border border-border bg-surface-2 hover:bg-surface-2/70 disabled:opacity-50"
-        >
-          {gerando === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Gerar em PDF
+          {gerando === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
+          Gerar contrato (PDF)
         </button>
         <button
           onClick={async () => {
