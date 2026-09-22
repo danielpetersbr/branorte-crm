@@ -11,6 +11,7 @@
 
 import type { OrcamentoGerado, OrcamentoItem } from '@/hooks/useOrcamentoBuilder'
 import { dataBR } from './extenso'
+import { parseFormaPagamento } from './parse-forma-pagamento'
 
 export type TipoPessoa = 'pj' | 'produtor_rural' | 'pf'
 
@@ -88,6 +89,11 @@ export interface ContratoDados {
 
   entrada: { valor: number; vencimento: string } | null
   parcelas: ContratoParcela[]
+  /** Texto livre do orcamento. Vale quando nao ha quadro de parcelas legivel. */
+  formaPagamentoTexto: string
+  /** true SO quando o preco e' pago integralmente antes da entrega (desliga a
+   *  reserva de dominio pelo item 3.7). Nunca inferir isso de "parcelas vazio". */
+  pagamentoAntecipado: boolean
 
   prazoEntrega: string        // "40" / "90"
   prazoTipo: 'corridos' | 'úteis'
@@ -194,6 +200,20 @@ function pessoaVazia(): ContratoPessoa {
     estadoCivil: '', profissao: '', nacionalidade: 'brasileiro',
     conjugeNome: '', conjugeCpf: '',
   }
+}
+
+/**
+ * A cidade do cadastro vem com a UF grudada com frequencia ("Santo Antonio das
+ * Missoes - RS", "Divinopolis/MG"). Sem separar, o campo UF fica vazio, a
+ * comarca do cartorio sai em branco e o contrato perde justo o dado que define
+ * ONDE registrar a reserva de dominio.
+ */
+function separarCidadeUf(cidade: string, uf: string): { cidade: string; uf: string } {
+  const c = (cidade || '').trim()
+  const u = (uf || '').trim().toUpperCase()
+  const m = /^(.*?)\s*[-\/,]\s*([A-Za-z]{2})$/.exec(c)
+  if (m) return { cidade: m[1].trim(), uf: u || m[2].toUpperCase() }
+  return { cidade: c, uf: u }
 }
 
 function tipoPessoaDe(orc: OrcamentoGerado): TipoPessoa {
@@ -374,8 +394,26 @@ export function contratoDoOrcamento(
     })
   })
 
-  const cidade = cd.cidade || ''
-  const uf = cd.uf || ''
+  // Sem quadro de parcelas? A condicao costuma estar escrita a mao em
+  // `forma_pagamento`. Ler dali e' o que impede o contrato de tratar uma venda
+  // parcelada como paga a vista (e desligar a reserva de dominio).
+  const formaTexto = (orc.forma_pagamento || '').trim()
+  if (parcelas.length === 0 && !entrada && formaTexto) {
+    const lida = parseFormaPagamento(formaTexto, totalLiquido)
+    if (lida) {
+      if (lida.entrada) entrada = { valor: lida.entrada.valor, vencimento: dataVendaBR || '' }
+      lida.parcelas.forEach(pl => {
+        parcelas.push({
+          numero: String(parcelas.length + 1),
+          vencimento: pl.vencimento,
+          valor: pl.valor,
+          metodo: pl.metodo,
+        })
+      })
+    }
+  }
+
+  const { cidade, uf } = separarCidadeUf(cd.cidade || '', cd.uf || '')
   const tipoPessoa = tipoPessoaDe(orc)
   const enderecoCompleto = [cd.endereco, cd.bairro].filter(Boolean).join(', ')
 
@@ -402,12 +440,22 @@ export function contratoDoOrcamento(
       email: cd.email || '',
       propriedadeNome: '',
       propriedadeEndereco: '',
-      representante: { ...pessoaVazia(), ...(dadosSalvos?.representante || {}) },
+      // Pessoa fisica/produtor rural: quem assina E o proprio comprador, entao o
+      // CPF e um so. Sem espelhar, a tela pede o mesmo CPF duas vezes e o alerta
+      // acusa "falta CPF" com o CPF ja preenchido na linha de cima.
+      representante: (() => {
+        const base = { ...pessoaVazia(), ...(dadosSalvos?.representante || {}) }
+        if (tipoPessoa !== 'pj') {
+          if (!base.nome) base.nome = orc.cliente_nome || ''
+          if (!base.cpf) base.cpf = cd.cnpj || ''
+        }
+        return base
+      })(),
     },
 
     garantidor: {
       ...pessoaVazia(),
-      incluir: parcelas.length > 0,
+      incluir: parcelas.length > 0 || !!formaTexto,
       endereco: '',
       cidadeUf: cidade && uf ? `${cidade}/${uf}` : '',
       cep: cd.cep || '',
@@ -422,6 +470,9 @@ export function contratoDoOrcamento(
 
     entrada,
     parcelas,
+    formaPagamentoTexto: formaTexto,
+    // So e' antecipado quando NAO ha nem parcela nem condicao escrita.
+    pagamentoAntecipado: parcelas.length === 0 && !entrada && !formaTexto,
 
     prazoEntrega: prazoDias ? String(prazoDias) : '',
     prazoTipo: uteis ? 'úteis' : 'corridos',
@@ -443,12 +494,14 @@ export function camposPendentes(d: ContratoDados): string[] {
   const ehPJ = d.comprador.tipoPessoa === 'pj'
 
   if (!d.comprador.nome) faltam.push('Nome/razão social do comprador')
-  if (!d.comprador.cnpj) faltam.push(ehPJ ? 'CNPJ do comprador' : 'CPF do comprador')
+  // PF: o CPF do comprador e o do signatario sao o MESMO campo — cobrar uma vez.
+  const docComprador = d.comprador.cnpj || (ehPJ ? '' : r.cpf)
+  if (!docComprador) faltam.push(ehPJ ? 'CNPJ do comprador' : 'CPF do comprador')
   if (!d.comprador.endereco) faltam.push('Endereço do comprador')
   if (!d.comprador.cidade || !d.comprador.uf) faltam.push('Cidade/UF do comprador')
 
   if (ehPJ && !r.nome) faltam.push('Nome do representante legal')
-  if (!r.cpf) faltam.push(ehPJ ? 'CPF do representante legal' : 'CPF do comprador')
+  if (ehPJ && !r.cpf) faltam.push('CPF do representante legal')
   if (!r.rg) faltam.push('RG')
   if (!r.nascimento) faltam.push('Data de nascimento')
   if (!r.mae) faltam.push('Nome da mãe')

@@ -312,6 +312,18 @@ export async function gerarContratoDocx(d: ContratoDados): Promise<Blob> {
       b.push(tabelaParcelas(d))
       b.push(p('', { spaceAfter: 120 }))
     }
+  } else if (d.formaPagamentoTexto) {
+    // O orcamento tem a condicao escrita a mao e o quadro nao pode ser lido com
+    // seguranca: leva o texto do vendedor, PALAVRA POR PALAVRA. Mentir que e' a
+    // vista aqui desligaria a reserva de dominio numa venda parcelada.
+    b.push(p(
+      '2.2. O preço ajustado será pago conforme a condição comercial acordada entre as partes e ' +
+      'constante do Orçamento nº ' + d.orcamentoNumero + ' (Anexo I), a saber:'))
+    b.push(p(d.formaPagamentoTexto, { indent: 340 }))
+    b.push(p(
+      '2.2.1. Os pagamentos serão representados por boletos bancários emitidos pela VENDEDORA ou pelo ' +
+      'meio indicado acima, permanecendo a reserva de domínio da Cláusula Terceira em vigor até a ' +
+      'quitação integral do preço.'))
   } else {
     b.push(p(
       `2.2. O preço ajustado será pago integralmente, de forma antecipada, até a data da entrega dos ` +

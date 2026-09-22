@@ -198,13 +198,24 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
 
   const set = (patch: Partial<ContratoDados>) => setDados(d => (d ? { ...d, ...patch } : d))
   const setComprador = (patch: Partial<ContratoDados['comprador']>) =>
-    setDados(d => (d ? { ...d, comprador: { ...d.comprador, ...patch } } : d))
+    setDados(d => {
+      if (!d) return d
+      const comprador = { ...d.comprador, ...patch }
+      // Pessoa fisica: o CPF do comprador E o do signatario. Um campo so na tela,
+      // mas o contrato usa o do representante — manter os dois em sincronia.
+      if (comprador.tipoPessoa !== 'pj') {
+        if (patch.cnpj !== undefined) comprador.representante = { ...comprador.representante, cpf: patch.cnpj }
+        if (patch.nome !== undefined) comprador.representante = { ...comprador.representante, nome: patch.nome }
+      }
+      return { ...d, comprador }
+    })
   const setRep = (patch: Partial<ContratoPessoa>) =>
     setDados(d => (d ? { ...d, comprador: { ...d.comprador, representante: { ...d.comprador.representante, ...patch } } } : d))
   const setGar = (patch: Partial<ContratoGarantidor>) =>
     setDados(d => (d ? { ...d, garantidor: { ...d.garantidor, ...patch } } : d))
 
   const pendentes = camposPendentes(dados)
+  const temQuadroProprio = Array.isArray(orc?.parcelas) && orc!.parcelas!.length > 0
   const divergencia = Math.abs(dados.somaItens - dados.valorTotal) > 1
   const repCasado = /casad|estável/i.test(dados.comprador.representante.estadoCivil)
   const garCasado = /casad|estável/i.test(dados.garantidor.estadoCivil)
@@ -349,14 +360,18 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
       <Bloco
         destaque
         titulo={ehPJ ? 'Representante legal (quem assina pela empresa)' : 'Dados pessoais do comprador'}
-        subtitulo="O orçamento não tem esses dados. São obrigatórios pra protesto e execução — e ficam guardados no cliente."
+        subtitulo={ehPJ
+          ? 'O orçamento não tem esses dados. São obrigatórios pra protesto e execução — e ficam guardados no cliente.'
+          : 'Completam o CPF que já está acima. São obrigatórios pra protesto e execução — e ficam guardados no cliente.'}
       >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
           {ehPJ && (
             <Campo destaque label="Nome completo" value={dados.comprador.representante.nome}
               onChange={v => setRep({ nome: v })} largura="md:col-span-2" />
           )}
-          <Campo destaque label="CPF" value={dados.comprador.representante.cpf} onChange={v => setRep({ cpf: v })} />
+          {ehPJ && (
+            <Campo destaque label="CPF" value={dados.comprador.representante.cpf} onChange={v => setRep({ cpf: v })} />
+          )}
           <Campo destaque label="RG / órgão emissor" value={dados.comprador.representante.rg} onChange={v => setRep({ rg: v })} />
           {!ehPJ && (
             <Campo destaque label="Data de nascimento" value={dados.comprador.representante.nascimento}
@@ -556,7 +571,12 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
       </Bloco>
 
       {/* PAGAMENTO */}
-      <Bloco titulo="Pagamento" subtitulo="Entrada e parcelas calculadas a partir do orçamento. Confira os vencimentos.">
+      <Bloco
+        titulo="Pagamento"
+        subtitulo={dados.parcelas.length > 0 && !temQuadroProprio
+          ? 'Lido da condição escrita no orçamento. Confira os vencimentos antes de gerar.'
+          : 'Entrada e parcelas calculadas a partir do orçamento. Confira os vencimentos.'}
+      >
         {dados.entrada && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3 pb-3 border-b border-border">
             <Campo label="Entrada — vencimento" value={dados.entrada.vencimento}
@@ -566,9 +586,28 @@ function EditorContrato({ orcamentoId, onVoltar }: { orcamentoId: number; onVolt
           </div>
         )}
         {dados.parcelas.length === 0 ? (
-          <p className="text-[12px] text-ink-muted">
-            Sem parcelas no orçamento — o contrato sai como pagamento integral antecipado (item 3.7 desliga a reserva de domínio).
-          </p>
+          dados.formaPagamentoTexto ? (
+            <div className="rounded-md border border-border bg-surface-2 p-3">
+              <p className="text-[11px] font-semibold text-ink-muted mb-1">
+                Condição escrita no orçamento — vai no contrato exatamente assim (cláusula 2.2):
+              </p>
+              <textarea
+                value={dados.formaPagamentoTexto}
+                onChange={e => set({ formaPagamentoTexto: e.target.value })}
+                rows={4}
+                className="w-full px-2 py-1.5 text-[12px] border border-border rounded bg-surface focus:border-accent outline-none resize-y"
+              />
+              <p className="text-[11px] text-ink-faint mt-1.5">
+                Não deu pra montar o quadro de parcelas a partir desse texto (as datas e valores não fecharam
+                com o preço), então o contrato leva a condição por extenso. A reserva de domínio continua valendo.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[12px] text-ink-muted">
+              Sem condição de pagamento no orçamento — o contrato sai como pagamento integral antecipado
+              (item 3.7 desliga a reserva de domínio). Se a venda for parcelada, preencha a condição no orçamento.
+            </p>
+          )
         ) : (
           <div className="overflow-x-auto border border-border rounded-md">
             <table className="w-full text-[12px]">
