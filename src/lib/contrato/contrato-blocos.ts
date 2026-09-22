@@ -376,10 +376,20 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     `de ${vazio(d.comarca, 'CIDADE/UF')}, domicílio da COMPRADORA, para plena eficácia da cláusula de ` +
     'reserva de domínio perante terceiros, conforme o art. 522 do Código Civil e o art. 129 da Lei ' +
     'nº 6.015/1973.'))
+  // Quem tem o interesse na garantia e' quem registra. Na redacao anterior (herdada
+  // do contrato JELMAX) a obrigacao era da COMPRADORA — ou seja, a casa dependia do
+  // devedor pra constituir a garantia contra o proprio devedor, e ninguem fiscaliza.
+  // O custo continua com ela; o gesto passa pra VENDEDORA.
   b.push(p(
-    '3.3.1. As despesas e emolumentos do registro correrão por conta da COMPRADORA, obrigando-se ambas as ' +
-    'partes a praticar todos os atos necessários à sua efetivação no prazo de até 15 (quinze) dias ' +
-    'contados da assinatura. A COMPRADORA encaminhará à VENDEDORA a certidão de registro no mesmo prazo.'))
+    '3.3.1. O registro será promovido pela VENDEDORA, no prazo de até 15 (quinze) dias contados da ' +
+    'assinatura, correndo as despesas e emolumentos por conta da COMPRADORA, que os reembolsará em até ' +
+    '10 (dez) dias contados da apresentação do comprovante, ficando a VENDEDORA desde já autorizada a ' +
+    'acrescê-los ao saldo devedor na hipótese de não reembolso. A COMPRADORA obriga-se a fornecer os ' +
+    'documentos e a praticar os atos que lhe forem solicitados para a efetivação do registro.'))
+  b.push(p(
+    '3.3.2. Efetivado o registro, a VENDEDORA encaminhará cópia da certidão à COMPRADORA. Caso a ' +
+    'COMPRADORA prefira promover o registro por conta própria, deverá comunicá-lo por escrito à ' +
+    'VENDEDORA e apresentar-lhe a certidão no prazo do item 3.3.1.'))
   b.push(p(
     '3.4. Quitado integralmente o preço, a VENDEDORA fornecerá termo de quitação no prazo de 10 (dez) dias ' +
     'e promoverá, no mesmo prazo, os atos necessários à averbação da quitação ou baixa do registro, ' +
@@ -765,8 +775,15 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'executivo extrajudicial, na forma do art. 784, inciso III, do Código de Processo Civil.'))
   b.push(p(
     '16.6. As partes admitem a assinatura deste contrato por meio eletrônico, com utilização de ' +
-    'certificado digital e/ou de plataforma de assinatura eletrônica que assegure a autenticidade, a ' +
-    'integridade e a autoria do documento, reconhecendo-lhe a mesma validade da assinatura de próprio punho.'))
+    'certificado digital ICP-Brasil, do assinador eletrônico oficial do Governo Federal (gov.br) e/ou de ' +
+    'plataforma de assinatura eletrônica que assegure a autenticidade, a integridade e a autoria do ' +
+    'documento, reconhecendo-lhe a mesma validade da assinatura de próprio punho, nos termos da Medida ' +
+    'Provisória nº 2.200-2/2001 e da Lei nº 14.063/2020.'))
+  b.push(p(
+    '16.6.1. Assinado o contrato por meio eletrônico em plataforma que registre a trilha de auditoria e ' +
+    'confira a integridade do documento, fica dispensada a assinatura das testemunhas, permanecendo ' +
+    'íntegra a sua natureza de título executivo extrajudicial, na forma do art. 784, § 4º, do Código de ' +
+    'Processo Civil.'))
   b.push(p(
     '16.7. Este contrato, com os seus anexos, representa o inteiro acordo entre as partes quanto ao seu ' +
     'objeto, prevalecendo sobre quaisquer tratativas, propostas ou ajustes verbais anteriores. Havendo ' +
