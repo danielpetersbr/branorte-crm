@@ -72,11 +72,13 @@ function qualificacaoComprador(d: ContratoDados): string {
   const rep = c.representante
   const cidadeUf = [c.cidade, c.uf].filter(Boolean).join('/')
 
+  // Estado civil e profissao entram so quando preenchidos: nao sao requisito de
+  // validade, e "[ESTADO CIVIL]" no meio da qualificacao suja um contrato valido.
   const pessoais = [
     vazio(rep.nacionalidade, 'NACIONALIDADE'),
-    vazio(rep.estadoCivil, 'ESTADO CIVIL'),
-    vazio(rep.profissao, 'PROFISSÃO'),
-  ].join(', ')
+    rep.estadoCivil.trim(),
+    rep.profissao.trim(),
+  ].filter(Boolean).join(', ')
 
   // RG, nascimento e filiacao sao OPCIONAIS: entram so quando preenchidos. Deixar
   // "[RG]" no meio da qualificacao suja um documento que ja e' valido sem eles.
@@ -101,7 +103,7 @@ function qualificacaoComprador(d: ContratoDados): string {
   if (c.tipoPessoa === 'produtor_rural') {
     return (
       `COMPRADOR: ${vazio(c.nome, 'NOME COMPLETO')}, ${vazio(rep.nacionalidade, 'NACIONALIDADE')}, ` +
-      `${vazio(rep.estadoCivil, 'ESTADO CIVIL')}, produtor rural, ${docPessoal}, inscrito no Cadastro de ` +
+      `${rep.estadoCivil.trim() ? rep.estadoCivil.trim() + ', ' : ''}produtor rural, ${docPessoal}, inscrito no Cadastro de ` +
       `Produtor Rural / Inscrição Estadual sob o nº ${vazio(c.ie, 'INSCRIÇÃO DE PRODUTOR')}, ` +
       (c.propriedadeNome ? `com estabelecimento rural denominado ${c.propriedadeNome}, ` : '') +
       `situado em ${vazio(c.propriedadeEndereco || c.endereco, 'ENDEREÇO DA PROPRIEDADE')}, ` +
@@ -135,8 +137,8 @@ function qualificacaoGarantidor(d: ContratoDados): string {
     g.mae.trim() ? `filho de ${g.mae.trim()}` : '',
   ].filter(Boolean).join(', ')
   return (
-    `GARANTIDOR: ${vazio(g.nome, 'NOME DO GARANTIDOR')}, ${vazio(g.nacionalidade, 'NACIONALIDADE')}, ` +
-    `${vazio(g.estadoCivil, 'ESTADO CIVIL')}, ${vazio(g.profissao, 'PROFISSÃO')}, ${doc}, residente e ` +
+    `GARANTIDOR: ${[vazio(g.nome, 'NOME DO GARANTIDOR'), vazio(g.nacionalidade, 'NACIONALIDADE'),
+      g.estadoCivil.trim(), g.profissao.trim()].filter(Boolean).join(', ')}, ${doc}, residente e ` +
     `domiciliado na ${vazio(g.endereco, 'ENDEREÇO COMPLETO')}, Município de ${vazio(g.cidadeUf, 'CIDADE/UF')}, ` +
     `CEP ${vazio(g.cep, 'CEP')}, que assina o presente instrumento na qualidade de devedor solidário de ` +
     `todas as obrigações assumidas pela COMPRADORA.`

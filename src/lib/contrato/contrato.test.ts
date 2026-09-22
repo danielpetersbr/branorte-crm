@@ -138,7 +138,10 @@ describe('contrato a partir do orcamento 2026-2774', () => {
   it('aponta o que falta preencher', () => {
     const faltam = camposPendentes(d)
     assert.ok(faltam.includes('CNPJ do comprador'))
-    assert.ok(faltam.includes('Estado civil'))
+    assert.ok(faltam.includes('Local de instalação'))
+    // estado civil e profissao do comprador nao sao requisito de validade
+    assert.ok(!faltam.includes('Estado civil'))
+    assert.ok(!faltam.includes('Profissão'))
     assert.ok(faltam.includes('Nome do garantidor'))
   })
 })
@@ -279,5 +282,17 @@ describe('modo de assinatura', () => {
     assert.ok(txt.includes('TESTEMUNHAS:'))
     assert.ok(txt.includes('por 2 (duas) testemunhas'))
     assert.ok(txt.includes('3 (três) vias'))
+  })
+})
+
+
+describe('qualificacao sem estado civil e profissao', () => {
+  it('omite os trechos em vez de imprimir [ESTADO CIVIL]', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)      // pessoa fisica, sem esses dados
+    const txt = montarBlocosContrato(d).map(b => ('txt' in b ? b.txt : '')).join(' | ')
+    assert.ok(!txt.includes('[ESTADO CIVIL]'))
+    assert.ok(!txt.includes('[PROFISSÃO]'))
+    assert.ok(txt.includes('Breno Fabres Álvares da Cunha, brasileiro, inscrito no CPF'))
   })
 })
