@@ -11,6 +11,7 @@
 
 import type { ContratoDados } from './contrato-dados'
 import { formatBRL, valorPorExtenso, numeroPorExtenso, dataPorExtenso } from './extenso'
+import { renumerarClausulas } from './renumerar'
 
 export type Alinhamento = 'left' | 'center' | 'right'
 
@@ -331,7 +332,8 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
       `2.4. Em representação das parcelas, a COMPRADORA emitirá e entregará à VENDEDORA, no ato da ` +
       `assinatura do contrato, ${d.parcelas.length} (${numeroPorExtenso(d.parcelas.length)}) notas ` +
       'promissórias vinculadas a este instrumento, de valores e vencimentos coincidentes com as parcelas ' +
-      'descritas no item 2.2, avalizadas pelo GARANTIDOR. A VENDEDORA poderá, ainda, sacar duplicatas ' +
+      `descritas no item 2.2${d.garantidor.incluir ? ', avalizadas pelo GARANTIDOR' : ''}. ` +
+      'A VENDEDORA poderá, ainda, sacar duplicatas ' +
       'mercantis correspondentes à nota fiscal de venda. Os títulos são emitidos “pro solvendo”, de modo ' +
       'que a sua emissão, circulação ou eventual protesto não importa em novação, permanecendo íntegras ' +
       'todas as garantias e condições deste contrato.'))
@@ -351,8 +353,11 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'por ela, cabendo à COMPRADORA confirmar os dados pelos canais oficiais antes de qualquer transferência.'))
   b.push(p(
     '2.7. A produção, o faturamento e a liberação dos equipamentos ficam condicionados à aprovação ' +
-    'cadastral e creditícia da COMPRADORA e do GARANTIDOR, que declaram estar livres de restrições e ' +
-    'autorizam a consulta aos órgãos de proteção ao crédito. Constatada restrição, protesto, execução ou ' +
+    `cadastral e creditícia da COMPRADORA${d.garantidor.incluir ? ' e do GARANTIDOR' : ''}, que ` +
+    `${d.garantidor.incluir ? 'declaram' : 'declara'} estar ` +
+    `${d.garantidor.incluir ? 'livres' : 'livre'} de restrições e ` +
+    `${d.garantidor.incluir ? 'autorizam' : 'autoriza'} a consulta aos órgãos de proteção ao crédito. ` +
+    'Constatada restrição, protesto, execução ou ' +
     'pedido de recuperação judicial antes da entrega, a VENDEDORA poderá suspender a produção e a entrega ' +
     'até a regularização, a prestação de garantia adicional ou a antecipação do saldo, sem que isso ' +
     'caracterize mora de sua parte.'))
@@ -499,21 +504,27 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
   // ── 6 NR-12 ──
   b.push(clausula('CLÁUSULA SEXTA – DA SEGURANÇA DAS MÁQUINAS, DA OPERAÇÃO E DO TREINAMENTO'))
   b.push(p(
-    '6.1. Os equipamentos são fabricados sob encomenda conforme as especificações do Orçamento (Anexo I) e ' +
-    'são fornecidos em sua configuração industrial básica, NÃO INCLUINDO, salvo quando expressamente ' +
-    'orçados como item próprio, os dispositivos e sistemas de segurança de que trata a Norma ' +
-    'Regulamentadora nº 12 (NR-12), tais como proteções fixas e móveis, intertravamentos, dispositivos de ' +
-    'parada de emergência, sensores e cortinas de luz, sinalização de segurança e sistemas de bloqueio.'))
+    '6.1. A VENDEDORA fabrica os equipamentos observando as normas técnicas aplicáveis e os fornece com os ' +
+    'dispositivos de proteção próprios de cada máquina, conforme o projeto e as especificações técnicas ' +
+    'constantes do Orçamento (Anexo I), que descrevem o escopo efetivamente contratado.'))
   b.push(p(
-    '6.1.1. A COMPRADORA declara ter sido prévia e expressamente informada dessa condição, que foi ' +
-    'considerada na formação do preço, e declara conhecer as obrigações que a legislação de segurança e ' +
-    'saúde do trabalho lhe impõe na qualidade de empregadora e detentora da posse dos bens.'))
+    '6.2. A adequação de que trata a Norma Regulamentadora nº 12 (NR-12) alcança a máquina e também o ' +
+    'CONJUNTO INSTALADO. Por dependerem do arranjo físico, da integração entre equipamentos, da ' +
+    'instalação elétrica e das condições do local — todos definidos pela COMPRADORA —, NÃO integram o ' +
+    'fornecimento, salvo quando expressamente orçados como item próprio: (a) a integração de segurança do ' +
+    'conjunto, tais como intertravamento entre máquinas, parada de emergência geral e categoria de ' +
+    'segurança do circuito de comando; (b) as proteções de áreas, vias de circulação, plataformas, ' +
+    'guarda-corpos e escadas de acesso; (c) o aterramento e as proteções elétricas a montante do painel; ' +
+    'e (d) a sinalização de segurança da planta.'))
   b.push(p(
-    '6.2. São de responsabilidade exclusiva da COMPRADORA, a serem providenciadas ANTES da colocação dos ' +
-    'equipamentos em operação: a adequação dos equipamentos e de toda a instalação à NR-12 e às demais ' +
-    'normas de segurança e saúde do trabalho; a apreciação de risco; o inventário de máquinas; os ' +
-    'procedimentos de trabalho, operação e manutenção; e as demais medidas técnicas e administrativas ' +
-    'exigíveis, com a respectiva responsabilidade técnica.'))
+    '6.2.1. Cabe à COMPRADORA, na qualidade de empregadora e detentora da posse dos bens, providenciar ' +
+    'ANTES da colocação em operação: a apreciação de risco do conjunto instalado; o inventário de ' +
+    'máquinas; os procedimentos de trabalho, operação e manutenção; e as demais medidas técnicas e ' +
+    'administrativas exigíveis, com a respectiva responsabilidade técnica.'))
+  b.push(p(
+    '6.2.2. Identificada, na apreciação de risco, a necessidade de dispositivo de segurança adicional ' +
+    'àquele previsto no Orçamento (Anexo I), a COMPRADORA comunicará a VENDEDORA, que apresentará ' +
+    'orçamento para o fornecimento, na forma do item 6.6.'))
   b.push(p(
     '6.3. São igualmente de responsabilidade exclusiva da COMPRADORA: o treinamento e a capacitação dos ' +
     'operadores e dos profissionais de manutenção; o fornecimento e a exigência de uso dos equipamentos de ' +
@@ -524,16 +535,16 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'constantes do Orçamento (Anexo I) e as instruções técnicas fornecidas pela VENDEDORA, que poderão ser ' +
     'solicitadas a qualquer tempo.'))
   b.push(p(
-    '6.5. A COMPRADORA responde integralmente por todo e qualquer dano pessoal ou material decorrente da ' +
-    'colocação dos equipamentos em operação sem as adequações previstas no item 6.2, da remoção, ' +
-    'inutilização ou desativação de proteções e dispositivos de segurança, da operação por pessoal não ' +
-    'treinado ou do descumprimento das instruções técnicas e das especificações do equipamento, ' +
-    'obrigando-se a manter a VENDEDORA indene e a ressarci-la de ' +
-    'quaisquer valores que esta venha a despender a esse título, inclusive em ações regressivas, custas e ' +
-    'honorários.'))
+    '6.5. A COMPRADORA responde pelos danos pessoais ou materiais decorrentes da colocação dos ' +
+    'equipamentos em operação sem as providências dos itens 6.2 e 6.2.1, da remoção, inutilização ou ' +
+    'desativação de proteções e dispositivos de segurança, da operação por pessoal não treinado ou do ' +
+    'descumprimento das instruções técnicas e das especificações do equipamento, obrigando-se a ressarcir ' +
+    'a VENDEDORA dos valores que esta venha a despender a esse título, inclusive em ações regressivas, ' +
+    'custas e honorários. Esta cláusula regula a relação entre as partes e não afasta as obrigações que a ' +
+    'legislação impõe a cada uma delas perante terceiros.'))
   b.push(p(
-    '6.6. Mediante orçamento próprio, a VENDEDORA poderá fornecer o conjunto de adequação à NR-12 dos ' +
-    'equipamentos objeto deste contrato, o que não está contemplado no preço do item 2.1.'))
+    '6.6. A VENDEDORA poderá fornecer, mediante orçamento próprio, os itens de segurança e a integração do ' +
+    'conjunto referidos no item 6.2, não contemplados no preço do item 2.1.'))
 
   // ── 7 GUARDA ──
   b.push(clausula('CLÁUSULA SÉTIMA – DA GUARDA E CONSERVAÇÃO DOS EQUIPAMENTOS'))
@@ -672,12 +683,15 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
     'desmontagem, transporte e recondicionamento, e o mais que de direito lhe for devido, na forma do ' +
     'art. 527 do Código Civil.'))
   b.push(p(
-    '11.7. A COMPRADORA e o GARANTIDOR responderão, ainda, pelas despesas de cobrança extrajudicial e ' +
-    'judicial, incluindo custas, emolumentos de protesto e de notificação e honorários advocatícios, estes ' +
+    `11.7. A COMPRADORA${d.garantidor.incluir ? ' e o GARANTIDOR' : ''} ` +
+    `${d.garantidor.incluir ? 'responderão' : 'responderá'}, ainda, pelas despesas de cobrança ` +
+    'extrajudicial e judicial, incluindo custas, emolumentos de protesto e de notificação e honorários advocatícios, estes ' +
     'fixados, na fase extrajudicial, em 20% (vinte por cento) sobre o valor do débito.'))
   b.push(p(
-    '11.8. A COMPRADORA e o GARANTIDOR autorizam expressamente a VENDEDORA a levar a protesto os títulos e ' +
-    'o próprio contrato e a inscrever seus nomes nos cadastros de inadimplentes e de proteção ao crédito ' +
+    `11.8. A COMPRADORA${d.garantidor.incluir ? ' e o GARANTIDOR' : ''} ` +
+    `${d.garantidor.incluir ? 'autorizam' : 'autoriza'} expressamente a VENDEDORA a levar a protesto os ` +
+    `títulos e o próprio contrato e a inscrever ${d.garantidor.incluir ? 'seus nomes' : 'seu nome'} nos ` +
+    'cadastros de inadimplentes e de proteção ao crédito ' +
     '(SERASA, SPC e congêneres), na forma da lei, ficando a VENDEDORA obrigada a promover a baixa das ' +
     'anotações em até 5 (cinco) dias úteis contados da quitação do débito.'))
   b.push(p(
@@ -856,5 +870,5 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
   // fiscal no 1.2, as promissorias no 2.4). Tirar nao muda nada juridicamente e
   // deixa o fecho limpo, com as assinaturas por ultimo.
 
-  return b
+  return renumerarClausulas(b)
 }

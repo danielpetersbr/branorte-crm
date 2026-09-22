@@ -318,3 +318,74 @@ describe('local de instalacao', () => {
     assert.ok(!camposPendentes(d).includes('Local de instalação'))
   })
 })
+
+// ── os tres pontos levantados na revisao juridica de 22/09 ──────────────────
+
+describe('contrato sem garantidor', () => {
+  it('nao menciona GARANTIDOR em lugar nenhum', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)          // PF: nasce sem garantidor
+    assert.equal(d.garantidor.incluir, false)
+    const txt = montarBlocosContrato(d).map(b => ('txt' in b ? b.txt : '')).join(' | ')
+    assert.ok(!txt.includes('GARANTIDOR'))
+  })
+
+  it('numera as clausulas sem pular nenhuma', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)
+    const titulos = montarBlocosContrato(d)
+      .filter(b => b.k === 'clausula')
+      .map(b => (b as { txt: string }).txt)
+    const ordinais = ['PRIMEIRA', 'SEGUNDA', 'TERCEIRA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÉTIMA',
+      'OITAVA', 'NONA', 'DÉCIMA', 'DÉCIMA PRIMEIRA', 'DÉCIMA SEGUNDA', 'DÉCIMA TERCEIRA',
+      'DÉCIMA QUARTA', 'DÉCIMA QUINTA', 'DÉCIMA SEXTA']
+    titulos.forEach((t, i) => {
+      assert.ok(t.startsWith(`CLÁUSULA ${ordinais[i]} `), `posicao ${i + 1}: ${t}`)
+    })
+  })
+
+  it('renumera o prefixo dos itens e as referencias cruzadas', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)
+    const txts = montarBlocosContrato(d).map(b => ('txt' in b ? b.txt : ''))
+    const juntos = txts.join(' | ')
+    // sem a clausula de garantia pessoal, forca maior (13) vira 12
+    assert.ok(juntos.includes('CLÁUSULA DÉCIMA SEGUNDA – DO CASO FORTUITO'))
+    assert.ok(txts.some(t => t.startsWith('12.1. Nenhuma das partes')))
+    // e o foro (17) vira 16
+    assert.ok(juntos.includes('CLÁUSULA DÉCIMA SEXTA – DO FORO'))
+    assert.ok(txts.some(t => t.startsWith('16.1. As partes elegem o foro')))
+    // nao pode sobrar referencia a clausula que nao existe mais
+    assert.ok(!juntos.includes('CLÁUSULA DÉCIMA SÉTIMA'))
+    // referencia a ITEM tambem anda: a assinatura eletronica era 16.6 e virou 15.6
+    assert.ok(juntos.includes('na forma do item 15.6'))
+    assert.ok(!juntos.includes('na forma do item 16.6'))
+  })
+})
+
+describe('contrato COM garantidor', () => {
+  it('mantem a numeracao original e a clausula de garantia pessoal', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)
+    d.garantidor = { ...d.garantidor, incluir: true, nome: 'FULANO DE TAL', cpf: '111.222.333-44' }
+    const txt = montarBlocosContrato(d).map(b => ('txt' in b ? b.txt : '')).join(' | ')
+    assert.ok(txt.includes('CLÁUSULA DÉCIMA SEGUNDA – DA GARANTIA PESSOAL'))
+    assert.ok(txt.includes('CLÁUSULA DÉCIMA TERCEIRA – DO CASO FORTUITO'))
+    assert.ok(txt.includes('CLÁUSULA DÉCIMA SÉTIMA – DO FORO'))
+    assert.ok(txt.includes('avalizadas pelo GARANTIDOR'))
+    assert.ok(txt.includes('na forma do item 16.6'))   // aqui a numeracao nao muda
+  })
+})
+
+describe('NR-12 — escopo de fabricante x instalacao', () => {
+  it('nao declara que os equipamentos saem sem os dispositivos da norma', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const d = contratoDoOrcamento(ORC_2629)
+    const txt = montarBlocosContrato(d).map(b => ('txt' in b ? b.txt : '')).join(' | ')
+    assert.ok(!txt.includes('NÃO INCLUINDO, salvo quando expressamente'))
+    assert.ok(txt.includes('fornece com os dispositivos de proteção próprios de cada máquina'))
+    assert.ok(txt.includes('CONJUNTO INSTALADO'))
+    // e nao pode se dizer imune perante terceiros
+    assert.ok(txt.includes('não afasta as obrigações que a legislação impõe a cada uma delas perante terceiros'))
+  })
+})
