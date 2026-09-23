@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import {
   useLigacoesResumo, useLigacoesSerie, useLigacoesPorHora, useLigacoesDe,
-  useGravacoesDe, urlDoAudio,
+  useGravacoesDe, urlDoAudio, codigoDaChamada,
   janelaDoPeriodo, janelaAnterior,
   type Periodo, type LigacaoResumo, type Janela, type Ligacao, type Gravacao,
 } from '@/hooks/useLigacoes'
@@ -832,7 +832,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
           ) : (
             <div className="rounded-xl border border-border/60 bg-surface divide-y divide-border/40 max-h-[420px] overflow-y-auto">
               {lista.map(l => (
-                <LinhaLigacao key={l.call_id} l={l} gravacao={gravacoes[l.call_id]} />
+                <LinhaLigacao key={l.call_id} l={l} gravacao={gravacoes[l.call_id] ?? gravacoes[codigoDaChamada(l.call_id)]} />
               ))}
               {lista.length >= 300 && (
                 <p className="px-3 py-2 text-[11px] text-ink-faint">Mostrando as 300 mais recentes do período.</p>

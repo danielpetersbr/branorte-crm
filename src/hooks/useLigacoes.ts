@@ -230,11 +230,25 @@ export function useGravacoesDe(vendedor: string | null, j: Janela) {
       // trocar o essencial pelo acessório.
       if (error) return {}
       const mapa: Record<string, Gravacao> = {}
-      for (const g of (data ?? []) as Gravacao[]) mapa[g.call_id] = g
+      for (const g of (data ?? []) as Gravacao[]) {
+        mapa[g.call_id] = g
+        // ⚠️ (23/09) O gravador do PC sobe com o CÓDIGO da chamada (32 hex, o
+        // `CallStore.activeCall.id`), e o histórico guarda a CHAVE DA MENSAGEM
+        // (`true_<contato>@lid_<código>`). Mesma ligação, dois formatos — sem isto
+        // a gravação sobe e não aparece na linha. Indexa pelos dois.
+        mapa[codigoDaChamada(g.call_id)] = g
+      }
       return mapa
     },
     staleTime: 60_000,
   })
+}
+
+// O código único da chamada é o que vem depois do ÚLTIMO '_'. Chave de mensagem
+// (`true_1819...@lid_007BFCC9...`) vira `007BFCC9...`; código puro volta igual.
+export function codigoDaChamada(id: string): string {
+  const i = (id || '').lastIndexOf('_')
+  return i >= 0 ? id.slice(i + 1) : id
 }
 
 // URL assinada, criada só quando alguém clica em ouvir.
