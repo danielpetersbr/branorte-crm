@@ -391,7 +391,7 @@ describe('NR-12 — escopo de fabricante x instalacao', () => {
 })
 
 describe('vendedora representada pelos dois socios', () => {
-  it('qualifica Edilson e Patrick no preambulo e da uma linha de assinatura a cada um', async () => {
+  it('qualifica Edilson e Patrick no preambulo e a VENDEDORA assina so como empresa', async () => {
     const { montarBlocosContrato } = await import('./contrato-blocos')
     const blocos = montarBlocosContrato(contratoDoOrcamento(ORC_2629))
     const txt = blocos.map(b => ('txt' in b ? b.txt : '')).join('\n')
@@ -399,7 +399,11 @@ describe('vendedora representada pelos dois socios', () => {
     assert.ok(txt.includes('Rua Conrado Niehues, nº 55, bairro Trevo, Município de Braço do Norte/SC'))
     assert.ok(txt.includes('e PATRICK ALVES DA SILVA, sócio administrador'))
     const assin = blocos.filter(b => b.k === 'assinatura').map(b => (b.k === 'assinatura' ? b.nome : ''))
-    assert.ok(assin.some(n => n.startsWith('EDILSON BEGER LAURINDO')))
-    assert.ok(assin.some(n => n.startsWith('PATRICK ALVES DA SILVA')))
+    const docs = blocos.filter(b => b.k === 'assinatura').map(b => (b.k === 'assinatura' ? b.doc : ''))
+    // embaixo da linha vai a empresa com CNPJ — nenhum socio assina como pessoa
+    assert.ok(assin.includes('METALÚRGICA BBA LTDA. – VENDEDORA'))
+    assert.ok(docs.includes('CNPJ 16.935.999/0001-09'))
+    assert.ok(!assin.some(n => /EDILSON|PATRICK/.test(n)))
+    assert.equal(assin.filter(n => n.includes('VENDEDORA')).length, 1)
   })
 })
