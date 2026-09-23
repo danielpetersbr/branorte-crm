@@ -19,8 +19,10 @@ const ETIQUETA_PROP_OPCOES: { value: string; label: string }[] = [
   { value: 'perdido',      label: '❌ Perdido' },
 ]
 
+// Mesmo arredondamento da tela de montar e do PDF: orçamento não tem centavos.
+// Sem isso a lista mostrava R$ 42.700,20 num orçamento cujo documento dizia R$ 42.700.
 function formatBRL(v: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.round(v))
 }
 
 function formatDate(iso: string): string {
