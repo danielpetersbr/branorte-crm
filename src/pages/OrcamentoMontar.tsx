@@ -1101,7 +1101,7 @@ export function OrcamentoMontar() {
 
   const totalEquip = totalItems + valorAcessorios   // entra no "VALOR TOTAL DE EQUIPAMENTOS"
   const totalComponentesExtras = useMemo(
-    () => componentesExtras.reduce((s, c) => s + (Number(c.valor) || 0), 0),
+    () => componentesExtras.reduce((s, c) => s + Math.round(Number(c.valor) || 0), 0),
     [componentesExtras],
   )
   const totalGeral = totalEquip + totalMotores + totalComponentesExtras
@@ -1230,8 +1230,14 @@ export function OrcamentoMontar() {
   // ── Modo EXPORTAÇÃO: +10% ou +20% em todos os valores. fExp=1 quando desligado. ──
   // Aplica nas versões "*Exib" que alimentam o preview, o resumo e o orçamento gerado.
   const fExp = 1 + exportPct / 100
+  // Arredonda SEMPRE, não só na exportação. A regra é "orçamento sem centavos"
+  // (formatBRL/formatBRLBare arredondam na tela e no PDF), mas item que entra por
+  // modelo pronto, IA, item personalizado ou reabertura chega com centavo
+  // (BNMM130 = R$ 12.124,20). A tela e o PDF mostravam R$ 42.700 e o total_proposta
+  // gravava R$ 42.700,20 — a lista de orçamentos exibia os 20 centavos que o
+  // documento não tinha, e as parcelas não fechavam (2026-2792).
   const carrinhoExib = useMemo(
-    () => fExp === 1 ? carrinho : carrinho.map(c => ({
+    () => carrinho.map(c => ({
       ...c,
       valor: Math.round(c.valor * fExp),
       motor_valor_unit: c.motor_valor_unit != null ? Math.round(c.motor_valor_unit * fExp) : c.motor_valor_unit,
@@ -1242,7 +1248,7 @@ export function OrcamentoMontar() {
     // valor_unit TAMBÉM leva o acréscimo: é ele que o save persiste em motores[].
     // Antes só o valor_total era ajustado, e o motor ficava gravado 10-20% abaixo
     // do que foi cobrado (15 orçamentos, R$ 19,7 mil de diferença no registro).
-    () => fExp === 1 ? motoresAgrupados : motoresAgrupados.map(m => ({
+    () => motoresAgrupados.map(m => ({
       ...m,
       valor_unit: Math.round(m.valor_unit * fExp),
       valor_total: Math.round(m.valor_total * fExp),
@@ -1254,7 +1260,7 @@ export function OrcamentoMontar() {
     [carrinhoExib],
   )
   const totalMotoresExib = useMemo(() => motoresAgrupadosExib.reduce((s, m) => s + m.valor_total, 0), [motoresAgrupadosExib])
-  const valorAcessoriosExib = fExp === 1 ? valorAcessorios : Math.round(valorAcessorios * fExp)
+  const valorAcessoriosExib = Math.round(valorAcessorios * fExp)
   const totalEquipExib = totalItemsExib + valorAcessoriosExib
   // Componentes adicionais NÃO levam o +10% de exportação (são valores que o
   // vendedor já digita no preço final). Só equipamentos/motores/acessórios levam.
