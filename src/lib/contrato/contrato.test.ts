@@ -389,3 +389,16 @@ describe('NR-12 — escopo de fabricante x instalacao', () => {
     assert.ok(txt.includes('não afasta as obrigações que a legislação impõe a cada uma delas perante terceiros'))
   })
 })
+
+describe('vendedora representada pelos dois socios', () => {
+  it('qualifica Edilson e Patrick no preambulo e da uma linha de assinatura a cada um', async () => {
+    const { montarBlocosContrato } = await import('./contrato-blocos')
+    const blocos = montarBlocosContrato(contratoDoOrcamento(ORC_2629))
+    const txt = blocos.map(b => ('txt' in b ? b.txt : '')).join('\n')
+    assert.ok(txt.includes('por seus sócios EDILSON BEGER LAURINDO, inscrito no CPF sob o nº 003.552.019-17'))
+    assert.ok(txt.includes('e PATRICK ALVES DA SILVA, sócio administrador'))
+    const assin = blocos.filter(b => b.k === 'assinatura').map(b => (b.k === 'assinatura' ? b.nome : ''))
+    assert.ok(assin.some(n => n.startsWith('EDILSON BEGER LAURINDO')))
+    assert.ok(assin.some(n => n.startsWith('PATRICK ALVES DA SILVA')))
+  })
+})
