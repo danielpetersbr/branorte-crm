@@ -56,16 +56,17 @@ function assinatura(linha1: string, linha2: string): Bloco[] {
 
 // Os dois socios assinam pela casa. O JELMAX (27/07/2026) saiu so com o Patrick;
 // o "Modelo de Contrato" antigo trazia o Edilson como titular — e' dele que vem
-// CPF, RG e endereco do Edilson. O CPF do Patrick e' o do JELMAX (o modelo antigo
-// trazia 035.407.949-21 para o mesmo nome — divergencia anotada no guia interno).
+// CPF e RG do Edilson. O endereco dele veio do Daniel em 23/09/2026 (o do modelo
+// antigo, Rio Bonito, estava velho). O CPF do Patrick e' o do JELMAX (o modelo
+// antigo trazia 035.407.949-21 para o mesmo nome — divergencia no guia interno).
 const VENDEDORA_TXT =
   'VENDEDORA: METALÚRGICA BBA LTDA. (nome fantasia BRANORTE), pessoa jurídica de direito privado, ' +
   'inscrita no CNPJ sob o nº 16.935.999/0001-09, com Inscrição Estadual nº 256.847.320, com sede na ' +
   'Rodovia SC 370, km 139, nº 1.390, bairro Rio Pequeno, Município de Grão-Pará/SC, CEP 88.890-000, ' +
   'telefone (48) 3658-4502, e-mail contato@mbranorte.com.br, neste ato representada na forma de seu ' +
   'contrato social por seus sócios EDILSON BEGER LAURINDO, inscrito no CPF sob o nº 003.552.019-17, ' +
-  'portador do RG nº 3.469.313-0, residente e domiciliado na Rua Eupídio Marcílio, nº 254, bairro Rio ' +
-  'Bonito, Município de Braço do Norte/SC, CEP 88.750-000, e PATRICK ALVES DA SILVA, sócio administrador, ' +
+  'portador do RG nº 3.469.313-0, residente e domiciliado na Rua Conrado Niehues, nº 55, bairro ' +
+  'Trevo, Município de Braço do Norte/SC, CEP 88.750-000, e PATRICK ALVES DA SILVA, sócio administrador, ' +
   'brasileiro, casado, empresário, inscrito no CPF sob o nº 105.160.259-96, residente e domiciliado na ' +
   'Rua João Effting, nº 765, bairro São Basílio, Município de Braço do Norte/SC, CEP 88.750-000, ' +
   'doravante denominada parte VENDEDORA.'
