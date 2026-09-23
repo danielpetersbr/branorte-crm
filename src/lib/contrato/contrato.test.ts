@@ -396,6 +396,7 @@ describe('vendedora representada pelos dois socios', () => {
     const blocos = montarBlocosContrato(contratoDoOrcamento(ORC_2629))
     const txt = blocos.map(b => ('txt' in b ? b.txt : '')).join('\n')
     assert.ok(txt.includes('por seus sócios EDILSON BEGER LAURINDO, inscrito no CPF sob o nº 003.552.019-17'))
+    assert.ok(txt.includes('Rua Conrado Niehues, nº 55, bairro Trevo, Município de Braço do Norte/SC'))
     assert.ok(txt.includes('e PATRICK ALVES DA SILVA, sócio administrador'))
     const assin = blocos.filter(b => b.k === 'assinatura').map(b => (b.k === 'assinatura' ? b.nome : ''))
     assert.ok(assin.some(n => n.startsWith('EDILSON BEGER LAURINDO')))
