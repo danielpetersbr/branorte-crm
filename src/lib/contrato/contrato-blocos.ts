@@ -841,10 +841,10 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
   b.push(p(`Grão-Pará/SC, ${dataPorExtenso(d.dataContrato)}.`, { center: true }))
 
   // ── assinaturas ──
-  // Uma linha por socio: quem assina pela PJ e' a pessoa, e o nome dela embaixo
-  // da linha e' o que liga a rubrica a' qualificacao do preambulo.
-  b.push(...assinatura('EDILSON BEGER LAURINDO – p/ METALÚRGICA BBA LTDA. (VENDEDORA)', 'CPF 003.552.019-17'))
-  b.push(...assinatura('PATRICK ALVES DA SILVA – p/ METALÚRGICA BBA LTDA. (VENDEDORA)', 'CPF 105.160.259-96'))
+  // Pela VENDEDORA assina a EMPRESA: uma linha so, com razao social e CNPJ
+  // (pedido do Daniel em 23/09/2026). Quem representa a PJ continua qualificado
+  // no preambulo (VENDEDORA_TXT) — o nome dos socios nao vai embaixo da linha.
+  b.push(...assinatura('METALÚRGICA BBA LTDA. – VENDEDORA', 'CNPJ 16.935.999/0001-09'))
   const mesmo = d.garantidor.incluir && d.garantidor.mesmoQueComprador
   b.push(...assinatura(
     `${vazio(c.nome, 'NOME DA COMPRADORA')} – ${mesmo ? 'COMPRADOR(A) E GARANTIDOR(A)' : 'COMPRADORA'}`,
