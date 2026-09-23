@@ -54,14 +54,21 @@ function assinatura(linha1: string, linha2: string): Bloco[] {
   return [{ k: 'assinatura', nome: linha1, doc: linha2 }]
 }
 
+// Os dois socios assinam pela casa. O JELMAX (27/07/2026) saiu so com o Patrick;
+// o "Modelo de Contrato" antigo trazia o Edilson como titular — e' dele que vem
+// CPF, RG e endereco do Edilson. O CPF do Patrick e' o do JELMAX (o modelo antigo
+// trazia 035.407.949-21 para o mesmo nome — divergencia anotada no guia interno).
 const VENDEDORA_TXT =
   'VENDEDORA: METALÚRGICA BBA LTDA. (nome fantasia BRANORTE), pessoa jurídica de direito privado, ' +
   'inscrita no CNPJ sob o nº 16.935.999/0001-09, com Inscrição Estadual nº 256.847.320, com sede na ' +
   'Rodovia SC 370, km 139, nº 1.390, bairro Rio Pequeno, Município de Grão-Pará/SC, CEP 88.890-000, ' +
   'telefone (48) 3658-4502, e-mail contato@mbranorte.com.br, neste ato representada na forma de seu ' +
-  'contrato social por seu sócio administrador PATRICK ALVES DA SILVA, brasileiro, casado, empresário, ' +
-  'inscrito no CPF sob o nº 105.160.259-96, residente e domiciliado na Rua João Effting, nº 765, bairro ' +
-  'São Basílio, Município de Braço do Norte/SC, CEP 88.750-000, doravante denominada parte VENDEDORA.'
+  'contrato social por seus sócios EDILSON BEGER LAURINDO, inscrito no CPF sob o nº 003.552.019-17, ' +
+  'portador do RG nº 3.469.313-0, residente e domiciliado na Rua Eupídio Marcílio, nº 254, bairro Rio ' +
+  'Bonito, Município de Braço do Norte/SC, CEP 88.750-000, e PATRICK ALVES DA SILVA, sócio administrador, ' +
+  'brasileiro, casado, empresário, inscrito no CPF sob o nº 105.160.259-96, residente e domiciliado na ' +
+  'Rua João Effting, nº 765, bairro São Basílio, Município de Braço do Norte/SC, CEP 88.750-000, ' +
+  'doravante denominada parte VENDEDORA.'
 
 function vazio(v: string, placeholder: string): string {
   const t = (v || '').trim()
@@ -833,7 +840,10 @@ export function montarBlocosContrato(d: ContratoDados): Bloco[] {
   b.push(p(`Grão-Pará/SC, ${dataPorExtenso(d.dataContrato)}.`, { center: true }))
 
   // ── assinaturas ──
-  b.push(...assinatura('METALÚRGICA BBA LTDA. – VENDEDORA', 'CNPJ 16.935.999/0001-09'))
+  // Uma linha por socio: quem assina pela PJ e' a pessoa, e o nome dela embaixo
+  // da linha e' o que liga a rubrica a' qualificacao do preambulo.
+  b.push(...assinatura('EDILSON BEGER LAURINDO – p/ METALÚRGICA BBA LTDA. (VENDEDORA)', 'CPF 003.552.019-17'))
+  b.push(...assinatura('PATRICK ALVES DA SILVA – p/ METALÚRGICA BBA LTDA. (VENDEDORA)', 'CPF 105.160.259-96'))
   const mesmo = d.garantidor.incluir && d.garantidor.mesmoQueComprador
   b.push(...assinatura(
     `${vazio(c.nome, 'NOME DA COMPRADORA')} – ${mesmo ? 'COMPRADOR(A) E GARANTIDOR(A)' : 'COMPRADORA'}`,
