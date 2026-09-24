@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { lerNumeroOrcamento } from '@/lib/busca-numero-orcamento'
 
 export interface OrcamentoFile {
   id: number
@@ -33,7 +34,7 @@ export type OrcamentoSort = 'recente' | 'follow_up'
 export type StatusVendedorFilter = '' | 'VENDIDO' | 'NEGOCIANDO' | 'INTERESSE-FUTURO' | 'PERDIDO' | 'sem_status'
 
 export interface OrcamentosFilters {
-  search: string         // busca em cliente + equipamento
+  search: string         // busca em cliente + equipamento, ou número ("2026-0241", "0241")
   ano: string            // '' = todos
   mes: string            // '' = todos. '01'..'12'
   vendor_id: string      // '' = todos. 'unassigned' = sem vendor
@@ -58,9 +59,15 @@ export function useOrcamentosFiles(filters: OrcamentosFilters) {
         .from('orcamentos_files')
         .select('*', { count: 'exact' })
 
-      if (filters.search) {
+      // Número ("2026-0241", "0241"…) também busca: antes só cliente/equipamento, e
+      // procurar um orçamento pelo número não achava nada.
+      const numeroBuscado = filters.search ? lerNumeroOrcamento(filters.search) : null
+      if (numeroBuscado?.ano) {
+        query = query.eq('ano', numeroBuscado.ano).in('numero', numeroBuscado.variantes)
+      } else if (filters.search) {
         const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
-        query = query.or(`cliente.ilike.%${escaped}%,equipamento.ilike.%${escaped}%`)
+        const porNumero = numeroBuscado ? `,numero.in.(${numeroBuscado.variantes.join(',')})` : ''
+        query = query.or(`cliente.ilike.%${escaped}%,equipamento.ilike.%${escaped}%${porNumero}`)
       }
       if (filters.ano) query = query.eq('ano', Number(filters.ano))
       if (filters.mes && filters.ano) {

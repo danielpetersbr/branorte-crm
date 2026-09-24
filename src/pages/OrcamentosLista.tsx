@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, Copy, Check, ChevronLeft, ChevronRight, X, FileText, Filter } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -341,6 +342,23 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   })
   const [searchInput, setSearchInput] = useState(() => loadFilters()?.search ?? '')
 
+  // ?busca=2026-0241 (vem do "procurar na pasta" dos Orçamentos Salvos): aplica a busca e
+  // tira ano/mês/status guardados de antes — senão um filtro velho esconde o resultado.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const buscaUrl = searchParams.get('busca')
+  useEffect(() => {
+    if (!buscaUrl) return
+    setSearchInput(buscaUrl)
+    setFilters({
+      search: buscaUrl, ano: '', mes: '', vendor_id: vendorTravado,
+      comContato: '', followUp: '', statusVendedor: '', sort: 'recente', page: 0,
+    })
+    const semBusca = new URLSearchParams(searchParams)
+    semBusca.delete('busca')
+    setSearchParams(semBusca, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaUrl])
+
   // Persiste filtros no localStorage (exceto search — que precisa do Enter explícito).
   useEffect(() => {
     try { localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters)) } catch { /* quota */ }
@@ -392,7 +410,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
       <Card className="p-4">
         <div className="flex flex-wrap gap-3 items-center">
           <Input
-            placeholder="Buscar cliente ou equipamento..."
+            placeholder="Buscar número (2026-0241), cliente ou equipamento..."
             leftIcon={<Search className="h-4 w-4" />}
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
