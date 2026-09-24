@@ -5,6 +5,8 @@ import { Edit3, Search, FileText, FileSignature, Calendar, User, DollarSign, Che
 import { useOrcamentosGerados, type OrcamentoGeradoLista } from '@/hooks/useOrcamentoBuilder'
 import { supabase } from '@/lib/supabase'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { useAuth } from '@/hooks/useAuth'
+import { semSeparadores } from '@/lib/busca-numero-orcamento'
 
 // Filtro por estágio ATUAL do funil (etiqueta WhatsApp do cliente) — casado pelo telefone
 // na RPC propostas_ids_por_categoria. 'aberto' = proposta viva (não vendida/perdida).
@@ -192,6 +194,9 @@ function OrcamentoGroupRow({ group }: { group: OrcamentoGroup }) {
 
 export function OrcamentosSalvos() {
   const { data, isLoading } = useOrcamentosGerados()
+  // Vendedor não abre a lista de Orçamentos da pasta (fora do VENDOR_PREFIXES): sem o link.
+  const { profile } = useAuth()
+  const isVendor = profile?.role === 'vendor'
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<string>('')
   const [filtroVendedor, setFiltroVendedor] = useState<string>('')
@@ -244,7 +249,8 @@ export function OrcamentosSalvos() {
       if (filtroEtiqueta && idsEtiqueta && !idsEtiqueta.has(Number(o.id))) return false
       if (buscaLower) {
         const hay = `${o.numero} ${o.cliente_nome} ${o.vendedor_nome} ${o.modelo_basename ?? ''}`.toLowerCase()
-        if (!hay.includes(buscaLower)) return false
+        // O número é gravado "2026 - 0241": sem ignorar espaço/traço, "2026-0241" não casava.
+        if (!hay.includes(buscaLower) && !semSeparadores(hay).includes(semSeparadores(buscaLower))) return false
       }
       return true
     })
@@ -361,6 +367,24 @@ export function OrcamentosSalvos() {
         <div className="text-center py-12 text-ink-faint">
           <FileText className="h-10 w-10 mx-auto mb-2 opacity-40" />
           <p>Nenhum orçamento encontrado</p>
+          {/* Aqui só entra orçamento montado NO CRM. Os feitos antes (Word na pasta Z:) ficam
+              na lista de Orçamentos — sem este aviso, parecia que o orçamento tinha sumido. */}
+          {busca.trim() && (
+            <p className="mt-2 text-[13px] text-text-secondary">
+              Esta lista mostra só orçamentos montados no CRM. Os feitos em Word (pasta Z:) ficam em Orçamentos.
+              {!isVendor && (
+                <>
+                  {' '}
+                  <Link
+                    to={`/orcamentos/lista?busca=${encodeURIComponent(busca.trim())}`}
+                    className="font-semibold text-accent hover:underline"
+                  >
+                    Procurar “{busca.trim()}” lá
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
         </div>
       ) : (
         <div className="overflow-x-auto border border-border rounded-md">
