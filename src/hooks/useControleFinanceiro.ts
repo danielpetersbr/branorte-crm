@@ -315,6 +315,10 @@ export function useAcaoFinanceiro() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
+      // 413 vem da própria Vercel (corpo > 4,5 MB), em HTML — sem `detail` pra mostrar.
+      if (resp.status === 413) {
+        throw new FinanceiroErro('arquivo_grande', 'O arquivo é grande demais para enviar. Mande um PDF menor ou tire a foto de novo.')
+      }
       const json = await resp.json().catch(() => ({}))
       if (!resp.ok || !json.ok) {
         throw new FinanceiroErro(json.error || `http_${resp.status}`, json.detail || json.error || 'A ação falhou.')

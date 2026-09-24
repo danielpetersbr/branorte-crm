@@ -389,6 +389,13 @@ export interface Kpis {
 
 const CENT = 0.01
 
+/**
+ * Boleto "a enviar" é o da parcela que vence nos próximos N dias (ou já venceu).
+ * Contar toda parcela futura sem boleto dava 253 "boletos a enviar" em 09/2026 —
+ * inclusive parcela de daqui a um ano, que ninguém manda agora.
+ */
+export const JANELA_BOLETO_DIAS = 30
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Regras puras
 // ─────────────────────────────────────────────────────────────────────────────
@@ -510,6 +517,10 @@ export function agregarPedido(
       const valor = Number(p.amount) || 0
       const st = statusParcela(p, cob, hoje)
       const atraso = diffDias(p.due_date, hoje)
+      // Parcela que recebeu um pedaço e passou do vencimento continua devendo o
+      // resto: o rótulo fica "Parcial", mas o saldo é dívida vencida e tem que
+      // aparecer no "Vencido" e na fila de cobrança.
+      const atrasada = !p.canceled && atraso > 0 && (st === 'VENCIDO' || st === 'PARCIAL')
       return {
         id: p.id,
         numero: p.installment_no,
@@ -525,7 +536,7 @@ export function agregarPedido(
         boletoEnviadoEm: p.boleto_enviado_em,
         cancelada: !!p.canceled,
         motivoCancelamento: p.cancellation_reason,
-        diasAtraso: st === 'VENCIDO' ? Math.max(0, atraso) : 0,
+        diasAtraso: atrasada ? atraso : 0,
         aguardandoComprovante: cob.recebido > CENT && cob.algumSemComprovante,
         aguardandoConferencia: validos.some(r => !!r.receipt_url && conf(r) === 'AGUARDANDO'),
         temRejeitado: recs.some(r => conf(r) === 'REJEITADO'),
@@ -551,9 +562,9 @@ export function agregarPedido(
   // Recebido do PEDIDO soma todos os receipts que contam, inclusive os avulsos.
   const recebido = soma(receiptsRaw)
   const somaParcelas = ativas.reduce((s, p) => s + p.valor, 0)
-  const vencido = ativas
-    .filter(p => p.status === 'VENCIDO')
-    .reduce((s, p) => s + p.saldo, 0)
+  // diasAtraso > 0 = saldo aberto depois do vencimento (VENCIDO ou PARCIAL atrasada)
+  const atrasadas = ativas.filter(p => p.diasAtraso > 0)
+  const vencido = atrasadas.reduce((s, p) => s + p.saldo, 0)
 
   const proximas = ativas
     .filter(p => p.saldo > CENT && diffDias(hoje, p.vencimento) >= 0)
@@ -562,7 +573,7 @@ export function agregarPedido(
 
   const cancelado = (pedido.status || '').toUpperCase() === 'CANCELADO'
   const coberto = valorTotal > 0 && recebido >= valorTotal - CENT
-  const temVencida = ativas.some(p => p.status === 'VENCIDO')
+  const temVencida = atrasadas.length > 0
   // QUITADO exige comprovação: dinheiro cobrindo o pedido E nenhuma parcela
   // presa em "aguardando comprovante/conferência".
   const pendenteComprovacao = ativas.some(p => p.aguardandoComprovante || p.aguardandoConferencia)
@@ -599,8 +610,9 @@ export function agregarPedido(
     vencido,
     proximoVencimento: proximas[0] ?? null,
     qtdParcelas: ativas.length,
-    parcelasVencidas: ativas.filter(p => p.status === 'VENCIDO').length,
-    boletosPendentes: ativas.filter(p => !p.boletoEnviado && p.saldo > CENT).length,
+    parcelasVencidas: atrasadas.length,
+    boletosPendentes: ativas.filter(p =>
+      !p.boletoEnviado && p.saldo > CENT && diffDias(hoje, p.vencimento) <= JANELA_BOLETO_DIAS).length,
     pagamentosSemComprovante: parcelas.filter(p => p.aguardandoComprovante).length,
     comprovantesAConferir: parcelas.filter(p => p.aguardandoConferencia).length,
     comprovantesRejeitados: parcelas.filter(p => p.temRejeitado).length,
@@ -672,6 +684,52 @@ export function resumoKpis(rows: PedidoFinanceiro[]): Kpis {
     if (r.regularizacao?.status === 'PROPOSTA') k.regularizacoesAConfirmar++
   }
   return k
+}
+
+export interface ResumoVendedor {
+  vendedor: string; pedidos: number; vendido: number; recebido: number; aReceber: number
+  vencido: number; parcelasVencidas: number; semComprovante: number; aConferir: number
+  boletosPendentes: number; semPlano: number; divergentes: number
+  carregadoAReceber: number; semLancamento: number
+}
+
+/**
+ * Item 10: acompanhamento por vendedor, só para quem enxerga a base toda.
+ *
+ * Segue a MESMA regra do resumoKpis: pedido regularizado conta no vendido e no
+ * recebido, mas sai da cobrança. Antes esta tabela somava a dívida velha dos 365
+ * pedidos regularizados no mutirão — o "Vencido" dela dava R$ 17,9 mi enquanto o
+ * cartão do topo dava R$ 7,2 mi (medido em 24/09/2026).
+ */
+export function resumoPorVendedor(rows: PedidoFinanceiro[]): ResumoVendedor[] {
+  const m = new Map<string, ResumoVendedor>()
+  for (const r of rows) {
+    if (r.status === 'CANCELADO') continue
+    const nome = (r.vendedor || '(sem vendedor)').trim().toUpperCase()
+    let a = m.get(nome)
+    if (!a) {
+      a = { vendedor: nome, pedidos: 0, vendido: 0, recebido: 0, aReceber: 0, vencido: 0,
+        parcelasVencidas: 0, semComprovante: 0, aConferir: 0, boletosPendentes: 0, semPlano: 0, divergentes: 0,
+        carregadoAReceber: 0, semLancamento: 0 }
+      m.set(nome, a)
+    }
+    a.pedidos++
+    a.vendido += r.valorTotal
+    a.recebido += r.recebido
+    if (r.status === 'REGULARIZADO') continue
+
+    if (r.producao.etapa === 'CARREGADO' && r.aReceber > CENT) a.carregadoAReceber += r.aReceber
+    if (r.semLancamento) a.semLancamento++
+    a.aReceber += r.aReceber
+    a.vencido += r.vencido
+    a.parcelasVencidas += r.parcelasVencidas
+    a.semComprovante += r.pagamentosSemComprovante
+    a.aConferir += r.comprovantesAConferir
+    a.boletosPendentes += r.boletosPendentes
+    if (r.status === 'SEM_PLANO') a.semPlano++
+    if (Math.abs(r.divergenciaPlano) > CENT) a.divergentes++
+  }
+  return [...m.values()].sort((a, b) => b.carregadoAReceber - a.carregadoAReceber || b.vencido - a.vencido)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -930,6 +988,21 @@ export async function idsDoVendedor(nomeVendedor: string | null): Promise<string
     .eq('vendor_id', alvo.id)
     .not('approved_at', 'is', null)
   return (data ?? []).map(r => r.id as string)
+}
+
+/** Os donos do pedido — o vendedor e, na venda em dupla, o segundo (mesma regra do pedidoNoEscopo). */
+export async function idsDosVendedoresDoPedido(p: Pick<PedidoRaw, 'vendedor' | 'vendedor_2'>): Promise<string[]> {
+  const [a, b] = await Promise.all([idsDoVendedor(p.vendedor), idsDoVendedor(p.vendedor_2)])
+  return [...new Set([...a, ...b])]
+}
+
+/**
+ * Teto de sanidade de um lançamento: nenhum recebimento passa do pedido inteiro.
+ * Pega o "1500000" digitado no lugar de "15000,00" antes de virar dinheiro no
+ * controle. A folga de 1% + R$ 1 cobre arredondamento de juros/frete.
+ */
+export function valorPassaDoPedido(valor: number, devido: number): boolean {
+  return devido > 0 && valor > devido * 1.01 + 1
 }
 
 export function agrupar<T>(itens: T[], chave: (t: T) => string): Map<string, T[]> {

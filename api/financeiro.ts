@@ -14,45 +14,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
   resolverEscopo, ehGateErro, pedidoNoEscopo, ehGestor,
-  lerControle, lerConferencias, lerProducao, lerMarcas, agregarPedido, resumoKpis, agrupar, hojeSP, crmAdmin,
+  lerControle, lerConferencias, lerProducao, lerMarcas, agregarPedido, resumoKpis, resumoPorVendedor, agrupar, hojeSP, crmAdmin,
   COLS_PEDIDO, COLS_PARCELA, COLS_RECEIPT, SEM_PRODUCAO, SEM_MARCAS,
   type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type PedidoFinanceiro,
 } from './_lib/financeiro-core.js'
-
-/** Item 10: acompanhamento por vendedor, só para quem enxerga a base toda. */
-function porVendedor(rows: PedidoFinanceiro[]) {
-  const m = new Map<string, {
-    vendedor: string; pedidos: number; vendido: number; recebido: number; aReceber: number
-    vencido: number; parcelasVencidas: number; semComprovante: number; aConferir: number
-    boletosPendentes: number; semPlano: number; divergentes: number
-    carregadoAReceber: number; semLancamento: number
-  }>()
-  for (const r of rows) {
-    if (r.status === 'CANCELADO') continue
-    const nome = (r.vendedor || '(sem vendedor)').trim().toUpperCase()
-    let a = m.get(nome)
-    if (!a) {
-      a = { vendedor: nome, pedidos: 0, vendido: 0, recebido: 0, aReceber: 0, vencido: 0,
-        parcelasVencidas: 0, semComprovante: 0, aConferir: 0, boletosPendentes: 0, semPlano: 0, divergentes: 0,
-        carregadoAReceber: 0, semLancamento: 0 }
-      m.set(nome, a)
-    }
-    if (r.producao.etapa === 'CARREGADO' && r.aReceber > 0.01) a.carregadoAReceber += r.aReceber
-    if (r.semLancamento) a.semLancamento++
-    a.pedidos++
-    a.vendido += r.valorTotal
-    a.recebido += r.recebido
-    a.aReceber += r.aReceber
-    a.vencido += r.vencido
-    a.parcelasVencidas += r.parcelasVencidas
-    a.semComprovante += r.pagamentosSemComprovante
-    a.aConferir += r.comprovantesAConferir
-    a.boletosPendentes += r.boletosPendentes
-    if (r.status === 'SEM_PLANO') a.semPlano++
-    if (Math.abs(r.divergenciaPlano) > 0.01) a.divergentes++
-  }
-  return [...m.values()].sort((a, b) => b.carregadoAReceber - a.carregadoAReceber || b.vencido - a.vencido)
-}
 
 export const config = { maxDuration: 30 }
 
@@ -155,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       kpis: resumoKpis(linhas),
       pedidos: linhas,
       // Item 10: a visão por vendedor só existe para quem enxerga todos.
-      vendedores: gestor ? porVendedor(linhas) : null,
+      vendedores: gestor ? resumoPorVendedor(linhas) : null,
     })
   } catch (e) {
     return res.status(502).json({ error: 'controle_indisponivel', detail: (e as Error).message })
