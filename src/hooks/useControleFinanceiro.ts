@@ -163,12 +163,32 @@ export interface ResumoVendedor {
 
 export interface Escopo { role: string; vendedores: string[] | null; gestor: boolean }
 
+/** Um comprovante esperando o gestor. Espelha ItemConferencia de api/_lib/financeiro-core.ts. */
+export interface ItemConferencia {
+  receiptId: string
+  orderId: string
+  pedidoNumero: string | null
+  cliente: string | null
+  vendedor: string | null
+  valor: number
+  pagoEm: string
+  meio: string
+  observacao: string | null
+  comprovanteUrl: string
+  lancadoPor: string | null
+  lancadoEm: string | null
+  parcela: { numero: number; totalParcelas: number; descricao: string; vencimento: string; valor: number } | null
+  valorBateComParcela: boolean | null
+}
+
 export interface FinanceiroResposta {
   hoje: string
   escopo: Escopo
   kpis: Kpis
   pedidos: PedidoFinanceiro[]
   vendedores: ResumoVendedor[] | null
+  /** só vem pro gestor — é quem aprova */
+  conferencia: ItemConferencia[] | null
 }
 
 export interface EventoAuditoria {

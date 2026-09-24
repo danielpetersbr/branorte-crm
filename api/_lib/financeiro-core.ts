@@ -84,6 +84,9 @@ export interface ConferenciaRaw {
   motivo: string | null
   conferido_por_nome: string | null
   conferido_em: string | null
+  /** quem lançou pelo CRM — lançamento antigo, feito no controle, vem sem */
+  criado_por_nome?: string | null
+  created_at?: string | null
 }
 
 /** Status derivado da parcela. Derivado, não lido — ver nota em statusParcela(). */
@@ -614,7 +617,10 @@ export function agregarPedido(
     boletosPendentes: ativas.filter(p =>
       !p.boletoEnviado && p.saldo > CENT && diffDias(hoje, p.vencimento) <= JANELA_BOLETO_DIAS).length,
     pagamentosSemComprovante: parcelas.filter(p => p.aguardandoComprovante).length,
-    comprovantesAConferir: parcelas.filter(p => p.aguardandoConferencia).length,
+    // Conta COMPROVANTE, não parcela: é o que a fila de conferência mostra, um
+    // por um. Duas fotos na mesma parcela são duas conferências — e o avulso
+    // (sem parcela) também espera alguém olhar.
+    comprovantesAConferir: receiptsRaw.filter(r => !!r.receipt_url && conf(r) === 'AGUARDANDO').length,
     comprovantesRejeitados: parcelas.filter(p => p.temRejeitado).length,
     status,
     somaParcelas,
@@ -684,6 +690,75 @@ export function resumoKpis(rows: PedidoFinanceiro[]): Kpis {
     if (r.regularizacao?.status === 'PROPOSTA') k.regularizacoesAConfirmar++
   }
   return k
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fila de conferência do gestor
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ItemConferencia {
+  receiptId: string
+  orderId: string
+  pedidoNumero: string | null
+  cliente: string | null
+  vendedor: string | null
+  valor: number
+  pagoEm: string
+  meio: string
+  observacao: string | null
+  comprovanteUrl: string
+  lancadoPor: string | null
+  lancadoEm: string | null
+  /** null = recebimento avulso, sem parcela */
+  parcela: { numero: number; totalParcelas: number; descricao: string; vencimento: string; valor: number } | null
+  /** o valor lançado é exatamente o da parcela — o caso que se aprova de olho */
+  valorBateComParcela: boolean | null
+}
+
+/**
+ * Os comprovantes deste pedido que esperam o gestor: arquivo anexado e ninguém
+ * aprovou nem rejeitou. Sem arquivo não entra — não dá pra aprovar o que não se
+ * vê (o endpoint recusa), e isso já tem fila própria ("sem comprovante").
+ *
+ * Pedido cancelado ou regularizado fica de fora pela mesma regra do resumoKpis,
+ * pra fila e chip mostrarem o mesmo número.
+ */
+export function filaConferencia(
+  pedido: PedidoFinanceiro & { parcelas: Parcela[] },
+  receiptsRaw: ReceiptRaw[],
+  conferencias: Map<string, ConferenciaRaw>,
+): ItemConferencia[] {
+  if (pedido.status === 'CANCELADO' || pedido.status === 'REGULARIZADO') return []
+  const out: ItemConferencia[] = []
+  for (const r of receiptsRaw) {
+    const c = conferencias.get(r.id)
+    if (!r.receipt_url || (c?.status ?? 'AGUARDANDO') !== 'AGUARDANDO') continue
+    const p = r.installment_id ? pedido.parcelas.find(x => x.id === r.installment_id) ?? null : null
+    const valor = Number(r.amount) || 0
+    out.push({
+      receiptId: r.id,
+      orderId: pedido.id,
+      pedidoNumero: pedido.pedidoNumero,
+      cliente: pedido.cliente,
+      vendedor: pedido.vendedor,
+      valor,
+      pagoEm: r.paid_at,
+      meio: r.payment_method,
+      observacao: r.notes,
+      comprovanteUrl: r.receipt_url,
+      lancadoPor: c?.criado_por_nome ?? null,
+      lancadoEm: c?.created_at ?? null,
+      parcela: p && { numero: p.numero, totalParcelas: p.totalParcelas, descricao: p.descricao, vencimento: p.vencimento, valor: p.valor },
+      valorBateComParcela: p ? Math.abs(valor - p.valor) <= CENT : null,
+    })
+  }
+  return out
+}
+
+/** Quem espera há mais tempo primeiro — pela data do pagamento, e no empate pelo lançamento. */
+export function ordenarFila(itens: ItemConferencia[]): ItemConferencia[] {
+  return [...itens].sort((a, b) =>
+    a.pagoEm.localeCompare(b.pagoEm) || (a.lancadoEm || '').localeCompare(b.lancadoEm || ''))
 }
 
 export interface ResumoVendedor {
@@ -889,7 +964,7 @@ export async function lerConferencias(orderIds: string[]): Promise<Map<string, C
   for (let i = 0; i < orderIds.length; i += LOTE) {
     const { data, error } = await crm
       .from('fin_conferencias')
-      .select('receipt_id, status, motivo, conferido_por_nome, conferido_em')
+      .select('receipt_id, status, motivo, conferido_por_nome, conferido_em, criado_por_nome, created_at')
       .in('order_id', orderIds.slice(i, i + LOTE))
     if (error) throw new Error(`fin_conferencias: ${error.message}`)
     for (const c of (data ?? []) as ConferenciaRaw[]) m.set(c.receipt_id, c)
