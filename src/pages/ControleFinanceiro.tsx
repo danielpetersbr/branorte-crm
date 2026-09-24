@@ -1180,25 +1180,94 @@ function PainelPedido({ pedidoId, onClose }: { pedidoId: string; onClose: () => 
 //
 // Antes, pra aprovar um comprovante o gestor abria pedido por pedido, rolava até
 // a parcela e achava o recebimento. Aqui estão todos juntos, com a miniatura do
-// arquivo, o valor ao lado do valor da parcela e os dois botões.
+// arquivo, o valor ao lado do valor da parcela e os botões.
+//
+// Comprovantes da MESMA parcela viram um cartão só (GrupoConferencia): em
+// 24/09/2026, 26 dos 38 itens eram PIX de R$ 1.000 do mesmo cliente — 26 cartões
+// idênticos, 26 cliques.
 
 function ehImagem(url: string): boolean {
   return /\.(jpe?g|png|webp)(\?|$)/i.test(url)
 }
 
+function Miniatura({ url, pequena }: { url: string; pequena?: boolean }) {
+  const [falhou, setFalhou] = useState(false)
+  const tam = pequena ? 'h-10 w-9' : 'h-28 w-24'
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" title="Abrir o comprovante"
+      className="shrink-0 rounded-md transition-opacity hover:opacity-80">
+      {ehImagem(url) && !falhou ? (
+        <img src={url} alt="Comprovante" loading="lazy" onError={() => setFalhou(true)}
+          className={`${tam} rounded-md border border-border object-cover`} />
+      ) : (
+        <div className={`${tam} flex flex-col items-center justify-center gap-1 rounded-md border border-border bg-surface-2 text-text-muted`}>
+          <FileText className={pequena ? 'h-4 w-4' : 'h-6 w-6'} />
+          {!pequena && <span className="text-[10px]">abrir arquivo</span>}
+        </div>
+      )}
+    </a>
+  )
+}
+
+/** A linha da parcela, dizendo se o dinheiro fecha — por pagamento único ou pela soma. */
+function ResumoParcela({ it }: { it: ItemConferencia }) {
+  if (!it.parcela) return <p className="text-xs text-warning">sem parcela (recebimento avulso)</p>
+  const base = `parcela ${it.parcela.numero}/${it.parcela.totalParcelas} · vence ${dataBR(it.parcela.vencimento)} · ${brl(it.parcela.valor, 2)}`
+  if (it.pagamentosNaParcela > 1) {
+    const passou = it.recebidoNaParcela > it.parcela.valor + 0.01
+    return (
+      <p className={`text-xs ${passou ? 'font-medium text-warning' : 'text-text-muted'}`}>
+        {base} · paga em {it.pagamentosNaParcela} partes: {brl(it.recebidoNaParcela, 2)} até agora
+        {passou && ' — passou do valor da parcela'}
+      </p>
+    )
+  }
+  return (
+    <p className={`text-xs ${it.valorBateComParcela ? 'text-text-muted' : 'font-medium text-warning'}`}>
+      {base}{!it.valorBateComParcela && ' — valor diferente da parcela'}
+    </p>
+  )
+}
+
+function RejeitarInline({ pendente, onConfirmar, onCancelar }: {
+  pendente: boolean; onConfirmar: (motivo: string) => void; onCancelar: () => void
+}) {
+  const [motivo, setMotivo] = useState('')
+  return (
+    <div className="mt-2 space-y-2 rounded border border-danger/30 p-2">
+      <label className="block text-xs font-medium text-text-secondary">
+        Por que está rejeitando? (o vendedor vai ler isto)
+      </label>
+      <Input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ex.: imagem ilegível" />
+      <div className="flex flex-wrap gap-1">
+        {MOTIVOS_REJEICAO.map(m => (
+          <button key={m} onClick={() => setMotivo(m)}
+            className="rounded border border-border px-2 py-0.5 text-[11px] text-text-muted hover:bg-surface-2">{m}</button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Botao tone="danger" disabled={!motivo.trim() || pendente} onClick={() => onConfirmar(motivo.trim())}>
+          {pendente ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5" />} Confirmar rejeição
+        </Botao>
+        <Botao onClick={onCancelar}>Cancelar</Botao>
+      </div>
+    </div>
+  )
+}
+
+type Marcar = (ids: string[], status: 'APROVADO' | 'REJEITADO') => void
+
 function CartaoConferencia({ it, onFeito, onAbrir }: {
-  it: ItemConferencia; onFeito: (id: string, status: 'APROVADO' | 'REJEITADO') => void; onAbrir: (orderId: string) => void
+  it: ItemConferencia; onFeito: Marcar; onAbrir: (orderId: string) => void
 }) {
   const acao = useAcaoFinanceiro()
   const [rejeitando, setRejeitando] = useState(false)
-  const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
-  const [semMiniatura, setSemMiniatura] = useState(false)
 
   const conferir = (status: 'APROVADO' | 'REJEITADO', m?: string) => {
     setErro(null)
     acao.mutate({ acao: 'conferir', order_id: it.orderId, receipt_id: it.receiptId, status, motivo: m }, {
-      onSuccess: () => onFeito(it.receiptId, status),
+      onSuccess: () => onFeito([it.receiptId], status),
       onError: e => setErro((e as FinanceiroErro).message),
     })
   }
@@ -1206,19 +1275,7 @@ function CartaoConferencia({ it, onFeito, onAbrir }: {
   return (
     <Card className="p-3">
       <div className="flex gap-3">
-        <a href={it.comprovanteUrl} target="_blank" rel="noopener noreferrer" title="Abrir o comprovante"
-          className="shrink-0 rounded-md transition-opacity hover:opacity-80">
-          {ehImagem(it.comprovanteUrl) && !semMiniatura ? (
-            <img src={it.comprovanteUrl} alt="Comprovante" loading="lazy" onError={() => setSemMiniatura(true)}
-              className="h-28 w-24 rounded-md border border-border object-cover" />
-          ) : (
-            <div className="flex h-28 w-24 flex-col items-center justify-center gap-1 rounded-md border border-border bg-surface-2 text-text-muted">
-              <FileText className="h-6 w-6" />
-              <span className="text-[10px]">abrir arquivo</span>
-            </div>
-          )}
-        </a>
-
+        <Miniatura url={it.comprovanteUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -1229,16 +1286,8 @@ function CartaoConferencia({ it, onFeito, onAbrir }: {
             </div>
             <p className="shrink-0 text-lg font-bold tabular-nums text-text-primary">{brl(it.valor, 2)}</p>
           </div>
-
           <p className="mt-1 text-xs text-text-secondary">{it.meio} · pago em {dataBR(it.pagoEm)}</p>
-          {it.parcela ? (
-            <p className={`text-xs ${it.valorBateComParcela ? 'text-text-muted' : 'font-medium text-warning'}`}>
-              parcela {it.parcela.numero}/{it.parcela.totalParcelas} · vence {dataBR(it.parcela.vencimento)} · {brl(it.parcela.valor, 2)}
-              {!it.valorBateComParcela && ' — valor diferente da parcela'}
-            </p>
-          ) : (
-            <p className="text-xs text-warning">sem parcela (recebimento avulso)</p>
-          )}
+          <ResumoParcela it={it} />
           {it.observacao && <p className="mt-1 text-xs italic text-text-muted">“{it.observacao}”</p>}
           {it.lancadoPor && (
             <p className="mt-0.5 text-[11px] text-text-muted">
@@ -1263,23 +1312,120 @@ function CartaoConferencia({ it, onFeito, onAbrir }: {
           </Botao>
         </div>
       ) : (
-        <div className="mt-3 space-y-2 rounded border border-danger/30 p-2">
-          <label className="block text-xs font-medium text-text-secondary">
-            Por que está rejeitando? (o vendedor vai ler isto)
-          </label>
-          <Input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ex.: imagem ilegível" />
-          <div className="flex flex-wrap gap-1">
-            {MOTIVOS_REJEICAO.map(m => (
-              <button key={m} onClick={() => setMotivo(m)}
-                className="rounded border border-border px-2 py-0.5 text-[11px] text-text-muted hover:bg-surface-2">{m}</button>
-            ))}
-          </div>
+        <RejeitarInline pendente={acao.isPending} onCancelar={() => setRejeitando(false)}
+          onConfirmar={m => conferir('REJEITADO', m)} />
+      )}
+    </Card>
+  )
+}
+
+/** Uma linha dentro do cartão agrupado: um comprovante, com os botões dele. */
+function LinhaGrupo({ it, onFeito }: { it: ItemConferencia; onFeito: Marcar }) {
+  const acao = useAcaoFinanceiro()
+  const [rejeitando, setRejeitando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const conferir = (status: 'APROVADO' | 'REJEITADO', m?: string) => {
+    setErro(null)
+    acao.mutate({ acao: 'conferir', order_id: it.orderId, receipt_id: it.receiptId, status, motivo: m }, {
+      onSuccess: () => onFeito([it.receiptId], status),
+      onError: e => setErro((e as FinanceiroErro).message),
+    })
+  }
+  return (
+    <li className="py-1.5">
+      <div className="flex items-center gap-2">
+        <Miniatura url={it.comprovanteUrl} pequena />
+        <div className="min-w-0 flex-1 text-xs">
+          <span className="font-semibold tabular-nums text-text-primary">{brl(it.valor, 2)}</span>
+          <span className="text-text-muted"> · {it.meio} · pago em {dataBR(it.pagoEm)}</span>
+          {it.observacao && <span className="block truncate italic text-text-muted">“{it.observacao}”</span>}
+        </div>
+        {!rejeitando && (
+          <>
+            <button onClick={() => conferir('APROVADO')} disabled={acao.isPending} title="Aprovar este"
+              className="rounded-md border border-success/40 p-1.5 text-success hover:bg-success-bg disabled:opacity-40">
+              {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
+            </button>
+            <button onClick={() => setRejeitando(true)} disabled={acao.isPending} title="Rejeitar este"
+              className="rounded-md border border-danger/40 p-1.5 text-danger hover:bg-danger-bg disabled:opacity-40">
+              <ThumbsDown className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+      {erro && <p className="mt-1 text-xs text-danger">{erro}</p>}
+      {rejeitando && (
+        <RejeitarInline pendente={acao.isPending} onCancelar={() => setRejeitando(false)}
+          onConfirmar={m => conferir('REJEITADO', m)} />
+      )}
+    </li>
+  )
+}
+
+function GrupoConferencia({ itens, onFeito, onAbrir }: {
+  itens: ItemConferencia[]; onFeito: Marcar; onAbrir: (orderId: string) => void
+}) {
+  const acao = useAcaoFinanceiro()
+  const [confirmando, setConfirmando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const it = itens[0]
+  const total = itens.reduce((s, x) => s + x.valor, 0)
+  const quem = [...new Set(itens.map(x => x.lancadoPor).filter(Boolean))]
+
+  const aprovarTodos = () => {
+    setErro(null)
+    acao.mutate({ acao: 'conferir_lote', order_id: it.orderId, receipt_ids: itens.map(x => x.receiptId) }, {
+      onSuccess: () => { setConfirmando(false); onFeito(itens.map(x => x.receiptId), 'APROVADO') },
+      onError: e => setErro((e as FinanceiroErro).message),
+    })
+  }
+
+  return (
+    <Card className="p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-text-primary" title={it.cliente || ''}>{it.cliente || '(sem nome)'}</p>
+          <p className="text-xs text-text-muted">
+            <span className="font-mono">{it.pedidoNumero || '—'}</span> · {it.vendedor || '—'}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-lg font-bold tabular-nums text-text-primary">{brl(total, 2)}</p>
+          <p className="text-[11px] text-text-muted">{itens.length} comprovantes</p>
+        </div>
+      </div>
+      <div className="mt-1"><ResumoParcela it={it} /></div>
+      {quem.length > 0 && (
+        <p className="mt-0.5 text-[11px] text-text-muted">lançados por {quem.join(', ')}</p>
+      )}
+
+      <ul className="mt-2 max-h-72 divide-y divide-border overflow-y-auto border-y border-border pr-1">
+        {itens.map(x => <LinhaGrupo key={x.receiptId} it={x} onFeito={onFeito} />)}
+      </ul>
+
+      {erro && <p className="mt-2 text-xs text-danger">{erro}</p>}
+
+      {confirmando ? (
+        <div className="mt-3 space-y-2 rounded border border-success/30 bg-success-bg/40 p-2">
+          <p className="text-xs text-text-primary">
+            Aprovar os <strong>{itens.length}</strong> pagamentos, total <strong>{brl(total, 2)}</strong>?
+            Abra os arquivos antes — aprovado conta como dinheiro conferido.
+          </p>
           <div className="flex gap-2">
-            <Botao tone="danger" disabled={!motivo.trim() || acao.isPending} onClick={() => conferir('REJEITADO', motivo.trim())}>
-              {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5" />} Confirmar rejeição
+            <Botao tone="success" disabled={acao.isPending} onClick={aprovarTodos}>
+              {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />} Confirmar
             </Botao>
-            <Botao onClick={() => setRejeitando(false)}>Cancelar</Botao>
+            <Botao onClick={() => setConfirmando(false)}>Cancelar</Botao>
           </div>
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Botao tone="success" onClick={() => setConfirmando(true)}>
+            <ThumbsUp className="h-3.5 w-3.5" /> Aprovar os {itens.length}
+          </Botao>
+          <Botao onClick={() => onAbrir(it.orderId)}>
+            <Receipt className="h-3.5 w-3.5" /> Abrir pedido
+          </Botao>
         </div>
       )}
     </Card>
@@ -1299,18 +1445,30 @@ function FilaConferencia({ itens, onAbrir }: { itens: ItemConferencia[]; onAbrir
   }, [itens])
 
   const pendentes = itens.filter(i => !feitos.has(i.receiptId))
-  const marcar = (id: string, st: 'APROVADO' | 'REJEITADO') => {
-    setFeitos(f => new Set(f).add(id))
-    setPlacar(p => st === 'APROVADO' ? { ...p, aprovados: p.aprovados + 1 } : { ...p, rejeitados: p.rejeitados + 1 })
+  const marcar: Marcar = (ids, st) => {
+    setFeitos(f => { const n = new Set(f); ids.forEach(id => n.add(id)); return n })
+    setPlacar(p => st === 'APROVADO' ? { ...p, aprovados: p.aprovados + ids.length } : { ...p, rejeitados: p.rejeitados + ids.length })
   }
   const feitosAgora = placar.aprovados + placar.rejeitados
+
+  // Agrupa por pedido+parcela, mantendo a ordem da fila (o mais antigo primeiro).
+  // Avulso nunca agrupa: sem parcela não há soma pra conferir.
+  const grupos: ItemConferencia[][] = []
+  const indice = new Map<string, ItemConferencia[]>()
+  for (const it of pendentes) {
+    const chave = it.parcela ? `${it.orderId}#${it.parcela.numero}` : `avulso#${it.receiptId}`
+    let g = indice.get(chave)
+    if (!g) { g = []; indice.set(chave, g); grupos.push(g) }
+    g.push(it)
+  }
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-text-secondary">
         {pendentes.length > 0 ? (
           <>
-            <strong>{pendentes.length}</strong> comprovante{pendentes.length !== 1 ? 's' : ''} esperando conferência,
+            <strong>{pendentes.length}</strong> comprovante{pendentes.length !== 1 ? 's' : ''} esperando conferência
+            {grupos.length !== pendentes.length && <> em {grupos.length} parcela{grupos.length !== 1 ? 's' : ''}</>},
             o mais antigo primeiro. Abra o arquivo, confira valor e data, e aprove ou rejeite — o vendedor é avisado.
           </>
         ) : 'Nenhum comprovante esperando conferência.'}
@@ -1326,9 +1484,9 @@ function FilaConferencia({ itens, onAbrir }: { itens: ItemConferencia[]; onAbrir
         </Card>
       ) : (
         <div className="grid gap-3 xl:grid-cols-2">
-          {pendentes.map(it => (
-            <CartaoConferencia key={it.receiptId} it={it} onFeito={marcar} onAbrir={onAbrir} />
-          ))}
+          {grupos.map(g => g.length === 1
+            ? <CartaoConferencia key={g[0].receiptId} it={g[0]} onFeito={marcar} onAbrir={onAbrir} />
+            : <GrupoConferencia key={g[0].receiptId} itens={g} onFeito={marcar} onAbrir={onAbrir} />)}
         </div>
       )}
     </div>

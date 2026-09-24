@@ -326,6 +326,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // ───────────────────────────────────────────────────────────────────
+      // Aprovar vários de uma vez (fila de conferência). Existe por causa do
+      // cliente que paga em dezenas de PIX pequenos: 26 comprovantes de R$ 1.000
+      // na mesma parcela eram 26 cliques. Só APROVA — rejeitar pede motivo, e
+      // motivo é por comprovante. Todos têm que ser DESTE pedido e ter arquivo.
+      case 'conferir_lote': {
+        if (!gestor) return res.status(403).json({ error: 'so_gestor', detail: 'Só gestor ou financeiro pode conferir comprovante.' })
+        const ids = [...new Set((Array.isArray(b.receipt_ids) ? b.receipt_ids : []).map(String).filter(Boolean))]
+        if (ids.length === 0) return res.status(400).json({ error: 'receipt_ids_obrigatorio' })
+        if (ids.length > 200) return res.status(400).json({ error: 'lote_grande', detail: 'No máximo 200 por vez.' })
+
+        const rs = await lerControle<{ id: string; order_id: string; installment_id: string | null; amount: number; receipt_url: string | null }>(
+          'receipts', 'id,order_id,installment_id,amount,receipt_url', `&id=in.(${ids.map(encodeURIComponent).join(',')})`)
+        if (rs.length !== ids.length || rs.some(r => r.order_id !== orderId)) {
+          return res.status(400).json({ error: 'recebimento_nao_e_do_pedido', detail: 'Algum comprovante do lote não é deste pedido.' })
+        }
+        if (rs.some(r => !r.receipt_url)) {
+          return res.status(400).json({ error: 'sem_comprovante', detail: 'Tem pagamento sem arquivo no lote — esse não dá pra aprovar.' })
+        }
+
+        const agora = new Date().toISOString()
+        exigir(await crm.from('fin_conferencias').upsert(rs.map(r => ({
+          receipt_id: r.id, order_id: orderId, installment_id: r.installment_id,
+          status: 'APROVADO', motivo: null,
+          conferido_por: esc.userId, conferido_por_nome: esc.displayName,
+          conferido_em: agora, updated_at: agora,
+        }))), 'aprovar em lote')
+
+        await Promise.all(rs.map(r => auditar({ order_id: orderId, installment_id: r.installment_id, receipt_id: r.id,
+          acao: 'comprovante_aprovado', depois: { status: 'APROVADO' }, motivo: `aprovado em lote (${rs.length})`, ...ator })))
+
+        const total = rs.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+        await notificar({
+          destinatarios: await idsDosVendedoresDoPedido(pedido), tipo: 'comprovante_aprovado',
+          titulo: 'Pagamentos confirmados',
+          corpo: `${rs.length} comprovantes do pedido ${pedido.pedido_numero} foram aprovados (${fmtBRL(total)}).`,
+          order_id: orderId, chave: `conflote:${orderId}:${agora}`,
+        })
+
+        return res.status(200).json({ ok: true, aprovados: rs.length })
+      }
+
+      // ───────────────────────────────────────────────────────────────────
       case 'editar_pagamento': {
         const receiptId = String(b.receipt_id || '')
         if (!receiptId) return res.status(400).json({ error: 'receipt_id_obrigatorio' })

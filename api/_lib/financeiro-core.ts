@@ -711,8 +711,16 @@ export interface ItemConferencia {
   lancadoEm: string | null
   /** null = recebimento avulso, sem parcela */
   parcela: { numero: number; totalParcelas: number; descricao: string; vencimento: string; valor: number } | null
-  /** o valor lançado é exatamente o da parcela — o caso que se aprova de olho */
+  /**
+   * Pagamento único na parcela: o valor lançado é exatamente o dela — o caso que
+   * se aprova de olho. `null` quando não se aplica: avulso, ou parcela paga em
+   * partes (aí quem diz se está certo é a soma, em recebidoNaParcela).
+   */
   valorBateComParcela: boolean | null
+  /** recebimentos que contam nesta parcela (fora os rejeitados), este incluído */
+  pagamentosNaParcela: number
+  /** soma desses recebimentos */
+  recebidoNaParcela: number
 }
 
 /**
@@ -735,6 +743,10 @@ export function filaConferencia(
     if (!r.receipt_url || (c?.status ?? 'AGUARDANDO') !== 'AGUARDANDO') continue
     const p = r.installment_id ? pedido.parcelas.find(x => x.id === r.installment_id) ?? null : null
     const valor = Number(r.amount) || 0
+    // Cliente que paga R$ 1.000 por semana numa parcela de R$ 79.000 não é
+    // "valor diferente da parcela" — medido em 24/09/2026: 26 dos 38 itens da
+    // fila eram um pedido assim, todos pintados de amarelo à toa.
+    const partes = p ? p.recebimentos.filter(x => x.conferencia !== 'REJEITADO').length : 0
     out.push({
       receiptId: r.id,
       orderId: pedido.id,
@@ -749,7 +761,9 @@ export function filaConferencia(
       lancadoPor: c?.criado_por_nome ?? null,
       lancadoEm: c?.created_at ?? null,
       parcela: p && { numero: p.numero, totalParcelas: p.totalParcelas, descricao: p.descricao, vencimento: p.vencimento, valor: p.valor },
-      valorBateComParcela: p ? Math.abs(valor - p.valor) <= CENT : null,
+      valorBateComParcela: p && partes <= 1 ? Math.abs(valor - p.valor) <= CENT : null,
+      pagamentosNaParcela: partes,
+      recebidoNaParcela: p ? p.recebido : valor,
     })
   }
   return out
