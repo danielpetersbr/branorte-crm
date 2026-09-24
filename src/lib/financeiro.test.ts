@@ -597,3 +597,31 @@ test('fila: o pagamento mais antigo vem primeiro', () => {
   const agg = agregarPedido(pedido(), [parcela()], recs, HOJE)
   assert.deepEqual(ordenarFila(filaConferencia(agg, recs, new Map())).map(f => f.receiptId), ['velho', 'novo'])
 })
+
+test('fila: parcela paga em partes nao e "valor diferente" — quem diz e a soma', () => {
+  // o caso real de 24/09/2026: PIX de R$ 1.000 atras de PIX numa parcela grande
+  const recs = [
+    receipt({ id: 'p1', installment_id: 'i1', amount: 1000, paid_at: '2026-08-01' }),
+    receipt({ id: 'p2', installment_id: 'i1', amount: 1000, paid_at: '2026-08-02' }),
+    receipt({ id: 'p3', installment_id: 'i1', amount: 1000, paid_at: '2026-08-03' }),
+    receipt({ id: 'rej', installment_id: 'i1', amount: 1000, paid_at: '2026-08-04' }),
+  ]
+  const confs = new Map([confDe('p1', 'APROVADO'), confDe('rej', 'REJEITADO')])
+  const agg = agregarPedido(pedido({ valor_total: 79000 }), [parcela({ id: 'i1', amount: 79000 })], recs, HOJE, confs)
+  const fila = filaConferencia(agg, recs, confs)
+  assert.deepEqual(fila.map(f => f.receiptId).sort(), ['p2', 'p3'])       // p1 ja aprovado, rej rejeitado
+  for (const f of fila) {
+    assert.equal(f.valorBateComParcela, null)                             // nao se aplica
+    assert.equal(f.pagamentosNaParcela, 3)                                // o rejeitado nao conta
+    assert.equal(f.recebidoNaParcela, 3000)
+  }
+})
+
+test('fila: pagamento unico continua comparando com a parcela', () => {
+  const recs = [receipt({ id: 'u', installment_id: 'i1', amount: 450 })]
+  const agg = agregarPedido(pedido(), [parcela({ id: 'i1', amount: 500 })], recs, HOJE)
+  const [f] = filaConferencia(agg, recs, new Map())
+  assert.equal(f.pagamentosNaParcela, 1)
+  assert.equal(f.valorBateComParcela, false)
+  assert.equal(f.recebidoNaParcela, 450)
+})

@@ -178,7 +178,10 @@ export interface ItemConferencia {
   lancadoPor: string | null
   lancadoEm: string | null
   parcela: { numero: number; totalParcelas: number; descricao: string; vencimento: string; valor: number } | null
+  /** null = não se aplica (avulso ou parcela paga em partes) */
   valorBateComParcela: boolean | null
+  pagamentosNaParcela: number
+  recebidoNaParcela: number
 }
 
 export interface FinanceiroResposta {
@@ -264,6 +267,7 @@ export type AcaoFinanceiro =
   | { acao: 'confirmar_boleto'; order_id: string; installment_id: string; meio: string
       observacao?: string; arquivo?: ArquivoUpload }
   | { acao: 'conferir'; order_id: string; receipt_id: string; status: 'APROVADO' | 'REJEITADO'; motivo?: string }
+  | { acao: 'conferir_lote'; order_id: string; receipt_ids: string[] }
   | { acao: 'editar_pagamento'; order_id: string; receipt_id: string; valor?: number
       pago_em?: string; meio?: string; observacao?: string; motivo?: string }
   | { acao: 'excluir_pagamento'; order_id: string; receipt_id: string; motivo?: string }
