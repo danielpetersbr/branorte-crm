@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   devidoDe, diffDias, statusParcela, agregarPedido, resumoKpis, pedidoNoEscopo, ehGestor,
-  podeAlterarRecebimento,
+  podeAlterarRecebimento, resumoPorVendedor, valorPassaDoPedido, JANELA_BOLETO_DIAS,
   type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type Escopo, type Cobertura, type ConferenciaRaw,
   type Producao, type Regularizacao, type MarcasPedido,
 } from '../../api/_lib/financeiro-core.js'
@@ -445,4 +445,84 @@ test('kpis: proposta pendente aparece na fila do gestor', () => {
   const p = agregarPedido(pedido({ valor_total: 800 }), [parcela({ amount: 800 })], [], HOJE,
     new Map(), prod('CARREGADO'), marcaReg('PROPOSTA'))
   assert.equal(resumoKpis([p]).regularizacoesAConfirmar, 1)
+})
+
+// ── revisão de 24/09/2026 ────────────────────────────────────────────────────
+
+test('atraso: parcela PARCIAL que passou do vencimento conta como vencida no pedido', () => {
+  // pagou 200 de 500, venceu em janeiro: o rótulo segue "Parcial", mas os 300
+  // que faltam são dívida vencida — antes sumiam do "Vencido" e da cobrança
+  const r = agregarPedido(pedido({ valor_total: 500 }),
+    [parcela({ id: 'i1', amount: 500, due_date: '2026-01-01' })],
+    [receipt({ installment_id: 'i1', amount: 200 })], HOJE, new Map([conf('r1', 'APROVADO')]))
+  assert.equal(r.parcelas[0].status, 'PARCIAL')
+  assert.equal(r.parcelas[0].diasAtraso, diffDias('2026-01-01', HOJE))
+  assert.equal(r.vencido, 300)
+  assert.equal(r.parcelasVencidas, 1)
+  assert.equal(r.status, 'VENCIDO')
+})
+
+test('atraso: parcela PARCIAL ainda dentro do prazo NAO e vencida', () => {
+  const r = agregarPedido(pedido({ valor_total: 500 }),
+    [parcela({ id: 'i1', amount: 500, due_date: '2026-09-01' })],
+    [receipt({ installment_id: 'i1', amount: 200 })], HOJE, new Map([conf('r1', 'APROVADO')]))
+  assert.equal(r.vencido, 0)
+  assert.equal(r.parcelas[0].diasAtraso, 0)
+  assert.equal(r.status, 'PARCIAL')
+})
+
+test('atraso: vence hoje ainda nao e atraso', () => {
+  const r = agregarPedido(pedido(), [parcela({ due_date: HOJE })], [], HOJE)
+  assert.equal(r.vencido, 0)
+  assert.equal(r.parcelas[0].status, 'VENCE_HOJE')
+})
+
+test('boleto a enviar: so a parcela que vence dentro da janela (ou ja venceu)', () => {
+  const r = agregarPedido(pedido({ valor_total: 1500 }), [
+    parcela({ id: 'a', installment_no: 1, amount: 500, due_date: '2026-07-01' }),                   // vencida
+    parcela({ id: 'b', installment_no: 2, amount: 500, due_date: '2026-08-06' }),                   // vence hoje
+    parcela({ id: 'c', installment_no: 3, amount: 500, due_date: '2027-06-01' }),                   // daqui a 10 meses
+  ], [], HOJE)
+  assert.equal(r.boletosPendentes, 2)
+  assert.equal(JANELA_BOLETO_DIAS, 30)
+})
+
+test('boleto a enviar: limite da janela e inclusivo', () => {
+  const dentro = agregarPedido(pedido(), [parcela({ due_date: '2026-09-05' })], [], HOJE) // 30 dias
+  const fora = agregarPedido(pedido(), [parcela({ due_date: '2026-09-06' })], [], HOJE)   // 31 dias
+  assert.equal(dentro.boletosPendentes, 1)
+  assert.equal(fora.boletosPendentes, 0)
+})
+
+test('por vendedor: regularizado entra no vendido mas NAO na cobranca (igual ao resumoKpis)', () => {
+  const vivo = agregarPedido(pedido({ id: 'a', vendedor: 'EDER', valor_total: 500 }),
+    [parcela({ id: 'i1', order_id: 'a', amount: 500, due_date: '2026-01-01' })], [], HOJE, new Map(), prod('CARREGADO'))
+  const reg = agregarPedido(pedido({ id: 'b', vendedor: 'eder ', valor_total: 1000 }),
+    [parcela({ id: 'i2', order_id: 'b', amount: 1000, due_date: '2026-01-01' })], [], HOJE, new Map(),
+    prod('CARREGADO'), marcaReg('CONFIRMADA'))
+  const cancelado = agregarPedido(pedido({ id: 'c', vendedor: 'EDER', status: 'CANCELADO', valor_total: 9000 }),
+    [parcela({ id: 'i3', order_id: 'c', amount: 9000, due_date: '2026-01-01' })], [], HOJE)
+
+  const [eder, ...resto] = resumoPorVendedor([vivo, reg, cancelado])
+  assert.equal(resto.length, 0)
+  assert.equal(eder.vendedor, 'EDER')
+  assert.equal(eder.pedidos, 2)
+  assert.equal(eder.vendido, 1500)
+  assert.equal(eder.vencido, 500)
+  assert.equal(eder.aReceber, 500)
+  assert.equal(eder.carregadoAReceber, 500)
+  assert.equal(eder.semLancamento, 1)
+
+  // e bate com os cartões do topo
+  const k = resumoKpis([vivo, reg, cancelado])
+  assert.equal(eder.vencido, k.totalVencido)
+  assert.equal(eder.aReceber, k.totalAReceber)
+})
+
+test('valorPassaDoPedido: pega o zero a mais, deixa passar o arredondamento', () => {
+  assert.equal(valorPassaDoPedido(1_500_000, 150_000), true)
+  assert.equal(valorPassaDoPedido(150_000, 150_000), false)
+  assert.equal(valorPassaDoPedido(151_000, 150_000), false)   // até 1% + R$ 1 de folga
+  assert.equal(valorPassaDoPedido(152_000, 150_000), true)
+  assert.equal(valorPassaDoPedido(5_000, 0), false)           // pedido sem valor não trava
 })

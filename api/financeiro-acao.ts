@@ -19,12 +19,29 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
   resolverEscopo, ehGateErro, pedidoNoEscopo, ehGestor, podeAlterarRecebimento,
-  lerControle, crmAdmin, auditar, notificar, idsDosGestores, idsDoVendedor, hojeSP,
+  lerControle, crmAdmin, auditar, notificar, idsDosGestores, idsDosVendedoresDoPedido, hojeSP,
+  devidoDe, valorPassaDoPedido,
   CONTROLE_URL, CONTROLE_KEY, COLS_PEDIDO, COLS_PARCELA, COLS_RECEIPT,
   type PedidoRaw, type ParcelaRaw, type ReceiptRaw,
 } from './_lib/financeiro-core.js'
 
 type ReceiptCompleto = ReceiptRaw
+
+/**
+ * supabase-js NÃO lança: devolve `{ error }`. Sem olhar isso a ação respondia
+ * `ok: true` e a conferência/regularização/entrega simplesmente não existia —
+ * o mesmo tropeço que já tinha escondido o 42P10 do notificar().
+ */
+class CrmRecusou extends Error {}
+function exigir(r: { error: { message: string } | null }, onde: string): void {
+  if (r.error) throw new CrmRecusou(`${onde}: ${r.error.message}`)
+}
+/** Para gravação secundária: a ação principal já aconteceu, então só registra. */
+function avisarSeFalhou(r: { error: { message: string } | null }, onde: string): void {
+  if (r.error) console.error(`[financeiro-acao] ${onde}:`, r.error.message)
+}
+
+const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export const config = { api: { bodyParser: { sizeLimit: '10mb' } }, maxDuration: 30 }
 
@@ -119,6 +136,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const meio = String(b.meio || 'PIX').toUpperCase()
 
         if (!(valor > 0)) return res.status(400).json({ error: 'valor_invalido', detail: 'Informe um valor maior que zero.' })
+        if (valorPassaDoPedido(valor, devidoDe(pedido))) {
+          return res.status(400).json({ error: 'valor_acima_do_pedido',
+            detail: `${fmtBRL(valor)} é mais que o pedido inteiro (${fmtBRL(devidoDe(pedido))}). Confira o valor digitado.` })
+        }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(pagoEm)) return res.status(400).json({ error: 'data_invalida', detail: 'Informe a data do recebimento.' })
         if (pagoEm > hojeSP()) return res.status(400).json({ error: 'data_futura', detail: 'A data do recebimento não pode estar no futuro.' })
         if (!MEIOS_PAGAMENTO.has(meio)) return res.status(400).json({ error: 'meio_invalido' })
@@ -151,12 +172,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!resp.ok) return res.status(502).json({ error: 'controle_recusou', detail: await resp.text() })
         const [novo] = (await resp.json()) as { id: string }[]
 
-        // Nasce AGUARDANDO: lançar valor NÃO quita (item 2).
-        await crm.from('fin_conferencias').upsert({
+        // Nasce AGUARDANDO: lançar valor NÃO quita (item 2). Se esta linha falhar,
+        // o recebimento continua valendo como AGUARDANDO (é o default de quem não
+        // tem conferência) — por isso só registra, não derruba o lançamento.
+        avisarSeFalhou(await crm.from('fin_conferencias').upsert({
           receipt_id: novo.id, order_id: orderId, installment_id: installmentId,
           status: 'AGUARDANDO', criado_por: esc.userId, criado_por_nome: esc.displayName,
           updated_at: new Date().toISOString(),
-        })
+        }), 'conferencia do lancamento')
 
         await auditar({ order_id: orderId, installment_id: installmentId, receipt_id: novo.id,
           acao: url ? 'pagamento_lancado_com_comprovante' : 'pagamento_lancado_sem_comprovante',
@@ -182,6 +205,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const rec = rs[0]
         if (!rec || rec.order_id !== orderId) return res.status(400).json({ error: 'recebimento_nao_e_do_pedido' })
 
+        // Trocar o comprovante de um pagamento já aprovado devolve ele pra fila
+        // e tira do recebimento o arquivo que o gestor conferiu. É alterar
+        // dinheiro conferido — mesma trava do editar/excluir.
+        const { data: cfAnexo, error: eCfAnexo } = await crm.from('fin_conferencias').select('status').eq('receipt_id', receiptId).maybeSingle()
+        if (eCfAnexo) throw new CrmRecusou(`ler conferencia: ${eCfAnexo.message}`)
+        const permAnexo = podeAlterarRecebimento(esc.role, (cfAnexo?.status as 'AGUARDANDO' | 'APROVADO' | 'REJEITADO') ?? 'AGUARDANDO')
+        if (!permAnexo.ok) return res.status(403).json({ error: 'precisa_gestor', detail: permAnexo.motivo })
+
         const url = await subirComprovante(orderId, b.arquivo as Arquivo | undefined)
         if (!url) return res.status(400).json({ error: 'arquivo_obrigatorio' })
 
@@ -191,11 +222,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!resp.ok) return res.status(502).json({ error: 'controle_recusou', detail: await resp.text() })
 
         // Comprovante novo reabre a conferência — inclusive se estava rejeitado.
-        await crm.from('fin_conferencias').upsert({
+        avisarSeFalhou(await crm.from('fin_conferencias').upsert({
           receipt_id: receiptId, order_id: orderId, installment_id: rec.installment_id,
           status: 'AGUARDANDO', motivo: null, conferido_por: null, conferido_por_nome: null,
           conferido_em: null, updated_at: new Date().toISOString(),
-        })
+        }), 'reabrir conferencia do anexo')
 
         await auditar({ order_id: orderId, installment_id: rec.installment_id, receipt_id: receiptId,
           acao: 'comprovante_anexado', antes: { comprovante: rec.receipt_url }, depois: { comprovante: url }, ...ator })
@@ -232,12 +263,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!resp.ok) return res.status(502).json({ error: 'controle_recusou', detail: await resp.text() })
 
         // O detalhe (quem/por onde/observação) o controle não guarda — fica aqui.
-        await crm.from('fin_boleto_envios').insert({
+        avisarSeFalhou(await crm.from('fin_boleto_envios').insert({
           order_id: orderId, installment_id: installmentId, meio,
           observacao: (b.observacao as string) || null, arquivo_url: url,
           vencimento: parcela.due_date, enviado_por: esc.userId, enviado_por_nome: esc.displayName,
           enviado_em: agora,
-        })
+        }), 'log do boleto')
 
         await auditar({ order_id: orderId, installment_id: installmentId, acao: 'boleto_enviado',
           antes: { boleto_enviado: !!parcela.boleto_enviado }, depois: { boleto_enviado: true, meio }, ...ator })
@@ -270,19 +301,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const { data: antes } = await crm.from('fin_conferencias').select('status, motivo').eq('receipt_id', receiptId).maybeSingle()
 
-        await crm.from('fin_conferencias').upsert({
+        exigir(await crm.from('fin_conferencias').upsert({
           receipt_id: receiptId, order_id: orderId, installment_id: rec.installment_id,
           status, motivo: motivo || null,
           conferido_por: esc.userId, conferido_por_nome: esc.displayName,
           conferido_em: new Date().toISOString(), updated_at: new Date().toISOString(),
-        })
+        }), 'gravar conferencia')
 
         await auditar({ order_id: orderId, installment_id: rec.installment_id, receipt_id: receiptId,
           acao: status === 'APROVADO' ? 'comprovante_aprovado' : 'comprovante_rejeitado',
           antes: antes ?? { status: 'AGUARDANDO' }, depois: { status }, motivo: motivo || null, ...ator })
 
         await notificar({
-          destinatarios: await idsDoVendedor(pedido.vendedor), tipo: `comprovante_${status.toLowerCase()}`,
+          destinatarios: await idsDosVendedoresDoPedido(pedido), tipo: `comprovante_${status.toLowerCase()}`,
           titulo: status === 'APROVADO' ? 'Pagamento confirmado' : 'Comprovante rejeitado',
           corpo: status === 'APROVADO'
             ? `Seu comprovante no pedido ${pedido.pedido_numero} foi aprovado.`
@@ -303,7 +334,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const rec = rs[0]
         if (!rec || rec.order_id !== orderId) return res.status(400).json({ error: 'recebimento_nao_e_do_pedido' })
 
-        const { data: cf } = await crm.from('fin_conferencias').select('status, motivo').eq('receipt_id', receiptId).maybeSingle()
+        // Falha ao ler NÃO pode virar "aguardando": seria liberar a edição de pagamento aprovado.
+        const { data: cf, error: eCf } = await crm.from('fin_conferencias').select('status, motivo').eq('receipt_id', receiptId).maybeSingle()
+        if (eCf) throw new CrmRecusou(`ler conferencia: ${eCf.message}`)
         const confAtual = (cf?.status as 'AGUARDANDO' | 'APROVADO' | 'REJEITADO') ?? 'AGUARDANDO'
         const perm = podeAlterarRecebimento(esc.role, confAtual)
         if (!perm.ok) return res.status(403).json({ error: 'precisa_gestor', detail: perm.motivo })
@@ -313,6 +346,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (b.valor !== undefined) {
           const v = Number(b.valor)
           if (!(v > 0)) return res.status(400).json({ error: 'valor_invalido', detail: 'Informe um valor maior que zero.' })
+          if (valorPassaDoPedido(v, devidoDe(pedido))) {
+            return res.status(400).json({ error: 'valor_acima_do_pedido',
+              detail: `${fmtBRL(v)} é mais que o pedido inteiro (${fmtBRL(devidoDe(pedido))}). Confira o valor digitado.` })
+          }
           patch.amount = v
         }
         if (b.pago_em !== undefined) {
@@ -329,22 +366,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (b.observacao !== undefined) patch.notes = String(b.observacao) || null
         if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'nada_a_mudar' })
 
+        // Mudou dinheiro/data/forma? A aprovação anterior não vale mais para o
+        // novo valor — volta pra fila de conferência em vez de seguir "aprovado".
+        // Reabre ANTES de mexer no controle: se a reabertura falhar, nada muda;
+        // na ordem inversa, uma falha deixava o valor novo marcado como aprovado.
+        const mexeuNoDinheiro = patch.amount !== undefined || patch.paid_at !== undefined || patch.payment_method !== undefined
+        const reabriu = mexeuNoDinheiro && confAtual === 'APROVADO'
+        if (reabriu) {
+          exigir(await crm.from('fin_conferencias').upsert({
+            receipt_id: receiptId, order_id: orderId, installment_id: rec.installment_id,
+            status: 'AGUARDANDO', motivo: null, conferido_por: null, conferido_por_nome: null,
+            conferido_em: null, updated_at: new Date().toISOString(),
+          }), 'reabrir conferencia')
+        }
+
         const resp = await ctrl(`receipts?id=eq.${encodeURIComponent(receiptId)}`, {
           method: 'PATCH', body: JSON.stringify(patch),
         })
         if (!resp.ok) return res.status(502).json({ error: 'controle_recusou', detail: await resp.text() })
-
-        // Mudou dinheiro/data/forma? A aprovação anterior não vale mais para o
-        // novo valor — volta pra fila de conferência em vez de seguir "aprovado".
-        const mexeuNoDinheiro = patch.amount !== undefined || patch.paid_at !== undefined || patch.payment_method !== undefined
-        const reabriu = mexeuNoDinheiro && confAtual === 'APROVADO'
-        if (reabriu) {
-          await crm.from('fin_conferencias').upsert({
-            receipt_id: receiptId, order_id: orderId, installment_id: rec.installment_id,
-            status: 'AGUARDANDO', motivo: null, conferido_por: null, conferido_por_nome: null,
-            conferido_em: null, updated_at: new Date().toISOString(),
-          })
-        }
 
         await auditar({ order_id: orderId, installment_id: rec.installment_id, receipt_id: receiptId,
           acao: 'pagamento_editado',
@@ -375,7 +414,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const rec = rs[0]
         if (!rec || rec.order_id !== orderId) return res.status(400).json({ error: 'recebimento_nao_e_do_pedido' })
 
-        const { data: cf } = await crm.from('fin_conferencias').select('status').eq('receipt_id', receiptId).maybeSingle()
+        const { data: cf, error: eCf } = await crm.from('fin_conferencias').select('status').eq('receipt_id', receiptId).maybeSingle()
+        if (eCf) throw new CrmRecusou(`ler conferencia: ${eCf.message}`)
         const confAtual = (cf?.status as 'AGUARDANDO' | 'APROVADO' | 'REJEITADO') ?? 'AGUARDANDO'
         const perm = podeAlterarRecebimento(esc.role, confAtual)
         if (!perm.ok) return res.status(403).json({ error: 'precisa_gestor', detail: perm.motivo })
@@ -398,10 +438,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const resp = await ctrl(`receipts?id=eq.${encodeURIComponent(receiptId)}`, { method: 'DELETE' })
         if (!resp.ok) return res.status(502).json({ error: 'controle_recusou', detail: await resp.text() })
 
-        await crm.from('fin_conferencias').delete().eq('receipt_id', receiptId)
+        avisarSeFalhou(await crm.from('fin_conferencias').delete().eq('receipt_id', receiptId), 'apagar conferencia')
 
         // Gestores E o vendedor do pedido: quem lançou tem que saber que sumiu.
-        const avisar = [...new Set([...(await idsDosGestores()), ...(await idsDoVendedor(pedido.vendedor))])]
+        const avisar = [...new Set([...(await idsDosGestores()), ...(await idsDosVendedoresDoPedido(pedido))])]
         await notificar({
           destinatarios: avisar, tipo: 'pagamento_excluido',
           titulo: 'Pagamento excluído',
@@ -433,7 +473,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const agora = new Date().toISOString()
         const status = gestor ? 'CONFIRMADA' : 'PROPOSTA'
-        await crm.from('fin_regularizacoes').upsert({
+        exigir(await crm.from('fin_regularizacoes').upsert({
           order_id: orderId, status, motivo,
           valor_referencia: Number(pedido.valor_total) || null,
           proposto_por: esc.userId, proposto_por_nome: esc.displayName, proposto_em: agora,
@@ -442,7 +482,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           decidido_em: gestor ? agora : null,
           motivo_recusa: null,
           updated_at: agora,
-        })
+        }), 'gravar regularizacao')
 
         await auditar({ order_id: orderId, acao: gestor ? 'regularizacao_confirmada' : 'regularizacao_proposta',
           motivo, depois: { status }, ...ator })
@@ -478,11 +518,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!reg) return res.status(404).json({ error: 'regularizacao_nao_encontrada' })
 
         const agora = new Date().toISOString()
-        await crm.from('fin_regularizacoes').update({
+        exigir(await crm.from('fin_regularizacoes').update({
           status: decisao, decidido_por: esc.userId, decidido_por_nome: esc.displayName,
           decidido_em: agora, motivo_recusa: decisao === 'RECUSADA' ? motivoRecusa : null,
           updated_at: agora,
-        }).eq('order_id', orderId)
+        }).eq('order_id', orderId), 'decidir regularizacao')
 
         await auditar({ order_id: orderId,
           acao: decisao === 'CONFIRMADA' ? 'regularizacao_confirmada' : 'regularizacao_recusada',
@@ -521,7 +561,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .select('status, motivo, proposto_por, proposto_por_nome').eq('order_id', orderId).maybeSingle()
         if (!reg) return res.status(404).json({ error: 'nao_regularizado', detail: 'Este pedido não está regularizado.' })
 
-        await crm.from('fin_regularizacoes').delete().eq('order_id', orderId)
+        exigir(await crm.from('fin_regularizacoes').delete().eq('order_id', orderId), 'desfazer regularizacao')
 
         await auditar({ order_id: orderId, acao: 'regularizacao_desfeita', motivo,
           antes: { status: reg.status, motivo: reg.motivo }, depois: null, ...ator })
@@ -529,7 +569,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Quem propôs precisa saber que o pedido voltou pra fila dele.
         const avisar = [...new Set([
           ...(reg.proposto_por ? [reg.proposto_por as string] : []),
-          ...(await idsDoVendedor(pedido.vendedor)),
+          ...(await idsDosVendedoresDoPedido(pedido)),
         ])].filter(id => id !== esc.userId)
         if (avisar.length) {
           await notificar({
@@ -557,12 +597,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         const agora = new Date().toISOString()
-        await crm.from('fin_entregas').upsert({
+        exigir(await crm.from('fin_entregas').upsert({
           order_id: orderId, entregue_em: entregueEm,
           observacao: (b.observacao as string) || null,
           confirmado_por: esc.userId, confirmado_por_nome: esc.displayName,
           updated_at: agora,
-        })
+        }), 'gravar entrega')
 
         await auditar({ order_id: orderId, acao: 'entrega_confirmada',
           depois: { entregue_em: entregueEm }, ...ator })
@@ -574,6 +614,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'acao_desconhecida' })
     }
   } catch (e) {
+    if (e instanceof CrmRecusou) {
+      console.error('[financeiro-acao]', e.message)
+      return res.status(500).json({ error: 'crm_recusou', detail: `Não consegui gravar agora (${e.message}). Nada foi alterado — tente de novo.` })
+    }
     const msg = (e as Error).message
     const mapa: Record<string, [number, string]> = {
       formato_nao_aceito: [400, 'Aceito apenas PDF, JPG, PNG ou WEBP.'],

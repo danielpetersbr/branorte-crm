@@ -9,6 +9,7 @@ import {
   type PedidoFinanceiro, type StatusPedido, type StatusParcela, type Parcela, type Recebimento,
   type ArquivoUpload, type ResumoVendedor, type EventoAuditoria, type EtapaFabrica, type Kpis,
 } from '@/hooks/useControleFinanceiro'
+import { lerValorBR, hojeSP, brlCentavos } from '@/lib/financeiro-valor'
 import {
   Wallet, TrendingDown, CheckCircle2, Search, AlertTriangle, FileWarning,
   CalendarClock, X, Paperclip, Receipt, ShieldAlert, Clock, Upload, Send,
@@ -146,7 +147,7 @@ const SECUNDARIOS: {
     n: k => k.pagamentosSemComprovante },
   { chave: 'a_conferir', label: 'comprovantes a conferir', tone: 'warning', icon: ShieldAlert,
     n: k => k.comprovantesAConferir },
-  { chave: 'boleto_pendente', label: 'boletos a enviar', tone: 'info', icon: Send,
+  { chave: 'boleto_pendente', label: 'boletos a enviar (vencem em até 30 dias)', tone: 'info', icon: Send,
     n: k => k.boletosPendentes },
   { chave: 'sem_plano', label: 'sem condição de pagamento', tone: 'muted', icon: FileWarning,
     n: k => k.pedidosSemPlano },
@@ -178,10 +179,17 @@ function Botao({ children, onClick, tone = 'neutro', disabled, tipo = 'button', 
 }
 
 function Modal({ titulo, children, onClose }: { titulo: string; children: React.ReactNode; onClose: () => void }) {
+  // Esc fecha SÓ o modal. O painel do pedido também ouve Esc na janela; sem a
+  // fase de captura + stopPropagation, um Esc fechava os dois e o vendedor
+  // perdia o pedido que estava olhando.
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      onClose()
+    }
+    window.addEventListener('keydown', h, true)
+    return () => window.removeEventListener('keydown', h, true)
   }, [onClose])
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -274,6 +282,31 @@ function EscolherArquivo({ arquivo, onArquivo, obrigatorio }: {
         )}
       </div>
       {erro && <p className="mt-1 text-xs text-danger">{erro}</p>}
+    </div>
+  )
+}
+
+/**
+ * Campo de dinheiro. Mostra por extenso o que vai ser gravado — quem digita
+ * "15.000" vê "R$ 15.000,00" antes de apertar Lançar, em vez de descobrir depois
+ * que saiu R$ 15 (era o que acontecia até 24/09/2026).
+ */
+function CampoValor({ label, valor, onChange, saldo }: {
+  label: string; valor: string; onChange: (v: string) => void; saldo?: number
+}) {
+  const n = lerValorBR(valor)
+  const passa = saldo != null && n > saldo + 0.01
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-text-secondary">{label}</label>
+      <Input value={valor} onChange={e => onChange(e.target.value)} inputMode="decimal" placeholder="0,00" />
+      {valor.trim() && Number.isNaN(n) ? (
+        <p className="mt-1 text-[11px] text-danger">Não entendi o valor. Escreva assim: 15.000,00</p>
+      ) : n > 0 ? (
+        <p className={`mt-1 text-[11px] ${passa ? 'text-warning' : 'text-text-muted'}`}>
+          {brlCentavos(n)}{passa && ` — mais do que falta nesta parcela (${brlCentavos(saldo!)})`}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -385,7 +418,9 @@ function LinhaRecebimento({ r, gestor, orderId, onErro }: {
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        {!anexando && (
+        {/* Trocar o comprovante de pagamento aprovado desfaz a aprovação — o
+            servidor trava pro vendedor (podeAlterarRecebimento), aqui só esconde. */}
+        {!anexando && podeMexer && (
           <Botao onClick={() => setAnexando(true)}>
             <Upload className="h-3.5 w-3.5" /> {r.comprovanteUrl ? 'Enviar outro' : 'Anexar comprovante'}
           </Botao>
@@ -424,13 +459,10 @@ function LinhaRecebimento({ r, gestor, orderId, onErro }: {
       {editando && (
         <div className="mt-2 space-y-2 rounded border border-border p-2">
           <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary">Valor</label>
-              <Input value={eValor} onChange={e => setEValor(e.target.value)} inputMode="decimal" />
-            </div>
+            <CampoValor label="Valor" valor={eValor} onChange={setEValor} />
             <div>
               <label className="mb-1 block text-xs font-medium text-text-secondary">Data</label>
-              <Input type="date" value={eData} onChange={e => setEData(e.target.value)} />
+              <Input type="date" value={eData} max={hojeSP()} onChange={e => setEData(e.target.value)} />
             </div>
           </div>
           <div>
@@ -455,10 +487,10 @@ function LinhaRecebimento({ r, gestor, orderId, onErro }: {
             </>
           )}
           <div className="flex gap-2">
-            <Botao tone="accent" disabled={acao.isPending || !(Number(eValor.replace(',', '.')) > 0) || !eData}
+            <Botao tone="accent" disabled={acao.isPending || !(lerValorBR(eValor) > 0) || !eData}
               onClick={() => acao.mutate({
                 acao: 'editar_pagamento', order_id: orderId, receipt_id: r.id,
-                valor: Number(eValor.replace(',', '.')), pago_em: eData, meio: eMeio,
+                valor: lerValorBR(eValor), pago_em: eData, meio: eMeio,
                 observacao: eObs, motivo: justificativa || undefined,
               }, { onError: e => onErro((e as FinanceiroErro).message), onSuccess: () => setEditando(false) })}>
               {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Salvar
@@ -547,7 +579,7 @@ function LinhaParcela({ p, orderId, gestor, onErro }: {
 
   const abrirPagamento = () => {
     setValor(String(p.saldo.toFixed(2)))
-    setPagoEm(new Date().toISOString().slice(0, 10))
+    setPagoEm(hojeSP())
     setArq(null); setObs(''); setMeioPg('PIX'); setModal('pagamento')
   }
 
@@ -599,13 +631,10 @@ function LinhaParcela({ p, orderId, gestor, onErro }: {
         <Modal titulo={`Lançar pagamento — parcela ${p.numero}`} onClose={() => setModal(null)}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">Valor recebido</label>
-                <Input value={valor} onChange={e => setValor(e.target.value)} inputMode="decimal" />
-              </div>
+              <CampoValor label="Valor recebido" valor={valor} onChange={setValor} saldo={p.saldo} />
               <div>
                 <label className="mb-1 block text-xs font-medium text-text-secondary">Data do recebimento</label>
-                <Input type="date" value={pagoEm} onChange={e => setPagoEm(e.target.value)} />
+                <Input type="date" value={pagoEm} max={hojeSP()} onChange={e => setPagoEm(e.target.value)} />
               </div>
             </div>
             <div>
@@ -625,10 +654,10 @@ function LinhaParcela({ p, orderId, gestor, onErro }: {
             </p>
             <div className="flex justify-end gap-2">
               <Botao onClick={() => setModal(null)}>Cancelar</Botao>
-              <Botao tone="accent" disabled={acao.isPending || !(Number(valor.replace(',', '.')) > 0) || !pagoEm}
+              <Botao tone="accent" disabled={acao.isPending || !(lerValorBR(valor) > 0) || !pagoEm}
                 onClick={() => acao.mutate({
                   acao: 'lancar_pagamento', order_id: orderId, installment_id: p.id,
-                  valor: Number(valor.replace(',', '.')), pago_em: pagoEm, meio: meioPg,
+                  valor: lerValorBR(valor), pago_em: pagoEm, meio: meioPg,
                   observacao: obs || undefined, arquivo: arq || undefined,
                 }, { onError: e => onErro((e as FinanceiroErro).message), onSuccess: () => setModal(null) })}>
                 {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Lançar
@@ -686,11 +715,11 @@ function LinhaParcela({ p, orderId, gestor, onErro }: {
 function LancarRapidoModal({ pedido, onClose, onErro }: {
   pedido: PedidoFinanceiro; onClose: () => void; onErro: (m: string) => void
 }) {
-  const { data, isLoading } = useControleFinanceiroPedido(pedido.id)
+  const { data, isLoading, error } = useControleFinanceiroPedido(pedido.id)
   const acao = useAcaoFinanceiro()
   const [parcelaId, setParcelaId] = useState<string | null>(null)
   const [valor, setValor] = useState('')
-  const [pagoEm, setPagoEm] = useState(() => new Date().toISOString().slice(0, 10))
+  const [pagoEm, setPagoEm] = useState(() => hojeSP())
   const [meio, setMeio] = useState('PIX')
   const [obs, setObs] = useState('')
   const [arq, setArq] = useState<ArquivoUpload | null>(null)
@@ -717,12 +746,21 @@ function LancarRapidoModal({ pedido, onClose, onErro }: {
     if (p && !tocouValor) setValor(p.saldo.toFixed(2))
   }
 
-  const semPlano = !isLoading && abertas.length === 0
+  // Erro de carga NÃO é "sem parcela": antes a falha caía na mensagem de pedido
+  // sem condição de pagamento e mandava o vendedor pro controle à toa.
+  const semPlano = !isLoading && !error && abertas.length === 0
 
   return (
     <Modal titulo={`Lançar pagamento — ${pedido.cliente || 'pedido ' + (pedido.pedidoNumero || '')}`} onClose={onClose}>
       {isLoading ? (
         <div className="py-6"><PageLoading /></div>
+      ) : error ? (
+        <div className="space-y-3">
+          <p className="text-sm text-danger">
+            {error instanceof FinanceiroErro ? error.message : 'Não consegui carregar as parcelas deste pedido.'}
+          </p>
+          <div className="flex justify-end"><Botao onClick={onClose}>Fechar</Botao></div>
+        </div>
       ) : semPlano ? (
         <div className="space-y-3">
           <p className="text-sm text-text-secondary">
@@ -753,14 +791,11 @@ function LancarRapidoModal({ pedido, onClose, onErro }: {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary">Valor recebido</label>
-              <Input value={valor} inputMode="decimal"
-                onChange={e => { setTocouValor(true); setValor(e.target.value) }} />
-            </div>
+            <CampoValor label="Valor recebido" valor={valor} saldo={escolhida?.saldo}
+              onChange={v => { setTocouValor(true); setValor(v) }} />
             <div>
               <label className="mb-1 block text-xs font-medium text-text-secondary">Data do recebimento</label>
-              <Input type="date" value={pagoEm} onChange={e => setPagoEm(e.target.value)} />
+              <Input type="date" value={pagoEm} max={hojeSP()} onChange={e => setPagoEm(e.target.value)} />
             </div>
           </div>
 
@@ -786,10 +821,10 @@ function LancarRapidoModal({ pedido, onClose, onErro }: {
           <div className="flex justify-end gap-2">
             <Botao onClick={onClose}>Cancelar</Botao>
             <Botao tone="accent"
-              disabled={acao.isPending || !parcelaId || !(Number(valor.replace(',', '.')) > 0) || !pagoEm}
+              disabled={acao.isPending || !parcelaId || !(lerValorBR(valor) > 0) || !pagoEm}
               onClick={() => acao.mutate({
                 acao: 'lancar_pagamento', order_id: pedido.id, installment_id: parcelaId,
-                valor: Number(valor.replace(',', '.')), pago_em: pagoEm, meio,
+                valor: lerValorBR(valor), pago_em: pagoEm, meio,
                 observacao: obs || undefined, arquivo: arq || undefined,
               }, { onError: e => onErro((e as FinanceiroErro).message), onSuccess: onClose })}>
               {acao.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Lançar
@@ -869,7 +904,7 @@ function ConfirmarEntregaModal({ pedido, onClose, onErro }: {
   pedido: PedidoFinanceiro; onClose: () => void; onErro: (m: string) => void
 }) {
   const acao = useAcaoFinanceiro()
-  const [data, setData] = useState(() => new Date().toISOString().slice(0, 10))
+  const [data, setData] = useState(() => hojeSP())
   const [obs, setObs] = useState('')
 
   return (
@@ -881,7 +916,7 @@ function ConfirmarEntregaModal({ pedido, onClose, onErro }: {
         </p>
         <div>
           <label className="mb-1 block text-xs font-medium text-text-secondary">Data em que o cliente recebeu</label>
-          <Input type="date" value={data} onChange={e => setData(e.target.value)} />
+          <Input type="date" value={data} max={hojeSP()} onChange={e => setData(e.target.value)} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-text-secondary">Observação (opcional)</label>
@@ -1188,6 +1223,7 @@ export function ControleFinanceiro() {
   // entrou pra alimentar.
   const [atalho, setAtalho] = useState<Atalho | null>(null)
   const [search, setSearch] = useState('')
+  const [vendedorSel, setVendedorSel] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const [aberto, setAberto] = useState<string | null>(null)
   const [lancandoNa, setLancandoNa] = useState<PedidoFinanceiro | null>(null)
@@ -1200,16 +1236,20 @@ export function ControleFinanceiro() {
   const escopado = data?.escopo.vendedores != null
   const atual: Atalho = atalho ?? (escopado ? 'falta_lancar' : 'vencidos')
 
+  // As filas de trabalho deixam de fora o que já foi resolvido (regularizado ou
+  // cancelado) — é a mesma regra do resumoKpis, que dá o número do chip. Sem
+  // isto o chip dizia "144 com parcela vencida" e a lista abria 468: os outros
+  // 324 eram pedidos do mutirão, que guardam o vencido de antes da baixa.
   const filtra = (r: PedidoFinanceiro): boolean => {
     switch (atual) {
-      case 'vencidos': return r.vencido > 0.01
-      case 'receber': return r.aReceber > 0.01 && r.status !== 'CANCELADO' && r.status !== 'REGULARIZADO'
+      case 'vencidos': return r.vencido > 0.01 && !resolvido(r)
+      case 'receber': return r.aReceber > 0.01 && !resolvido(r)
       case 'quitados': return r.status === 'QUITADO'
-      case 'sem_comprovante': return r.pagamentosSemComprovante > 0
-      case 'a_conferir': return r.comprovantesAConferir > 0
-      case 'boleto_pendente': return r.boletosPendentes > 0
+      case 'sem_comprovante': return r.pagamentosSemComprovante > 0 && !resolvido(r)
+      case 'a_conferir': return r.comprovantesAConferir > 0 && !resolvido(r)
+      case 'boleto_pendente': return r.boletosPendentes > 0 && !resolvido(r)
       case 'sem_plano': return r.status === 'SEM_PLANO'
-      case 'divergente': return Math.abs(r.divergenciaPlano) > 0.01
+      case 'divergente': return Math.abs(r.divergenciaPlano) > 0.01 && !resolvido(r)
       // fila de quem alimenta: nada lançado e ainda tem saldo
       case 'falta_lancar': return r.semLancamento && r.aReceber > 0.01 && r.status !== 'CANCELADO'
       case 'na_fabrica':
@@ -1230,34 +1270,34 @@ export function ControleFinanceiro() {
   const soNaFabrica = ocultarCarregados && atual !== 'carregado_devendo'
   const NA_FABRICA: EtapaFabrica[] = ['ANTES_DO_CHAO', 'FABRICANDO', 'PRONTO']
 
+  // Vendedor escolhido na tabela "Por vendedor" é filtro EXATO. Antes ele ia pra
+  // busca de texto, que também olha o nome do cliente: clicar em EDER trazia o
+  // cliente "Frederico"; em PEDRO, qualquer cliente Pedro de outro vendedor.
+  const casaBusca = (x: PedidoFinanceiro): boolean => {
+    if (vendedorSel && (x.vendedor || '(sem vendedor)').trim().toUpperCase() !== vendedorSel) return false
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (x.cliente || '').toLowerCase().includes(q)
+      || (x.pedidoNumero || '').toLowerCase().includes(q)
+      || (x.vendedor || '').toLowerCase().includes(q)
+  }
+
   const rows = useMemo(() => {
-    let r = (data?.pedidos ?? []).filter(filtra)
+    let r = (data?.pedidos ?? []).filter(filtra).filter(casaBusca)
     if (soNaFabrica) r = r.filter(x => NA_FABRICA.includes(x.producao.etapa))
-    if (search) {
-      const q = search.toLowerCase()
-      r = r.filter(x => (x.cliente || '').toLowerCase().includes(q)
-        || (x.pedidoNumero || '').toLowerCase().includes(q)
-        || (x.vendedor || '').toLowerCase().includes(q))
-    }
     // Nas filas de trabalho, o mais recente primeiro: é o que o vendedor lembra.
     if (atual === 'falta_lancar' || atual === 'na_fabrica') {
       r = [...r].sort((a, b) => (b.dataVenda || '').localeCompare(a.dataVenda || ''))
     }
     return r
-  }, [data, atual, search, soNaFabrica])
+  }, [data, atual, search, vendedorSel, soNaFabrica])
 
   // Quantos o botão está escondendo agora — o usuário precisa saber o que sumiu.
   const escondidos = useMemo(() => {
     if (!soNaFabrica) return 0
-    let r = (data?.pedidos ?? []).filter(filtra).filter(x => !NA_FABRICA.includes(x.producao.etapa))
-    if (search) {
-      const q = search.toLowerCase()
-      r = r.filter(x => (x.cliente || '').toLowerCase().includes(q)
-        || (x.pedidoNumero || '').toLowerCase().includes(q)
-        || (x.vendedor || '').toLowerCase().includes(q))
-    }
-    return r.length
-  }, [data, atual, search, soNaFabrica])
+    return (data?.pedidos ?? []).filter(filtra).filter(casaBusca)
+      .filter(x => !NA_FABRICA.includes(x.producao.etapa)).length
+  }, [data, atual, search, vendedorSel, soNaFabrica])
 
   const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE)
   const totalPages = Math.ceil(rows.length / PAGE_SIZE)
@@ -1397,6 +1437,13 @@ export function ControleFinanceiro() {
               </button>
               <Input placeholder="Buscar cliente, pedido ou vendedor..." leftIcon={<Search className="h-4 w-4" />}
                 value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} className="lg:w-80" />
+              {vendedorSel && (
+                <button onClick={() => { setVendedorSel(null); setPage(0) }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-accent bg-accent px-3 text-xs font-medium text-white"
+                  title="Tirar o filtro de vendedor">
+                  <Users className="h-3.5 w-3.5" /> {vendedorSel} <X className="h-3.5 w-3.5" />
+                </button>
+              )}
               <span className="ml-auto text-sm text-text-muted">
                 {rows.length.toLocaleString('pt-BR')} pedido{rows.length !== 1 ? 's' : ''}
                 {escondidos > 0 && (
@@ -1407,7 +1454,7 @@ export function ControleFinanceiro() {
           </Card>
 
           {aba === 'vendedores' && data.vendedores ? (
-            <PorVendedor linhas={data.vendedores} onEscolher={v => { setSearch(v); setAtalho('todos'); setAba('pedidos'); setPage(0) }} />
+            <PorVendedor linhas={data.vendedores} onEscolher={v => { setVendedorSel(v); setSearch(''); setAtalho('todos'); setAba('pedidos'); setPage(0) }} />
           ) : (
             <>
               <Card className="hidden overflow-hidden lg:block">
