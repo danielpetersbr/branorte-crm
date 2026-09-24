@@ -14,9 +14,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
   resolverEscopo, ehGateErro, pedidoNoEscopo, ehGestor,
-  lerControle, lerConferencias, lerProducao, lerMarcas, agregarPedido, resumoKpis, resumoPorVendedor, agrupar, hojeSP, crmAdmin,
+  lerControle, lerConferencias, lerProducao, lerMarcas, agregarPedido, resumoKpis, resumoPorVendedor, filaConferencia, ordenarFila, agrupar, hojeSP, crmAdmin,
   COLS_PEDIDO, COLS_PARCELA, COLS_RECEIPT, SEM_PRODUCAO, SEM_MARCAS,
-  type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type PedidoFinanceiro,
+  type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type PedidoFinanceiro, type ItemConferencia,
 } from './_lib/financeiro-core.js'
 
 export const config = { maxDuration: 30 }
@@ -97,11 +97,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const porPedido = agrupar(parcelas, p => p.order_id)
     const porPedidoRec = agrupar(receipts, r => r.order_id)
 
+    const gestor = ehGestor(esc.role)
+    // Fila de conferência: só o gestor aprova, então só ele recebe a fila. Sai
+    // do mesmo agregado da lista — o chip e a fila não têm como discordar.
+    const fila: ItemConferencia[] = []
     const linhas = pedidos.map(p => {
-      const { parcelas: _omitido, ...resto } = agregarPedido(
-        p, porPedido.get(p.id) ?? [], porPedidoRec.get(p.id) ?? [], hoje, confs,
+      const recs = porPedidoRec.get(p.id) ?? []
+      const agg = agregarPedido(
+        p, porPedido.get(p.id) ?? [], recs, hoje, confs,
         prod.get(p.id) ?? SEM_PRODUCAO, marcas.get(p.id) ?? SEM_MARCAS,
       )
+      if (gestor) fila.push(...filaConferencia(agg, recs, confs))
+      const { parcelas: _omitido, ...resto } = agg
       return resto
     })
 
@@ -112,7 +119,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const peso = (r: PedidoFinanceiro) => (r.status === 'REGULARIZADO' || r.status === 'CANCELADO' ? 1 : 0)
     linhas.sort((a, b) => peso(a) - peso(b) || b.vencido - a.vencido || b.aReceber - a.aReceber)
 
-    const gestor = ehGestor(esc.role)
     return res.status(200).json({
       ok: true,
       hoje,
@@ -121,6 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       pedidos: linhas,
       // Item 10: a visão por vendedor só existe para quem enxerga todos.
       vendedores: gestor ? resumoPorVendedor(linhas) : null,
+      conferencia: gestor ? ordenarFila(fila) : null,
     })
   } catch (e) {
     return res.status(502).json({ error: 'controle_indisponivel', detail: (e as Error).message })

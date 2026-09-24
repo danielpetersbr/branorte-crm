@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   devidoDe, diffDias, statusParcela, agregarPedido, resumoKpis, pedidoNoEscopo, ehGestor,
   podeAlterarRecebimento, resumoPorVendedor, valorPassaDoPedido, JANELA_BOLETO_DIAS,
+  filaConferencia, ordenarFila,
   type PedidoRaw, type ParcelaRaw, type ReceiptRaw, type Escopo, type Cobertura, type ConferenciaRaw,
   type Producao, type Regularizacao, type MarcasPedido,
 } from '../../api/_lib/financeiro-core.js'
@@ -525,4 +526,74 @@ test('valorPassaDoPedido: pega o zero a mais, deixa passar o arredondamento', ()
   assert.equal(valorPassaDoPedido(151_000, 150_000), false)   // até 1% + R$ 1 de folga
   assert.equal(valorPassaDoPedido(152_000, 150_000), true)
   assert.equal(valorPassaDoPedido(5_000, 0), false)           // pedido sem valor não trava
+})
+
+// ── fila de conferência ──────────────────────────────────────────────────────
+
+function confDe(receiptId: string, status: ConferenciaRaw['status'], criadoPor: string | null = 'Jardel'): [string, ConferenciaRaw] {
+  return [receiptId, { receipt_id: receiptId, status, motivo: null, conferido_por_nome: null, conferido_em: null,
+    criado_por_nome: criadoPor, created_at: '2026-08-02T15:00:00Z' }]
+}
+
+test('fila: so entra comprovante anexado que ninguem conferiu', () => {
+  const recs = [
+    receipt({ id: 'aguarda', installment_id: 'i1', amount: 500 }),
+    receipt({ id: 'aprovado', installment_id: 'i1', amount: 10 }),
+    receipt({ id: 'rejeitado', installment_id: 'i1', amount: 10 }),
+    receipt({ id: 'sem-arquivo', installment_id: 'i1', amount: 10, receipt_url: null }),
+    receipt({ id: 'antigo-sem-linha', installment_id: 'i1', amount: 10 }), // lançado no controle, sem fin_conferencias
+  ]
+  const confs = new Map([confDe('aguarda', 'AGUARDANDO'), confDe('aprovado', 'APROVADO'), confDe('rejeitado', 'REJEITADO')])
+  const agg = agregarPedido(pedido({ valor_total: 1000 }), [parcela({ id: 'i1', amount: 500 })], recs, HOJE, confs)
+  const fila = filaConferencia(agg, recs, confs)
+  assert.deepEqual(fila.map(f => f.receiptId).sort(), ['aguarda', 'antigo-sem-linha'])
+  assert.equal(fila.find(f => f.receiptId === 'aguarda')?.lancadoPor, 'Jardel')
+  assert.equal(fila.find(f => f.receiptId === 'antigo-sem-linha')?.lancadoPor, null)
+})
+
+test('fila: traz a parcela e diz se o valor bate com ela', () => {
+  const recs = [
+    receipt({ id: 'certo', installment_id: 'i1', amount: 500 }),
+    receipt({ id: 'torto', installment_id: 'i2', amount: 450, paid_at: '2026-08-03' }),
+    receipt({ id: 'avulso', installment_id: null, amount: 100 }),
+  ]
+  const agg = agregarPedido(pedido({ valor_total: 1100 }),
+    [parcela({ id: 'i1', installment_no: 1, amount: 500 }), parcela({ id: 'i2', installment_no: 2, amount: 500 })], recs, HOJE)
+  const porId = new Map(filaConferencia(agg, recs, new Map()).map(f => [f.receiptId, f]))
+  assert.equal(porId.get('certo')?.valorBateComParcela, true)
+  assert.equal(porId.get('certo')?.parcela?.numero, 1)
+  assert.equal(porId.get('torto')?.valorBateComParcela, false)
+  assert.equal(porId.get('avulso')?.parcela, null)
+  assert.equal(porId.get('avulso')?.valorBateComParcela, null)
+})
+
+test('fila: pedido regularizado ou cancelado nao entra', () => {
+  const recs = [receipt({ id: 'r1' })]
+  const reg = agregarPedido(pedido(), [parcela()], recs, HOJE, new Map(), prod('CARREGADO'), marcaReg('CONFIRMADA'))
+  const canc = agregarPedido(pedido({ status: 'CANCELADO' }), [parcela()], recs, HOJE)
+  assert.equal(filaConferencia(reg, recs, new Map()).length, 0)
+  assert.equal(filaConferencia(canc, recs, new Map()).length, 0)
+})
+
+test('fila: o chip "comprovantes a conferir" conta exatamente o que a fila mostra', () => {
+  // duas fotos na MESMA parcela são duas conferências (antes o chip contava 1 parcela)
+  const recsA = [receipt({ id: 'a1', order_id: 'a', installment_id: 'ia', amount: 250 }),
+    receipt({ id: 'a2', order_id: 'a', installment_id: 'ia', amount: 250 })]
+  const a = agregarPedido(pedido({ id: 'a' }), [parcela({ id: 'ia', order_id: 'a' })], recsA, HOJE)
+  const recsB = [receipt({ id: 'b1', order_id: 'b', installment_id: null, amount: 80 })]   // avulso
+  const b = agregarPedido(pedido({ id: 'b' }), [parcela({ id: 'ib', order_id: 'b' })], recsB, HOJE)
+  const recsC = [receipt({ id: 'c1', order_id: 'c', installment_id: 'ic' })]              // regularizado
+  const c = agregarPedido(pedido({ id: 'c' }), [parcela({ id: 'ic', order_id: 'c' })], recsC, HOJE,
+    new Map(), prod('CARREGADO'), marcaReg('CONFIRMADA'))
+
+  const fila = [...filaConferencia(a, recsA, new Map()), ...filaConferencia(b, recsB, new Map()),
+    ...filaConferencia(c, recsC, new Map())]
+  assert.equal(fila.length, 3)
+  assert.equal(resumoKpis([a, b, c]).comprovantesAConferir, fila.length)
+})
+
+test('fila: o pagamento mais antigo vem primeiro', () => {
+  const recs = [receipt({ id: 'novo', paid_at: '2026-08-05' }), receipt({ id: 'velho', paid_at: '2026-07-01' })]
+  const agg = agregarPedido(pedido(), [parcela()], recs, HOJE)
+  assert.deepEqual(ordenarFila(filaConferencia(agg, recs, new Map())).map(f => f.receiptId), ['velho', 'novo'])
 })
