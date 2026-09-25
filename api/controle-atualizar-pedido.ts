@@ -35,6 +35,7 @@ import {
   resolverEscopo,
   ehGateErro,
   pedidoNoEscopo,
+  hojeSP,
 } from './_lib/financeiro-core.js'
 import { mirrorRow } from './_lib/mirror-pedido.js'
 
@@ -120,7 +121,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     patch = {
       ajuste_valor: valor,
       ajuste_motivo: motivo.slice(0, 500),
-      ajuste_data: new Date().toISOString().slice(0, 10),
+      // dia em São Paulo: a function roda em UTC e toISOString() vira o dia seguinte
+      // depois das 21h — no dia 30/31, o ajuste caía no mês seguinte.
+      ajuste_data: hojeSP(),
     }
   }
 

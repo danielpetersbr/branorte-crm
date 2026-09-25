@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 
 import { supabase, CONTROLE_URL, CONTROLE_ANON_KEY } from "@/lib/controle-supabase/client";
+import { regerarDocumentoPedido } from "@/lib/pedido-venda/pedidoRevisaoAcoes";
 // Client do CRM (≠ do controle): só pra pegar o JWT da sessão que autentica as
 // rotas /api/ deste repo. Apelidado pra não colidir com o `supabase` do controle.
 import { supabase as crmSupabase } from "@/lib/supabase";
@@ -598,18 +599,13 @@ export default function PedidoDetalhe() {
    */
   const gerarPedidoRetroativo = async (): Promise<string> => {
     if (!pedido) throw new Error("pedido não carregado");
-    const { data, error } = await supabase.functions.invoke("gerar-pedido-retroativo", {
-      body: { order_id: pedido.id },
-    });
-    if (error) throw error;
-    const resposta = asRecord(data);
-    const url = typeof resposta?.arquivo_url === "string" ? resposta.arquivo_url : null;
-    if (!resposta?.ok || !url) {
-      throw new Error(
-        typeof resposta?.error === "string" ? resposta.error : "resposta inválida da função",
-      );
+    // Com ajuste lançado, o retroativo imprimiria o valor da VENDA; regerarDocumentoPedido
+    // imprime o valor atual do contrato (venda + ajuste). Sem ajuste, é o retroativo.
+    const resposta = await regerarDocumentoPedido(pedido.id);
+    if (!resposta.ok || !resposta.arquivo_url) {
+      throw new Error(resposta.error || "resposta inválida da função");
     }
-    return url;
+    return resposta.arquivo_url;
   };
 
   const verPedidoDeVenda = async () => {

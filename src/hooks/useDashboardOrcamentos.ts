@@ -67,6 +67,9 @@ export type VendaDetalhe = {
   numero: string; pedido: string | null; cliente: string | null; vendedor: string | null;
   valor: number; data_venda: string | null; cidade: string | null; estado: string | null; is_lead: boolean;
   origem: string | null; criativo: string | null
+  /** Pedido vendido em OUTRO período cujo ajuste (acréscimo/redução) conta neste.
+   *  Entra na soma do valor, não na contagem de vendas. data_venda = dia do ajuste. */
+  so_ajuste: boolean
 }
 
 /** Linhas das vendas do período (pedidos não-cancelados). is_lead = amarrada a um lead. */
@@ -81,7 +84,7 @@ export function useDashboardVendasDetalhe(preset: DashboardPreset, enabled: bool
       return (data ?? []).map((r: any) => ({
         numero: r.numero, pedido: r.pedido, cliente: r.cliente, vendedor: r.vendedor,
         valor: Number(r.valor ?? 0), data_venda: r.data_venda, cidade: r.cidade, estado: r.estado, is_lead: !!r.is_lead,
-        origem: r.origem, criativo: r.criativo,
+        origem: r.origem, criativo: r.criativo, so_ajuste: !!r.so_ajuste,
       }))
     },
     staleTime: 60_000,

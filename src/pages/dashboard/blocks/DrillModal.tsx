@@ -53,6 +53,9 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
   const vendas = vendasQ.data ?? []
   const vendasView = soLead ? vendas.filter(v => v.is_lead) : vendas
   const vTot = vendasView.reduce((s, v) => s + v.valor, 0)
+  // Linha só de ajuste (pedido vendido em outro mês, acréscimo/redução neste) soma valor
+  // mas não é venda nova — igual ao KPI.
+  const vQtd = vendasView.filter(v => !v.so_ajuste).length
   const orc = orcQ.data ?? []
   const orcValTot = orc.reduce((s, o) => s + o.valor_total, 0)
 
@@ -60,7 +63,7 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
     : kind === 'vendidos' ? 'Vendas — de onde vêm'
     : 'Valor vendido — de onde vem'
   const subtitle = isVendas
-    ? `${n(vendasView.length)} venda(s) · ${brlFull(vTot)}${soLead ? ' — com origem comprovada até um lead' : ' — todas as vendas do período'}`
+    ? `${n(vQtd)} venda(s) · ${brlFull(vTot)}${soLead ? ' — com origem comprovada até um lead' : ' — todas as vendas do período'}`
     : `${n(orc.length)} cliente(s) com proposta · ${brlFull(orcValTot)} montados`
 
   const thCls = 'text-left py-2 px-2 text-micro font-semibold text-ink-muted whitespace-nowrap'
@@ -110,14 +113,14 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
                   aria-pressed={soLead}
                   className={`inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-micro transition-colors md:min-h-0 ${soLead ? 'bg-accent font-semibold text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
                 >
-                  Origem comprovada ({n(vendas.filter(v => v.is_lead).length)})
+                  Origem comprovada ({n(vendas.filter(v => v.is_lead && !v.so_ajuste).length)})
                 </button>
                 <button
                   onClick={() => setSoLead(false)}
                   aria-pressed={!soLead}
                   className={`inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-micro transition-colors md:min-h-0 ${!soLead ? 'bg-accent font-semibold text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
                 >
-                  Todas ({n(vendas.length)})
+                  Todas ({n(vendas.filter(v => !v.so_ajuste).length)})
                 </button>
                 <span className="ml-auto text-title tabular-nums text-ink">{brlFull(vTot)}</span>
               </div>
@@ -146,7 +149,17 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
                   <tbody>
                     {vendasView.map((v, i) => (
                       <tr key={i} className="border-b border-border/50 hover:bg-surface-2">
-                        <td className={`${tdCls} text-ink`}>{v.cliente || '—'}</td>
+                        <td className={`${tdCls} text-ink`}>
+                          {v.cliente || '—'}
+                          {v.so_ajuste && (
+                            <span
+                              className="ml-1.5 rounded bg-surface-2 px-1 py-px text-micro font-semibold text-ink-muted"
+                              title="Pedido vendido em outro período; aqui conta só o ajuste lançado neste"
+                            >
+                              {v.valor >= 0 ? 'acréscimo' : 'redução'}
+                            </span>
+                          )}
+                        </td>
                         <td className={tdCls}>{v.vendedor || '—'}</td>
                         <td className={tdCls}>{v.origem || '—'}</td>
                         <td className={`${tdCls} font-mono text-ink-faint`}>{v.criativo || '—'}</td>
