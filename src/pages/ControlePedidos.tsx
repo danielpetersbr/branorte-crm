@@ -11,6 +11,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { supabase } from '@/lib/supabase'
 import { supabase as controleSupabase } from '@/lib/controle-supabase/client'
+import { regerarDocumentoPedido } from '@/lib/pedido-venda/pedidoRevisaoAcoes'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendedorNome } from '@/hooks/useVendedorNome'
 import {
@@ -706,11 +707,9 @@ export function ControlePedidos() {
     const original = arquivos?.[pedido.id]
     const aviso = toast.loading('Gerando o documento atualizado...')
     try {
-      const { data: resp, error: erro } = await controleSupabase.functions
-        .invoke<{ ok?: boolean; arquivo_url?: string; error?: string }>(
-          'gerar-pedido-retroativo', { body: { order_id: pedido.id } })
-      if (erro) throw erro
-      if (!resp?.ok || !resp.arquivo_url) throw new Error(resp?.error || 'A função não devolveu arquivo')
+      // Com ajuste lançado imprime o valor atual do contrato (venda + ajuste), não o da venda.
+      const resp = await regerarDocumentoPedido(pedido.id)
+      if (!resp.ok || !resp.arquivo_url) throw new Error(resp.error || 'A função não devolveu arquivo')
       window.open(resp.arquivo_url, '_blank', 'noopener')
       toast.success('Documento gerado.', { id: aviso })
     } catch (e) {

@@ -24,6 +24,8 @@ import {
 } from "./ChecklistComprasEditor";
 import { toast } from "sonner";
 import { supabase } from "@/lib/controle-supabase/client";
+import { avisoValorEdicao, decidirValorEdicao, hojeSP, valorBase, valorContrato } from "@/lib/pedido-venda/revisaoPedido";
+import { regerarDocumentoPedido, sincronizarParcelasFinanceiro } from "@/lib/pedido-venda/pedidoRevisaoAcoes";
 import { FileText, Upload, Download, Calendar as CalendarIcon, User, Package, Settings, DollarSign, Loader2, CheckCircle } from "lucide-react";
 import { Textarea } from "@/components/pedido-ui/textarea";
 import { addBusinessDays, addCalendarDays, formatDateBR } from "@/lib/pedido-venda/businessDays";
@@ -204,12 +206,14 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       setVendedor2((pedidoInicial as any).vendedor_2 || "");
       setFormaPagamento(pedidoInicial.forma_pagamento || "");
       
-      // Formatar e mostrar valor total se existir
-      if (pedidoInicial.valor_total) {
+      // Valor ATUAL do contrato: venda + ajuste (acréscimo/redução lançado depois).
+      // A edição compara com ele; a diferença vira ajuste se a venda é de mês passado.
+      const contratoInicial = valorContrato(pedidoInicial as any);
+      if (contratoInicial > 0) {
         const formatted = new Intl.NumberFormat('pt-BR', {
           style: 'currency',
           currency: 'BRL'
-        }).format(pedidoInicial.valor_total);
+        }).format(contratoInicial);
         setValorTotal(formatted);
         setValorTotalLocked(true);
       }
@@ -370,10 +374,29 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
     }, 0);
     
     const diferenca = Math.abs(somaTotal - valorTotalNum);
-    return diferenca < 0.01;
+    if (diferenca < 0.01) return true;
+
+    // Pedido antigo com ajuste lançado pelo "Ajustar Valor": as parcelas continuam somando
+    // o valor da VENDA, e o campo mostra venda + ajuste. Enquanto o valor não for mexido,
+    // isso não pode travar a edição do resto do pedido.
+    if (pedidoInicial) {
+      const contratoInicial = valorContrato(pedidoInicial as any);
+      const baseInicial = valorBase(pedidoInicial as any);
+      if (Math.abs(valorTotalNum - contratoInicial) < 0.01 && Math.abs(somaTotal - baseInicial) < 0.01) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const planoPagamentoValido = validarPlanoPagamento();
+
+  // Edição de pedido de mês passado: mostra, antes de salvar, onde a diferença vai contar.
+  const avisoEdicaoValor = React.useMemo(() => {
+    if (!pedidoInicial) return null;
+    const dv = `${dataVenda.getFullYear()}-${String(dataVenda.getMonth() + 1).padStart(2, '0')}-${String(dataVenda.getDate()).padStart(2, '0')}`;
+    return avisoValorEdicao(decidirValorEdicao(pedidoInicial as any, valorTotalNum > 0 ? valorTotalNum : 0, dv, hojeSP()));
+  }, [pedidoInicial, valorTotalNum, dataVenda]);
 
   // Bloco "Informações para o projeto": texto + ao menos 1 imagem são obrigatórios.
   const erroChecklistProjeto = validarChecklistProjeto(checklistCompras);
@@ -884,27 +907,49 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   };
 
   // Função para enviar documento para App2 (limpeza de preços)
-  const enviarParaApp2 = async (pedidoId: string, file: File) => {
+  /**
+   * Manda o pedido pra Produção (App2). Na EDIÇÃO também: se um orçamento novo foi
+   * importado nesta edição, ele vai junto e a Produção troca o documento sem preço do
+   * card (antes a edição mandava só os dados e o card ficava com o orçamento velho).
+   * `file` null = nenhum orçamento novo; vão só os dados.
+   */
+  const enviarParaApp2 = async (pedidoId: string, file: File | null, opcoes?: { edicao?: boolean }): Promise<boolean> => {
     setStatusApp2('sending');
+    const edicao = !!opcoes?.edicao;
     // App2 (limpeza de preços) trata um DOCX: o anexo original quando é Word,
     // ou o convertido sem preço (arquivoProducaoRef) quando o orçamento veio em PDF.
     // Sem nenhum dos dois, envia só os dados estruturados (App2 v6 aceita sem DOCX).
-    const docParaProducao = file.name.toLowerCase().endsWith('.docx')
-      ? file
-      : arquivoProducaoRef.current;
+    const docParaProducao = !file
+      ? null
+      : file.name.toLowerCase().endsWith('.docx')
+        ? file
+        : arquivoProducaoRef.current;
     const isDocx = !!docParaProducao;
-    toast.info(isDocx ? "Enviando para limpeza de preços..." : "Enviando dados à Produção (sem documento — orçamento em PDF)...");
+    toast.info(
+      isDocx
+        ? "Enviando para limpeza de preços..."
+        : !file
+          ? "Atualizando dados na Produção..."
+          : "Enviando dados à Produção (sem documento — orçamento em PDF)..."
+    );
 
     try {
       const base64 = docParaProducao ? await fileToBase64(docParaProducao) : null;
 
-      // Preparar lista de equipamentos formatada para o App2
-      const equipamentosFormatados = equipamentosDetalhados.map((eq, index) => ({
-        numero: index + 1,
-        descricao: eq.descricao,
-        quantidade: eq.quantidade,
-        unidade: eq.unidade || 'UN'
-      }));
+      // Preparar lista de equipamentos formatada para o App2 (sem preço)
+      const equipamentosFormatados = equipamentosDetalhados.length > 0
+        ? equipamentosDetalhados.map((eq, index) => ({
+            numero: index + 1,
+            descricao: eq.descricao,
+            quantidade: eq.quantidade,
+            unidade: eq.unidade || 'UN'
+          }))
+        : equipamentos.filter(e => e.trim()).map((e, index) => ({
+            numero: index + 1,
+            descricao: e,
+            quantidade: 1,
+            unidade: 'UN'
+          }));
       
       // Preparar lista de motores formatada para o App2
       // Formato: { quantidade: number, modelo: string (contém potência e polos) }
@@ -919,7 +964,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       console.log('[DEBUG App2] pedidoId:', pedidoId);
       console.log('[DEBUG App2] clienteNome:', cliente);
       console.log('[DEBUG App2] vendedorNome:', vendedor);
-      console.log('[DEBUG App2] nomeArquivo:', file.name);
+      console.log('[DEBUG App2] nomeArquivo:', file?.name ?? '(sem orçamento novo)');
       console.log('[DEBUG App2] docxBase64 length:', base64?.length || 0);
       console.log('[DEBUG App2] equipamentos:', JSON.stringify(equipamentosFormatados, null, 2));
       console.log('[DEBUG App2] motores:', JSON.stringify(motoresFormatados, null, 2));
@@ -969,14 +1014,22 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       console.log('[DEBUG App2] Resposta recebida:', JSON.stringify(data, null, 2));
       setStatusApp2('done');
       if (isDocx) {
-        toast.success("Documento tratado enviado para Produção ✅");
+        toast.success(edicao
+          ? "Orçamento novo enviado à Produção (sem preço) — o card fica marcado como revisado ✅"
+          : "Documento tratado enviado para Produção ✅");
+      } else if (!file) {
+        toast.success("Dados atualizados na Produção");
       } else {
         toast.warning("Dados enviados à Produção SEM documento tratado (orçamento era PDF). Se a fábrica precisa do documento sem preço, importe o orçamento em .docx.", { duration: 12000 });
       }
+      return true;
     } catch (err) {
       console.error('[DEBUG App2] Erro ao enviar:', err);
       setStatusApp2('error');
-      toast.error("Erro ao enviar para limpeza de preços");
+      toast.error(edicao
+        ? "Pedido salvo, mas a Produção não recebeu a atualização. Tente salvar de novo."
+        : "Erro ao enviar para limpeza de preços");
+      return false;
     }
   };
 
@@ -1038,6 +1091,13 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         console.log('💾 Iniciando atualização do pedido...');
         toast.info("Atualizando pedido...");
 
+        // Onde a mudança de valor mora: venda de mês passado mantém a base no mês dela e a
+        // diferença vira ajuste datado hoje (regra em lib/revisaoPedido).
+        const dataVendaISO = `${dataVenda.getFullYear()}-${String(dataVenda.getMonth() + 1).padStart(2, '0')}-${String(dataVenda.getDate()).padStart(2, '0')}`;
+        const novoTotalContrato = valorTotalNum > 0 ? valorTotalNum : (totalEquipamentosCalculado > 0 ? totalEquipamentosCalculado : 0);
+        const decisaoValor = decidirValorEdicao(pedidoInicial as any, novoTotalContrato, dataVendaISO, hojeSP());
+        console.log('💰 Decisão de valor da edição:', decisaoValor);
+
         const updateData = {
           numero_orcamento: numeroOrcamento,
           cliente: cliente || null,
@@ -1072,10 +1132,14 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           voltagem,
           forma_pagamento: formaPagamento || null,
           descricao_equipamento: descricaoEquipamento || null,
-          payment_plan_json: paymentPlan ? { ...paymentPlan, total: valorTotalNum > 0 ? valorTotalNum : (totalEquipamentosCalculado > 0 ? totalEquipamentosCalculado : paymentPlan.total) } : null,
+          // total do plano = valor da VENDA (base). As parcelas podem somar venda + ajuste.
+          payment_plan_json: paymentPlan ? { ...paymentPlan, total: decisaoValor.base > 0 ? decisaoValor.base : paymentPlan.total } : null,
           data_primeiro_contato: dataPrimeiroContato ? `${dataPrimeiroContato.getFullYear()}-${String(dataPrimeiroContato.getMonth() + 1).padStart(2, '0')}-${String(dataPrimeiroContato.getDate()).padStart(2, '0')}` : null,
           fonte_origem: fonteOrigem || null,
-          valor_total: valorTotalNum > 0 ? valorTotalNum : (totalEquipamentosCalculado > 0 ? totalEquipamentosCalculado : null),
+          valor_total: decisaoValor.base > 0 ? decisaoValor.base : null,
+          ajuste_valor: decisaoValor.ajusteValor,
+          ajuste_data: decisaoValor.ajusteData,
+          ajuste_motivo: decisaoValor.ajusteMotivo,
           checklist_compras: isChecklistEmpty(checklistCompras) ? null : checklistCompras,
         };
 
@@ -1099,72 +1163,51 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
         console.log('✅ Pedido atualizado no banco de dados!', data[0]);
 
-        // Regenerar o arquivo DOCX com as informações atualizadas
+        if (decisaoValor.tipo === 'diferenca_no_mes_atual') {
+          const aviso = avisoValorEdicao(decisaoValor);
+          if (aviso) toast.success(aviso, { duration: 10000 });
+        }
+
+        // Financeiro: leva o plano editado pras parcelas sem apagar nada e sem tocar
+        // em parcela paga ou com recebimento (a parcela nova do acréscimo entra aqui).
+        if (paymentPlan?.parcelas?.length) {
+          const dataEntregaISO = `${dataEntrega.getFullYear()}-${String(dataEntrega.getMonth() + 1).padStart(2, '0')}-${String(dataEntrega.getDate()).padStart(2, '0')}`;
+          const parcelas = await sincronizarParcelasFinanceiro(pedidoInicial.id, paymentPlan.parcelas, {
+            dataVenda: dataVendaISO,
+            dataEntrega: dataEntregaISO,
+            criadoEm: (pedidoInicial as any).created_at || null,
+            contratoTotal: decisaoValor.contratoNovo,
+          });
+          console.log('💳 Parcelas do financeiro:', parcelas);
+          if (parcelas.erro) {
+            toast.error(`Pedido salvo, mas as parcelas do financeiro não foram atualizadas: ${parcelas.erro}`, { duration: 12000 });
+          } else if (parcelas.inserir.length + parcelas.atualizar.length + parcelas.cancelar.length > 0) {
+            toast.success(
+              `Financeiro atualizado: ${parcelas.inserir.length} parcela(s) nova(s), ${parcelas.atualizar.length} ajustada(s)` +
+                (parcelas.cancelar.length ? `, ${parcelas.cancelar.length} cancelada(s)` : '') +
+                (parcelas.preservadas ? ` · ${parcelas.preservadas} já paga(s) mantida(s)` : '')
+            );
+          }
+        }
+
+        // Regenerar o Word do pedido (com o valor atual do contrato quando há ajuste)
         console.log('📄 Regenerando arquivo DOCX...');
         toast.info("Regenerando arquivo do pedido...");
-
-        const { data: retroData, error: retroError } = await supabase.functions.invoke('gerar-pedido-retroativo', {
-          body: { order_id: pedidoInicial.id }
-        });
-
-        if (retroError) {
-          console.error('❌ Erro ao regenerar arquivo:', retroError);
+        const doc = await regerarDocumentoPedido(pedidoInicial.id);
+        if (!doc.ok) {
+          console.error('❌ Erro ao regenerar arquivo:', doc.error);
           toast.error("Pedido atualizado, mas erro ao regenerar arquivo");
         } else {
-          console.log('✅ Arquivo regerado com sucesso!', retroData);
+          console.log('✅ Arquivo regerado com sucesso!', doc.arquivo_url);
           toast.success("Pedido e arquivo atualizados com sucesso!");
         }
 
-        // === Sincronizar edição com App2 ===
-        try {
-          console.log('=== [DEBUG App2] Sincronizando edição com App2 ===');
-          
-          const equipamentosFormatados = (equipamentosDetalhados && equipamentosDetalhados.length > 0)
-            ? equipamentosDetalhados.map((eq: any) => ({
-                descricao: eq.descricao || '',
-                quantidade: eq.quantidade || 1,
-                valorUnitario: eq.valorUnitario || 0,
-                valorTotal: eq.valorTotal || 0,
-              }))
-            : equipamentos.filter(e => e.trim()).map(e => ({ descricao: e, quantidade: 1, valorUnitario: 0, valorTotal: 0 }));
+        // Produção: dados sempre; o orçamento novo (se foi importado nesta edição) vai junto
+        // e troca o documento sem preço do card.
+        await enviarParaApp2(pedidoInicial.id, arquivoOriginalRef.current, { edicao: true });
 
-          const motoresFormatados = motores.map((m) => ({
-            quantidade: m.quantidade || 1,
-            modelo: m.modelo || ''
-          }));
-
-          const { error: app2Error } = await supabase.functions.invoke('enviar-docx-app2', {
-            body: {
-              pedidoId: pedidoInicial.id,
-              clienteNome: cliente || '',
-              vendedorNome: vendedor || '',
-              equipamentos: equipamentosFormatados,
-              motores: motoresFormatados,
-              tensao: tensao || '',
-              voltagem: voltagem || '',
-              prazoDias: diasUteis,
-              prazoTipo: tipoPrazo,
-              prazoData: `${dataEntrega.getFullYear()}-${String(dataEntrega.getMonth() + 1).padStart(2, '0')}-${String(dataEntrega.getDate()).padStart(2, '0')}`,
-              observacaoVendedor: observacoesAdicionais.trim() || '',
-              checkListCompras: isChecklistEmpty(checklistCompras) ? null : checklistCompras,
-              motorMarca: checklistCompras.motor_marca,
-              isUpdate: true,
-            }
-          });
-
-          if (app2Error) {
-            console.error('[DEBUG App2] Erro ao sincronizar edição:', app2Error);
-            toast.error("Pedido atualizado localmente, mas erro ao sincronizar com App2");
-          } else {
-            console.log('[DEBUG App2] ✅ Edição sincronizada com App2!');
-          }
-        } catch (app2Err) {
-          console.error('[DEBUG App2] Falha ao sincronizar edição:', app2Err);
-          // Não bloquear o fluxo - pedido já foi salvo localmente
-        }
-        
-        // Aguardar um pouco antes de redirecionar
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Aguardar um pouco antes de redirecionar (dá tempo de ler os avisos)
+        await new Promise(resolve => setTimeout(resolve, 2500));
         
         // Forçar reload completo da página com timestamp para evitar cache
         const timestamp = new Date().getTime();
@@ -2710,6 +2753,11 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                   <p className="text-xs text-muted-foreground mt-1">
                     Este valor será usado para calcular as parcelas
                   </p>
+                  {avisoEdicaoValor && (
+                    <div className="mt-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-900 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
+                      {avisoEdicaoValor}
+                    </div>
+                  )}
                 </div>
 
                 {validationAlerts.length > 0 && (
