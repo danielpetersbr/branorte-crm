@@ -1,4 +1,4 @@
-import { Clock, Boxes } from 'lucide-react'
+import { Clock, Boxes, FileText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
@@ -34,6 +34,7 @@ export function AcessoBloqueado({ estado }: { estado: EstadoBloqueio }) {
   // Fora de hora, o Fazedor de Layout pode estar liberado (janela própria da rota).
   // Damos a entrada aqui — senão a pessoa fica presa nesta tela sem menu.
   const podeLayout = can('menu.projeto_3d')
+  const podeOrcamento = can('menu.orcamentos')
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg px-4">
@@ -62,13 +63,21 @@ export function AcessoBloqueado({ estado }: { estado: EstadoBloqueio }) {
           Precisa entrar agora? Fale com o administrador para liberar.
         </p>
 
-        {podeLayout && (
-          <div className="mt-6">
-            <Button onClick={() => navigate('/projeto-3d')} className="inline-flex items-center gap-2">
-              <Boxes className="w-4 h-4" />
-              Abrir o Fazedor de Layout
-            </Button>
-            <p className="mt-2 text-[11px] text-ink-faint">Liberado pra você a qualquer hora.</p>
+        {(podeLayout || podeOrcamento) && (
+          <div className="mt-6 flex flex-col items-center gap-2">
+            {podeLayout && (
+              <Button onClick={() => navigate('/projeto-3d')} className="inline-flex items-center gap-2">
+                <Boxes className="w-4 h-4" />
+                Abrir o Fazedor de Layout
+              </Button>
+            )}
+            {podeOrcamento && (
+              <Button onClick={() => navigate('/orcamentos/montar')} className="inline-flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Fazer Orçamento
+              </Button>
+            )}
+            <p className="mt-1 text-[11px] text-ink-faint">Liberado pra você a qualquer hora.</p>
           </div>
         )}
 
