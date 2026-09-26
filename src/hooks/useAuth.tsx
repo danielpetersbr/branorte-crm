@@ -14,6 +14,7 @@ export interface UserProfile {
   role: 'admin' | 'vendor' | 'marketing' | 'visualizador' | 'mapa' | 'consultor' | 'representante' | 'pending' | 'rejected'
   vendor_id: string | null
   approved_at: string | null
+  bloquear_prancha?: boolean
 }
 
 export interface AuthState {
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { data, error } = await withTimeout(
             supabase
               .from('user_profiles')
-              .select('id,email,display_name,role,vendor_id,approved_at')
+              .select('id,email,display_name,role,vendor_id,approved_at,bloquear_prancha')
               .eq('id', userId)
               .maybeSingle(),
             6000,

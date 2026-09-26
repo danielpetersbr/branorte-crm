@@ -13,6 +13,7 @@ import {
   ChevronDown, X, Search, Check, Loader2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { registrarAtividadeLayout } from '@/lib/layoutTrilha'
 import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
   useBuscarContatos, fetchConfiguradorProjeto, type ConfiguradorProjetoMeta,
@@ -56,7 +57,8 @@ export function Projeto3D() {
   useEffect(() => { profileRef.current = profile }, [profile])
   const qc = useQueryClient()
   // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
-  const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
+  // prancha=0 esconde a Prancha Técnica no configurador pra quem tem a marca no perfil.
+  const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}&prancha=${profile?.bloquear_prancha ? '0' : '1'}`
   const { data: projetos, isLoading: loadingLista } = useConfiguradorProjetos()
   const salvar = useSalvarConfiguradorProjeto()
   const deletar = useDeletarConfiguradorProjeto()
@@ -132,12 +134,14 @@ export function Projeto3D() {
               const items = await bridgeList()
               reply({ items, meId: profileRef.current?.id ?? null, meNome: profileRef.current?.display_name ?? null })
             } else if (m.type === 'branorte:store:load') {
+              registrarAtividadeLayout({ userId: profileRef.current?.id ?? null, email: profileRef.current?.email, acao: 'abriu', projetoId: String(m.id) })
               reply({ project: await bridgeLoad(String(m.id)) })
             } else if (m.type === 'branorte:store:save') {
               await bridgeSave(m.project, typeof m.thumbnail === 'string' ? m.thumbnail : null, {
                 id: profileRef.current?.id ?? null,
                 nome: profileRef.current?.display_name ?? null,
               })
+              registrarAtividadeLayout({ userId: profileRef.current?.id ?? null, email: profileRef.current?.email, acao: 'salvou', project: m.project, thumb: typeof m.thumbnail === 'string' ? m.thumbnail : null })
               qc.invalidateQueries({ queryKey: ['configurador-projetos'] })
               reply({})
             } else if (m.type === 'branorte:store:delete') {
@@ -174,6 +178,17 @@ export function Projeto3D() {
     return () => window.removeEventListener('message', onMsg)
   }, [])
 
+  // Trilha de atividade: 'entrou' ao abrir a ferramenta e 'saiu' ao fechar/trocar de tela.
+  useEffect(() => {
+    const id = profile?.id
+    if (!id) return
+    const email = profile?.email
+    registrarAtividadeLayout({ userId: id, email, acao: 'entrou' })
+    const saiu = () => registrarAtividadeLayout({ userId: id, email, acao: 'saiu' })
+    window.addEventListener('beforeunload', saiu)
+    return () => { window.removeEventListener('beforeunload', saiu); saiu() }
+  }, [profile?.id])
+
   const postToFrame = (msg: Record<string, unknown>) =>
     frameRef.current?.contentWindow?.postMessage(msg, CONFIGURADOR_ORIGIN)
 
@@ -207,6 +222,7 @@ export function Projeto3D() {
       setProjetoNome(meta.nome)
       setSaveContactId(meta.contact_id)
       setSaveContactNome(meta.cliente_nome)
+      registrarAtividadeLayout({ userId: profile?.id ?? null, email: profile?.email, acao: 'abriu', projetoId: meta.id, projetoNome: meta.nome })
       flash(`Aberto: ${meta.nome}`)
     } catch {
       flash('Falha ao abrir o projeto', true)
@@ -247,6 +263,7 @@ export function Projeto3D() {
           setProjetoId(row.id)
           setProjetoNome(row.nome)
           setSaveOpen(false)
+          registrarAtividadeLayout({ userId: profile?.id ?? null, email: profile?.email, acao: 'salvou', projetoId: row.id, projetoNome: row.nome, project: projetoDataRef.current })
           flash(projetoId ? 'Projeto atualizado' : 'Projeto salvo')
         },
         onError: () => flash('Erro ao salvar', true),

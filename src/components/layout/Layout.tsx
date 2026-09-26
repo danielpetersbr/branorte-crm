@@ -250,6 +250,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/admin/permissoes', label: 'Permissões', icon: Settings, permKey: 'menu.admin_permissoes' },
       // Sem `roles`: tendo permKey, a lista de papéis seria fonte de verdade duplicada.
       { to: '/admin/acessos', label: 'Acessos', icon: Activity, permKey: 'menu.admin_acessos' },
+      { to: '/admin/layout-atividade', label: 'Layout (atividade)', icon: Boxes, permKey: 'menu.admin_acessos' },
       { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings, permKey: 'menu.admin_transportador_funcoes' },
       { to: '/roadmap', label: 'Roadmap & Feedback', icon: MessageSquarePlus, permKey: 'menu.roadmap' },
     ],

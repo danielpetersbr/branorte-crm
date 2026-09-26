@@ -1,6 +1,8 @@
-import { Clock } from 'lucide-react'
+import { Clock, Boxes } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
+import { useCan } from '@/hooks/usePermissions'
 import type { EstadoBloqueio } from '@/hooks/useAcesso'
 
 const NOMES_DIA = ['', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
@@ -26,7 +28,12 @@ function resumoDias(dias: number[]) {
  */
 export function AcessoBloqueado({ estado }: { estado: EstadoBloqueio }) {
   const { signOut, profile } = useAuth()
+  const can = useCan()
+  const navigate = useNavigate()
   const j = estado.janela
+  // Fora de hora, o Fazedor de Layout pode estar liberado (janela própria da rota).
+  // Damos a entrada aqui — senão a pessoa fica presa nesta tela sem menu.
+  const podeLayout = can('menu.projeto_3d')
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg px-4">
@@ -54,6 +61,16 @@ export function AcessoBloqueado({ estado }: { estado: EstadoBloqueio }) {
         <p className="mt-2 text-[13px] text-ink-faint">
           Precisa entrar agora? Fale com o administrador para liberar.
         </p>
+
+        {podeLayout && (
+          <div className="mt-6">
+            <Button onClick={() => navigate('/projeto-3d')} className="inline-flex items-center gap-2">
+              <Boxes className="w-4 h-4" />
+              Abrir o Fazedor de Layout
+            </Button>
+            <p className="mt-2 text-[11px] text-ink-faint">Liberado pra você a qualquer hora.</p>
+          </div>
+        )}
 
         {profile?.email && (
           <p className="mt-6 text-[11px] text-ink-faint">Conectado como {profile.email}</p>

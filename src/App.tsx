@@ -54,6 +54,7 @@ const GuiaAdmin = lazy(() => import('@/pages/GuiaAdmin').then(m => ({ default: m
 const AdminUsuarios = lazy(() => import('@/pages/AdminUsuarios').then(m => ({ default: m.AdminUsuarios })))
 const AdminPermissoes = lazy(() => import('@/pages/AdminPermissoes').then(m => ({ default: m.AdminPermissoes })))
 const AdminAcessos = lazy(() => import('@/pages/AdminAcessos').then(m => ({ default: m.AdminAcessos })))
+const AdminLayoutAtividade = lazy(() => import('@/pages/AdminLayoutAtividade').then(m => ({ default: m.AdminLayoutAtividade })))
 const AdminTransportadorFuncoes = lazy(() => import('@/pages/AdminTransportadorFuncoes'))
 const IaAtendente = lazy(() => import('@/pages/IaAtendente').then(m => ({ default: m.IaAtendente })))
 const FluxosFunil = lazy(() => import('@/pages/FluxosFunil').then(m => ({ default: m.FluxosFunil })))
@@ -661,6 +662,9 @@ function AppRoutes() {
         )}
         {can('menu.admin_acessos') && (
           <Route path="/admin/acessos" element={<AdminAcessos />} />
+        )}
+        {can('menu.admin_acessos') && (
+          <Route path="/admin/layout-atividade" element={<AdminLayoutAtividade />} />
         )}
         {can('menu.admin_transportador_funcoes') && (
           <Route path="/admin/transportador-funcoes" element={<AdminTransportadorFuncoes />} />
