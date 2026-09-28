@@ -175,7 +175,7 @@ export type FinameClasse =
   | { tipo: 'principal'; fin: FinameTipo }
   | { tipo: 'acessorio' } // valor embutido no equipamento
   | { tipo: 'motor' } // valor embutido no equipamento
-  | { tipo: 'naoResolvido'; sugestao: string }
+  | { tipo: 'naoResolvido'; sugestao: string; motivo?: string; sugeridoKey?: string }
 
 function norm(s: string | null | undefined): string {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
@@ -209,7 +209,12 @@ export function classificarItemFiname(nome: string, categoria?: string | null): 
 
   // 3b) Misturador horizontal não tem cadastro BNDES (só o vertical) → bloqueia.
   if (/misturador\s+horizontal|\bbnmh\b/.test(n)) {
-    return { tipo: 'naoResolvido', sugestao: FINAME_SUGESTAO_MISTURADOR_HORIZONTAL }
+    return {
+      tipo: 'naoResolvido',
+      sugestao: FINAME_SUGESTAO_MISTURADOR_HORIZONTAL,
+      motivo: 'O BNDES só tem cadastrado o misturador VERTICAL.',
+      sugeridoKey: 'MISTURADOR',
+    }
   }
 
   // 4) CATEGORIA do catálogo define o TIPO (mais confiável que o nome).
@@ -282,6 +287,10 @@ export interface FinameClassificacao {
   key?: string
   /** true quando o tipo veio de override manual do vendedor (não da classificação automática). */
   overridden: boolean
+  /** Só em naoResolvido: por que travou, em uma frase curta. */
+  motivo?: string
+  /** Só em naoResolvido: tipo que resolve com um clique (quando existe um óbvio). */
+  sugeridoKey?: string
 }
 
 export interface FinameTransformResult {
@@ -350,7 +359,10 @@ export function montarItensFiname(
         mensagem: FINAME_NAO_RESOLVIDO_MSG,
         sugestao: cls.sugestao,
       })
-      classificacoes.push({ uid: it.uid, nome: it.nome, status: 'naoResolvido', overridden: false })
+      classificacoes.push({
+        uid: it.uid, nome: it.nome, status: 'naoResolvido', overridden: false,
+        motivo: cls.motivo, sugeridoKey: cls.sugeridoKey,
+      })
     }
   }
 

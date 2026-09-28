@@ -615,6 +615,9 @@ export function OrcamentoMontar() {
   // equipamento mantendo o código FINAME do tipo (ex: "Silo de Armazenagem" →
   // "Caixa de Armazenagem Milho/Soja"). Vazio = usa o nome oficial do tipo.
   const [finameNomeOverride, setFinameNomeOverride] = useState<Record<string, string>>({})
+  // FINAME: lista dos itens já reconhecidos fica FECHADA (só o resumo verde). O vendedor
+  // abre em "Ver / ajustar" se quiser trocar tipo ou nome — o painel só cobra o que travou.
+  const [finameAjustarAberto, setFinameAjustarAberto] = useState(false)
   // FINAME: total-ALVO da proposta (A+). Ex: o cálculo dá 258k e o FINAME precisa sair
   // 298k. A diferença (alvo − calculado) é diluída DENTRO dos equipamentos marcados em
   // finameAcrescimoUids — não vira linha nova. null = sem acréscimo (total = calculado).
@@ -3644,93 +3647,146 @@ export function OrcamentoMontar() {
               overflow-x: hidden no mobile pra ResponsiveScaler funcionar sem
               gerar scroll horizontal residual. */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
-            {/* Modo FINAME: painel de classificação. Mostra como cada item entra no
-                orçamento e deixa o vendedor "tratar como" outro tipo FINAME — desbloqueia
-                itens sem código e resgata itens que iriam embutidos. */}
-            {finameMode && finameTransform && finameTransform.classificacoes.length > 0 && (
-              <div className={`m-3 rounded-lg border p-3 text-[13px] ${
-                finameBloqueios.length > 0
-                  ? 'border-red-300 bg-red-50 text-red-800'
-                  : 'border-gray-200 bg-gray-50 text-gray-700'
-              }`}>
-                <div className="font-bold mb-1">
-                  {finameBloqueios.length > 0 ? '⚠️ Orçamento FINAME bloqueado' : '🏷️ Classificação FINAME'}
-                </div>
-                <p className="mb-2 text-[12px]">
-                  {finameBloqueios.length > 0
-                    ? 'Há itens sem código FINAME. Escolha em "Tratar como" o equipamento correspondente (ou remova o item) pra desbloquear:'
-                    : 'Como cada item entra no orçamento FINAME. Use "Tratar como" pra ajustar se precisar:'}
-                </p>
-                <div className="space-y-1.5">
-                  {finameTransform.classificacoes.map((c) => {
-                    const bloqueado = c.status === 'naoResolvido'
-                    const embutido = c.status === 'acessorio' || c.status === 'motor'
-                    const tipoAtual = c.key ? FINAME_TIPOS.find(t => t.key === c.key)?.nome : undefined
-                    return (
-                      <div key={c.uid} className="flex flex-col gap-1 border-b border-gray-200/70 last:border-0 pb-1.5 last:pb-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[12px] ${bloqueado ? 'font-semibold text-red-700' : 'text-gray-800'}`}>
-                            {c.nome}
-                          </span>
-                          <span className="text-[11px] text-gray-500">
-                            {bloqueado
-                              ? '— sem FINAME'
-                              : embutido
-                                ? '— embutido no valor'
-                                : `→ ${tipoAtual ?? ''}${c.overridden ? ' (manual)' : ''}`}
-                          </span>
-                          <select
-                            value={finameTipoOverride[c.uid] ?? ''}
-                            onChange={(e) => {
-                              const val = e.target.value
-                              setFinameTipoOverride(prev => {
-                                const next = { ...prev }
-                                if (val) next[c.uid] = val
-                                else delete next[c.uid]
-                                return next
-                              })
-                              // Trocar o tipo reseta o nome editado (pega o nome do novo tipo).
-                              setFinameNomeOverride(prev => {
-                                if (!(c.uid in prev)) return prev
-                                const next = { ...prev }
-                                delete next[c.uid]
-                                return next
-                              })
-                            }}
-                            className="ml-auto text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
-                          >
-                            <option value="">
-                              {bloqueado ? 'Automático (bloqueia)' : embutido ? 'Automático (embutido)' : 'Automático'}
-                            </option>
-                            {FINAME_TIPOS.map(t => (
-                              <option key={t.key} value={t.key}>Tratar como {t.nome}</option>
-                            ))}
-                          </select>
-                        </div>
-                        {/* Nome editável da linha (só pros itens que viram equipamento com código). */}
-                        {c.status === 'principal' && (
-                          <div className="flex items-center gap-2 pl-1">
-                            <span className="text-[11px] text-gray-500 shrink-0">Nome no orçamento:</span>
-                            <input
-                              type="text"
-                              value={finameNomeOverride[c.uid] ?? tipoAtual ?? ''}
-                              onChange={(e) => setFinameNomeOverride(prev => ({ ...prev, [c.uid]: e.target.value }))}
-                              placeholder={tipoAtual}
-                              className="flex-1 min-w-0 text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
-                            />
+            {/* Modo FINAME: painel de classificação. O automático já reconhece quase tudo
+                (transportador, ensacadeira, triturador, caixa, caçamba...), então o painel só
+                PEDE ação do item que travou. O que foi reconhecido fica num resumo verde
+                fechado, com "Ver / ajustar" pra quem quiser trocar tipo ou nome. */}
+            {finameMode && finameTransform && finameTransform.classificacoes.length > 0 && (() => {
+              const pendentes = finameTransform.classificacoes.filter(c => c.status === 'naoResolvido')
+              const resolvidos = finameTransform.classificacoes.filter(c => c.status !== 'naoResolvido')
+              const nEmbutidos = resolvidos.filter(c => c.status !== 'principal').length
+              const nManuais = resolvidos.filter(c => c.overridden).length
+              const tratarComo = (uid: string, key: string) => {
+                setFinameTipoOverride(prev => {
+                  const next = { ...prev }
+                  if (key) next[uid] = key
+                  else delete next[uid]
+                  return next
+                })
+                // Trocar o tipo reseta o nome editado (pega o nome do novo tipo).
+                setFinameNomeOverride(prev => {
+                  if (!(uid in prev)) return prev
+                  const next = { ...prev }
+                  delete next[uid]
+                  return next
+                })
+              }
+              return (
+              <div className="m-3 space-y-2 text-[13px]">
+                {pendentes.length > 0 && (
+                  <div className="rounded-lg border border-red-300 bg-red-50 text-red-800 p-3">
+                    <div className="font-bold mb-2">
+                      ⚠️ {pendentes.length === 1 ? '1 item precisa' : `${pendentes.length} itens precisam`} da sua decisão pra gerar o FINAME
+                    </div>
+                    <div className="space-y-2">
+                      {pendentes.map((c) => {
+                        const sug = c.sugeridoKey ? FINAME_TIPOS.find(t => t.key === c.sugeridoKey) : undefined
+                        return (
+                          <div key={c.uid} className="flex flex-col gap-1.5 bg-white/70 rounded-md border border-red-200 p-2">
+                            <div>
+                              <span className="font-semibold">{c.nome}</span>
+                              <span className="text-[12px] text-red-700"> — {c.motivo ?? 'não tem código FINAME cadastrado.'}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {sug && (
+                                <button
+                                  type="button"
+                                  onClick={() => tratarComo(c.uid, sug.key)}
+                                  className="text-[12px] font-semibold bg-green-600 hover:bg-green-700 text-white rounded px-2.5 py-1"
+                                >
+                                  Sair como {sug.nome}
+                                </button>
+                              )}
+                              <select
+                                value=""
+                                onChange={(e) => { if (e.target.value) tratarComo(c.uid, e.target.value) }}
+                                className="text-[12px] border border-gray-300 rounded px-1.5 py-1 bg-white text-gray-800"
+                              >
+                                <option value="">{sug ? 'Outro equipamento...' : 'Escolher o equipamento...'}</option>
+                                {FINAME_TIPOS.map(t => (
+                                  <option key={t.key} value={t.key}>{t.nome}</option>
+                                ))}
+                              </select>
+                              <span className="text-[11px] text-red-700/80">ou tire o item do orçamento</span>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
+                {resolvidos.length > 0 && (
+                  <div className="rounded-lg border border-green-200 bg-green-50/70 text-gray-700 p-3">
+                    <button
+                      type="button"
+                      onClick={() => setFinameAjustarAberto(v => !v)}
+                      className="w-full flex items-center gap-2 flex-wrap text-left"
+                    >
+                      <span className="font-bold text-green-800">
+                        ✓ {resolvidos.length === 1 ? '1 item reconhecido' : `${resolvidos.length} itens reconhecidos`} no FINAME
+                      </span>
+                      {(nEmbutidos > 0 || nManuais > 0) && (
+                        <span className="text-[12px] text-gray-500">
+                          ({[
+                            nEmbutidos > 0 ? `${nEmbutidos} embutido${nEmbutidos > 1 ? 's' : ''} no valor` : '',
+                            nManuais > 0 ? `${nManuais} escolhido${nManuais > 1 ? 's' : ''} por você` : '',
+                          ].filter(Boolean).join(' · ')})
+                        </span>
+                      )}
+                      <span className="ml-auto text-[12px] text-green-700 underline">
+                        {finameAjustarAberto ? 'Fechar' : 'Ver / ajustar'}
+                      </span>
+                    </button>
+                    {finameAjustarAberto && (
+                      <div className="space-y-1.5 mt-2 pt-2 border-t border-green-200">
+                        {resolvidos.map((c) => {
+                          const embutido = c.status === 'acessorio' || c.status === 'motor'
+                          const tipoAtual = c.key ? FINAME_TIPOS.find(t => t.key === c.key)?.nome : undefined
+                          return (
+                            <div key={c.uid} className="flex flex-col gap-1 border-b border-green-100 last:border-0 pb-1.5 last:pb-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[12px] text-gray-800">{c.nome}</span>
+                                <span className="text-[11px] text-gray-500">
+                                  {embutido ? '— embutido no valor' : `→ ${tipoAtual ?? ''}${c.overridden ? ' (escolhido por você)' : ''}`}
+                                </span>
+                                <select
+                                  value={finameTipoOverride[c.uid] ?? ''}
+                                  onChange={(e) => tratarComo(c.uid, e.target.value)}
+                                  className="ml-auto text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
+                                >
+                                  <option value="">{embutido ? 'Automático (embutido)' : 'Automático'}</option>
+                                  {FINAME_TIPOS.map(t => (
+                                    <option key={t.key} value={t.key}>Tratar como {t.nome}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              {/* Nome editável da linha (só pros itens que viram equipamento com código). */}
+                              {c.status === 'principal' && (
+                                <div className="flex items-center gap-2 pl-1">
+                                  <span className="text-[11px] text-gray-500 shrink-0">Nome no orçamento:</span>
+                                  <input
+                                    type="text"
+                                    value={finameNomeOverride[c.uid] ?? tipoAtual ?? ''}
+                                    onChange={(e) => setFinameNomeOverride(prev => ({ ...prev, [c.uid]: e.target.value }))}
+                                    placeholder={tipoAtual}
+                                    className="flex-1 min-w-0 text-[12px] border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-800"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* ── A+ : total-alvo do FINAME ───────────────────────────────
                     O cálculo dá X (ex: 258k) e o FINAME precisa fechar em Y (ex: 298k).
                     A diferença NÃO vira linha: é diluída proporcionalmente dentro dos
                     equipamentos marcados, igual motor/acessório já são. */}
                 {finameBloqueios.length === 0 && finameTransform.itens.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 text-gray-700 p-3">
                     <div className="font-bold text-[12px] mb-1.5">💰 Total-alvo do FINAME (A+)</div>
                     <div className="flex items-center gap-2 flex-wrap text-[12px]">
                       <span className="text-gray-600">
@@ -3815,7 +3871,8 @@ export function OrcamentoMontar() {
                   </div>
                 )}
               </div>
-            )}
+              )
+            })()}
             {carrinho.length === 0 ? (
               // Estado vazio: ocupa a tela inteira centralizado (flex vertical).
               // Antes ficava encolhido no topo, deixando ~860px de branco embaixo.

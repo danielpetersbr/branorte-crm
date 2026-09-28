@@ -49,6 +49,10 @@ describe('FINAME — nome e modelo iguais ao cadastro do BNDES', () => {
 
   it('misturador horizontal não tem cadastro: bloqueia, mas o vendedor pode forçar', () => {
     assert.equal(classificarItemFiname('Misturador Horizontal de 1000 kg', 'MISTURADOR').tipo, 'naoResolvido')
+    // o painel oferece o botão de um clique "Sair como Misturador Vertical"
+    const travado = montarItensFiname([item('h', 'Misturador Horizontal de 500 kg', 'MISTURADOR')], 0)
+    assert.equal(travado.classificacoes[0].sugeridoKey, 'MISTURADOR')
+    assert.ok(travado.classificacoes[0].motivo)
     const forcado = montarItensFiname(
       [item('h', 'Misturador Horizontal de 1000 kg', 'MISTURADOR')], 0, { h: 'MISTURADOR' },
     )
