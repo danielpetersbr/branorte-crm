@@ -11,6 +11,12 @@
 //   - Item sem código FINAME e que não é acessório → BLOQUEIA a geração + sugere
 //     substituição.
 //
+// NOME + MODELO = CADASTRO DO BNDES (28/09/2026): o banco recusou orçamento porque a
+// descrição da linha não batia com o item credenciado no Portal BNDES. Por isso cada
+// linha sai com o NOME e o MODELO exatamente como estão no cadastro (tabela Código /
+// Nome / Modelo que o banco mandou) e a linha "Modelo: ..." comercial do catálogo
+// (BNCX1236/3900, EC-5020, BNMH 1000L) sai — ela contradiria o modelo credenciado.
+//
 // ⚠️  Os códigos abaixo são FIXOS e OFICIAIS. NUNCA inventar novos códigos.
 //     Para cadastrar um tipo novo no futuro, adicione uma entrada em FINAME_MAP.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,6 +29,8 @@ export interface FinameTipo {
   nomeFiname: string
   /** Código FINAME oficial (8 dígitos). */
   codigoFiname: string
+  /** Modelo exatamente como está no cadastro do BNDES. */
+  modeloFiname: string
   /** Descrição técnica padrão da linha. */
   descricaoPadrao: string
 }
@@ -34,8 +42,9 @@ export const FINAME_MAP: FinameTipo[] = [
   {
     key: 'MISTURADOR',
     aliases: ['misturador', 'silo misturador', 'master'],
-    nomeFiname: 'Silo Misturador',
+    nomeFiname: 'Misturador Vertical',
     codigoFiname: '03590150',
+    modeloFiname: 'BNMV-500',
     descricaoPadrao: 'Equipamento destinado à mistura de ração.',
   },
   {
@@ -43,6 +52,7 @@ export const FINAME_MAP: FinameTipo[] = [
     aliases: ['elevador de canecas', 'elevador canecas', 'elevador'],
     nomeFiname: 'Elevador de Canecas',
     codigoFiname: '03637657',
+    modeloFiname: 'BNEC600',
     descricaoPadrao: 'Equipamento destinado ao transporte vertical de materiais.',
   },
   {
@@ -50,6 +60,7 @@ export const FINAME_MAP: FinameTipo[] = [
     aliases: ['peneira vibratoria', 'peneira'],
     nomeFiname: 'Peneira Vibratória',
     codigoFiname: '03629482',
+    modeloFiname: 'BNML550',
     descricaoPadrao: 'Equipamento destinado à classificação/peneiramento de materiais.',
   },
   {
@@ -58,6 +69,7 @@ export const FINAME_MAP: FinameTipo[] = [
     aliases: ['moinho martelo', 'moinho de martelo', 'moinho', 'triturador', 'desintegrador', 'moedor'],
     nomeFiname: 'Moinho Martelo',
     codigoFiname: '03625516',
+    modeloFiname: 'BNMM650',
     descricaoPadrao: 'Equipamento destinado à moagem de materiais.',
   },
   {
@@ -69,6 +81,7 @@ export const FINAME_MAP: FinameTipo[] = [
     ],
     nomeFiname: 'Transportador Helicoidal',
     codigoFiname: '03648162',
+    modeloFiname: 'BNTH350',
     descricaoPadrao: 'Equipamento destinado ao transporte de materiais.',
   },
   {
@@ -76,13 +89,15 @@ export const FINAME_MAP: FinameTipo[] = [
     aliases: ['cacamba de pesagem', 'cacamba'],
     nomeFiname: 'Caçamba de Pesagem',
     codigoFiname: '04328489',
+    modeloFiname: 'BNCP1900 - BNCP1900I',
     descricaoPadrao: 'Equipamento destinado à pesagem.',
   },
   {
     key: 'CAIXA_ARMAZENAGEM',
     aliases: ['caixa de armazenagem', 'caixa armazenagem', 'silo de armazenagem', 'armazenagem', 'silos', 'silo'],
-    nomeFiname: 'Silo de Armazenagem',
+    nomeFiname: 'Caixa de Armazenagem',
     codigoFiname: '03617124',
+    modeloFiname: 'BNCX200',
     descricaoPadrao: 'Equipamento destinado à armazenagem.',
   },
 ]
@@ -128,9 +143,14 @@ function finamePorKey(key: string): FinameTipo | undefined {
 }
 
 // Lista pronta pra popular o seletor "Tratar como" na UI (key → nome/código oficiais).
+/** Título da linha no orçamento: nome + modelo do cadastro BNDES. */
+export function tituloFiname(t: FinameTipo): string {
+  return `${t.nomeFiname} - Modelo ${t.modeloFiname}`
+}
+
 export const FINAME_TIPOS = FINAME_MAP.map(t => ({
   key: t.key,
-  nome: t.nomeFiname,
+  nome: tituloFiname(t),
   codigo: t.codigoFiname,
 }))
 
@@ -139,8 +159,15 @@ export const FINAME_NAO_RESOLVIDO_MSG =
 
 export const FINAME_SUGESTAO_GENERICA =
   'Verifique se este item pode ser substituído por um item com código FINAME cadastrado, como ' +
-  'Transportador Helicoidal, Silo de Armazenagem, Elevador de Canecas, Peneira Vibratória, ' +
-  'Moinho Martelo, Caçamba de Pesagem ou Silo Misturador.'
+  'Transportador Helicoidal, Caixa de Armazenagem, Elevador de Canecas, Peneira Vibratória, ' +
+  'Moinho Martelo, Caçamba de Pesagem ou Misturador Vertical.'
+
+// O único misturador credenciado no BNDES é o VERTICAL (BNMV-500). Sair um horizontal
+// com o título "Misturador Vertical" é descrição falsa num documento de financiamento —
+// bloqueia e deixa o vendedor decidir no "Tratar como".
+export const FINAME_SUGESTAO_MISTURADOR_HORIZONTAL =
+  'O único misturador cadastrado no BNDES é o Misturador Vertical (BNMV-500). O horizontal não ' +
+  'tem cadastro: troque por um vertical ou, se o banco aceitar, escolha "Tratar como" manualmente.'
 
 export const FINAME_INCLUSOS_TXT = 'Motor e acessórios necessários inclusos no conjunto.'
 
@@ -179,6 +206,11 @@ export function classificarItemFiname(nome: string, categoria?: string | null): 
 
   // 3) Marcador FORTE de acessório/peça (jogo, kit, par de) → embute.
   if (FINAME_ACESSORIO_FORTE.some(k => n.includes(k))) return { tipo: 'acessorio' }
+
+  // 3b) Misturador horizontal não tem cadastro BNDES (só o vertical) → bloqueia.
+  if (/misturador\s+horizontal|\bbnmh\b/.test(n)) {
+    return { tipo: 'naoResolvido', sugestao: FINAME_SUGESTAO_MISTURADOR_HORIZONTAL }
+  }
 
   // 4) CATEGORIA do catálogo define o TIPO (mais confiável que o nome).
   const catKey = FINAME_POR_CATEGORIA[cat]
@@ -224,6 +256,7 @@ export interface FinameInputItem {
 
 export interface FinameResultItem {
   uid: string
+  /** Título da linha: nome + modelo do cadastro BNDES. */
   nomeFiname: string
   codigoFiname: string
   categoria: string
@@ -371,7 +404,9 @@ export function montarItensFiname(
       .filter(s =>
         typeof s === 'string'
         && !/c[oó]digo\s*finame/i.test(s)
-        && !/inclus[oa]s?\s+no\s+conjunto/i.test(s),
+        && !/inclus[oa]s?\s+no\s+conjunto/i.test(s)
+        // modelo comercial do catálogo contradiz o modelo credenciado no BNDES
+        && !/^\s*modelo\s*:/i.test(s),
       )
       .map(s =>
         motorFolded && /acionamento|motorredutor|moto\s*redutor|\bmotor\b|pot[êe]ncia|\bcv\b/i.test(s)
@@ -380,12 +415,12 @@ export function montarItensFiname(
       )
     const descricao = baseSpecs.length ? baseSpecs : [p.fin.descricaoPadrao]
     const specs = [
+      `Código FINAME: ${p.fin.codigoFiname} · Modelo: ${p.fin.modeloFiname}.`,
       ...descricao,
-      `Código FINAME: ${p.fin.codigoFiname}.`,
     ]
     return {
       uid: p.in.uid,
-      nomeFiname: p.fin.nomeFiname,
+      nomeFiname: tituloFiname(p.fin),
       codigoFiname: p.fin.codigoFiname,
       categoria: p.in.categoria ?? '',
       specs,
