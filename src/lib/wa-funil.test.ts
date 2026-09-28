@@ -12,12 +12,36 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   montarConversa, formatarTelefone, nomeContato, canonico, ALIASES, ORDEM_FUNIL,
-  idCanonicoMsg, corpoVisivel, statusDaEtiqueta, statusDerivadoDaEtiqueta, comEtiquetasDoCrm,
-  type MensagemLite,
+  idCanonicoMsg, corpoVisivel, digitosDaBusca, statusDaEtiqueta, statusDerivadoDaEtiqueta, comEtiquetasDoCrm,
+  ehEncerramento, precisaResposta, ordemDe, FUNIL_ATIVO, type MensagemLite,
 } from './wa-funil'
 
 const msg = (msg_id: string, data_msg: string | null, media_url?: string | null): MensagemLite =>
   ({ msg_id, data_msg, media_url })
+
+test('perguntas do cliente continuam na fila mesmo com agradecimento', () => {
+  for (const preview of ['?', '❓', 'Obrigado! Qual o prazo?', 'Vou analisar, pode mandar o vídeo?']) {
+    assert.equal(ehEncerramento(preview), false, preview)
+    assert.equal(precisaResposta({ last_message_at: null, last_message_from_me: false, last_message_preview: preview }), true, preview)
+  }
+})
+
+test('só emojis conhecidos de confirmação encerram a conversa', () => {
+  for (const preview of ['👍', '🙏', 'Obrigado!', 'Ok']) assert.equal(ehEncerramento(preview), true, preview)
+  for (const preview of ['😡', '…', '💰']) assert.equal(ehEncerramento(preview), false, preview)
+})
+
+test('variantes reais de tentativa seguem a regra canônica do banco', () => {
+  for (const preview of ['3 TENTATIVA', '3° TENTATIVA', '3O  TENTATIVA', '3ª tentativa']) {
+    assert.equal(canonico(preview), '3A TENTATIVA', preview)
+    assert.equal(statusDaEtiqueta(preview), 'ABERTO', preview)
+  }
+  assert.equal(canonico('2O  TENTATIVA'), '2A TENTATIVA')
+  assert.ok(ordemDe('3A TENTATIVA') > ordemDe('2A TENTATIVA'))
+  assert.ok(ordemDe('3A TENTATIVA') < ordemDe('NOVO LEAD'))
+  assert.ok(FUNIL_ATIVO.has(canonico('3 TENTATIVA')))
+  assert.ok(FUNIL_ATIVO.has('4A TENTATIVA'))
+})
 
 // Como o banco devolve: DESC por data_msg (mais recente primeiro).
 const desc = (...ms: MensagemLite[]) =>
@@ -170,6 +194,12 @@ test('thumbnail base64 de mídia sem legenda não vira texto na bolha', () => {
   assert.equal(corpoVisivel('/9j/4AAQSkZJRgABAQAAAQABAAD' + 'x'.repeat(200)), null)
 })
 
+test('preview truncado de foto também não vira texto no card', () => {
+  assert.equal(corpoVisivel('/9j/4AAQSkZJRgABAQAAAQABAAD' + 'x'.repeat(75)), null)
+  assert.equal(corpoVisivel('iVBORw0KGgo' + 'x'.repeat(70)), null)
+  assert.equal(corpoVisivel('UklGR' + 'x'.repeat(70)), null)
+})
+
 test('legenda de verdade é preservada, inclusive com acento e emoji', () => {
   assert.equal(corpoVisivel('Segue a proposta'), 'Segue a proposta')
   assert.equal(corpoVisivel('  Orçamento em anexo 👍  '), 'Orçamento em anexo 👍')
@@ -217,6 +247,13 @@ test('nome do contato cai pro telefone quando é placeholder', () => {
   assert.equal(nomeContato('João', '5566998144699'), 'João')
   assert.equal(nomeContato('(sem nome)', '5566998144699'), '+55 (66) 99814-4699')
   assert.equal(nomeContato(null, '5566998144699'), '+55 (66) 99814-4699')
+})
+
+test('busca com texto e números não pesquisa os dígitos como telefone', () => {
+  assert.equal(digitosDaBusca('zzz-sem-resultado-123'), '')
+  assert.equal(digitosDaBusca('Cliente 123'), '')
+  assert.equal(digitosDaBusca('+55 (66) 99814-4699'), '5566998144699')
+  assert.equal(digitosDaBusca('99814'), '99814')
 })
 
 // --- contrato de etiquetas ------------------------------------------------

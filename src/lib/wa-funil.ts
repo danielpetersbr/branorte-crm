@@ -24,6 +24,8 @@ export const ORDEM_FUNIL: string[] = [
   // FUNIL DE VENDAS
   'PROSPECCAO',
   '2A TENTATIVA',
+  '3A TENTATIVA',
+  '4A TENTATIVA',
   'NOVO LEAD',
   'FOLLOW UP',
   'LEAD QUENTE',
@@ -41,6 +43,12 @@ export const ORDEM_FUNIL: string[] = [
   'OUTROS ASSUNTOS',
   'RESOLVIDO',
 ]
+
+// Preset do quadro; inclui todas as tentativas já reconhecidas pelo banco.
+export const FUNIL_ATIVO = new Set([
+  ...FUNIL_PRINCIPAL, '3A TENTATIVA', '4A TENTATIVA',
+  'ORCAMENTO ENVIADO', 'INTERESSE FUTURO',
+])
 
 // Typos/variantes → nome canônico (corrige exibição sem alterar o dado)
 export const ALIASES: Record<string, string> = {
@@ -87,6 +95,8 @@ export const ETIQUETA_COR: Record<string, string> = {
   // FUNIL DE VENDAS
   'PROSPECCAO': '#1d4ed8',
   '2A TENTATIVA': '#0d6982',
+  '3A TENTATIVA': '#0d6982',
+  '4A TENTATIVA': '#0d6982',
   'NOVO LEAD': '#6d28d9',
   'FOLLOW UP': '#9e4908',
   'LEAD QUENTE': '#b9175b',
@@ -166,8 +176,12 @@ export const ETIQUETA_COR_GRAFICO: Record<string, string> = {
 export const corDeGrafico = (nomeCanonico: string): string =>
   ETIQUETA_COR_GRAFICO[nomeCanonico] ?? '#9ca3af'
 
-export const canonico = (nomeNormalizado: string): string =>
-  ALIASES[nomeNormalizado.trim()] ?? nomeNormalizado.trim()
+export const canonico = (nomeNormalizado: string): string => {
+  const nome = nomeNormalizado.trim().toUpperCase()
+  // Espelho de wa_etiqueta_canonica: ordinais e espaços variam no WhatsApp.
+  const tentativa = nome.match(/^([0-9])\s*[°ºªAO]?\s*TENTATIVA$/)
+  return tentativa ? `${tentativa[1]}A TENTATIVA` : ALIASES[nome] ?? nome
+}
 
 export const ordemDe = (nomeCanonico: string): number => {
   const idx = ORDEM_FUNIL.indexOf(nomeCanonico)
@@ -200,6 +214,8 @@ export const ETIQUETA_FAMILIA: Record<string, FamiliaEtiqueta> = {
 
   'PROSPECCAO': 'andamento',
   '2A TENTATIVA': 'andamento',
+  '3A TENTATIVA': 'andamento',
+  '4A TENTATIVA': 'andamento',
   'NOVO LEAD': 'andamento',
   'FOLLOW UP': 'andamento',
   'LEAD QUENTE': 'andamento',
@@ -298,6 +314,8 @@ const ENCERRAMENTO_EXATO = new Set([
 
 export function ehEncerramento(preview: string | null): boolean {
   if (!preview) return false
+  // Uma pergunta explícita prevalece sobre "obrigado" ou "vou analisar".
+  if (/[?？❓❔]/u.test(preview)) return false
   const t = preview
     .toLowerCase()
     .normalize('NFKD')
@@ -305,7 +323,10 @@ export function ehEncerramento(preview: string | null): boolean {
     .replace(/[^a-z0-9\s]/g, ' ') // remove emoji/pontuação
     .replace(/\s+/g, ' ')
     .trim()
-  if (!t) return true // era só emoji/pontuação (👍🙏) → encerramento
+  if (!t) {
+    const emojis = preview.replace(/[\s\uFE0F\u{1F3FB}-\u{1F3FF}]/gu, '')
+    return /^(?:👍|👌|🙏|🤝|👏|✅|❤|😊|🙂|🙌)+$/u.test(emojis)
+  }
   if (ENCERRAMENTO_EXATO.has(t)) return true
   // despedida/agradecimento em qualquer posição (prefixo — pega obrigado/obrigada/abraço…)
   if (/\b(tchau|obrigad|agradec|valeu|vlw|abrac|falou|flw|ate mais|ate logo|ate breve|grat[oa])/.test(t)) return true
@@ -370,6 +391,12 @@ export function nomeContato(contactName: string | null, phone: string): string {
   return n
 }
 
+/** Só interpreta como telefone uma busca composta de dígitos e pontuação telefônica. */
+export function digitosDaBusca(consulta: string): string {
+  const t = consulta.trim()
+  return t && /^[+()\d\s.-]+$/.test(t) ? t.replace(/\D/g, '') : ''
+}
+
 export type Ordenacao = 'aguardando' | 'recente' | 'parado'
 
 export const ORDENACAO_LABEL: Record<Ordenacao, string> = {
@@ -429,6 +456,9 @@ export const idCanonicoMsg = (msgId: string): string => {
 // Miniatura base64 que o WhatsApp Web põe em `body` de mídia sem legenda.
 // Sem legenda, esse blob virava um paredão de texto dentro da bolha.
 const SO_BASE64 = /^[A-Za-z0-9+/]{120,}={0,2}$/
+// O preview da lista corta o thumbnail antes de 120 caracteres; reconhecer a
+// assinatura evita que o trecho /9j/... apareça como mensagem no card.
+const PREVIEW_BASE64_MIDIA = /^(?:\/9j\/|iVBORw0KGgo|UklGR|R0lGOD)[A-Za-z0-9+/=]{40,}$/
 
 /**
  * Texto realmente exibível de uma mensagem. Devolve null quando o corpo é só
@@ -438,7 +468,7 @@ const SO_BASE64 = /^[A-Za-z0-9+/]{120,}={0,2}$/
 export function corpoVisivel(body: string | null | undefined): string | null {
   const t = (body || '').trim()
   if (!t) return null
-  if (SO_BASE64.test(t)) return null
+  if (SO_BASE64.test(t) || PREVIEW_BASE64_MIDIA.test(t)) return null
   return t
 }
 
@@ -555,12 +585,8 @@ export const STATUS_POR_ETIQUETA: Record<string, 'ABERTO' | 'FECHADO'> = {
 /**
  * `null` = essa etiqueta não decide nada sobre aberto/fechado.
  *
- * ⚠️ Normaliza com `upper` + `trim` ANTES de olhar os aliases, porque é isso que
- * o `wa_etiqueta_canonica` do banco faz (`case upper(btrim(p))`). O `canonico()`
- * daqui só apara espaço — quem chama ele já recebe o texto em caixa alta da RPC.
- * Não dá pra confiar nisso aqui: a própria tela lista "3a tentativa" e "4a
- * tentativa" em minúsculas. Sem o `upper`, o banco marcaria ABERTO e a tela
- * diria "não decide" — a divergência exata que este espelho existe pra evitar.
+ * Usa a mesma normalização de caixa, acentos e tentativas do banco, inclusive
+ * para etiquetas digitadas no CRM como "3a tentativa" e "Não tem interesse".
  */
 export function statusDaEtiqueta(nome: string | null | undefined): 'ABERTO' | 'FECHADO' | null {
   return STATUS_POR_ETIQUETA[nomeParaStatus(nome)] ?? null
@@ -578,8 +604,7 @@ const semAcento = (s: string): string => s.normalize('NFD').replace(/[\u0300-\u0
  * interesse") e sem isto nao decidia nada.
  */
 function nomeParaStatus(nome: string | null | undefined): string {
-  const bruto = semAcento(nome ?? '').trim().toUpperCase()
-  return ALIASES[bruto] ?? bruto
+  return canonico(semAcento(nome ?? ''))
 }
 
 export interface EtiquetaBruta {

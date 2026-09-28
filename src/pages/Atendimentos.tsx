@@ -115,7 +115,21 @@ function humanizeMotivo(raw: string | null | undefined): string | null {
   const s = String(raw).toLowerCase().trim()
   if (s === 'fabrica_racao' || s === 'fábrica_ração') return 'Montar uma Fábrica'
   if (s === 'equipamento') return 'Só um equipamento'
+  // (28/09) a IA/webhook às vezes manda o valor cru "outro"/"outros" (ex.: …1464)
+  if (s === 'outro' || s === 'outros') return 'Outros assuntos'
   return raw
+}
+
+// (28/09) texto "null"/"undefined" que o webhook grava não é dado — nem declarado, nem vazio
+function textoLixo(v: unknown): boolean {
+  return v == null || /^\s*(null|undefined|nan|none)?\s*$/i.test(String(v))
+}
+
+// (28/09) 1º nome em CAIXA ALTA e sem acento, pra casar "Edilson Jr" com a conta "EDILSON JR"
+// e "Alvaro Torres" com "ALVARO". Antes comparava o 1º nome de um lado com o nome INTEIRO do
+// outro, e as etiquetas do EDILSON JR sumiam da coluna.
+function primeiroNomeUp(s: string | null | undefined): string {
+  return String(s || '').trim().split(/\s+/)[0].normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
 }
 
 function humanizeTipoRacao(raw: string | null | undefined): string | null {
@@ -484,7 +498,17 @@ export function Atendimentos() {
   // 2. wa_chat_labels.vendedor (lead esta no WhatsApp de um vendedor com etiqueta)
   // Returns { name, source } ou null. 'source=wa' indica origem WhatsApp
   // (vendedor ja esta atendendo no Zap mas ninguem clicou "Pegar pra mim" no CRM)
-  function vendedorEfetivo(r: typeof rows[number]): { name: string; source: 'crm' | 'wa' } | null {
+  // 3. (28/09) repasse da ANA: enquanto a linha ainda diz "ANA" (IA), quem recebeu o lead é o
+  //    vendedor do disparo (dispatch_vendedor_nome, que a view já traz de outbound_dispatch).
+  //    SÓ quando o disparo É o repasse da ANA (dispatch_origem = 'WhatsApp ANA'): o LATERAL da view
+  //    pega o último 'sent' de QUALQUER origem, e um disparo antigo da Reply não é repasse.
+  //    O banco passa a transferir o dono sozinho (trigger trg_outbound_ana_repasse_responsavel);
+  //    isto cobre as linhas antigas e o intervalo até o disparo virar 'sent'.
+  function vendedorEfetivo(r: typeof rows[number]): { name: string; source: 'crm' | 'wa' | 'repasse' } | null {
+    if (r.responsavel && primeiroNomeUp(r.responsavel) === 'ANA' && r.dispatch_origem === 'WhatsApp ANA'
+        && r.dispatch_vendedor_nome?.trim()) {
+      return { name: r.dispatch_vendedor_nome.trim(), source: 'repasse' }
+    }
     if (r.responsavel && r.responsavel.trim()) return { name: r.responsavel, source: 'crm' }
     const labels = lookupWaLabels(waLabelsMap, r.telefone)
     const vendedorFromWa = labels.find(l => l.vendedor)?.vendedor
@@ -1180,7 +1204,7 @@ export function Atendimentos() {
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
                             const a = lookupAnuncio(anuncioMap, r.telefone)
-                            if (!a) return <EmptyCell />
+                            if (!a || !(a.anuncio || a.titulo || a.ad_id)) return <EmptyCell />
                             const nome = a.anuncio || a.titulo || a.ad_id
                             const detalhe = [a.campanha, a.conjunto].filter(Boolean).join(' · ')
                             return (
@@ -1247,9 +1271,13 @@ export function Atendimentos() {
                             consumo_proprio / revenda / misto. Substitui a coluna antiga "Tipo de Ração". */}
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
-                            const declarada = r.finalidade_fabrica || lookupDadosIa(dadosIaMap, r.telefone)?.finalidade
-                            // Webhook às vezes grava a string "null"/"Null" — não é finalidade.
-                            const valeu = declarada && !/^(null|undefined|nan)$/i.test(String(declarada).trim())
+                            // Webhook às vezes grava a string "null"/"Null" — não é finalidade. (28/09) O teste
+                            // tem que vir ANTES do fallback: com `"null" || ia`, o "null" (truthy) tapava o que a
+                            // IA coletou e a tela caía no palpite "?" (casos 2107 e 9909).
+                            const declarada = !textoLixo(r.finalidade_fabrica)
+                              ? r.finalidade_fabrica
+                              : lookupDadosIa(dadosIaMap, r.telefone)?.finalidade
+                            const valeu = !textoLixo(declarada)
                             // 3º fallback: deduzido do que o CLIENTE escreveu no Zap. Só entra quando
                             // ninguém declarou — o dado declarado sempre ganha do deduzido.
                             const inferida = valeu ? null : lookupFinalidadeInferida(finalidadeInferidaMap, r.telefone)
@@ -1358,7 +1386,7 @@ export function Atendimentos() {
                                 <div className="min-w-0">
                                   <span
                                     className="text-[12px] text-ink-muted truncate block max-w-[70px] capitalize"
-                                    title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : ''}`}
+                                    title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : v.source === 'repasse' ? ' (recebeu o lead da ANA)' : ''}`}
                                   >
                                     {firstName.toLowerCase()}
                                   </span>
@@ -1391,6 +1419,16 @@ export function Atendimentos() {
                               <Hand className="h-2.5 w-2.5" />
                               {formatDateTimeShort(r.tocou_botao_em)}
                             </span>
+                          ) : r.foi_dispatched && r.dispatch_em ? (
+                            // (28/09) Lead que não passa pelo botão (repasse da ANA, disparo direto): o
+                            // equivalente é a hora em que o vendedor chamou o cliente. Cinza = não é toque.
+                            <span
+                              className="inline-flex max-w-full items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[10px] leading-tight bg-surface-2 text-ink-faint"
+                              title={`Não tocou no botão — o vendedor${r.dispatch_vendedor_nome ? ` ${r.dispatch_vendedor_nome}` : ''} chamou o cliente em ${formatDateTimeShort(r.dispatch_em)} (${r.dispatch_origem === 'WhatsApp ANA' ? 'repasse da ANA' : 'disparo'})`}
+                            >
+                              <Send className="h-2.5 w-2.5" />
+                              {formatDateTimeShort(r.dispatch_em)}
+                            </span>
                           ) : <EmptyCell />}
                         </td>
                         {/* MENSAGEM — o que o cliente manda pro vendedor ao tocar no botão.
@@ -1398,8 +1436,21 @@ export function Atendimentos() {
                         <td className="hidden xl:table-cell px-1.5 py-2.5">
                           {(() => {
                             const m = msgMap?.[r.id]
-                            if (!m || !m.texto) return <EmptyCell />
                             const tocou = !!r.tocou_botao_em
+                            // (28/09) Lead sem botão (repasse da ANA, disparo direto): a prévia do botão nunca
+                            // vai ser enviada. Mostra a 1ª mensagem que o vendedor mandou (outbound_dispatch).
+                            if (!tocou && !m?.enviada && r.dispatch_mensagem?.trim()) {
+                              return (
+                                <span
+                                  className="text-[11px] leading-tight line-clamp-2 block w-full text-ink-muted"
+                                  title={`1ª mensagem do vendedor${r.dispatch_vendedor_nome ? ` ${r.dispatch_vendedor_nome}` : ''} (${r.dispatch_origem === 'WhatsApp ANA' ? 'repasse da ANA' : 'disparo'}) — este lead não passou pelo botão\n\n${r.dispatch_mensagem}`}
+                                >
+                                  <Send className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5" />
+                                  {r.dispatch_mensagem}
+                                </span>
+                              )
+                            }
+                            if (!m || !m.texto) return <EmptyCell />
                             const rotulo = m.enviada
                               ? 'ENVIADA pelo cliente'
                               : tocou
@@ -1444,11 +1495,11 @@ export function Atendimentos() {
                             const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
                             if (allLabels.length === 0) return <EmptyCell />
                             const v = vendedorEfetivo(r)
-                            const respFirstUp = v ? v.name.trim().split(/\s+/)[0]?.toUpperCase() : null
+                            const respFirstUp = v ? primeiroNomeUp(v.name) : null
                             // Se há vendedor responsável, filtra só as etiquetas dele.
                             // Se não há (lead "Pra Pegar"), mostra todas (comportamento antigo).
                             const labels = respFirstUp
-                              ? allLabels.filter(l => l.vendedor?.toUpperCase() === respFirstUp)
+                              ? allLabels.filter(l => primeiroNomeUp(l.vendedor) === respFirstUp)
                               : allLabels
                             if (labels.length === 0) return <EmptyCell />
                             return (
@@ -1485,9 +1536,9 @@ export function Atendimentos() {
                             // startsWith('ORCAMENTO') pega "ORCAMENTO"/"ORCAMENTO ENVIADO" e IGNORA "FORA DO ORCAMENTO".
                             const allLabels = lookupWaLabels(waLabelsMap, r.telefone)
                             const vEf = vendedorEfetivo(r)
-                            const respUp = vEf ? vEf.name.trim().split(/\s+/)[0]?.toUpperCase() : null
+                            const respUp = vEf ? primeiroNomeUp(vEf.name) : null
                             const labelsResp = respUp
-                              ? allLabels.filter(l => l.vendedor?.toUpperCase() === respUp)
+                              ? allLabels.filter(l => primeiroNomeUp(l.vendedor) === respUp)
                               : allLabels
                             const temEtiquetaOrc = labelsResp.some(l =>
                               l.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim().startsWith('ORCAMENTO')

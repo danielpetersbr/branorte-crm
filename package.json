@@ -12,7 +12,7 @@
     "import": "npx tsx scripts/import-contacts.ts"
   },
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

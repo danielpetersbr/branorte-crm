@@ -453,7 +453,16 @@ function AppRoutes() {
      * que o Funil de Vendas ja usa —, entao ali quem recorta e a propria tela.
      */
     const areaVendedorOk = p.startsWith('/area-vendedor') && can('menu.area_vendedor')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    /*
+     * Funil de Vendas: só o /funil (o kanban do WhatsApp) — /funil/manual e
+     * /funil/relatorio continuam fechados. A tela abre no quadro DELE e deixa
+     * trocar só pro da ANA (FunilWhatsApp.tsx decide pelo papel).
+     *
+     * ⚠️ O recorte é da TELA, não do banco: wa_chat_labels é legível por qualquer
+     * autenticado (mesma fonte da Área do Vendedor).
+     */
+    const funilOk = p === '/funil' && can('menu.funil')
+    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
