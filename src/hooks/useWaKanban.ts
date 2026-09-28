@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { canonico, ordemDe, corDaEtiqueta, ETIQUETAS_OCULTAS, montarConversa } from '@/lib/wa-funil'
 import { foraDoRanking, NOMES_FORA_DO_RANKING } from '@/lib/vendedores-fora-do-ranking'
+import { todasAsLinhas } from '@/lib/rpc-paginado'
 import { useAuth } from './useAuth'
 
 // Kanban de etiquetas WhatsApp — espelho do que o vendedor vê no Wascript.
@@ -64,31 +65,41 @@ export function useWaKanban(vendedor: string | null) {
     queryKey: ['wa-kanban', vendedor, userId],
     enabled: !!vendedor && !!userId,
     refetchInterval: 30_000, // mesma cadência da extensão
-    queryFn: async () => {
-      let etiqQuery = supabase
-        .from('wascript_etiquetas')
-        .select('vendedor_nome, etiqueta_id_wascript, etiqueta_nome, etiqueta_nome_normalizado, synced_at')
-      let chatsQuery = supabase
-        .from('wa_chat_labels')
-        .select('vendedor_nome, phone, chat_id, contact_name, label_ids, last_message_at, last_message_from_me, last_message_preview, foto_url, updated_at')
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .limit(todos ? 12000 : 4000)
-      if (todos) {
-        // consolidado da equipe — exclui o dono
-        // Mesma lista do filtro em JS — ver vendedores-fora-do-ranking.ts.
-        const fora = `(${NOMES_FORA_DO_RANKING.join(',')})`
-        etiqQuery = etiqQuery.not('vendedor_nome', 'in', fora)
-        chatsQuery = chatsQuery.not('vendedor_nome', 'in', fora)
-      } else {
-        etiqQuery = etiqQuery.eq('vendedor_nome', vendedor!)
-        chatsQuery = chatsQuery.eq('vendedor_nome', vendedor!)
-      }
-      const [etiquetasRes, chatsRes] = await Promise.all([etiqQuery, chatsQuery])
-      if (etiquetasRes.error) throw etiquetasRes.error
-      if (chatsRes.error) throw chatsRes.error
+    queryFn: async ({ signal }) => {
+      const fora = `(${NOMES_FORA_DO_RANKING.join(',')})`
+      const [etiquetas, linhasChats] = await Promise.all([
+        todasAsLinhas(async (de, ate) => {
+          let q = supabase
+            .from('wascript_etiquetas')
+            .select('vendedor_nome, etiqueta_id_wascript, etiqueta_nome, etiqueta_nome_normalizado, synced_at', { count: 'exact' })
+            .order('id')
+            .range(de, ate)
+            .abortSignal(signal)
+          q = todos ? q.not('vendedor_nome', 'in', fora) : q.eq('vendedor_nome', vendedor!)
+          const { data, error, count } = await q
+          if (error) throw error
+          return { linhas: data ?? [], total: count }
+        }),
+        todasAsLinhas(async (de, ate) => {
+          // Paginar pela chave única evita que uma mensagem nova mude a posição
+          // do chat entre páginas. O teto do PostgREST independe do .limit().
+          let q = supabase
+            .from('wa_chat_labels')
+            .select('vendedor_nome, phone, chat_id, contact_name, label_ids, last_message_at, last_message_from_me, last_message_preview, foto_url, updated_at', { count: 'exact' })
+            .order('vendedor_nome')
+            .order('phone')
+            .range(de, ate)
+            .abortSignal(signal)
+          q = todos ? q.not('vendedor_nome', 'in', fora) : q.eq('vendedor_nome', vendedor!)
+          const { data, error, count } = await q
+          if (error) throw error
+          return { linhas: data ?? [], total: count }
+        }),
+      ])
 
-      const etiquetas = etiquetasRes.data ?? []
-      const chats = (chatsRes.data ?? []) as (WaChat & { updated_at?: string; vendedor_nome?: string })[]
+      const chats = linhasChats as (WaChat & { updated_at?: string; vendedor_nome?: string })[]
+      // A ordem de leitura é estável; a de exibição continua da mensagem mais recente.
+      chats.sort((a, b) => (b.last_message_at ?? '').localeCompare(a.last_message_at ?? ''))
       // expõe o vendedor de cada chat (badge no modo Todos)
       for (const c of chats) c.vendedor = c.vendedor_nome
 
@@ -130,8 +141,11 @@ export function useWaKanban(vendedor: string | null) {
 
       const colunas = [...porNome.values()].sort((a, b) => ordemDe(a.nome) - ordemDe(b.nome) || a.nome.localeCompare(b.nome))
 
-      const ultimaSync = etiquetas.reduce<string | null>(
+      const syncEtiquetas = etiquetas.reduce<string | null>(
         (max, e) => (e.synced_at && (!max || e.synced_at > max) ? e.synced_at : max), null
+      )
+      const ultimaSync = chats.reduce<string | null>(
+        (max, c) => (c.updated_at && (!max || c.updated_at > max) ? c.updated_at : max), syncEtiquetas
       )
 
       return { colunas, semEtiqueta, totalChats: chats.length, ultimaSync }
@@ -187,20 +201,25 @@ export function useWaMensagens(
     refetchInterval: 30_000,
     // mantém a página anterior visível durante o refetch/expansão (não pisca vazio)
     placeholderData: (prev, query) => query?.queryKey[1] === vendedor && query?.queryKey[2] === chatId && query?.queryKey[4] === userId ? prev : undefined,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('wa_chat_messages')
-        .select('msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg, transcricao, transcricao_em')
-        .eq('vendedor_nome', vendedor!)
-        .eq('chat_id', chatId!)
-        .order('data_msg', { ascending: false, nullsFirst: false })
-        // desempate determinístico: sem ele, mensagens do mesmo segundo entram e
-        // saem da janela a cada refetch de 30s e a conversa "embaralha" na tela
-        .order('msg_id', { ascending: false })
-        .limit(limite + 1) // +1 sonda se existe página anterior
-      if (error) throw error
+    queryFn: async ({ signal }) => {
+      // Busca só a janela pedida e mais uma sonda, mesmo quando ela ultrapassa
+      // max_rows. Uma resposta truncada não significa fim do histórico.
+      const data = await todasAsLinhas<WaMensagem>(async (de, ate) => {
+        const { data, error, count } = await supabase
+          .from('wa_chat_messages')
+          .select('msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg, transcricao, transcricao_em', { count: 'exact' })
+          .eq('vendedor_nome', vendedor!)
+          .eq('chat_id', chatId!)
+          .order('data_msg', { ascending: false, nullsFirst: false })
+          // desempate determinístico para mensagens do mesmo segundo
+          .order('msg_id', { ascending: false })
+          .range(de, Math.min(ate, limite))
+          .abortSignal(signal)
+        if (error) throw error
+        return { linhas: data ?? [], total: count == null ? null : Math.min(count, limite + 1) }
+      }, Math.min(5000, limite + 1))
       // dedup + janela + ordem cronológica ficam numa função pura (testável em wa-funil.ts)
-      return montarConversa<WaMensagem>(data ?? [], limite)
+      return montarConversa<WaMensagem>(data, limite)
     },
   })
 }
@@ -227,21 +246,26 @@ export function useWaAgendadas(vendedor: string | null) {
     queryKey: ['wa-agendadas', vendedor, userId],
     enabled: !!vendedor && !!userId,
     refetchInterval: 60_000,
-    queryFn: async () => {
-      let q = supabase
-        .from('wa_scheduled_messages')
-        .select('id, vendedor_nome, chat_id, contato_numero, body, scheduled_at, media_type')
-        .eq('status', 'pending')
-        .eq('to_self', false)
-        .order('scheduled_at', { ascending: true })
-        .limit(500)
-      if (!todos) q = q.eq('vendedor_nome', vendedor!)
-      const { data, error } = await q
-      if (error) throw error
+    queryFn: async ({ signal }) => {
+      const data = await todasAsLinhas<WaAgendada>(async (de, ate) => {
+        let q = supabase
+          .from('wa_scheduled_messages')
+          .select('id, vendedor_nome, chat_id, contato_numero, body, scheduled_at, media_type', { count: 'exact' })
+          .eq('status', 'pending')
+          .eq('to_self', false)
+          .order('id')
+          .range(de, ate)
+          .abortSignal(signal)
+        if (!todos) q = q.eq('vendedor_nome', vendedor!)
+        const { data, error, count } = await q
+        if (error) throw error
+        return { linhas: data ?? [], total: count }
+      })
+      data.sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at) || a.id.localeCompare(b.id))
       const porChat = new Map<string, WaAgendada>()
       const porFone = new Map<string, WaAgendada>()
-      for (const a of (data ?? []) as WaAgendada[]) {
-        // primeira do map = mais próxima de disparar (query já vem ordenada)
+      for (const a of data) {
+        // primeira do map = mais próxima de disparar (lista já vem ordenada)
         if (a.chat_id && !porChat.has(`${a.vendedor_nome}::${a.chat_id}`)) {
           porChat.set(`${a.vendedor_nome}::${a.chat_id}`, a)
         }

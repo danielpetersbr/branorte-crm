@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
 import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
 import {
-  MessageCircle, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
-  MapPin, Contact2, Ban, PhoneCall, Zap, ArrowDownLeft, Trophy, Hourglass,
+  Copy, Check, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
+  MapPin, Contact2, Ban, PhoneCall,
+  Search, SlidersHorizontal, Columns3, BarChart3, ListFilter, Users,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -15,12 +18,13 @@ import { useOrcamentosPorTelefone, lookupOrcamento, foneCanon } from '@/hooks/us
 import {
   tempoRelativo, temperaturaDe, TEMP_META, resumoColuna, corDaEtiqueta,
   formatarTelefone, nomeContato, ordenarChats, ORDENACAO_LABEL,
-  precisaResposta, corpoVisivel, idCanonicoMsg,
-  type Ordenacao, type Temperatura,
+  corpoVisivel, idCanonicoMsg, digitosDaBusca, FUNIL_ATIVO, canonico,
+  type Temperatura,
 } from '@/lib/wa-funil'
 import { estiloEtiqueta } from '@/hooks/useCrmEtiquetas'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import './FunilWhatsApp.css'
 
 // Kanban WhatsApp — espelho fiel do quadro de etiquetas que cada vendedor
 // vê no Wascript, sincronizado pela extensão Branorte WA Sync (30s).
@@ -28,12 +32,6 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 // última mensagem; painel lateral com detalhes + histórico.
 
 const LIMITE_INICIAL = 30
-
-// Preset "Funil ativo": etapas de venda em andamento (esconde fechamento/sem etiqueta)
-const FUNIL_ATIVO = new Set([
-  'PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD', 'FOLLOW UP',
-  'LEAD QUENTE', 'ORCAMENTO ENVIADO', 'INTERESSE FUTURO',
-])
 
 // Colunas de negociação: mostram o valor do orçamento no card + total no topo
 // (cruzado por telefone via orcamentos_gerados / RPC orcamentos_por_telefone_canon).
@@ -45,6 +43,15 @@ const COLUNAS_COM_VALOR = new Set(['FOLLOW UP', 'LEAD QUENTE', 'ORCAMENTO ENVIAD
 // CRM já é agnóstica ao estágio — filtra só por vendedor+chat_id; a captura na
 // extensão é que define quais chats têm msgs sincronizadas).
 const COLUNAS_COM_CONVERSA = new Set(['PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE'])
+
+const NOMES_ETAPAS: Record<string, string> = {
+  PROSPECCAO: 'Prospecção', '2A TENTATIVA': '2ª tentativa', '3A TENTATIVA': '3ª tentativa', '4A TENTATIVA': '4ª tentativa',
+  'NOVO LEAD': 'Novo lead', 'FOLLOW UP': 'Follow-up', 'LEAD QUENTE': 'Lead quente',
+  'ORCAMENTO ENVIADO': 'Orçamento enviado', 'INTERESSE FUTURO': 'Interesse futuro',
+  'SEM ETIQUETA': 'Sem etiqueta',
+}
+const nomeEtapa = (nome: string) => NOMES_ETAPAS[nome] ?? nome.charAt(0) + nome.slice(1).toLocaleLowerCase('pt-BR')
+const nomeVendedor = (nome: string) => nome.toLocaleLowerCase('pt-BR').replace(/(^|\s)\S/g, letra => letra.toLocaleUpperCase('pt-BR'))
 
 const brl = (v: number) => 'R$ ' + v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
 
@@ -69,27 +76,38 @@ const fmtDuracao = (seg: number | null) => {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-function BotaoWhats({ phone }: { phone: string }) {
-  return (
-    <a
-      href={`https://wa.me/${phone.replace(/\D/g, '')}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={e => e.stopPropagation()}
-      title="Abrir conversa no WhatsApp"
-      className="shrink-0 h-7 w-7 rounded-full bg-accent-bg text-accent border border-accent/30 inline-flex items-center justify-center hover:brightness-110"
-    >
-      <MessageCircle className="h-3.5 w-3.5" />
-    </a>
-  )
-}
+function BotaoCopiarNumero({ phone, completo = false }: { phone: string; completo?: boolean }) {
+  const [copiado, setCopiado] = useState(false)
+  const numero = phone.replace(/\D/g, '')
+  useEffect(() => {
+    if (!copiado) return
+    const timer = window.setTimeout(() => setCopiado(false), 1800)
+    return () => window.clearTimeout(timer)
+  }, [copiado])
 
-// Cifrão inline — render consistente cross-plataforma (evita o emoji 💰 variar por SO)
-function IconCifrao({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 1.5v21M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
+    <button
+      type="button"
+      disabled={!numero}
+      onClick={async e => {
+        e.stopPropagation()
+        try {
+          await navigator.clipboard.writeText(numero)
+          setCopiado(true)
+          toast.success('Número copiado')
+        } catch {
+          toast.error('Não foi possível copiar. Selecione o número e copie manualmente.')
+        }
+      }}
+      title={copiado ? 'Número copiado' : 'Copiar número'}
+      aria-label={copiado ? 'Número copiado' : 'Copiar número'}
+      className={completo
+        ? 'flex w-full items-center justify-center gap-2 rounded-lg border border-accent/30 bg-accent-bg py-2.5 text-[13px] font-semibold text-accent transition hover:brightness-110'
+        : 'funil-copy-phone'}
+    >
+      {copiado ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+      {completo && <span>{copiado ? 'Número copiado' : 'Copiar número'}</span>}
+    </button>
   )
 }
 
@@ -98,14 +116,13 @@ function ChatCard({
 }: { chat: WaChat; onClick: () => void; mostrarVendedor?: boolean; compacto?: boolean; valorOrcamento?: number | null; agendada?: WaAgendada | null }) {
   const temp = temperaturaDe(chat.last_message_at)
   const meta = TEMP_META[temp]
-  const fresco = temp === 'fresco'
   const parado = temp === 'parado'
   const dias = diasDesde(chat.last_message_at)
-  const pendente = precisaResposta(chat)
-  const encerrou = chat.last_message_from_me === false && !pendente
   const nome = nomeContato(chat.contact_name, chat.phone)
   const tel = formatarTelefone(chat.phone)
   const temValor = valorOrcamento != null && valorOrcamento > 0
+
+  const preview = corpoVisivel(chat.last_message_preview)
 
   return (
     <div
@@ -113,131 +130,42 @@ function ChatCard({
       tabIndex={0}
       onClick={onClick}
       onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onClick()
-        }
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() }
       }}
-      title={pendente ? 'Cliente aguardando resposta' : undefined}
-      className={[
-        'group relative w-full cursor-pointer select-none overflow-hidden text-left',
-        'rounded-xl border border-border',
-        'bg-gradient-to-b from-surface-2 to-surface',
-        'pl-3.5 pr-3 transition-[border-color,box-shadow,transform] duration-150 ease-out',
-        'hover:-translate-y-px hover:border-border-strong hover:shadow-[0_4px_14px_-4px_rgba(0,0,0,0.5)]',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent)/0.5)]',
-        compacto ? 'py-2' : 'py-2.5',
-      ].join(' ')}
-      style={{
-        borderColor: pendente ? 'hsl(var(--warning) / 0.55)' : undefined,
-        boxShadow: pendente ? '0 0 0 1px hsl(var(--warning) / 0.4)' : undefined,
-      }}
+      className={`funil-card ${compacto ? 'funil-card--compact' : ''}`}
     >
-      {/* tint âmbar levíssimo quando o cliente está aguardando resposta */}
-      {pendente && (
-        <span aria-hidden className="pointer-events-none absolute inset-0 rounded-xl bg-[hsl(var(--warning)/0.06)]" />
+      <div className="funil-card-identity">
+        <Avatar name={nome} src={chat.foto_url ?? undefined} size="lg" />
+        <div className="min-w-0 flex-1">
+          <div className="funil-card-name" title={nome}>{nome}</div>
+          <div className="funil-card-phone">{tel}</div>
+        </div>
+        <BotaoCopiarNumero phone={chat.phone} />
+      </div>
+
+      {temValor && (
+        <div className="funil-card-value" title="Valor bruto do último orçamento gerado para este telefone, antes dos descontos">
+          <span>Orçamento</span><strong>{brl(valorOrcamento as number)}</strong>
+        </div>
+      )}
+      {!compacto && preview && (
+        <p className="funil-card-preview">
+          {chat.last_message_from_me && <span>Você: </span>}{preview}
+        </p>
       )}
 
-      {/* trilho de temperatura — hairline vertical à esquerda */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-y-2.5 left-0 w-[3px] rounded-full"
-        style={{ backgroundColor: meta.cor, opacity: pendente ? 1 : 0.55 }}
-      />
-
-      <div className="relative">
-        {/* topo: avatar (photo-ready) + identidade */}
-        <div className="flex items-start gap-2.5">
-          <Avatar name={nome} src={chat.foto_url ?? undefined} size="sm" pulse={fresco} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-[13px] font-medium leading-tight text-ink">{nome}</span>
-              <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">{tempoRelativo(chat.last_message_at)}</span>
-            </div>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="truncate font-mono text-[11px] tracking-tight text-ink-faint">{tel}</span>
-              {mostrarVendedor && chat.vendedor && (
-                <span className="shrink-0 rounded px-1 text-[10px] font-medium text-accent ring-1 ring-inset ring-[hsl(var(--accent)/0.25)]">
-                  {chat.vendedor}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* VALOR da negociação — a estrela: campo verde da marca, número tabular forte */}
-        {temValor && (
-          <div
-            className={[
-              compacto ? 'mt-2' : 'mt-2.5',
-              'flex items-center justify-between gap-2 rounded-lg bg-accent-bg',
-              'px-2.5 ring-1 ring-inset ring-[hsl(var(--success)/0.22)]',
-              compacto ? 'py-1' : 'py-1.5',
-            ].join(' ')}
-            title="Valor do último orçamento gerado pra este telefone"
-          >
-            {!compacto && (
-              <span className="inline-flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--success)/0.8)]">
-                <IconCifrao className="h-3 w-3 text-success" />
-                Negociação
-              </span>
-            )}
-            <span className="ml-auto flex items-baseline gap-0.5 text-success">
-              <span className="text-[10px] font-semibold text-[hsl(var(--success)/0.6)]">R$</span>
-              <span className="whitespace-nowrap text-[17px] font-bold tabular-nums tracking-tight">
-                {brl(valorOrcamento as number).replace(/^R\$\s?/, '')}
-              </span>
-            </span>
-          </div>
-        )}
-
-        {/* preview — escondido no modo compacto */}
-        {!compacto && chat.last_message_preview && (
-          <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-ink-muted">
-            {chat.last_message_from_me && <span className="text-ink-faint">Você: </span>}
-            {chat.last_message_preview}
-          </p>
-        )}
-
-        {/* rodapé: temperatura + status + whatsapp */}
-        <div className={`${compacto ? 'mt-2' : 'mt-2.5'} flex items-center gap-2`}>
-          <span
-            className="inline-flex items-center gap-1.5 text-[10px] font-medium"
-            style={{ color: parado ? meta.cor : undefined }}
-            title={meta.label}
-          >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.cor }} />
-            <span className={parado ? 'font-semibold' : 'text-ink-faint'}>
-              {parado && dias != null ? `parado há ${dias}d` : meta.label}
-            </span>
-          </span>
-
-          {pendente ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--warning)/0.12)] px-1.5 py-0.5 text-[10px] font-semibold text-warning ring-1 ring-inset ring-[hsl(var(--warning)/0.35)]">
-              <MessageCircle className="h-3 w-3 animate-pulse" /> aguardando
-            </span>
-          ) : encerrou ? (
-            <span className="text-[10px] text-ink-faint">encerrou</span>
-          ) : chat.last_message_from_me ? (
-            <span className="text-[10px] text-ink-faint">você respondeu</span>
-          ) : null}
-
-          {/* mensagem agendada na extensão ainda pendente de envio */}
-          {agendada && (
-            <span
-              title={`Mensagem agendada pra ${fmtDataHora(agendada.scheduled_at)}${agendada.body ? `:\n"${agendada.body.slice(0, 180)}"` : ''}`}
-              className="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--accent)/0.10)] px-1.5 py-0.5 text-[10px] font-semibold text-accent ring-1 ring-inset ring-[hsl(var(--accent)/0.3)]"
-            >
-              <Clock className="h-3 w-3" /> {fmtDataHora(agendada.scheduled_at)}
-            </span>
-          )}
-
-          {/* stopPropagation: clicar no WhatsApp não abre o drawer do card */}
-          <span className="ml-auto" onClick={e => e.stopPropagation()}>
-            <BotaoWhats phone={chat.phone} />
-          </span>
-        </div>
+      <div className="funil-card-meta">
+        {mostrarVendedor && chat.vendedor && <span className="funil-card-owner">{nomeVendedor(chat.vendedor)}</span>}
+        <span className={parado ? 'funil-card-age funil-card-age--stale' : 'funil-card-age'} title={meta.label}>
+          <Clock size={12} aria-hidden />{parado && dias != null ? `Parado há ${dias}d` : tempoRelativo(chat.last_message_at)}
+        </span>
       </div>
+      {agendada && (
+        <div className="funil-scheduled" title={`Mensagem agendada para ${fmtDataHora(agendada.scheduled_at)}${agendada.body ? `: ${agendada.body.slice(0, 180)}` : ''}`}>
+          <Clock size={13} aria-hidden />Agendado para {fmtDataHora(agendada.scheduled_at)}
+        </div>
+      )}
     </div>
   )
 }
@@ -246,30 +174,20 @@ function ResumoTemperatura({
   chats, filtroTemp, onToggleTemp,
 }: { chats: WaChat[]; filtroTemp: Temperatura | null; onToggleTemp: (t: Temperatura) => void }) {
   const r = resumoColuna(chats)
-  const itens = ([
-    { cor: TEMP_META.fresco.cor, n: r.fresco, t: 'fresco', label: 'Hoje' },
-    { cor: TEMP_META.recente.cor, n: r.recente, t: 'recente', label: 'Recente' },
-    { cor: TEMP_META.morno.cor, n: r.morno, t: 'morno', label: 'Morno' },
-    { cor: TEMP_META.parado.cor, n: r.parado, t: 'parado', label: 'Parado' },
-  ] as { cor: string; n: number; t: Temperatura; label: string }[]).filter(i => i.n > 0)
-  if (r.aguardando === 0 && itens.length === 0) return null
+  const itens: { n: number; t: Temperatura; label: string; title: string }[] = [
+    { n: r.fresco, t: 'fresco', label: 'Hoje', title: 'Hoje' },
+    { n: r.recente, t: 'recente', label: '1–3d', title: 'Recentes, de 1 a 3 dias' },
+    { n: r.morno, t: 'morno', label: '3–7d', title: 'De 3 a 7 dias' },
+    { n: r.parado, t: 'parado', label: '+7d', title: 'Parados há mais de 7 dias' },
+  ]
   return (
-    <div className="flex items-center gap-2 px-3 pb-2 text-[11px] tabular-nums flex-wrap">
-      {r.aguardando > 0 && (
-        <span className="inline-flex items-center gap-0.5 text-warning font-semibold" title="Cliente aguardando resposta"><ArrowDownLeft className="h-3 w-3" /> {r.aguardando}</span>
-      )}
+    <div className="funil-temperature" aria-label="Filtrar por tempo desde a última mensagem">
       {itens.map(i => (
-        <button
-          key={i.t}
-          onClick={() => onToggleTemp(i.t)}
-          title={`${i.label} — clique pra filtrar`}
-          className={
-            'inline-flex items-center gap-0.5 rounded px-1 transition-colors ' +
-            (filtroTemp === i.t ? 'bg-surface-2 text-ink' : 'text-ink-muted hover:text-ink')
-          }
-        >
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: i.cor }} />
-          {i.n}
+        <button key={i.t} onClick={() => onToggleTemp(i.t)} aria-pressed={filtroTemp === i.t}
+          disabled={i.n === 0 && filtroTemp !== i.t} title={`${i.title}: ${i.n} conversas`}
+          aria-label={`${i.title}: ${i.n} conversas`}
+          className={`funil-temperature-item funil-temperature-item--${i.t}`}>
+          <span>{i.label}</span><strong>{i.n}</strong>
         </button>
       ))}
     </div>
@@ -295,27 +213,34 @@ function metaTipoMsg(tipo: string): { Icon: typeof Mic; label: string } | null {
 
 // Lightbox: imagem em tela cheia sobre um backdrop escuro (fecha no clique/Esc)
 function Lightbox({ src, onClose }: { src: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const focoAnterior = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null)
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
+    <Dialog.Root open onOpenChange={aberto => { if (!aberto) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm" />
+        <Dialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 outline-none"
+          onClick={e => { if (e.target === e.currentTarget) onClose() }}
+          onCloseAutoFocus={e => {
+            e.preventDefault()
+            if (focoAnterior.current?.isConnected) focoAnterior.current.focus()
+          }}
+        >
+      <Dialog.Title className="sr-only">Imagem da conversa</Dialog.Title>
       <img src={src} alt="Imagem da conversa" className="max-h-[92vh] max-w-[92vw] rounded-lg object-contain shadow-2xl" onClick={e => e.stopPropagation()} />
       <button
         onClick={onClose}
-        aria-label="Fechar"
+        aria-label="Fechar imagem"
         className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white text-xl leading-none hover:bg-white/20"
       >×</button>
       <a
         href={src} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
         className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-white/20"
       >Abrir original ↗</a>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 
@@ -435,11 +360,22 @@ function ChatDrawer({
   const semChatId = !chat.chat_id
   const nome = nomeContato(chat.contact_name, chat.phone)
   const [fotoAberta, setFotoAberta] = useState(false)
+  const focoAnterior = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null)
+  const botaoFechar = useRef<HTMLButtonElement>(null)
   return (
-    <>
+    <Dialog.Root open onOpenChange={aberto => { if (!aberto) onClose() }}>
+      <Dialog.Portal>
+      <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px]" />
+      <Dialog.Content
+        aria-describedby={undefined}
+        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[460px] flex-col border-l border-border bg-surface outline-none"
+        onOpenAutoFocus={e => { e.preventDefault(); botaoFechar.current?.focus() }}
+        onCloseAutoFocus={e => {
+          e.preventDefault()
+          if (focoAnterior.current?.isConnected) focoAnterior.current.focus()
+        }}
+      >
       {fotoAberta && chat.foto_url && <Lightbox src={chat.foto_url} onClose={() => setFotoAberta(false)} />}
-      <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px]" onClick={onClose} />
-      <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[460px] flex-col border-l border-border bg-surface">
         {/* Cabeçalho fixo */}
         <div className="shrink-0 border-b border-border bg-gradient-to-b from-surface-2/80 to-surface px-5 pb-4 pt-5">
           <div className="flex items-start justify-between gap-3">
@@ -452,12 +388,12 @@ function ChatDrawer({
                 <Avatar name={nome} src={undefined} size="xl" />
               )}
               <div className="min-w-0">
-                <h2 className="truncate text-[16px] font-semibold text-ink">{nome}</h2>
+                <Dialog.Title className="truncate text-[16px] font-semibold text-ink">{nome}</Dialog.Title>
                 <div className="font-mono text-[12px] text-ink-muted">{formatarTelefone(chat.phone)}</div>
                 {chat.vendedor && <div className="text-[11px] font-semibold text-accent">{chat.vendedor}</div>}
               </div>
             </div>
-            <button onClick={onClose} aria-label="Fechar" className="px-1 text-xl leading-none text-ink-muted hover:text-ink">×</button>
+            <button ref={botaoFechar} onClick={onClose} aria-label="Fechar conversa" className="px-1 text-xl leading-none text-ink-muted hover:text-ink">×</button>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {etiquetas.map(e => (
@@ -561,10 +497,10 @@ function ChatDrawer({
               <div className="mb-1.5 text-[11px] uppercase tracking-wide text-ink-faint">
                 Última mensagem · {tempoRelativo(chat.last_message_at)}
               </div>
-              {chat.last_message_preview ? (
+              {corpoVisivel(chat.last_message_preview) ? (
                 <p className="text-[13px] leading-snug text-ink">
                   {chat.last_message_from_me ? <span className="font-medium text-accent">Você: </span> : null}
-                  {chat.last_message_preview}
+                  {corpoVisivel(chat.last_message_preview)}
                 </p>
               ) : (
                 <p className="text-[13px] text-ink-faint">Sem preview disponível.</p>
@@ -573,9 +509,6 @@ function ChatDrawer({
             </div>
           )}
 
-          {chat.last_message_from_me === false && (
-            <p className="inline-flex items-center gap-1 text-[11px] text-warning"><Hourglass className="h-3 w-3" /> Cliente aguardando resposta</p>
-          )}
 
           {/* Histórico de etiquetas */}
           <div>
@@ -604,35 +537,31 @@ function ChatDrawer({
 
         {/* Rodapé fixo: ação principal */}
         <div className="shrink-0 border-t border-border p-4">
-          <a href={`https://wa.me/${chat.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-accent/30 bg-accent-bg py-2.5 text-[13px] font-semibold text-accent transition hover:brightness-110">
-            <MessageCircle className="h-4 w-4" /> Abrir conversa no WhatsApp
-          </a>
+          <BotaoCopiarNumero phone={chat.phone} completo />
         </div>
-      </aside>
-    </>
+      </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 
 export function FunilWhatsApp() {
   const { profile } = useAuth()
-  const { data: vendedores = [] } = useWaVendedores()
-  const { data: vendorsData } = useVendors()
+  const { data: vendedores = [], isLoading: carregandoVendedores, error: erroVendedores } = useWaVendedores()
+  const { data: vendorsData, isLoading: carregandoCadastro, error: erroCadastro } = useVendors()
   const [vendedorSel, setVendedorSel] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
-  const [chatAberto, setChatAberto] = useState<WaChat | null>(null)
+  const [chatSelecionado, setChatSelecionado] = useState<Pick<WaChat, 'phone' | 'vendedor'> | null>(null)
   const [limites, setLimites] = useState<Record<string, number>>({})
   const [seletorAberto, setSeletorAberto] = useState(false)
-  const [ordenacao, setOrdenacao] = useState<Ordenacao>('recente')
-  const [soAguardando, setSoAguardando] = useState(false)
+  const [ordenacao, setOrdenacao] = useState<'recente' | 'parado'>('recente')
   const [filtroTemp, setFiltroTemp] = useState<Temperatura | null>(null)
   const [compacto, setCompacto] = useState(false)
-  const [mostrarRanking, setMostrarRanking] = useState(false)
 
   const [escondidas, setEscondidas] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('wa-funil-cols-hidden')
-      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>()
+      return raw ? new Set<string>((JSON.parse(raw) as string[]).map(canonico)) : new Set<string>()
     } catch { return new Set<string>() }
   })
   const salvarEscondidas = (s: Set<string>) => {
@@ -655,13 +584,27 @@ export function FunilWhatsApp() {
       ?? null
   }, [profile, vendorsData, vendedores])
 
-  const vendedor = vendedorTravado ?? vendedorSel ?? (vendedores.length ? TODOS : null)
+  // Um perfil de vendedor sem vínculo resolvido não pode cair no quadro da equipe.
+  const vendedor = profile?.role === 'vendor'
+    ? vendedorTravado
+    : vendedorSel ?? (vendedores.length ? TODOS : null)
   const modoTodos = vendedor === TODOS
   const { data, isLoading, error } = useWaKanban(vendedor)
   const { data: agendadasMap } = useWaAgendadas(vendedor)
 
+  useEffect(() => { setChatSelecionado(null) }, [vendedor])
+  // Guardar só a identidade mantém a conversa aberta ligada ao refetch atual,
+  // inclusive quando a sincronização preenche chat_id ou muda a última mensagem.
+  const chatAberto = useMemo(() => {
+    if (!chatSelecionado || !data) return null
+    const corresponde = (chat: WaChat) => chat.phone === chatSelecionado.phone && chat.vendedor === chatSelecionado.vendedor
+    return data.semEtiqueta.find(corresponde)
+      ?? data.colunas.flatMap(c => c.chats).find(corresponde)
+      ?? null
+  }, [chatSelecionado, data])
+
   const filtro = busca.trim().toLowerCase()
-  const filtroDigitos = filtro.replace(/\D/g, '')
+  const filtroDigitos = digitosDaBusca(filtro)
 
   const colunasTodas = useMemo(() => {
     if (!data) return []
@@ -684,10 +627,10 @@ export function FunilWhatsApp() {
     }
     return [...set]
   }, [colunasTodas])
-  const { data: orcMap } = useOrcamentosPorTelefone(telefonesNegociacao)
+  const { data: orcMap, isLoading: carregandoOrcamentos, isError: erroOrcamentos } = useOrcamentosPorTelefone(telefonesNegociacao)
 
-  // Pipeline de exibição: busca → só-aguardando → filtro-temperatura → ordenação
-  const processar = (chats: WaChat[]): WaChat[] => {
+  // A contagem de temperatura acompanha a busca, antes do filtro de temperatura.
+  const filtrarBase = (chats: WaChat[]): WaChat[] => {
     let cs = chats
     if (filtro) {
       cs = cs.filter(c =>
@@ -695,62 +638,52 @@ export function FunilWhatsApp() {
         (filtroDigitos && c.phone.includes(filtroDigitos))
       )
     }
-    if (soAguardando) cs = cs.filter(precisaResposta)
+    return cs
+  }
+  const processar = (chats: WaChat[]): WaChat[] => {
+    let cs = filtrarBase(chats)
     if (filtroTemp) cs = cs.filter(c => temperaturaDe(c.last_message_at) === filtroTemp)
     return ordenarChats(cs, ordenacao)
   }
+  const filtrosAtivos = !!(filtro || filtroTemp)
+  const colunasExibidas = filtrosAtivos
+    ? colunas.filter(col => {
+        const base = filtrarBase(col.chats)
+        return filtroTemp ? base.some(c => temperaturaDe(c.last_message_at) === filtroTemp) : base.length > 0
+      })
+    : colunas
 
   // KPIs sobre as colunas visíveis (panorama, ignora busca/filtros temporários)
   const kpis = useMemo(() => {
-    let total = 0, aguardando = 0, parado7 = 0
+    let total = 0, parado7 = 0
     for (const col of colunas) {
       for (const c of col.chats) {
         total++
-        if (precisaResposta(c)) aguardando++
         if (temperaturaDe(c.last_message_at) === 'parado') parado7++
       }
     }
-    return { total, aguardando, parado7 }
+    return { total, parado7 }
   }, [colunas])
 
-  // Pipeline total: soma do último orçamento por telefone nas colunas de negociação
-  // (dedupe por telefone canônico — mesmo cliente em 2 vendedores não conta em dobro).
-  const pipelineTotal = useMemo(() => {
+  // Valor histórico BRUTO, não previsão de vendas: a RPC não filtra status/data
+  // e total_proposta não abate o campo desconto. Um orçamento por telefone.
+  const resumoOrcamentos = useMemo(() => {
     const vistos = new Set<string>()
-    let soma = 0
+    let soma = 0, clientes = 0
     for (const col of colunas) {
       if (!COLUNAS_COM_VALOR.has(col.nome)) continue
       for (const c of col.chats) {
         const k = foneCanon(c.phone)
         if (!k || vistos.has(k)) continue
         vistos.add(k)
-        soma += lookupOrcamento(orcMap, c.phone)?.valor ?? 0
+        const orcamento = lookupOrcamento(orcMap, c.phone)
+        if (!orcamento) continue
+        clientes++
+        soma += orcamento.valor ?? 0
       }
     }
-    return soma
+    return { total: soma, clientes }
   }, [colunas, orcMap])
-
-  // Ranking por vendedor (modo Todos): quem tem mais cliente aguardando
-  const ranking = useMemo(() => {
-    if (!modoTodos) return []
-    const m = new Map<string, { aguardando: number; total: number }>()
-    for (const col of colunas) {
-      for (const c of col.chats) {
-        const v = c.vendedor ?? '—'
-        const e = m.get(v) ?? { aguardando: 0, total: 0 }
-        e.total++
-        if (precisaResposta(c)) e.aguardando++
-        m.set(v, e)
-      }
-    }
-    return [...m.entries()].map(([v, e]) => ({ vendedor: v, ...e })).sort((a, b) => b.aguardando - a.aguardando)
-  }, [colunas, modoTodos])
-
-  const filaAtiva = soAguardando && ordenacao === 'aguardando'
-  const ativarFila = () => {
-    if (filaAtiva) { setSoAguardando(false); setOrdenacao('recente') }
-    else { setSoAguardando(true); setOrdenacao('aguardando') }
-  }
 
   const etiquetasDoChat = useMemo(() => {
     if (!chatAberto || !data) return []
@@ -763,137 +696,64 @@ export function FunilWhatsApp() {
   }, [chatAberto, data])
 
   return (
-    <div className="flex h-[calc(100vh-0px)] flex-col p-4 gap-3 overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+    <div className="funil-page">
+      <header className="funil-header">
         <div>
-          <h1 className="text-[22px] font-semibold text-ink tracking-tight">Funil · Kanban WhatsApp</h1>
-          <p className="text-[13px] text-ink-muted">
-            Espelho das etiquetas do WhatsApp de cada vendedor
-            {data?.ultimaSync && <> · sincronizado {tempoRelativo(data.ultimaSync)}</>}
-            {data && <> · {data.totalChats.toLocaleString('pt-BR')} conversas</>}
-          </p>
+          <h1>Funil de vendas</h1>
+          <p>Acompanhe cada conversa até o fechamento.</p>
         </div>
-        <div className="flex items-center gap-2 text-[12px]">
-          <Link to="/funil/manual" className="text-ink-muted hover:text-ink underline-offset-2 hover:underline">Funil manual</Link>
-          <span className="text-ink-faint">·</span>
-          <Link to="/funil/relatorio" className="text-ink-muted hover:text-ink underline-offset-2 hover:underline">Relatório</Link>
+        <div className="funil-header-actions">
+          {data?.ultimaSync && <span className="funil-sync">Atualizado {tempoRelativo(data.ultimaSync)}</span>}
+          <Link to="/funil/manual" className="funil-link">Funil manual</Link>
+          <Link to="/funil/relatorio" className="funil-report"><BarChart3 size={15} />Relatório</Link>
         </div>
-      </div>
+      </header>
 
-      {/* Painel de números */}
       {data && (
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Pipeline em R$ — a métrica que o dono decide por cima (dinheiro em negociação) */}
-          {pipelineTotal > 0 && (
-            <div
-              className="h-9 px-3 rounded-md bg-accent-bg border border-[hsl(var(--success)/0.3)] inline-flex items-center gap-1.5"
-              title="Soma dos últimos orçamentos gerados nas colunas de negociação (FOLLOW UP, LEAD QUENTE, ORÇAMENTO ENVIADO)"
-            >
-              <IconCifrao className="h-3.5 w-3.5 text-success" />
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-[hsl(var(--success)/0.75)]">Pipeline</span>
-              <span className="tabular-nums text-[14px] font-bold text-success">{brl(pipelineTotal)}</span>
-            </div>
-          )}
-          <button
-            onClick={ativarFila}
-            className={
-              'h-9 px-3 rounded-md text-[13px] font-semibold inline-flex items-center gap-2 border transition-colors ' +
-              (filaAtiva
-                ? 'bg-warning-bg text-warning border-warning/40'
-                : 'bg-surface text-ink border-border hover:border-border-strong')
-            }
-            title="Mostra só quem está aguardando resposta, mais antigo no topo"
-          >
-            <Zap className="h-3.5 w-3.5" /> Fila de resposta
-            <span className="tabular-nums rounded-full bg-warning/20 text-warning px-1.5">{kpis.aguardando}</span>
-          </button>
-          <div className="h-9 px-3 rounded-md bg-surface border border-border inline-flex items-center gap-1.5 text-[12px] text-ink-muted">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TEMP_META.parado.cor }} />
-            Parados +7d <span className="tabular-nums text-ink font-semibold">{kpis.parado7}</span>
+        <div className="funil-overview">
+          <div className="funil-metric funil-metric--value" title="Último orçamento cadastrado de cada telefone nas colunas visíveis Follow-up, Lead quente e Orçamento enviado. Valor bruto, antes dos descontos, incluindo rascunhos e todo o histórico. Busca e temperatura não alteram este resumo. Não confirma negociação ativa nem venda.">
+            <span>Orçamentos vinculados</span>
+            <strong>{carregandoOrcamentos || erroOrcamentos ? '—' : brl(resumoOrcamentos.total)}</strong>
+            <small className="funil-metric-note">{erroOrcamentos ? 'Não foi possível carregar os valores' : carregandoOrcamentos ? 'Carregando orçamentos…' : `${resumoOrcamentos.clientes.toLocaleString('pt-BR')} clientes · valor bruto · todo o histórico`}</small>
           </div>
-          <div className="h-9 px-3 rounded-md bg-surface border border-border inline-flex items-center gap-1.5 text-[12px] text-ink-muted">
-            Total <span className="tabular-nums text-ink font-semibold">{kpis.total.toLocaleString('pt-BR')}</span>
-          </div>
-          {modoTodos && (
-            <button
-              onClick={() => setMostrarRanking(v => !v)}
-              className="h-9 px-3 rounded-md bg-surface border border-border text-[12px] text-ink-muted hover:text-ink hover:border-border-strong"
-            >
-              {mostrarRanking ? 'Ocultar ranking' : 'Ranking por vendedor'}
-            </button>
-          )}
-        </div>
-      )}
+          <div className="funil-metric"><span>Parados há mais de 7 dias</span><strong>{kpis.parado7.toLocaleString('pt-BR')}</strong></div>
+          <div className="funil-metric"><span>Nas colunas visíveis</span><strong>{kpis.total.toLocaleString('pt-BR')}</strong></div>
 
-      {/* Ranking por vendedor (modo Todos) */}
-      {modoTodos && mostrarRanking && ranking.length > 0 && (
-        <div className="shrink-0 flex flex-wrap gap-2">
-          {ranking.map((r, i) => (
-            <button
-              key={r.vendedor}
-              onClick={() => setVendedorSel(r.vendedor)}
-              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-left hover:border-border-strong"
-            >
-              <div className="text-[12px] font-semibold text-ink flex items-center gap-1.5">
-                {i === 0 && <Trophy className="h-3.5 w-3.5 text-warning" />}{r.vendedor}
-              </div>
-              <div className="text-[11px] text-ink-muted tabular-nums">
-                <span className="text-warning font-semibold">{r.aguardando}</span> aguardando · {r.total} total
-              </div>
-            </button>
-          ))}
         </div>
       )}
 
       {/* Filtros */}
-      <div className="flex flex-wrap items-center gap-2 shrink-0">
-        {vendedorTravado ? (
-          <span className="h-9 px-3 rounded-md bg-accent-bg border border-accent/30 text-accent text-[13px] font-semibold inline-flex items-center">
-            {vendedorTravado}
-          </span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            <button onClick={() => setVendedorSel(TODOS)}
-              className={modoTodos
-                ? 'h-9 px-3 rounded-md bg-accent-bg text-accent border border-accent/30 text-[13px] font-semibold'
-                : 'h-9 px-3 rounded-md bg-surface text-ink-muted border border-border text-[13px] hover:text-ink hover:border-border-strong'}>
-              Todos
-            </button>
-            {vendedores.map(v => (
-              <button key={v} onClick={() => setVendedorSel(v)}
-                className={v === vendedor
-                  ? 'h-9 px-3 rounded-md bg-accent-bg text-accent border border-accent/30 text-[13px] font-semibold'
-                  : 'h-9 px-3 rounded-md bg-surface text-ink-muted border border-border text-[13px] hover:text-ink hover:border-border-strong'}>
-                {v}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente ou telefone…"
-          className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink focus:border-accent outline-none w-56" />
+      <div className="funil-filters">
+        <div className="funil-vendors" aria-label="Filtrar por vendedor">
+          {profile?.role === 'vendor' ? (
+            <span className="funil-vendor-current">{vendedorTravado && nomeVendedor(vendedorTravado)}</span>
+          ) : (<>
+            <button onClick={() => setVendedorSel(TODOS)} aria-pressed={modoTodos}><Users size={15} />Toda a equipe</button>
+            {vendedores.map(v => <button key={v} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)}
+          </>)}
+        </div>
+        <div className="funil-toolbar">
+        <label className="funil-search">
+          <Search size={17} aria-hidden />
+          <span className="sr-only">Buscar cliente ou telefone</span>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente ou telefone…" />
+        </label>
 
         {/* Ordenação */}
-        <select value={ordenacao} onChange={e => setOrdenacao(e.target.value as Ordenacao)}
-          className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink">
-          {(Object.keys(ORDENACAO_LABEL) as Ordenacao[]).map(o => (
+        <label className="relative">
+          <span className="sr-only">Ordenar conversas</span>
+          <select value={ordenacao} onChange={e => setOrdenacao(e.target.value === 'parado' ? 'parado' : 'recente')}
+          className="h-9 rounded-lg border border-border bg-surface px-3 text-[13px] text-ink focus:border-accent focus:outline-none">
+          {(['recente', 'parado'] as const).map(o => (
             <option key={o} value={o}>{ORDENACAO_LABEL[o]}</option>
           ))}
-        </select>
-
-        {/* Toggle só aguardando */}
-        <button onClick={() => setSoAguardando(v => !v)}
-          className={'h-9 px-3 rounded-md text-[13px] border inline-flex items-center gap-1.5 ' + (soAguardando
-            ? 'bg-warning-bg text-warning border-warning/40 font-semibold'
-            : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')}>
-          <ArrowDownLeft className="h-3.5 w-3.5" /> Só aguardando
-        </button>
+          </select>
+        </label>
 
         {/* Filtro de temperatura ativo → chip pra limpar */}
         {filtroTemp && (
           <button onClick={() => setFiltroTemp(null)}
-            className="h-9 px-3 rounded-md text-[13px] border inline-flex items-center gap-1.5"
+            className="h-9 px-3 rounded-lg text-[13px] border inline-flex items-center gap-1.5"
             style={{ borderColor: `${TEMP_META[filtroTemp].cor}66`, color: TEMP_META[filtroTemp].cor }}>
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TEMP_META[filtroTemp].cor }} />
             {TEMP_META[filtroTemp].label} ✕
@@ -901,21 +761,21 @@ export function FunilWhatsApp() {
         )}
 
         {/* Compacto */}
-        <button onClick={() => setCompacto(v => !v)}
-          className={'h-9 px-3 rounded-md text-[13px] border ' + (compacto
+        <button onClick={() => setCompacto(v => !v)} aria-pressed={compacto}
+          className={'h-9 px-3 rounded-lg text-[13px] border inline-flex items-center gap-1.5 ' + (compacto
             ? 'bg-accent-bg text-accent border-accent/30 font-semibold'
             : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')}>
-          Compacto
+          <ListFilter size={15} /> Compacto
         </button>
 
         {/* Seletor de colunas */}
         <div className="relative">
-          <button onClick={() => setSeletorAberto(o => !o)}
-            className="h-9 px-3 rounded-md bg-surface border border-border text-[13px] text-ink-muted hover:text-ink hover:border-border-strong inline-flex items-center gap-1.5">
-            Colunas
-            {escondidas.size > 0 && (
+          <button onClick={() => setSeletorAberto(o => !o)} aria-expanded={seletorAberto}
+            className="h-9 px-3 rounded-lg bg-surface border border-border text-[13px] text-ink-muted hover:text-ink hover:border-border-strong inline-flex items-center gap-1.5">
+            <Columns3 className="h-4 w-4" /> Colunas
+            {colunas.length < colunasTodas.length && (
               <span className="text-[11px] tabular-nums text-accent bg-accent-bg rounded-full px-1.5">
-                {colunasTodas.length - escondidas.size}/{colunasTodas.length}
+                {colunas.length}/{colunasTodas.length}
               </span>
             )}
           </button>
@@ -925,8 +785,6 @@ export function FunilWhatsApp() {
               <div className="absolute right-0 z-40 mt-1 w-64 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-surface shadow-xl p-2">
                 <div className="flex items-center gap-1 px-1 pb-2 border-b border-border mb-1">
                   <button onClick={() => salvarEscondidas(new Set())} className="text-[11px] text-accent hover:underline">Todas</button>
-                  <span className="text-ink-faint">·</span>
-                  <button onClick={() => salvarEscondidas(new Set(colunasTodas.map(c => c.nome)))} className="text-[11px] text-ink-muted hover:text-ink hover:underline">Nenhuma</button>
                   <span className="text-ink-faint">·</span>
                   <button onClick={() => salvarEscondidas(new Set(colunasTodas.filter(c => !FUNIL_ATIVO.has(c.nome)).map(c => c.nome)))}
                     className="text-[11px] text-ink-muted hover:text-ink hover:underline" title="Só Prospecção → Orçamento Enviado">Funil ativo</button>
@@ -939,7 +797,7 @@ export function FunilWhatsApp() {
                       <span className={'h-4 w-4 shrink-0 rounded border flex items-center justify-center text-[10px] ' +
                         (visivel ? 'bg-accent border-accent text-white' : 'border-border text-transparent')}>✓</span>
                       <span className="etq-dot h-2 w-2 rounded-full shrink-0" style={estiloEtiqueta(c.cor)} />
-                      <span className="text-[12px] text-ink truncate flex-1">{c.nome}</span>
+                      <span className="text-[12px] text-ink truncate flex-1">{nomeEtapa(c.nome)}</span>
                       <span className="text-[11px] tabular-nums text-ink-faint">{c.chats.length}</span>
                     </button>
                   )
@@ -948,19 +806,50 @@ export function FunilWhatsApp() {
             </>
           )}
         </div>
+        </div>
+        {filtrosAtivos && (
+          <div className="flex items-center gap-2 text-[12px] text-ink-muted">
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Filtros ativos
+            <button className="font-medium text-accent hover:underline" onClick={() => { setBusca(''); setFiltroTemp(null) }}>
+              Limpar filtros
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Board */}
-      {error ? (
-        <div className="rounded-md border border-danger/30 bg-danger-bg text-danger text-[13px] p-3">
-          Erro carregando o kanban: {String((error as Error).message)}
+      {profile?.role === 'vendor' && (carregandoVendedores || carregandoCadastro) ? (
+        <PageLoading />
+      ) : profile?.role === 'vendor' && (erroVendedores || erroCadastro) ? (
+        <div className="rounded-xl border border-danger/30 bg-danger-bg p-4 text-[13px] text-danger">
+          Não foi possível conferir seu vínculo com o quadro. Tente atualizar a página.
+        </div>
+      ) : profile?.role === 'vendor' && !vendedor ? (
+        <div className="rounded-xl border border-warning/30 bg-warning-bg p-4 text-[13px] text-warning">
+          Seu vendedor não está vinculado ao quadro do WhatsApp. Peça ao administrador para conferir seu cadastro.
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-danger/30 bg-danger-bg p-4 text-[13px] text-danger">
+          Não foi possível carregar o funil: {String((error as Error).message)}
         </div>
       ) : isLoading || !data ? (
         <PageLoading />
+      ) : colunas.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface text-center">
+          <Columns3 className="h-6 w-6 text-ink-faint" />
+          <p className="mt-3 text-[14px] font-medium text-ink">Nenhuma coluna visível</p>
+          <button onClick={() => salvarEscondidas(new Set())} className="mt-2 text-[13px] font-medium text-accent hover:underline">Mostrar todas as colunas</button>
+        </div>
+      ) : colunasExibidas.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface text-center">
+          <Search className="h-6 w-6 text-ink-faint" />
+          <p className="mt-3 text-[14px] font-medium text-ink">Nenhuma conversa encontrada</p>
+          <button onClick={() => { setBusca(''); setFiltroTemp(null) }} className="mt-2 text-[13px] font-medium text-accent hover:underline">Limpar filtros</button>
+        </div>
       ) : (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden snap-x snap-mandatory md:snap-none">
-          <div className="flex h-full gap-3 pb-2">
-            {colunas.map(col => {
+        <div className="funil-board">
+          <div className="funil-board-track">
+            {colunasExibidas.map(col => {
               const chats = processar(col.chats)
               const limite = limites[col.nome] ?? LIMITE_INICIAL
               const visiveis = chats.slice(0, limite)
@@ -977,35 +866,25 @@ export function FunilWhatsApp() {
                   }, 0)
                 : 0
               return (
-                <div key={col.nome} className="relative flex h-full w-[85vw] max-w-[300px] sm:w-[280px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-border bg-surface-2/50 shadow-[0_1px_8px_-4px_rgba(0,0,0,0.35)]">
-                  {/* filete da etiqueta — identidade visual da coluna */}
-                  <span aria-hidden className="etq-dot absolute inset-x-0 top-0 h-[3px] opacity-90" style={estiloEtiqueta(col.cor)} />
-                  <div className="border-b border-border shrink-0 pt-[3px]">
-                    <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-                      <span className="etq-dot h-2.5 w-2.5 rounded-full shrink-0" style={estiloEtiqueta(col.cor)} />
-                      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">{col.nome}</span>
-                      {mostrarValor && totalValor > 0 && (
-                        <span className="flex shrink-0 items-baseline gap-0.5 text-success" title="Soma dos últimos orçamentos gerados nesta coluna">
-                          <span className="text-[9px] font-semibold text-[hsl(var(--success)/0.6)]">R$</span>
-                          <span className="whitespace-nowrap text-[13px] font-bold tabular-nums tracking-tight">{brl(totalValor).replace(/^R\$\s?/, '')}</span>
-                        </span>
-                      )}
-                      <span className="shrink-0 text-[11px] tabular-nums text-ink-muted bg-surface border border-border rounded-full px-2 py-0.5">
-                        {chats.length}
-                      </span>
+                <section key={col.nome} aria-label={`Etapa ${nomeEtapa(col.nome)}`} className="funil-column">
+                  <div className="funil-column-header">
+                    <div className="funil-column-title">
+                      <span className="etq-dot" style={estiloEtiqueta(col.cor)} aria-hidden />
+                      <h2 title={col.nome}>{nomeEtapa(col.nome)}</h2>
+                      <span className="funil-column-count">{chats.length}</span>
                     </div>
-                    <ResumoTemperatura
-                      chats={col.chats}
-                      filtroTemp={filtroTemp}
-                      onToggleTemp={t => setFiltroTemp(prev => (prev === t ? null : t))}
-                    />
+                    <div className="funil-column-summary">
+                      {mostrarValor && totalValor > 0 ? <span title="Soma bruta dos últimos orçamentos vinculados nesta coluna, antes dos descontos" className="funil-column-value">{brl(totalValor)}</span> : <span>{chats.length === 1 ? '1 conversa' : `${chats.length} conversas`}</span>}
+                    </div>
+                    <ResumoTemperatura chats={filtrarBase(col.chats)} filtroTemp={filtroTemp}
+                      onToggleTemp={t => setFiltroTemp(prev => (prev === t ? null : t))} />
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                  <div className="funil-column-cards">
                     {visiveis.map(c => (
                       <ChatCard key={`${c.vendedor ?? ''}:${c.phone}`} chat={c} mostrarVendedor={modoTodos} compacto={compacto}
                         valorOrcamento={mostrarValor ? lookupOrcamento(orcMap, c.phone)?.valor ?? null : null}
                         agendada={lookupAgendada(agendadasMap, c.vendedor ?? (modoTodos ? null : vendedor), c.chat_id, c.phone)}
-                        onClick={() => setChatAberto(c)} />
+                        onClick={() => setChatSelecionado({ phone: c.phone, vendedor: c.vendedor })} />
                     ))}
                     {chats.length > limite && (
                       <button onClick={() => setLimites(l => ({ ...l, [col.nome]: limite + 50 }))}
@@ -1013,9 +892,9 @@ export function FunilWhatsApp() {
                         Mostrar mais ({chats.length - limite} restantes)
                       </button>
                     )}
-                    {chats.length === 0 && <p className="text-center text-[12px] text-ink-faint py-4">Vazio</p>}
+                    {chats.length === 0 && <p className="px-3 py-8 text-center text-[12px] text-ink-faint">Nenhuma conversa com os filtros atuais.</p>}
                   </div>
-                </div>
+                </section>
               )
             })}
           </div>
@@ -1025,12 +904,12 @@ export function FunilWhatsApp() {
       {chatAberto && vendedor && (
         <ChatDrawer
           // remonta ao trocar de card: zera paginação/lightbox e evita estado vazando entre conversas
-          key={`${chatAberto.vendedor ?? vendedor}::${chatAberto.chat_id ?? chatAberto.phone}`}
+          key={`${chatAberto.vendedor ?? vendedor}::${chatAberto.phone}`}
           chat={chatAberto}
           etiquetas={etiquetasDoChat}
           vendedor={chatAberto.vendedor ?? vendedor}
           agendada={lookupAgendada(agendadasMap, chatAberto.vendedor ?? (modoTodos ? null : vendedor), chatAberto.chat_id, chatAberto.phone)}
-          onClose={() => setChatAberto(null)}
+          onClose={() => setChatSelecionado(null)}
         />
       )}
     </div>
