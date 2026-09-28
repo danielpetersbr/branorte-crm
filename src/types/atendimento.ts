@@ -118,6 +118,9 @@ export interface Atendimento {
   dispatch_status: string | null
   dispatch_etiqueta: string | null
   dispatch_vendedor_nome: string | null
+  // (28/09) raw_payload->>'origem' do disparo ('WhatsApp ANA' = repasse da ANA). Vem da migração
+  // 07_view_dispatch_origem.sql; antes dela o campo não existe (undefined) e nada muda na tela.
+  dispatch_origem?: string | null
   foi_dispatched: boolean | null
   dispatch_equipamento_avulso: boolean | null
   status_vendedor: StatusVendedor | null

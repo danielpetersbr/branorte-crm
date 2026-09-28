@@ -815,12 +815,13 @@ export function useAtendimentos(filters: AtendimentoFilters) {
           'Facebook Form': ['Facebook Formulario', 'Facebook Formulário'],
           'Instagram': ['Instagram', 'Instagram Formulario', 'Instagram Formulário', 'Bio Instagram'],
           'Google': ['Google'],
-          'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado'],
+          // (28/09) '__null__' = origem vazia: a barra ORIGENS já conta NULL como "Não identificado"
+          'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado', '__null__'],
         }
         const patterns = origemMap[filters.origem]
         if (patterns) {
           const orExpr = patterns.map(p =>
-            p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
+            p === '__null__' ? 'origem.is.null' : p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
           ).join(',')
           query = query.or(orExpr)
         } else {
@@ -915,12 +916,13 @@ function applyBaseFilters(query: any, filters?: Partial<AtendimentoFilters>, ven
       'Facebook Form': ['Facebook Formulario', 'Facebook Formulário'],
       'Instagram': ['Instagram', 'Instagram Formulario', 'Instagram Formulário', 'Bio Instagram'],
       'Google': ['Google'],
-      'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado'],
+      // (28/09) '__null__' = origem vazia: a barra ORIGENS já conta NULL como "Não identificado"
+      'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado', '__null__'],
     }
     const patterns = origemMap[filters.origem]
     if (patterns) {
       const orExpr = patterns.map(p =>
-        p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
+        p === '__null__' ? 'origem.is.null' : p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
       ).join(',')
       q = q.or(orExpr)
     } else {
@@ -1316,6 +1318,8 @@ function normalizeOrigem(raw: string | null | undefined): string {
   const s = raw.toLowerCase().trim()
   if (s.includes('1144') || s.includes('8878')) return 'WhatsApp (48) 8878-1144'
   if (s.includes('4502') || s.includes('3658')) return 'WhatsApp (48) 3658-4502'
+  // (28/09) lead que chegou direto no WhatsApp da ANA (IA), sem anúncio
+  if (s.includes('whatsapp') && /\bana\b/.test(s)) return 'WhatsApp ANA'
   if (s.includes('whatsapp')) return 'WhatsApp'
   if (s === 'meta ads' || s === 'meta') return 'Meta ADS'
   if (s.includes('instagram') && s.includes('formul')) return 'Instagram'
@@ -1330,6 +1334,7 @@ function normalizeOrigem(raw: string | null | undefined): string {
 const ORIGEM_COLORS: Record<string, string> = {
   'WhatsApp (48) 8878-1144': '#25D366',
   'WhatsApp (48) 3658-4502': '#128C7E',
+  'WhatsApp ANA': '#0F9D58',
   'WhatsApp': '#25D366',
   'Meta ADS': '#1877F2',
   'Facebook': '#1877F2',
