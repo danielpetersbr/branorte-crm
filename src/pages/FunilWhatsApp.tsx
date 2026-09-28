@@ -26,6 +26,9 @@ import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import './FunilWhatsApp.css'
 
+// vendedor_nome do chip da IA em wascript_etiquetas — todo vendedor enxerga esse quadro.
+const VENDEDOR_ANA = 'ANA'
+
 // Kanban WhatsApp — espelho fiel do quadro de etiquetas que cada vendedor
 // vê no Wascript, sincronizado pela extensão Branorte WA Sync (30s).
 // Colunas = etiquetas na ordem oficial do funil; cards = clientes com a
@@ -584,9 +587,18 @@ export function FunilWhatsApp() {
       ?? null
   }, [profile, vendorsData, vendedores])
 
+  // O vendedor vê o PRÓPRIO quadro e o da ANA (o chip da IA que recebe o lead do
+  // anúncio antes de passar pra ele) — nunca o de um colega nem o da equipe toda.
+  // Sem vínculo resolvido, não mostra nenhum: nem o da Ana cai de fallback.
+  const quadrosDoVendedor = useMemo(() => {
+    if (!vendedorTravado) return []
+    const ana = vendedores.find(w => w === VENDEDOR_ANA)
+    return ana && ana !== vendedorTravado ? [vendedorTravado, ana] : [vendedorTravado]
+  }, [vendedorTravado, vendedores])
+
   // Um perfil de vendedor sem vínculo resolvido não pode cair no quadro da equipe.
   const vendedor = profile?.role === 'vendor'
-    ? vendedorTravado
+    ? (vendedorSel && quadrosDoVendedor.includes(vendedorSel) ? vendedorSel : vendedorTravado)
     : vendedorSel ?? (vendedores.length ? TODOS : null)
   const modoTodos = vendedor === TODOS
   const { data, isLoading, error } = useWaKanban(vendedor)
@@ -704,8 +716,12 @@ export function FunilWhatsApp() {
         </div>
         <div className="funil-header-actions">
           {data?.ultimaSync && <span className="funil-sync">Atualizado {tempoRelativo(data.ultimaSync)}</span>}
-          <Link to="/funil/manual" className="funil-link">Funil manual</Link>
-          <Link to="/funil/relatorio" className="funil-report"><BarChart3 size={15} />Relatório</Link>
+          {/* O vendedor só tem /funil liberado no guard de App.tsx: os dois links o
+              devolveriam pro /atendimentos. */}
+          {profile?.role !== 'vendor' && <>
+            <Link to="/funil/manual" className="funil-link">Funil manual</Link>
+            <Link to="/funil/relatorio" className="funil-report"><BarChart3 size={15} />Relatório</Link>
+          </>}
         </div>
       </header>
 
@@ -726,7 +742,9 @@ export function FunilWhatsApp() {
       <div className="funil-filters">
         <div className="funil-vendors" aria-label="Filtrar por vendedor">
           {profile?.role === 'vendor' ? (
-            <span className="funil-vendor-current">{vendedorTravado && nomeVendedor(vendedorTravado)}</span>
+            quadrosDoVendedor.length > 1
+              ? quadrosDoVendedor.map(v => <button key={v} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)
+              : <span className="funil-vendor-current">{vendedorTravado && nomeVendedor(vendedorTravado)}</span>
           ) : (<>
             <button onClick={() => setVendedorSel(TODOS)} aria-pressed={modoTodos}><Users size={15} />Toda a equipe</button>
             {vendedores.map(v => <button key={v} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)}
