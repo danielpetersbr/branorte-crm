@@ -7,8 +7,13 @@
 //   Client renderiza OrcamentoPreview em div oculto -> serializa com computed
 //   styles inlined -> POST aqui -> html-to-docx -> Buffer -> retorna como blob
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { createClient } from '@supabase/supabase-js'
 // @ts-ignore - lib sem tipos
 import HTMLtoDOCX from 'html-to-docx'
+import { exigirAprovado, htmlTemImagemExterna } from './_lib/exigir-aprovado.js'
+
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
+const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
 export const config = {
   api: {
@@ -25,10 +30,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
 
+  // Auth (29/09/2026): este endpoint era ABERTO para a internet — sem login,
+  // qualquer um prendia funções de 60 s com 4 MB de HTML. Agora exige conta
+  // aprovada, como os outros; o cliente (preview-to-docx-html.ts) manda o JWT.
+  if (!SUPA_URL || !SVC_KEY) return res.status(500).json({ error: 'env_missing' })
+  const auth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (!auth) return res.status(401).json({ error: 'no_auth' })
+  const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
+  const acesso = await exigirAprovado(supa, auth)
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error })
+
   const body = (req.body || {}) as { html?: string; orientation?: 'portrait' | 'landscape' }
   const html = String(body.html || '')
   if (!html || html.length < 50) {
     return res.status(400).json({ error: 'invalid_html', detail: 'HTML vazio ou muito curto' })
+  }
+  // A lib baixa <img src="http..."> NO SERVIDOR e devolve o conteúdo dentro do
+  // DOCX (proxy de fetch). O cliente legítimo manda toda imagem como data:.
+  // A checagem lê o HTML pelo MESMO parser da lib (regex tinha brecha — ver
+  // htmlTemImagemExterna em _lib/exigir-aprovado.ts, 29/09/2026).
+  if (await htmlTemImagemExterna(html)) {
+    return res.status(400).json({ error: 'invalid_html', detail: 'Imagem fora de data: no HTML (ou HTML ilegível) — envie toda imagem como data:' })
   }
 
   try {

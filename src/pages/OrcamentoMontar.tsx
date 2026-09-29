@@ -36,6 +36,7 @@ import {
 import { useTransportadorFuncoes, useCriarTransportadorFuncao, type TransportadorFuncao } from '@/hooks/useTransportadorFuncoes'
 import { useMotoresRedutorAdmin } from '@/hooks/useMotoresAdmin'
 import { calcularMontagem, normalizarMontagem, MONTAGEM_PADRAO, type MontagemCfg } from '@/lib/orcamento-montagem'
+import { fatorExportacao, inflarItemExportacao, desinflarItemExportacao } from '@/lib/orcamento-exportacao'
 import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 import { decidirDestinoPasta } from '@/lib/orcamento-folder-scan'
 
@@ -666,7 +667,7 @@ export function OrcamentoMontar() {
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
   const [saveMode, setSaveMode] = useState<'update' | 'alt' | 'new'>('new')
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false)
-  const [sucesso, setSucesso] = useState<{ numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
+  const [sucesso, setSucesso] = useState<{ orcamentoId: number; numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
@@ -766,7 +767,7 @@ export function OrcamentoMontar() {
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
   // antes do usuario interagir). Banner de recuperacao aparece se draft existir.
   // Se URL tem ?id=N, o builder está EDITANDO um orçamento salvo (save vira UPDATE).
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const editingIdParam = searchParams.get('id')
   const editingId = editingIdParam ? Number(editingIdParam) : null
   // Escopo do rascunho: um por orçamento em edição. Antes era uma chave só pro
@@ -1232,19 +1233,16 @@ export function OrcamentoMontar() {
 
   // ── Modo EXPORTAÇÃO: +10% ou +20% em todos os valores. fExp=1 quando desligado. ──
   // Aplica nas versões "*Exib" que alimentam o preview, o resumo e o orçamento gerado.
-  const fExp = 1 + exportPct / 100
+  const fExp = fatorExportacao(exportPct)
   // Arredonda SEMPRE, não só na exportação. A regra é "orçamento sem centavos"
   // (formatBRL/formatBRLBare arredondam na tela e no PDF), mas item que entra por
   // modelo pronto, IA, item personalizado ou reabertura chega com centavo
   // (BNMM130 = R$ 12.124,20). A tela e o PDF mostravam R$ 42.700 e o total_proposta
   // gravava R$ 42.700,20 — a lista de orçamentos exibia os 20 centavos que o
   // documento não tinha, e as parcelas não fechavam (2026-2792).
+  // A conta (e a volta dela ao reabrir) mora em lib/orcamento-exportacao, com teste.
   const carrinhoExib = useMemo(
-    () => carrinho.map(c => ({
-      ...c,
-      valor: Math.round(c.valor * fExp),
-      motor_valor_unit: c.motor_valor_unit != null ? Math.round(c.motor_valor_unit * fExp) : c.motor_valor_unit,
-    })),
+    () => carrinho.map(c => inflarItemExportacao(c, fExp)),
     [carrinho, fExp],
   )
   const motoresAgrupadosExib = useMemo(
@@ -3067,15 +3065,11 @@ export function OrcamentoMontar() {
       // medido: um orçamento de R$ 20.579 reabria como R$ 22.197. Então o carrinho
       // volta ao valor-base e o modo reaplica por cima, chegando no mesmo total.
       // O override de motor NÃO entra aqui: ele já é gravado como valor-base.
-      const f = 1 + ep / 100
-      const desinfla = (v: number | null | undefined) =>
-        (typeof v === 'number' && v > 0 ? Math.round(v / f) : v)
-      setCarrinho(cs => cs.map(c => ({
-        ...c,
-        valor: Math.round(c.valor / f),
-        valor_original: typeof c.valor_original === 'number' ? Math.round(c.valor_original / f) : c.valor_original,
-        motor_valor_unit: desinfla(c.motor_valor_unit) as number,
-      })))
+      // valor_original TAMBÉM não (29/09/2026): o carrinhoExib nunca o inflou, ele vai
+      // pro banco na base. Dividir de novo encolhia 10-20% a cada reabrir-e-salvar
+      // (1804→1826: 49.789 → 37.407), e desligar Inox/Tungstênio derrubava o item.
+      const f = fatorExportacao(ep)
+      setCarrinho(cs => cs.map(c => desinflarItemExportacao(c, f)))
       setAcessorios(a => (a && a.valorFixo != null && a.valorFixo > 0 ? { ...a, valorFixo: Math.round(a.valorFixo / f) } : a))
       setExportPct(ep)
     } else {
@@ -4824,7 +4818,12 @@ export function OrcamentoMontar() {
 
       {/* Feedback de sucesso — toast premium. Fica VERMELHO se algo falhou. */}
       {sucesso && (() => {
-        const algoFalhou = !!(sucesso.erro || sucesso.pdfErro || (!sucesso.salvouNaPasta && !sucesso.baixouDocx))
+        // "✅ Orçamento salvo pelo servidor…" chega em `erro` (FinalizarMontarModal: a pasta Z:
+        // falhou e o fallback do servidor SALVOU). Não é falha: vermelho + "Tentar de novo"
+        // convidava a gerar de novo um orçamento que já está salvo (29/09/2026).
+        const salvoPeloServidor = !!sucesso.erro?.startsWith('✅')
+        const erroReal = salvoPeloServidor ? null : sucesso.erro
+        const algoFalhou = !!(erroReal || sucesso.pdfErro || (!sucesso.salvouNaPasta && !sucesso.baixouDocx))
         const agora = new Date()
         const anoDestino = agora.getFullYear()
         const pastaDestino = decidirDestinoPasta('', agora).pastaNome
@@ -4871,10 +4870,16 @@ export function OrcamentoMontar() {
               </div>
             )}
             {/* Erros — surfacing pro vendedor saber que deu ruim */}
-            {sucesso.erro && (
+            {erroReal && (
               <div className="flex items-start gap-2 text-danger text-[10.5px] bg-danger/10 border border-danger/30 rounded p-2 mt-1">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span><strong>Upload falhou:</strong> {sucesso.erro}</span>
+                <span><strong>Upload falhou:</strong> {erroReal}</span>
+              </div>
+            )}
+            {salvoPeloServidor && (
+              <div className="flex items-start gap-2 text-warning text-[10.5px] bg-warning/10 border border-warning/30 rounded p-2 mt-1">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>{sucesso.erro}</span>
               </div>
             )}
             {sucesso.pdfErro && (
@@ -4886,18 +4891,31 @@ export function OrcamentoMontar() {
             {algoFalhou && !sucesso.erro && !sucesso.pdfErro && (
               <div className="flex items-start gap-2 text-danger text-[10.5px] bg-danger/10 border border-danger/30 rounded p-2 mt-1">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span><strong>Nada foi salvo!</strong> O orçamento ficou como rascunho. Clique "Tentar de novo" abaixo.</span>
+                <span><strong>Nada foi salvo!</strong> O orçamento ficou como rascunho. Clique "Reabrir e tentar de novo" abaixo.</span>
               </div>
             )}
           </div>
-          {/* Botão Tentar de novo — só aparece se falhou */}
+          {/* Botão Tentar de novo — só aparece se falhou.
+              Reabre o orçamento JÁ GRAVADO pelo ?id (29/09/2026). A linha em
+              orcamentos_gerados nasce antes do upload, com tudo o que foi montado, e o
+              onSuccess já zerou carrinho e rascunho local: reabrir o modal aqui abria
+              VAZIO ("Adicione pelo menos um item"), e em modo 'new' ainda criaria um
+              SEGUNDO número. Hidratado do banco, o banner "NÃO foi salvo" oferece o
+              "Reenviar pra pasta" (update, mesmo número). */}
           {algoFalhou && (
             <button
-              onClick={() => { setSucesso(null); setFinalizarOpen(true); }}
+              onClick={() => {
+                const id = sucesso.orcamentoId
+                setSucesso(null)
+                // Mesmo ?id (falhou atualizando o orçamento aberto): a URL não muda e o
+                // efeito de [editingId] não dispara — força a re-hidratação na mão.
+                if (id === editingId) setOrcamentoHidratado(false)
+                else setSearchParams({ id: String(id) })
+              }}
               className="w-full bg-danger hover:bg-danger/90 text-white text-[12px] font-semibold py-2.5 flex items-center justify-center gap-2 transition border-t border-border"
             >
               <RefreshCw className="h-4 w-4" />
-              Tentar de novo
+              Reabrir e tentar de novo
             </button>
           )}
           {/* COMPARTILHAR via share sheet nativo do celular (Web Share API).
@@ -4954,10 +4972,16 @@ export function OrcamentoMontar() {
                 try {
                   setEnviandoWAMsg('Fazendo upload do PDF...')
                   const filename = `${sucesso.numero}-${(sucesso.cliente || 'cliente').replace(/[^a-zA-Z0-9]+/g,'_')}.pdf`
-                  const path = `orcamentos/${new Date().toISOString().slice(0,7)}/${filename}`
-                  const { error: upErr } = await supabase.storage.from('qr-media').upload(path, sucesso.pdfBlob!, { contentType: 'application/pdf', upsert: true })
+                  // Bucket PRIVADO + URL assinada de 7 dias, igual ao envio automático do
+                  // FinalizarMontarModal (29/09/2026). Antes ia pro qr-media, que é público e
+                  // listável pelo anon: a proposta (CPF/CNPJ, endereço, preços) ficava aberta
+                  // pra sempre em .../public/qr-media/orcamentos/AAAA-MM/<numero>-<cliente>.pdf.
+                  const hojeEnvio = new Date()
+                  const path = `_envios/${hojeEnvio.getFullYear()}/${String(hojeEnvio.getMonth() + 1).padStart(2, '0')}/${filename}`
+                  const { error: upErr } = await supabase.storage.from('orcamentos-pendentes').upload(path, sucesso.pdfBlob!, { contentType: 'application/pdf', upsert: true })
                   if (upErr) throw new Error('Upload: ' + upErr.message)
-                  const { data: pub } = supabase.storage.from('qr-media').getPublicUrl(path)
+                  const { data: signed, error: sErr } = await supabase.storage.from('orcamentos-pendentes').createSignedUrl(path, 60 * 60 * 24 * 7)
+                  if (sErr || !signed?.signedUrl) throw new Error('signed_url: ' + (sErr?.message ?? 'sem url'))
                   const { data: { session } } = await supabase.auth.getSession()
                   const r = await fetch('https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/orcamento-enviar-meu-zap', {
                     method: 'POST',
@@ -4965,7 +4989,7 @@ export function OrcamentoMontar() {
                     body: JSON.stringify({
                       vendedor_nome: vendedor.nome,
                       telefone_destino: vendedor.telefone || undefined,
-                      pdf_url: pub.publicUrl,
+                      pdf_url: signed.signedUrl,
                       filename,
                       cliente_nome: sucesso.cliente,
                     }),

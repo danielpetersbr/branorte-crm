@@ -55,6 +55,7 @@ import {
   type DetetiveInput,
   type DossieResultado,
 } from './_lib/detetive-scoring.js'
+import { exigirAprovado, permissaoExplicita } from './_lib/exigir-aprovado.js'
 
 // ============================================================================
 // Adapter: Cenario[] (scoring) → {a_vista, prazo_padrao, prazo_estendido}
@@ -310,9 +311,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!auth) return res.status(401).json({ error: 'no_auth' })
 
   const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
-  const { data: u, error: uErr } = await supa.auth.getUser(auth)
-  if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
-  const userId = u.user.id
+  // Conta APROVADA (29/09/2026): o signup é público e a conta nasce 'pending'.
+  // Antes bastava ter JWT para disparar consulta SPC paga de qualquer CPF/CNPJ.
+  const acesso = await exigirAprovado(supa, auth)
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error, detail: acesso.detail })
+  const userId = acesso.usuario.userId
 
   // 2) Body
   const body = req.body as ConsultarBody
@@ -357,14 +360,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 3) Permissao do user (precisa de 'due_diligence.consultar')
-  const { data: perms } = await supa
-    .from('role_permissions')
-    .select('permissions')
-    .eq('role', (await supa.from('user_profiles').select('role').eq('id', userId).single()).data?.role || 'vendor')
-    .single()
-  const pode = (perms?.permissions as Record<string, boolean> | null)?.['due_diligence.consultar']
-  if (pode === false) {
+  // 3) Permissao do user (precisa de 'due_diligence.consultar') — FAIL-CLOSED
+  // (29/09/2026). Antes so barrava `=== false`: papel sem linha em role_permissions
+  // (pending, rejected, representante) ou com a chave null (financeiro, mapa,
+  // visualizador) ficava `undefined` e passava, e usuario sem perfil caia no
+  // fallback 'vendor' = true. Cada consulta SPC custa ~R$ 10. Agora so passa com
+  // `true` explicito do papel REAL do perfil aprovado (sem fallback). Fica ANTES
+  // do cache de 30d de proposito: o cache tambem devolve o resultado_spc inteiro.
+  const { data: perms } = acesso.usuario.role
+    ? await supa
+      .from('role_permissions')
+      .select('permissions')
+      .eq('role', acesso.usuario.role)
+      .maybeSingle()
+    : { data: null }
+  if (!permissaoExplicita(perms?.permissions, 'due_diligence.consultar')) {
     return res.status(403).json({ error: 'sem_permissao' })
   }
 

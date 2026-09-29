@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronRight, CheckCircle2, Flame, Target, TrendingUp, T
 import type { DashboardData } from '@/hooks/useDashboard'
 import type { useDashboardEtiquetas } from '@/hooks/useDashboardEtiquetas'
 import type { VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
+import { RISCO_MAX_HORAS, RISCO_TOP, responsavelDoRisco } from '@/lib/dashboard-risco'
 import { Card, CardHeader } from '../ui/Card'
 import { JanelaBadge } from '../ui/JanelaBadge'
 import { useJanela } from '../DashboardFilterContext'
@@ -96,11 +97,16 @@ export function AcoesPrioritarias({
     if (data.leadsEmRisco.length > 0) {
       const qtd = data.leadsEmRisco.length
       const valor = data.leadsEmRisco.reduce((s, l) => s + (l.valor ?? 0), 0)
-      const dono = data.leadsEmRisco.find(l => l.vendedor)?.vendedor ?? undefined
+      // O dono fora do ranking pode estar na lista (o lead é real), mas não é quem
+      // o gerente cobra — pula para o 1º vendedor de verdade (29/09/2026).
+      const dono = responsavelDoRisco(data.leadsEmRisco)
       out.push({
         prioridade: 'critica',
-        // o hook corta a lista em 8 — não afirmar que são exatamente 8
-        titulo: `${qtd >= 8 ? '8+' : n(qtd)} lead${qtd > 1 ? 's' : ''} quente${qtd > 1 ? 's' : ''} sem resposta há mais de 24h`,
+        // o hook corta a lista em 8 — não afirmar que são exatamente 8.
+        // A janela vai no título porque o hook agora ignora quem passou de 14 dias
+        // parado (29/09/2026): sem ela, "sem resposta há mais de 24h" prometeria
+        // TODOS os parados, e o de 4 meses não está aqui por decisão, não por esquecimento.
+        titulo: `${qtd >= RISCO_TOP ? `${RISCO_TOP}+` : n(qtd)} lead${qtd > 1 ? 's' : ''} quente${qtd > 1 ? 's' : ''} sem resposta há mais de 24h (até ${RISCO_MAX_HORAS / 24} dias)`,
         motivo: 'Já pediram proposta e pararam de responder. Cada hora esfria.',
         quantidade: qtd,
         valor: valor > 0 ? valor : undefined,

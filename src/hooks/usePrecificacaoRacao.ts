@@ -13,7 +13,17 @@ import type {
   SimulacaoInput, SimulacaoRow, StatusProposta,
 } from '@/lib/precificacao-racao/tipos'
 
-const CHAVE_CONFIG = ['venda-racao', 'config'] as const
+// Chave PRÓPRIA da config (29/09/2026). Era ['venda-racao','config'] — a MESMA do
+// useConfigEstudo (/producao-propria, useVendaRacao.ts), que lê a linha id=1 com
+// outro formato (ConfigEstudo, sem margemPorEspecie). O cache guarda o objeto já
+// mesclado e o staleTime é de 5 min: quem abria /producao-propria e depois
+// /venda-racao recebia a config do vizinho, e `cfg.margemPorEspecie[especie]`
+// estourava TypeError; salvar Configurações ali gravava o jsonb errado na id=2.
+// O prefixo 'precificacao-racao' (e não 'venda-racao', …) também tira esta
+// entrada do alcance do invalidateQueries por prefixo do outro módulo.
+// Ingredientes e fórmulas continuam compartilhando chave de propósito: são a
+// mesma consulta (mesma tabela, mesmo filtro, sem transformação) nos dois.
+const CHAVE_CONFIG = ['precificacao-racao', 'config', 2] as const
 const CHAVE_SIMULACOES = ['venda-racao', 'simulacoes'] as const
 const CHAVE_INGREDIENTES = ['venda-racao', 'ingredientes'] as const
 const CHAVE_FORMULAS = ['venda-racao', 'formulas'] as const
@@ -44,7 +54,7 @@ export function useConfigVendaRacao() {
 export function useSalvarConfig() {
   const qc = useQueryClient()
   return useMutation({
-    mutationKey: ['venda-racao', 'config', 'salvar'],
+    mutationKey: ['precificacao-racao', 'config', 'salvar'],
     mutationFn: async (config: ConfigVendaRacao) => {
       const { data: { user } } = await supabase.auth.getUser()
       const { error } = await supabase

@@ -95,10 +95,26 @@ export function PainelDonos({
   onPool: () => void
   /** Só admin resolve violação (a RPC recusa o resto de qualquer jeito). */
   podeResolver?: boolean
-  definirDono?: { mutate: (v: { contactId: string; vendorId: string }) => void; isPending: boolean }
+  /** mutateAsync (não mutate): a promessa rejeita mesmo se o observer já trocou de chamada. */
+  definirDono?: { mutateAsync: (v: { contactId: string; vendorId: string }) => Promise<unknown>; isPending: boolean }
 }) {
   const [verPorVendedor, setVerPorVendedor] = useState(false)
+  // (29/09/2026) O clique em "Dar dono" falhava calado: sem onError aqui e com o
+  // MutationCache global só fazendo console.error, o admin via o botão piscar e o
+  // contato continuar órfão. A recusa (ok:false) agora vira erro no hook e aparece aqui.
+  const [erroDono, setErroDono] = useState<string | null>(null)
   if (!relatorio) return null
+
+  const darDono = (contactId: string, nomeContato: string | null, vendorId: string) => {
+    if (!definirDono) return
+    setErroDono(null)
+    definirDono.mutateAsync({ contactId, vendorId }).catch((e: unknown) => {
+      const motivo = e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string'
+        ? (e as { message: string }).message
+        : String(e)
+      setErroDono(`Não deu dono a ${nomeContato ?? 'este contato'}: ${motivo}`)
+    })
+  }
 
   const v = relatorio.violacoes_sem_vendedor_com_orcamento
 
@@ -255,6 +271,18 @@ export function PainelDonos({
             </button>
           </div>
 
+          {erroDono && (
+            <div role="alert" className="flex items-start justify-between gap-2 px-2.5 py-2 border-b border-border bg-danger-bg text-[12px] text-danger">
+              <span>{erroDono}</span>
+              <button
+                onClick={() => setErroDono(null)}
+                className="shrink-0 text-[11px] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+              >
+                ok
+              </button>
+            </div>
+          )}
+
           {carregandoViolacoes && (
             <p className="px-2.5 py-3 text-[12.5px] text-ink-muted">Carregando…</p>
           )}
@@ -319,7 +347,7 @@ export function PainelDonos({
                                   <button
                                     key={s.id}
                                     disabled={definirDono?.isPending}
-                                    onClick={() => definirDono?.mutate({ contactId: l.contact_id, vendorId: s.id })}
+                                    onClick={() => darDono(l.contact_id, l.nome, s.id)}
                                     className="rounded border border-border px-1.5 py-0.5 text-[10.5px] text-ink-muted hover:text-ink hover:border-border-strong disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                     title={`Marcar ${s.nome} como dono deste contato. Não sobrescreve dono existente.`}
                                   >

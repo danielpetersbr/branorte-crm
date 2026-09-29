@@ -7,6 +7,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { exigirAprovado, urlDeAudioPermitida } from './_lib/exigir-aprovado.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -46,14 +47,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const auth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   if (!auth) return res.status(401).json({ error: 'no_auth' })
   const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
-  const { data: u, error: uErr } = await supa.auth.getUser(auth)
-  if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt' })
+  // Conta APROVADA (29/09/2026): signup é público e nasce 'pending'; só JWT
+  // deixava conta recém-criada gastar transcrição/resumo da OpenAI.
+  const acesso = await exigirAprovado(supa, auth)
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error })
 
   const body = req.body as ReqBody
 
   // ---------- TRANSCREVER ----------
   if (body.action === 'transcrever') {
     if (!body.path && !body.url) return res.status(400).json({ error: 'no_path' })
+    // path fica DENTRO do bucket (o front manda `${reuniaoId}/${parte}.webm`).
+    if (body.path && (body.path.startsWith('/') || /(^|\/)\.\.(\/|$)/.test(body.path))) {
+      return res.status(400).json({ error: 'invalid_path' })
+    }
+    // Ramo `url` (compat antiga; o front atual só manda `path`): antes o servidor
+    // fazia fetch de QUALQUER URL do corpo (29/09/2026). Agora só do Storage do
+    // próprio projeto, no bucket das reuniões.
+    if (!body.path && !urlDeAudioPermitida(String(body.url), SUPA_URL, BUCKET)) {
+      return res.status(400).json({ error: 'invalid_url' })
+    }
     let buf: Buffer
     try {
       if (body.path) {
@@ -64,7 +77,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         buf = Buffer.from(await data.arrayBuffer())
       } else {
         // Compat com chamadas antigas que mandavam a URL pronta (assinada ou não).
-        const audioRes = await fetch(body.url!)
+        // redirect 'error': o allowlist acima vale para o host FINAL também.
+        const audioRes = await fetch(body.url!, { redirect: 'error' })
         if (!audioRes.ok) return res.status(502).json({ error: 'fetch_audio', status: audioRes.status })
         buf = Buffer.from(await audioRes.arrayBuffer())
       }

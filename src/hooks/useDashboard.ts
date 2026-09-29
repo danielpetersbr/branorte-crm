@@ -1,7 +1,10 @@
+import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { foneCanon } from '@/lib/fone-canon'
 import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
+import { memoPorSnapshot } from '@/lib/memo-por-snapshot'
+import { RISCO_TOP, entraEmRisco, horasSemAtividade } from '@/lib/dashboard-risco'
 
 
 // Teto de linhas puxadas da view. Precisa ser MAIOR que o total de contatos, senão
@@ -341,11 +344,40 @@ async function fetchCriativoNomes(): Promise<Map<string, string>> {
   return m
 }
 
+/** O que o fetch devolve e o cache guarda: o BRUTO, sem período aplicado. */
+interface DashboardRaw {
+  rows: RawRow[]
+  orcValorByCanon: Map<string, number>
+  /** fone_canon → epoch ms do ÚLTIMO orçamento montado (entra na "última atividade" do risco). */
+  orcEmByCanon: Map<string, number>
+  fechados: Set<string>
+  criativoNomes: Map<string, string>
+}
+
+// Uma agregação por (bruto, preset), compartilhada por todos os observers — ver
+// src/lib/memo-por-snapshot.ts.
+const agregarPorPreset = memoPorSnapshot(aggregate)
+
 export function useDashboard(filters: DashboardFilters = { preset: '' }) {
   const qc = useQueryClient()
+  const preset = filters.preset
+  // Troca de período SEM rede (29/09/2026). A key era ['dashboard-data-v2', filters]:
+  // cada preset rebaixava as ~18 mil linhas (8 páginas em série, ~11 s sob carga) só
+  // para rodar um filtro que é client-side — e o `placeholderData: prev => prev`
+  // mostrava nesse meio-tempo os números do período ANTERIOR já com o rótulo novo
+  // ("Hoje · 1.842 leads" = o total de 30 dias). Agora a key é fixa, o cache guarda o
+  // bruto e o preset só escolhe o `select`: a troca é instantânea e o número nunca
+  // aparece com o carimbo errado. A key mudou de nome (v2 → v3) porque o formato do
+  // dado no cache mudou; o "Atualizar" do Dashboard invalida por prefixo 'dashboard'
+  // e continua casando. Nenhum outro lugar lê essa key (conferido por grep).
+  // Custo aceito: um preset novo é calculado sobre o bruto que já está no cache, que
+  // pode ter até ~3 min (refetchInterval; refetchOnWindowFocus é false no App). O
+  // cabeçalho mostra a hora do dado (dataUpdatedAt) e o "Atualizar" rebaixa na hora.
+  const select = useCallback((raw: DashboardRaw) => agregarPorPreset(raw, preset), [preset])
   return useQuery({
-    queryKey: ['dashboard-data-v2', filters],
-    queryFn: async (): Promise<DashboardData> => {
+    queryKey: ['dashboard-data-v3'],
+    select,
+    queryFn: async (): Promise<DashboardRaw> => {
       // Read PAGINADO: a view tem 10.4k linhas. Um único read (~7,8 MB) estoura o
       // statement_timeout de 8 s do role `authenticated` sob carga (frota + crons) e volta
       // 500 com `57014`. Em páginas de 2500 cada resposta é leve e sempre completa.
@@ -387,6 +419,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       // casado por fone_canon (espelhado em foneCanon()).
       const canons = [...new Set(rows.map(r => foneCanon(r.telefone)).filter((x): x is string => !!x))]
       const orcValorByCanon = new Map<string, number>()
+      const orcEmByCanon = new Map<string, number>()
       const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
       try {
         const [orcRes, sitRes] = await Promise.all([
@@ -394,8 +427,13 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
           (supabase as any).rpc('dashboard_fone_situacao'),
         ])
         if (!orcRes?.error) {
-          for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number }[]) {
-            if (o?.fone_canon) orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
+          for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number; ultimo_em?: string | null }[]) {
+            if (!o?.fone_canon) continue
+            orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
+            // ultimo_em = max(created_at) dos orçamentos do telefone. Orçamento montado
+            // É atividade com o cliente — ver src/lib/dashboard-risco.ts.
+            const em = o.ultimo_em ? new Date(o.ultimo_em).getTime() : NaN
+            if (Number.isFinite(em)) orcEmByCanon.set(String(o.fone_canon), em)
           }
         }
         if (!sitRes?.error) {
@@ -404,7 +442,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
           }
         }
       } catch { /* maps vazios -> fallback; dashboard não quebra */ }
-      return aggregate(rows, filters.preset, orcValorByCanon, fechados, criativoNomes)
+      return { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes }
     },
     staleTime: 120_000,
     refetchInterval: 180_000,  // read pesado (~6MB) — refetch a cada 3min p/ não somar carga ao polling da frota
@@ -412,7 +450,9 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
     // falha fora do loop (RPCs de orçamento) — antes eram 3, e cada uma rebaixava tudo.
     retry: 1,
     retryDelay: () => 3000,
-    placeholderData: prev => prev,
+    // Sem placeholderData: com a key fixa não existe "key nova ainda sem dado" na troca
+    // de período — o select roda sobre o cache na hora. Era o placeholder que carimbava
+    // o número velho com o rótulo novo.
   })
 }
 
@@ -420,7 +460,8 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
 // AGREGADOR
 // ============================================================================
 
-function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map<string, number> = new Map(), fechados: Set<string> = new Set(), criativoNomes: Map<string, string> = new Map()): DashboardData {
+function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
+  const { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes } = raw
   const now = new Date()
   const range = rangeForPreset(preset, now)
   const prev = previousRange(range)
@@ -693,15 +734,20 @@ function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map
     else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
     else if (ageH >= 720) { agingMais++; agingValorMais += valor }
 
-    // Lead em risco = quente OU com orçamento + sem resposta > 24h
+    // Lead em risco = quente OU com orçamento, parado entre 24h e 14 dias (29/09/2026).
+    // Sem o teto de 14 dias o card Crítico ficava preso em orçamentos grandes de 2-4
+    // meses atrás; e "parado" agora conta o último orçamento montado como atividade,
+    // não só a última mensagem do canal da IA. Regra e números: src/lib/dashboard-risco.ts.
+    // O aging acima segue em `ageH` (última mensagem) de propósito — é outra pergunta.
     const momentoR = normQuando(r.quando_investir)
-    if ((momentoR === 'Agora' || valor > 0) && ageH > 24) {
+    const horasRisco = horasSemAtividade(r.last_message_at, orcEmByCanon.get(fc ?? ''), now.getTime())
+    if (entraEmRisco(momentoR, valor, horasRisco)) {
       candidatosRisco.push({
         id: r.id,
         nome: r.nome,
         telefone: r.telefone,
         vendedor: r.responsavel?.trim() || null,
-        horasSemResposta: ageH,
+        horasSemResposta: horasRisco as number,
         valor: valor || null,
         momento: momentoR,
       })
@@ -842,7 +888,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map
     }
   }).sort((a, b) => b.totalLeads - a.totalLeads)
 
-  // ============================ Leads em risco (top 5) ============================
+  // ============================ Leads em risco (top RISCO_TOP) ============================
   const leadsEmRisco = candidatosRisco
     .sort((a, b) => {
       // Prioriza valor; em caso de empate, idade
@@ -850,7 +896,7 @@ function aggregate(rows: RawRow[], preset: DashboardPreset, orcValorByCanon: Map
       if (va !== vb) return vb - va
       return b.horasSemResposta - a.horasSemResposta
     })
-    .slice(0, 8)
+    .slice(0, RISCO_TOP)
 
   return {
     totalLeads: total,

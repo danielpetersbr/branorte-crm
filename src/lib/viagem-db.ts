@@ -243,6 +243,101 @@ export function linhaDaCfg(cfg: ConfigViagem, prog?: Programacao) {
   }
 }
 
+// ── paradas com visita feita: salvar não pode apagar ─────────────────────────
+//
+// 29/09/2026: salvar pelo planejador apagava TODAS as paradas e reinseria. Só que o
+// representante bate check-in/checkout e preenche o relatório em cima da parada
+// (visita_relatorio.parada_id é ON DELETE CASCADE): o gestor acrescentava uma
+// parada, salvava, e a visita feita sumia sem aviso — a parada voltava "sem
+// check-in / sem relatório". Agora quem tem visita é PRESERVADO (UPDATE por id) e
+// só o resto segue no apaga-e-insere.
+
+/** O que o banco tem de uma parada já gravada — o necessário pra decidir se pode apagar. */
+export interface ParadaGravada {
+  id: string
+  cli_key: string | null
+  cli_keys: string[] | null
+  rotulo?: string | null
+  cliente_nome?: string | null
+  cidade?: string | null
+  checkin_at: string | null
+  checkout_at: string | null
+}
+
+/** Visita feita = check-in, checkout ou relatório. Qualquer um dos três é trabalho de campo. */
+export function paradasComVisita(gravadas: ParadaGravada[], comRelatorio: Iterable<string>): ParadaGravada[] {
+  const rel = new Set(comRelatorio)
+  return gravadas.filter(g => !!g.checkin_at || !!g.checkout_at || rel.has(g.id))
+}
+
+/** Chaves de cliente da linha (cli_keys; cli_key em registro velho), em ordem fixa. */
+function assinaturaClientes(l: { cli_key: string | null; cli_keys: string[] | null }): string {
+  const arr = (l.cli_keys ?? []).filter(Boolean)
+  const keys = arr.length ? arr : (l.cli_key ? [l.cli_key] : [])
+  return [...keys].sort().join('\u0001')
+}
+
+export interface PlanoParadas<L> {
+  /** parada com visita que continua no plano: UPDATE por id (check-in e relatório ficam) */
+  atualizar: { id: string; linha: L }[]
+  /** o resto do plano: INSERT, id novo */
+  inserir: L[]
+  /** ids que o DELETE não pode levar — toda parada com visita, esteja ou não no plano */
+  preservar: string[]
+  /** tinha visita mas saiu do plano: fica no banco mesmo assim (a tela avisa) */
+  foraDoPlano: ParadaGravada[]
+}
+
+/**
+ * Casa as paradas do planejador com as que já têm visita no banco.
+ *
+ * 1º pelo id — é a mesma parada que veio do useViagem.
+ * 2º pelos MESMOS clientes — depois de salvar, a tela continua com os ids antigos
+ *    (o apaga-e-insere gera ids novos e ela não recarrega). Sem este passo, a parada
+ *    visitada ficaria duplicada: a preservada + uma cópia nova.
+ * 3º pelo cli_key — é UNIQUE na viagem; sem casar, o INSERT bateria 23505 contra a
+ *    preservada (ex.: o cliente foi pra outra parada junto com mais alguém).
+ *
+ * Pura: o hook busca o que o banco tem e executa o plano.
+ */
+export function planoDasParadas<L extends { cli_key: string | null; cli_keys: string[] | null }>(
+  planejadas: { paradaId: string; linha: L }[],
+  comVisita: ParadaGravada[],
+): PlanoParadas<L> {
+  const livres = new Map(comVisita.map(g => [g.id, g]))
+  const atualizar: { id: string; linha: L }[] = []
+  const casar = (g: ParadaGravada, linha: L) => { atualizar.push({ id: g.id, linha }); livres.delete(g.id) }
+
+  let pendentes: { paradaId: string; linha: L }[] = []
+  for (const pl of planejadas) {
+    const g = livres.get(pl.paradaId)
+    if (g) casar(g, pl.linha)
+    else pendentes.push(pl)
+  }
+
+  const passo = (achar: (pl: { paradaId: string; linha: L }) => ParadaGravada | undefined) => {
+    const sobra: typeof pendentes = []
+    for (const pl of pendentes) {
+      const g = achar(pl)
+      if (g) casar(g, pl.linha)
+      else sobra.push(pl)
+    }
+    pendentes = sobra
+  }
+  passo(pl => {
+    const ass = assinaturaClientes(pl.linha)
+    return ass ? [...livres.values()].find(g => assinaturaClientes(g) === ass) : undefined
+  })
+  passo(pl => (pl.linha.cli_key ? [...livres.values()].find(g => g.cli_key === pl.linha.cli_key) : undefined))
+
+  return {
+    atualizar,
+    inserir: pendentes.map(pl => pl.linha),
+    preservar: comVisita.map(g => g.id),
+    foraDoPlano: [...livres.values()],
+  }
+}
+
 /**
  * Recompõe nome/telefone/vendedor/valor dos clientes de uma viagem salva a partir dos
  * pontos do mapa (mapa_orcamentos_v2). Sem isso, a parada-cidade volta do banco com só

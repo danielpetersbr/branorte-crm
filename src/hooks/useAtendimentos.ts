@@ -3,6 +3,7 @@ import { supabaseAuditoria, supabase } from '@/lib/supabase'
 import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal, type StatusVendedor } from '@/types/atendimento'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
 import { codigosParaFiltro } from '@/lib/criativo-codigo'
+import { emLotes, paginaPorUltimaMsg, type ChaveAtendimento } from '@/lib/atendimentos-lotes'
 
 /**
  * Pega primeiro nome do vendedor logado. NULL se admin (sem filtro)
@@ -42,6 +43,13 @@ export const FILTRO_SEM_ETIQUETA = '__sem_etiqueta__'
 // Teto da RPC de sem-etiqueta (o mesmo da RPC de etiqueta). Acima disso a lista é
 // truncada pelos mais recentes e a tela avisa, em vez de sumir com gente calada.
 export const SEM_ETIQUETA_LIMITE = 700
+
+// (29/09/2026) Quantos telefones vão num `.in()` da listagem de "Nunca respondeu". 500
+// telefones são ~8 KB de URL — medido: 1.200 (19 KB) ainda passam no proxy e 3.621
+// (58 KB) voltam 400. Acima disto a listagem consulta em lotes (listarSemRespostaEmLotes).
+const SEM_RESPOSTA_LOTE = 500
+// Lotes em paralelo. Cada lote avalia a view atendimentos_por_cliente inteira.
+const LOTES_SIMULTANEOS = 2
 
 export interface AtendimentoFilters {
   search: string
@@ -723,35 +731,146 @@ export function useAtendimentos(filters: AtendimentoFilters) {
     queryKey: ['atendimentos', filters],
     queryFn: async () => {
       const vendorFirst = await getCurrentVendorFirstName()
-      let query = supabaseAuditoria
-        .from('atendimentos_por_cliente')
-        .select('*', { count: 'exact' })
-        .eq('is_internal', false)
-        .order('ultima_msg', { ascending: false, nullsFirst: false })
 
-      // Vendor vê seus atendimentos + sem responsavel (não-atribuídos, "a definir", etc.)
-      if (vendorFirst) {
-        query = query.or(
-          `responsavel.ilike.${vendorFirst}%,` +
-          `responsavel.is.null,` +
-          `responsavel.eq.,` +
-          `responsavel.eq.a definir`
-        )
-      }
-
-      if (filters.search) {
-        const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
-        query = query.or(`nome.ilike.%${escaped}%,telefone.ilike.%${escaped}%`)
-      }
-      if (filters.responsavel) query = query.eq('responsavel', filters.responsavel)
-      if (filters.status_real) query = query.eq('status_real', filters.status_real)
-
-      // A janela de data é aplicada na query lá embaixo, mas o filtro de "sem
-      // etiqueta" precisa dela ANTES: a RPC trunca em 700, e truncar sem olhar a
+      // A janela de data entra no recorte de colunas (aplicarFiltros), mas o filtro de
+      // "sem etiqueta" precisa dela ANTES: a RPC trunca em 700, e truncar sem olhar a
       // data devolveria telefones que o range descartaria depois — a tela ficaria
       // vazia tendo resultado. Calculado aqui, usado nos dois lugares.
       const range = dateRangeFromPreset(filters.data)
       let truncado = false
+
+      // (29/09/2026) O recorte "de coluna" virou função porque o "Nunca respondeu" com
+      // lista grande consulta em LOTES (listarSemRespostaEmLotes, abaixo), e cada lote
+      // precisa do MESMO recorte da listagem — senão o total e a paginação contam gente
+      // que a tela esconderia. A ordem dos filtros não importa pro PostgREST (tudo é AND,
+      // e cada `.or()` vira um parâmetro próprio).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const aplicarFiltros = (q: any): any => {
+        // Vendor vê seus atendimentos + sem responsavel (não-atribuídos, "a definir", etc.)
+        if (vendorFirst) {
+          q = q.or(
+            `responsavel.ilike.${vendorFirst}%,` +
+            `responsavel.is.null,` +
+            `responsavel.eq.,` +
+            `responsavel.eq.a definir`
+          )
+        }
+
+        if (filters.search) {
+          const escaped = filters.search.replace(/[%_]/g, c => `\\${c}`)
+          q = q.or(`nome.ilike.%${escaped}%,telefone.ilike.%${escaped}%`)
+        }
+        if (filters.responsavel) q = q.eq('responsavel', filters.responsavel)
+        if (filters.status_real) q = q.eq('status_real', filters.status_real)
+
+        // Filtra por ATIVIDADE no periodo (last_message_at), nao pela chegada.
+        // FIX 17/09/2026: com created_at o cliente RECORRENTE sumia da lista — ele volta,
+        // o webhook ATUALIZA a linha antiga (created_at velho) e o lead do dia ficava invisivel.
+        // Eram 9 de 33 num dia e 95 na semana. Os KPIs ja usavam last_message_at: era divergencia interna.
+        if (range.from) q = q.gte('last_message_at', range.from)
+        if (range.to)   q = q.lte('last_message_at', range.to)
+        if (filters.uf) {
+          const ddds = Object.entries(DDD_TO_UF)
+            .filter(([, uf]) => uf === filters.uf)
+            .map(([ddd]) => ddd)
+          if (ddds.length > 0) {
+            const orExpr = ddds.map(ddd => `telefone.like.+55${ddd}%`).join(',')
+            q = q.or(orExpr)
+          }
+        }
+        if (filters.origem) {
+          // Mapeia label normalizado de volta pra padrões SQL no campo origem
+          const origemMap: Record<string, string[]> = {
+            'WhatsApp (48) 8878-1144': ['WhatsApp 1144', '%1144%', '%8878%'],
+            'WhatsApp (48) 3658-4502': ['WhatsApp 4502', '%4502%', '%3658%'],
+            'Meta ADS': ['Meta ADS', 'Meta'],
+            'Facebook': ['Facebook'],
+            'Facebook Form': ['Facebook Formulario', 'Facebook Formulário'],
+            'Instagram': ['Instagram', 'Instagram Formulario', 'Instagram Formulário', 'Bio Instagram'],
+            'Google': ['Google'],
+            // (28/09) '__null__' = origem vazia: a barra ORIGENS já conta NULL como "Não identificado"
+            'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado', '__null__'],
+          }
+          const patterns = origemMap[filters.origem]
+          if (patterns) {
+            const orExpr = patterns.map(p =>
+              p === '__null__' ? 'origem.is.null' : p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
+            ).join(',')
+            q = q.or(orExpr)
+          } else {
+            q = q.eq('origem', filters.origem)
+          }
+        }
+        // #17: filtro por criativo. (03/09) Deixou de ser `.eq` porque o código passou a
+        // aceitar sufixo de estado ("&8 RO"): digitar "&8" tem que trazer as regionais
+        // junto, senão o filtro esconde 96% da verba daquele criativo. Ver codigosParaFiltro.
+        const codsCriativo = codigosParaFiltro(filters.criativo)
+        if (codsCriativo.length === 1) q = q.eq('criativo_codigo', codsCriativo[0])
+        else if (codsCriativo.length > 1) q = q.in('criativo_codigo', codsCriativo)
+        return q
+      }
+
+      // "Nunca respondeu (auto)" com lista maior que cabe na URL (29/09/2026). Ver o
+      // cabeçalho de src/lib/atendimentos-lotes.ts: 3.621 telefones num `.in()` são 58 KB
+      // de URL e o proxy devolve 400. Aqui: lotes de SEM_RESPOSTA_LOTE só com a chave e
+      // a ordenação, juntar/ordenar/paginar no navegador, e a linha inteira só dos 50 da
+      // página. ⚠️ Cada lote avalia a view inteira (o filtro por telefone não desce pelas
+      // window functions), por isso no máximo LOTES_SIMULTANEOS de uma vez — a Micro já
+      // perde conexão de pg_cron quando lota.
+      const listarSemRespostaEmLotes = async (lista: string[]) => {
+        let tels = [...new Set(lista.map(String).filter(Boolean))]
+        // "Só com orçamento" junto: cruzar aqui em vez de somar um SEGUNDO `.in()` gigante
+        // em cada lote (a lista de orçamento também é grande).
+        if (filters.comOrcamento) {
+          const { data: orc, error: orcErr } = await (supabase as any).rpc('atendimentos_telefones_com_orcamento')
+          if (orcErr) throw orcErr
+          const comOrc = new Set(((orc ?? []) as string[]).map(String))
+          tels = tels.filter(t => comOrc.has(t))
+        }
+        if (tels.length === 0) return { rows: [] as Atendimento[], total: 0, truncado: false }
+
+        const chaves: ChaveAtendimento[] = []
+        const lotes = emLotes(tels, SEM_RESPOSTA_LOTE)
+        for (let i = 0; i < lotes.length; i += LOTES_SIMULTANEOS) {
+          const partes = await Promise.all(lotes.slice(i, i + LOTES_SIMULTANEOS).map(async lote => {
+            const { data, error } = await aplicarFiltros(
+              supabaseAuditoria
+                .from('atendimentos_por_cliente')
+                .select('telefone_norm, ultima_msg')
+                .eq('is_internal', false)
+                .in('telefone_norm', lote),
+            )
+            if (error) throw error
+            return (data ?? []) as ChaveAtendimento[]
+          }))
+          for (const p of partes) chaves.push(...p)
+        }
+
+        const { total, telefones } = paginaPorUltimaMsg(chaves, filters.page, ATENDIMENTO_PAGE_SIZE)
+        if (telefones.length === 0) return { rows: [] as Atendimento[], total, truncado: false }
+
+        const { data, error } = await aplicarFiltros(
+          supabaseAuditoria
+            .from('atendimentos_por_cliente')
+            .select('*')
+            .eq('is_internal', false)
+            .in('telefone_norm', telefones),
+        )
+        if (error) throw error
+        // Devolve na ordem da página (a do paginaPorUltimaMsg), com o mesmo desempate.
+        const pos = new Map(telefones.map((t, i) => [t, i]))
+        const rows = ((data ?? []) as Atendimento[]).slice().sort((a, b) =>
+          (pos.get(String(a.telefone_norm)) ?? telefones.length) - (pos.get(String(b.telefone_norm)) ?? telefones.length))
+        return { rows, total, truncado: false }
+      }
+
+      let query = aplicarFiltros(
+        supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('*', { count: 'exact' })
+          .eq('is_internal', false)
+          .order('ultima_msg', { ascending: false, nullsFirst: false }),
+      )
 
       // Filtro por etiqueta do WhatsApp: a RPC devolve os telefones com a etiqueta
       // (em toda a base), e filtramos os atendimentos por eles.
@@ -761,6 +880,7 @@ export function useAtendimentos(filters: AtendimentoFilters) {
         if (telErr) throw telErr
         const list = (tels ?? []) as string[]
         if (list.length === 0) return { rows: [], total: 0, truncado: false }
+        if (list.length > SEM_RESPOSTA_LOTE) return listarSemRespostaEmLotes(list)
         query = query.in('telefone_norm', list)
       } else if (filters.etiqueta === FILTRO_SEM_ETIQUETA) {
         // "Sem etiqueta": anti-join contra wa_chat_labels, dentro da janela de data.
@@ -790,50 +910,7 @@ export function useAtendimentos(filters: AtendimentoFilters) {
         if (list.length === 0) return { rows: [], total: 0, truncado: false }
         query = query.in('telefone_norm', list)
       }
-      // Filtra por ATIVIDADE no periodo (last_message_at), nao pela chegada.
-      // FIX 17/09/2026: com created_at o cliente RECORRENTE sumia da lista — ele volta,
-      // o webhook ATUALIZA a linha antiga (created_at velho) e o lead do dia ficava invisivel.
-      // Eram 9 de 33 num dia e 95 na semana. Os KPIs ja usavam last_message_at: era divergencia interna.
-      if (range.from) query = query.gte('last_message_at', range.from)
-      if (range.to)   query = query.lte('last_message_at', range.to)
-      if (filters.uf) {
-        const ddds = Object.entries(DDD_TO_UF)
-          .filter(([, uf]) => uf === filters.uf)
-          .map(([ddd]) => ddd)
-        if (ddds.length > 0) {
-          const orExpr = ddds.map(ddd => `telefone.like.+55${ddd}%`).join(',')
-          query = query.or(orExpr)
-        }
-      }
-      if (filters.origem) {
-        // Mapeia label normalizado de volta pra padrões SQL no campo origem
-        const origemMap: Record<string, string[]> = {
-          'WhatsApp (48) 8878-1144': ['WhatsApp 1144', '%1144%', '%8878%'],
-          'WhatsApp (48) 3658-4502': ['WhatsApp 4502', '%4502%', '%3658%'],
-          'Meta ADS': ['Meta ADS', 'Meta'],
-          'Facebook': ['Facebook'],
-          'Facebook Form': ['Facebook Formulario', 'Facebook Formulário'],
-          'Instagram': ['Instagram', 'Instagram Formulario', 'Instagram Formulário', 'Bio Instagram'],
-          'Google': ['Google'],
-          // (28/09) '__null__' = origem vazia: a barra ORIGENS já conta NULL como "Não identificado"
-          'Não identificado': ['Não identificou', 'Nao identificou', 'Não Identificado', '__null__'],
-        }
-        const patterns = origemMap[filters.origem]
-        if (patterns) {
-          const orExpr = patterns.map(p =>
-            p === '__null__' ? 'origem.is.null' : p.includes('%') ? `origem.ilike.${p}` : `origem.eq.${p}`
-          ).join(',')
-          query = query.or(orExpr)
-        } else {
-          query = query.eq('origem', filters.origem)
-        }
-      }
-      // #17: filtro por criativo. (03/09) Deixou de ser `.eq` porque o código passou a
-      // aceitar sufixo de estado ("&8 RO"): digitar "&8" tem que trazer as regionais
-      // junto, senão o filtro esconde 96% da verba daquele criativo. Ver codigosParaFiltro.
-      const codsCriativo = codigosParaFiltro(filters.criativo)
-      if (codsCriativo.length === 1) query = query.eq('criativo_codigo', codsCriativo[0])
-      else if (codsCriativo.length > 1) query = query.in('criativo_codigo', codsCriativo)
+      // (29/09/2026) data, UF, origem e criativo já entraram no aplicarFiltros, lá em cima.
 
       const from = filters.page * ATENDIMENTO_PAGE_SIZE
       query = query.range(from, from + ATENDIMENTO_PAGE_SIZE - 1)
@@ -843,7 +920,10 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       return { rows: (data ?? []) as Atendimento[], total: count ?? 0, truncado }
     },
     placeholderData: prev => prev,
-    refetchInterval: 30_000,                  // polling a cada 30s
+    // polling a cada 30s. (29/09/2026) Com "Nunca respondeu" a consulta em lotes avalia a
+    // view mais cara do banco ~9 vezes (8 lotes + a página); a cada 30s isso martelaria a
+    // Micro. A marca do bot muda devagar: 5 min, e voltar pra aba ainda atualiza na hora.
+    refetchInterval: filters.etiqueta === FILTRO_SEM_RESPOSTA ? 5 * 60_000 : 30_000,
     refetchIntervalInBackground: false,       // pausa quando aba nao tem foco
     refetchOnWindowFocus: true,               // atualiza ao voltar pra aba
   })
@@ -1076,6 +1156,37 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
+  })
+}
+
+// Selo do menu lateral ("17k" ao lado de Atendimentos). Mesmo número do `total` de
+// useAtendimentoKpis() sem filtro — mas SÓ a contagem, e devagar.
+// ⚠️ 29/09/2026: o menu usava useAtendimentoKpis() inteiro, que roda em TODA tela, pra cada
+// usuário logado, a cada 30 s — um count exact da view atendimentos_por_cliente (1,4 s em
+// média, pior caso 8 s = teto do authenticated) MAIS a lista de hoje, que o menu descartava.
+// Era a consulta que mais pesava no banco (a view = 22,5% de todo o tempo de banco desde 15/09)
+// e ajudava a derrubar por timeout as outras telas. Selo de menu não precisa ser ao vivo.
+export function useAtendimentosTotalMenu() {
+  return useQuery({
+    queryKey: ['atendimentos-total-menu'],
+    queryFn: async (): Promise<number | null> => {
+      const vendorFirst = await getCurrentVendorFirstName()
+      const { count, error } = await applyBaseFilters(
+        supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_internal', false),
+        undefined, vendorFirst,
+      )
+      // Degradável: sem número, o menu só não mostra o selo.
+      if (error) return null
+      return count ?? null
+    },
+    staleTime: 10 * 60_000,
+    refetchInterval: 10 * 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
 }
 

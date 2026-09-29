@@ -6,6 +6,8 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useFreteMapa, useTiposCaminhao, useFretesFeitos, useCriarFreteFeito, UFS_BR, type FreteMapaPonto, type FreteFeito } from '@/hooks/useFrete'
 import { geocodificarCidade } from '@/lib/calcFrete'
+import { escHtml } from '@/lib/html-escape'
+import { parseMoeda } from '@/lib/moeda'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
@@ -26,7 +28,8 @@ function pinIcon(cor: string, n = 1): L.DivIcon {
 
 const brl = (v: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
-const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
+// 29/09/2026: helper único (escapa aspas também) — a cópia local só tratava <>&.
+const esc = escHtml
 
 function equipLabel(p: FreteMapaPonto): string {
   const arr = Array.isArray(p.equipamentos_itens) ? p.equipamentos_itens : []
@@ -83,6 +86,12 @@ function RegistrarFeitoModal({ onClose }: { onClose: () => void }) {
     setErro('')
     if (!item.trim()) { setErro('Informe o equipamento/item.'); return }
     if (!cidade.trim() || !uf) { setErro('Informe cidade e UF do destino.'); return }
+    // 29/09/2026: era Number(valor.replace(',', '.')) — "16.500" gravava R$ 16,50 no
+    // mapa (que é o parâmetro histórico do vendedor) e "16.500,00" gravava NaN.
+    const valorNum = valor.trim() ? parseMoeda(valor) : null
+    if (valorNum != null && !(valorNum >= 0)) {
+      setErro('Não entendi o valor. Escreva só o número, ex.: 16.500 ou 16.500,00.'); return
+    }
     setBusy(true)
     let lat: number | null = null, lng: number | null = null
     try { const c = await geocodificarCidade(cidade.trim(), uf); if (c) { lat = c.lat; lng = c.lng } } catch { /* segue sem geo */ }
@@ -90,7 +99,7 @@ function RegistrarFeitoModal({ onClose }: { onClose: () => void }) {
       await criar.mutateAsync({
         item_nome: item.trim(), cidade_destino: cidade.trim(), uf_destino: uf,
         destino_lat: lat, destino_lng: lng,
-        valor: valor ? Number(String(valor).replace(',', '.')) : null,
+        valor: valorNum,
         transportadora_nome: transp.trim() || null, data_frete: data || null, observacoes: obs.trim() || null,
       })
       onClose()

@@ -55,16 +55,29 @@ export function TabVisaoGeral() {
   const [drill, setDrill] = useState<null | 'orcamentos' | 'vendidos' | 'valor'>(null)
 
   const { data, isLoading, error } = useDashboard({ preset })
-  const { data: etq } = useDashboardEtiquetas(preset)
+  const { data: etq, isPlaceholderData: etqVelho } = useDashboardEtiquetas(preset)
   const { data: extra } = useDashboardExtra()
-  const { data: vendFunil } = useDashboardVendedorFunil(preset)
-  const { data: funilUnion } = useFunilUnion(preset)
-  const { data: orcamentosReais } = useDashboardOrcamentos(preset)
-  const { data: orc } = useOrcamentosResumo(preset)
-  const { data: vendas } = useDashboardVendas(preset)
+  const { data: vendFunil, isPlaceholderData: vendFunilVelho } = useDashboardVendedorFunil(preset)
+  const { data: funilUnion, isPlaceholderData: funilUnionVelho } = useFunilUnion(preset)
+  const { data: orcamentosReais, isPending: orcamentosReaisPendente } = useDashboardOrcamentos(preset)
+  const { data: orc, isPlaceholderData: orcVelho } = useOrcamentosResumo(preset)
+  const { data: vendas, isPending: vendasPendente } = useDashboardVendas(preset)
   const { data: vendasReais } = useVendasReais()
-  const { data: propStatus } = usePropostasStatus(preset)
-  const { data: cobertura } = useVendedorCobertura(preset)
+  const { data: propStatus, isPlaceholderData: propStatusVelho } = usePropostasStatus(preset)
+  const { data: cobertura, isPlaceholderData: coberturaVelho } = useVendedorCobertura(preset)
+
+  // TROCA DE PERÍODO (29/09/2026). O useDashboard troca de preset na hora (select
+  // sobre o cache), mas os hooks por período abaixo têm key própria: na troca eles
+  // ou seguram o número do período ANTERIOR (`placeholderData: prev => prev` →
+  // isPlaceholderData) ou ficam sem dado e a tela pinta 0 (os dois de
+  // useDashboardOrcamentos → isPending). Nos dois casos o tile já exibe o rótulo
+  // novo. Enquanto isso durar, o bloco esmaece e fica aria-busy: é o sinal de "este
+  // número ainda não é do período que você escolheu". Background refetch da MESMA
+  // key não liga nenhuma das duas flags, então não pisca a cada poll.
+  const funilPendente = orcamentosReaisPendente || vendasPendente
+  const numerosPendentes = funilPendente || funilUnionVelho || orcVelho
+  const decisoesPendentes = etqVelho || vendFunilVelho || funilUnionVelho || orcVelho || propStatusVelho || coberturaVelho
+  const esmaece = (pendente: boolean) => `transition-opacity duration-200 ${pendente ? 'opacity-50' : ''}`
 
   const ir = (tab: TabId, anchor?: string) => irPara(setTab, tab, anchor)
 
@@ -145,8 +158,18 @@ export function TabVisaoGeral() {
       {/* ── 1. Bato a meta? ─────────────────────────────────────────── */}
       <MetaDoMes />
 
+      {/* Aviso falado da troca de período: o esmaecido é só visual. Sempre montado
+          (vazio quando não há troca) pra região viva existir antes da mensagem. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {numerosPendentes || decisoesPendentes ? `Atualizando os números para ${periodoLabel}…` : ''}
+      </p>
+
       {/* ── 2. Os 5 números ─────────────────────────────────────────── */}
-      <section aria-label="Números do período e do dia" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <section
+        aria-label="Números do período e do dia"
+        aria-busy={numerosPendentes}
+        className={`grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 ${esmaece(numerosPendentes)}`}
+      >
         <Metric
           label="Leads"
           valor={n(data.kpiTotal.valor)}
@@ -224,7 +247,7 @@ export function TabVisaoGeral() {
 
       {/* ── 3. Onde trava? ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        <div className="xl:col-span-5">
+        <div className={`xl:col-span-5 ${esmaece(funilPendente)}`} aria-busy={funilPendente}>
           <FunilResumo
             funil={data.funil}
             clientesComProposta={propostasClientes}
@@ -242,7 +265,9 @@ export function TabVisaoGeral() {
       </div>
 
       {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
-      <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} onIr={ir} />
+      <div className={esmaece(decisoesPendentes)} aria-busy={decisoesPendentes}>
+        <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} onIr={ir} />
+      </div>
 
       {/* ── 5. Quem está entregando? ────────────────────────────────── */}
       <TopEquipe

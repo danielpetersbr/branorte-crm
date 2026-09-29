@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { STATUS_QUE_PODEM_ATIVAR, conferirAtivacao } from '@/lib/campanha-envio'
 
 // Ritmos possíveis. Faixa fechada de propósito: se o vendedor puder digitar o
 // intervalo, alguém vai digitar 5 segundos e queimar o próprio número. Os valores
@@ -172,10 +173,40 @@ export function useMudarStatusCampanha() {
       const patch: Record<string, unknown> = { status }
       if (status === 'ativa') patch.started_at = new Date().toISOString()
       if (status === 'concluida' || status === 'cancelada') patch.finished_at = new Date().toISOString()
+
+      /*
+       * Ligar é idempotente (29/09/2026): só pega campanha em rascunho/pausada.
+       * Ligar de novo uma que já está 'ativa' (clique repetido, ou a resposta se
+       * perdeu na rede depois do banco gravar) não mexe em nada e conta como
+       * sucesso — e cancelada/concluída não volta a disparar por engano.
+       * Sem o `.select`, UPDATE que não pega linha (filtro ou RLS) volta sem erro
+       * e a tela diria "ligada" com a campanha parada.
+       */
+      if (status === 'ativa') {
+        const { data, error } = await (supabase as any)
+          .from('wa_campanhas')
+          .update(patch)
+          .eq('id', id)
+          .in('status', [...STATUS_QUE_PODEM_ATIVAR])
+          .select('id')
+        if (error) throw error
+        if ((data ?? []).length > 0) return
+        const { data: atual, error: errAtual } = await (supabase as any)
+          .from('wa_campanhas')
+          .select('status')
+          .eq('id', id)
+          .maybeSingle()
+        if (errAtual) throw errAtual
+        conferirAtivacao(atual?.status ?? null)
+        return
+      }
+
       const { error } = await (supabase as any).from('wa_campanhas').update(patch).eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['campanhas'] }),
+    // onSettled, não onSuccess: quando falha, o painel precisa mostrar o status
+    // real (ex.: a campanha já estava ligada, ou foi concluída no meio do caminho).
+    onSettled: () => qc.invalidateQueries({ queryKey: ['campanhas'] }),
   })
 }
 

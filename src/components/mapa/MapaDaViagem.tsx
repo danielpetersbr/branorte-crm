@@ -15,6 +15,7 @@ import 'leaflet/dist/leaflet.css'
 import { useConfirmarParada, useSalvarLocalizacaoCliente, useAdicionarParada, type ParadaConfirmacao } from '@/hooks/useViagens'
 import { pontoLivre, montarParadas, type Confirmacao, type TipoParada, type PontoMapa } from '@/lib/viagem'
 import { useOrcamentosMapa } from '@/hooks/useVisitas'
+import { escHtml } from '@/lib/html-escape'
 
 const COR: Record<Confirmacao, string> = {
   nao_solicitado: '#64748b',
@@ -33,7 +34,8 @@ const ROTULO: Record<Confirmacao, string> = {
   indisponivel: 'Não pode receber',
 }
 
-const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
+// 29/09/2026: helper único (escapa aspas também) — a cópia local só tratava <>&.
+const esc = escHtml
 
 /** Aproximada = centro da cidade. É o que faz a rota sair errada, então o pino avisa. */
 const aproximada = (p: ParadaConfirmacao) => p.precisao === 'cidade' || p.precisao === 'estado'

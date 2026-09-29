@@ -130,6 +130,13 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.contatos': true,
     'menu.ligacoes': true,
     'menu.area_vendedor': true,
+    // Liberado no banco em 28/09 (o /funil abriu pro vendedor) e faltava aqui: o
+    // guard do App.tsx (funilOk) mandava link salvo/F5 no /funil pra /atendimentos.
+    // Achado em 29/09/2026. 'menu.prospeccao' também está true pro vendor no banco;
+    // hoje não tem rota que o consulte, mas entra pela REGRA acima antes de ter.
+    // O teste src/lib/permissoes-fallback-vendor.test.ts cobra o par guard↔FALLBACK.
+    'menu.funil': true,
+    'menu.prospeccao': true,
     'orcamentos.criar': true,
     'due_diligence.consultar': true,
     'precos.consultar': true,

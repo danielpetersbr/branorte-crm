@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { parseCustomRange, type DashboardPreset } from './useDashboard'
+import { rangeForPreset, type DashboardPreset } from './useDashboard'
+import { paramsRpcPeriodo } from '@/lib/periodo-preset'
 
 // Propostas montadas no builder cruzadas com o ESTÁGIO ATUAL da etiqueta WhatsApp do
 // cliente (estado de agora). Responde "quais orçamentos foram enviados e estão com
@@ -25,28 +26,23 @@ export interface PropostasStatus {
 // Categorias que contam como "proposta em aberto" (negócio vivo, não fechado/perdido).
 export const CATS_ABERTO: PropCategoria[] = ['orcamento', 'lead_quente', 'quente', 'novo', 'sem_etiqueta']
 
-function desdeFromPreset(preset: DashboardPreset): string | null {
-  const _custom = parseCustomRange(preset)
-  if (_custom) return _custom.from.toISOString()
-  const now = new Date()
-  const d = (back: number) => { const x = new Date(now); x.setDate(x.getDate() - back); x.setHours(0, 0, 0, 0); return x.toISOString() }
-  if (preset === 'hoje') { const x = new Date(now); x.setHours(0, 0, 0, 0); return x.toISOString() }
-  if (preset === 'ontem') return d(1)
-  if (preset === '7d') return d(6)
-  if (preset === '30d') return d(29)
-  if (preset === 'mes') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  return null
-}
-
 interface RawRow { categoria: PropCategoria; n: number; brl: number }
 interface RawVendRow extends RawRow { vendedor: string }
 
 export function usePropostasStatus(preset: DashboardPreset = '') {
   return useQuery({
-    queryKey: ['propostas-status-v1', preset],
+    queryKey: ['propostas-status-v2', preset],
     queryFn: async (): Promise<PropostasStatus> => {
-      const desde = desdeFromPreset(preset)
-      const { data, error } = await supabase.rpc('dashboard_propostas_status', { p_from: desde, p_to: null })
+      // Período com INÍCIO e FIM (29/09/2026). Havia aqui um `desdeFromPreset` próprio
+      // que só devolvia o começo, e a RPC ia com `p_to: null`: em "Ontem" e no
+      // personalizado, "R$ em negociação quente" (TabVisaoGeral) e as propostas por
+      // estágio (TabFunil) somavam até AGORA, enquanto o useOrcamentosResumo do mesmo
+      // card já recortava as duas pontas. Agora é o mesmo `rangeForPreset` do resto do
+      // Dashboard; paramsRpcPeriodo ajusta o fim ao `<` da RPC (ver lib/periodo-preset).
+      const { data, error } = await supabase.rpc(
+        'dashboard_propostas_status',
+        paramsRpcPeriodo(rangeForPreset(preset, new Date())),
+      )
       if (error) throw error
       const obj = (data ?? {}) as { por_categoria?: RawRow[]; por_cat_vendedor?: RawVendRow[] }
       const porCategoria = (obj.por_categoria ?? []).map(r => ({ categoria: r.categoria, n: Number(r.n) || 0, brl: Number(r.brl) || 0 }))

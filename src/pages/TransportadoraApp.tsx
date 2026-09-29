@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Truck, Loader2, LogOut, Paperclip, MapPin, Package, CheckCircle2, AlertTriangle, Send } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { parseMoeda } from '@/lib/moeda'
 import { UFS_BR, useTranspMinhaConta, useTranspCotacoes, useTranspResponder, useTranspMarcarAnalisando, type TranspCotacao, type TranspConta } from '@/hooks/useFrete'
 
 function fmtMoeda(v: number | null): string {
@@ -224,8 +225,16 @@ function CotacaoCard({ c }: { c: TranspCotacao }) {
 
   async function enviar() {
     setErro('')
-    const v = Number(String(valor).replace(',', '.'))
-    if (!v || v <= 0) { setErro('O valor do frete é obrigatório.'); return }
+    // 29/09/2026: era Number(valor.replace(',', '.')). A transportadora digita "16.500"
+    // e o lance ia pro banco como R$ 16,50 — virava o "melhor preço" do painel e do
+    // histórico por UF. "16.500,00" dava NaN e ela lia "valor obrigatório" sem entender.
+    if (!valor.trim()) { setErro('O valor do frete é obrigatório.'); return }
+    const v = parseMoeda(valor)
+    if (Number.isNaN(v)) { setErro('Não entendi o valor. Escreva só o número, ex.: 16.500 ou 16.500,00.'); return }
+    if (v <= 0) { setErro('O valor do frete precisa ser maior que zero.'); return }
+    // Frete de equipamento abaixo de R$ 100 é quase sempre digitação ("16,5" no lugar
+    // de "16.500"). Não bloqueia — só pede pra conferir antes de virar lance.
+    if (v < 100 && !window.confirm(`Confere o valor do frete: ${v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}?`)) return
     const p = Number(prazo)
     if (!prazo || !Number.isFinite(p) || p <= 0) { setErro('O prazo de entrega (dias) é obrigatório.'); return }
     try {

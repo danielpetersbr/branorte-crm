@@ -1,4 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+// A regra de "conta aprovada" mora em exigir-aprovado.ts desde 29/09/2026 —
+// os outros endpoints passaram a usar o mesmo portão, e duas cópias da regra
+// iam divergir. Aqui só se adapta o formato que o orcamento-ai já consome.
+import { exigirAprovado } from './exigir-aprovado.js'
 
 export interface AuthenticatedSeller {
   userId: string
@@ -12,27 +16,15 @@ export type AuthenticationResult =
   | { ok: false; status: 401 | 403 | 500; error: string }
 
 export async function authenticateSeller(supabase: SupabaseClient, token: string): Promise<AuthenticationResult> {
-  if (!token) return { ok: false, status: 401, error: 'no_auth' }
-  const { data, error } = await supabase.auth.getUser(token)
-  if (error || !data.user) return { ok: false, status: 401, error: 'invalid_jwt' }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('user_profiles')
-    .select('role, approved_at, vendor_id')
-    .eq('id', data.user.id)
-    .maybeSingle()
-  if (profileError) return { ok: false, status: 500, error: 'profile_lookup_failed' }
-  if (!profile || !profile.approved_at || profile.role === 'pending' || profile.role === 'rejected') {
-    return { ok: false, status: 403, error: 'not_approved' }
-  }
-
+  const r = await exigirAprovado(supabase, token)
+  if (!r.ok) return { ok: false, status: r.status, error: r.error }
   return {
     ok: true,
     seller: {
-      userId: data.user.id,
-      email: data.user.email ?? null,
-      sellerId: typeof profile.vendor_id === 'number' ? profile.vendor_id : null,
-      isAdmin: profile.role === 'admin' || profile.role === 'financeiro',
+      userId: r.usuario.userId,
+      email: r.usuario.email,
+      sellerId: r.usuario.vendorId,
+      isAdmin: r.usuario.isAdmin,
     },
   }
 }

@@ -164,7 +164,9 @@ interface Props {
   open: boolean
   snapshot: CarrinhoSnapshot
   onClose: () => void
-  onSuccess: (info: { numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null }) => void
+  /** `orcamentoId` = a linha já gravada em orcamentos_gerados (o INSERT/UPDATE vem ANTES
+   *  do upload). O "Tentar de novo" reabre ela pelo ?id em vez de criar outro número. */
+  onSuccess: (info: { orcamentoId: number; numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null }) => void
   /** Sprint 3: quando vem do copiloto IA com cliente pré-preenchido, dispara
    *  contagem regressiva de 3s e auto-clica Gerar (zero atrito).
    *  Vendedor vê o botão "Cancelar countdown" pra interromper se quiser editar. */
@@ -1416,7 +1418,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
       setGerandoStep('Pronto!')
       setGerandoProgress(100)
-      onSuccess({ numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro: erroFluxo, pdfErro, whatsappEnviado, whatsappMensagem })
+      onSuccess({ orcamentoId: orc.id, numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, pdfBlob, cliente: cliNome.trim(), erro: erroFluxo, pdfErro, whatsappEnviado, whatsappMensagem })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
       setErro((e as Error).message)

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useResumoDia, type ResumoDiaVendedor } from '@/hooks/useResumoDia'
 import type { DashboardPreset } from '@/hooks/useDashboard'
+import { colunaSemDado, marcaNoRanking, type FontesFora } from '@/lib/resumo-dia-sem-dado'
 
 // ============================================================================
 // "Resumo do dia por vendedor" — card do Dashboard com os números de HOJE ao
@@ -57,7 +58,7 @@ type Col = {
   tone: Tone
   kpi: boolean           // entra na faixa do topo
   mobile: boolean        // aparece no card compacto do celular (sem precisar expandir)
-  snapshot: boolean      // é estado AGORA (não movimento do período) → pode virar "· · ·"
+  snapshot: boolean      // é estado AGORA (não movimento do período) → vira "· · ·" com o funil vivo fora (regra completa: lib/resumo-dia-sem-dado)
   separaAntes?: boolean  // divisor: daqui pra frente não é atividade de hoje
   semFio?: boolean       // sem fio de comparação (número puro)
   pct?: boolean          // o valor é 0-100 e sai com "%"
@@ -88,20 +89,34 @@ const COLS: Col[] = [
   { key: 'score',        Icon: Target,         emoji: '🎯', label: 'Score',      explica: 'quanto da carteira ele mexeu no período: atendidos ÷ carteira, travado em 100%', tone: 'accent', kpi: false, mobile: true,  snapshot: true, pct: true },
 ]
 
-// Uma celula fica "· · ·" por três motivos distintos, e os três querem dizer
+// Uma celula fica "· · ·" por quatro motivos distintos, e os quatro querem dizer
 // "o sistema não sabe" — nunca "é zero":
-//  • funil vivo fora do ar        → Negociando/Quentes/Score
+//  • funil vivo fora do ar        → Negociando/Quentes (e Atendidos/Score em Hoje/Tudo)
 //  • RPC da carteira fora do ar   → Carteira (query SEPARADA desde 17/08/2026 —
 //    por isso tem flag própria: uma pode cair sem a outra)
+//  • RPC do fluxo fora do ar      → Leads/Orçamentos/Ligações (e Atendidos/Score nos
+//    demais períodos). Até 29/09/2026 essa não tinha flag: a falha pintava ZERO no
+//    time inteiro, sem aviso, e o zero ia pro grupo do WhatsApp.
 //  • extensão sem captura de ligação → Ligações daquele vendedor
-type Fora = { funil: boolean; carteira: boolean }
+// A regra coluna → fonte mora em src/lib/resumo-dia-sem-dado.ts (testada).
+type Fora = FontesFora
 
 // Vale pra coluna inteira (KPI do topo, total do rodapé).
 function semDadoCol(c: Col, fora: Fora): boolean {
-  if (c.key === 'carteira') return fora.carteira
-  // Score é atendidos ÷ carteira: cai junto com QUALQUER um dos dois lados.
-  if (c.key === 'score') return fora.carteira || fora.funil
-  return c.snapshot && fora.funil
+  return colunaSemDado(c, fora)
+}
+
+// Nome esmaecido na lista = "não mexeu em nada". Só dá pra afirmar isso quando as
+// fontes dessas quatro colunas responderam: com fluxo ou funil fora, o zero é falta
+// de dado, e esmaecer o time inteiro repetiria o "ninguém trabalhou" (29/09/2026).
+function semAtividadeNoPeriodo(r: ResumoDiaVendedor, fora: Fora): boolean {
+  if (fora.fluxo || fora.funil) return false
+  return r.leads === 0 && r.atendimentos === 0 && r.orcamentos === 0 && r.negociacao === 0
+}
+
+// "Leads, Orçamentos e Ligações" — nomeia no aviso exatamente o que caiu.
+function listaNomes(nomes: string[]): string {
+  return nomes.length <= 1 ? (nomes[0] ?? '') : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`
 }
 
 // Vale pra célula de um vendedor (soma os casos que são por pessoa).
@@ -265,7 +280,9 @@ async function copiarTexto(texto: string): Promise<boolean> {
 //   dia: a fonte virou o histórico do WhatsApp e cobre a carteira inteira.
 //
 // O que continua valendo e NÃO deve ser revertido:
-// • MEDALHA NO TOP 3 — num grupo de vendas o ranking é a mensagem.
+// • MEDALHA NO TOP 3 — num grupo de vendas o ranking é a mensagem. Mas só quando
+//   Atendidos (a métrica que ordena) carregou: sem ela a ordem é alfabética e o
+//   pódio seria inventado — aí todo mundo sai com "•" (29/09/2026).
 // • NÚMERO INDISPONÍVEL NÃO VIRA ZERO. Se o funil não carregou, ou se a extensão
 //   daquele vendedor não captura ligação, a métrica é OMITIDA da linha dele.
 //   Anunciar "📲0" pra quem o sistema não consegue medir é acusação falsa no grupo.
@@ -275,7 +292,6 @@ function textoWhatsApp(
   opts: { periodo?: string; fora: Fora },
 ): string {
   const data = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-  const medalha = ['🥇', '🥈', '🥉']
 
   // Uma régua só pros dois casos (vendedor e time): mesmo conjunto, mesma ordem,
   // pulando o que o sistema não sabe.
@@ -285,7 +301,8 @@ function textoWhatsApp(
   // Nome e números em linhas separadas: com 8 métricas, tudo numa linha só vira
   // um bloco que quebra feio na largura do WhatsApp no celular.
   const linhas = rows.map((r, i) => {
-    const marca = i < 3 ? medalha[i] : '•'
+    // Pódio só com Atendidos carregado: sem ele a ordem é alfabética (29/09/2026).
+    const marca = marcaNoRanking(i, opts.fora)
     return `${marca} *${r.nome}*\n${metricas(c => r[c.key], c => semDado(c, r, opts.fora))}`
   })
 
@@ -302,8 +319,15 @@ function textoWhatsApp(
 
 export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: DashboardPreset; periodoLabel?: string }) {
   const liveHoje = preset === '' || preset === 'hoje'
-  const { linhas, isLoading, isError, funilIndisponivel, carteiraIndisponivel } = useResumoDia(preset)
-  const fora: Fora = { funil: funilIndisponivel, carteira: carteiraIndisponivel }
+  const {
+    linhas, isLoading, isError, funilIndisponivel, carteiraIndisponivel, fluxoIndisponivel, fluxoCarregando,
+  } = useResumoDia(preset)
+  // Duas réguas: `fora` decide a CÉLULA ("· · ·" também enquanto o fluxo do período
+  // novo não chegou — senão pinta 0 com o rótulo novo); `falhou` decide o AVISO, que
+  // só fala do que caiu de verdade. Carregar não é falhar.
+  const falhou: Fora = { funil: funilIndisponivel, carteira: carteiraIndisponivel, fluxo: fluxoIndisponivel, liveHoje }
+  const fora: Fora = { ...falhou, fluxo: fluxoIndisponivel || fluxoCarregando }
+  const colunasQueCairam = COLS.filter(c => semDadoCol(c, falhou)).map(c => c.label)
   const [copiado, setCopiado] = useState(false)
   // Texto que a cópia não conseguiu entregar: vira um painel selecionável na tela.
   // Falhar em silêncio é o bug que estamos consertando — se as duas rotas caírem,
@@ -345,11 +369,20 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
   // Destaque do dia: quem lidera os atendimentos (a mesma métrica que já ordena
   // a lista e que já ganha 🥇 na mensagem do grupo). NÃO é métrica nova — é o
   // topo de uma coluna que a tela sempre mostrou.
-  const topAtendimentos = rows.length > 0 && rows[0].atendimentos > 0 ? rows[0].nome : null
+  // Pódio só com Atendidos carregado: num refetch que falhou o react-query segura o dado
+  // velho, a célula vira "· · ·" e o selo não pode continuar em cima de um número escondido.
+  const topAtendimentos = !colunaSemDado({ key: 'atendimentos', snapshot: false }, fora)
+    && rows.length > 0 && rows[0].atendimentos > 0 ? rows[0].nome : null
 
   // Quem está com a extensão sem captura de ligação. Some sozinho quando todo
   // mundo atualizar — o aviso do rodapé e o "· · ·" das células saem juntos.
-  const semCaptura = useMemo(() => rows.filter(r => !r.ligacoesCaptura).map(r => r.nome), [rows])
+  // ⚠️ `ligacoesCaptura` vem do fluxo: com ele fora (ou ainda carregando) TODO mundo
+  // aparece sem captura, e o rodapé acusaria a extensão do time inteiro por uma
+  // falha da RPC (29/09/2026). Aí quem fala é o aviso de "não carregou".
+  const semCaptura = useMemo(
+    () => (fora.fluxo ? [] : rows.filter(r => !r.ligacoesCaptura).map(r => r.nome)),
+    [rows, fora.fluxo],
+  )
 
   const copiar = async () => {
     const periodo = !liveHoje && periodoLabel ? periodoLabel : undefined
@@ -464,7 +497,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
               </thead>
               <tbody>
                 {rows.map(r => {
-                  const semAtividade = r.leads === 0 && r.atendimentos === 0 && r.orcamentos === 0 && r.negociacao === 0
+                  const semAtividade = semAtividadeNoPeriodo(r, fora)
                   const top = r.nome === topAtendimentos
                   return (
                     <tr key={r.nome} className="border-t border-border/60 hover:bg-surface-2/50 transition-colors duration-150">
@@ -531,7 +564,7 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
               e abre o resto no toque. Mesmos dados, mesma ordenação. */}
           <div className="md:hidden mt-4 space-y-2">
             {rows.map(r => {
-              const semAtividade = r.leads === 0 && r.atendimentos === 0 && r.orcamentos === 0 && r.negociacao === 0
+              const semAtividade = semAtividadeNoPeriodo(r, fora)
               const top = r.nome === topAtendimentos
               const aberto = expandido === r.nome
               const principais = COLS.filter(c => c.mobile)
@@ -628,19 +661,19 @@ export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: Da
           </div>
 
           {/* Aviso honesto: o número não existe, não é zero. Nomeia SÓ o que caiu —
-              funil vivo e carteira são duas queries e podem falhar separadas. */}
-          {(funilIndisponivel || carteiraIndisponivel) && (
+              funil vivo, carteira e fluxo são três queries e podem falhar separadas.
+              A lista sai de COLS pela mesma regra das células (29/09/2026): escrita
+              à mão ela já errava — dizia "Score" com o funil fora mesmo quando o
+              Score do período vinha do fluxo. */}
+          {colunasQueCairam.length > 0 && (
             <div className="mt-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-micro leading-relaxed text-warning flex items-start gap-2">
               <span className="shrink-0">⚠️</span>
               <span>
                 <b className="font-semibold">
-                  {funilIndisponivel && carteiraIndisponivel
-                    ? 'Negociando, Quentes, Score e Carteira não carregaram'
-                    : funilIndisponivel
-                      ? 'Negociando, Quentes e Score não carregaram'
-                      : 'A Carteira não carregou'}
-                </b> — por isso {carteiraIndisponivel && !funilIndisponivel ? 'aparece' : 'aparecem'} como
-                <span className="tabular-nums"> · · · </span>e não como zero. Os outros números estão certos.
+                  {listaNomes(colunasQueCairam)} não {colunasQueCairam.length > 1 ? 'carregaram' : 'carregou'}
+                </b> — por isso {colunasQueCairam.length > 1 ? 'aparecem' : 'aparece'} como
+                <span className="tabular-nums"> · · · </span>e não como zero.
+                {colunasQueCairam.length < COLS.length && ' Os outros números estão certos.'}
               </span>
             </div>
           )}
