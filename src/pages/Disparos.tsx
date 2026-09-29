@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star, Tag, Building2 } from 'lucide-react'
-import { EscritorioMapa } from '@/components/EscritorioMapa'
+import { PainelEscritorio } from '@/components/PainelEscritorio'
 import { LinksRoteamento } from '@/components/LinksRoteamento'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
@@ -50,10 +50,11 @@ export function Disparos() {
   const qc = useQueryClient()
 
   // Vendedores status
-  const { data: vendedores, isLoading: loadingV } = useQuery<Vendedor[]>({
+  const { data: vendedores, isLoading: loadingV, isError: erroV } = useQuery<Vendedor[]>({
     queryKey: ['vendor-dispatch-status'],
     queryFn: async () => {
-      const { data } = await supabase.from('vendor_dispatch_status').select('*').order('vendedor_nome')
+      const { data, error } = await supabase.from('vendor_dispatch_status').select('*').order('vendedor_nome')
+      if (error) throw error
       return data || []
     },
     refetchInterval: 10000,
@@ -365,6 +366,15 @@ export function Disparos() {
         </div>
         <BotaoRecolherTudo className="mt-1" />
       </header>
+
+      <SecaoRecolhivel
+        id="disparos.escritorio"
+        icone={<Building2 className="h-4 w-4 text-accent" />}
+        titulo="Painel do time"
+        resumo="resultado do dia · ranking do mês · tela cheia"
+      >
+        <PainelEscritorio vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} cadastroCarregando={loadingV} cadastroErro={erroV} />
+      </SecaoRecolhivel>
 
       {/* LINKS DE ROTEAMENTO: link colável que joga o cliente no WhatsApp do
           próximo vendedor da fila, com texto configurável e rastreio do clique. */}
@@ -712,19 +722,6 @@ export function Disparos() {
         <AtividadeDiaria />
       </SecaoRecolhivel>
 
-      {/* ESCRITÓRIO — mapa de mesas (arrasta vendedor pra mesa) */}
-      <SecaoRecolhivel
-        id="disparos.escritorio"
-        icone={<Building2 className="h-4 w-4 text-accent" />}
-        titulo="Escritório"
-        resumo="mapa de mesas ao vivo"
-      >
-        {/* `online || so_recebe`: no mapa do Escritório a pergunta é "esse cara
-            está trabalhando?", não "recebe disparo?". Quem está em modo só recebe
-            atende cliente do link o dia inteiro — apagar o boneco dele seria o
-            mesmo erro que já pintava Álvaro e Lucas de cinza. */}
-        <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} />
-      </SecaoRecolhivel>
     </div>
   )
 }

@@ -3,6 +3,8 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { supabase } from '@/lib/supabase'
 import { deslocamentoParaCaber } from '@/lib/cabe-na-tela'
+import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
+import { nomeCadastrado } from '@/lib/escritorio-painel'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Building2, X, MousePointerClick, UserPlus, Move, Check, RotateCw, Pencil } from 'lucide-react'
 
@@ -139,8 +141,6 @@ const RANK_METRICAS = [
   { key: 'atendimentos', label: 'Atend.', icon: '💬', cor: 'text-violet-300', bar: 'bg-violet-400' },
   { key: 'leads',        label: 'Leads',  icon: '📥', cor: 'text-emerald-300', bar: 'bg-emerald-400' },
   { key: 'orcamentos',   label: 'Orç.',   icon: '📄', cor: 'text-sky-300',    bar: 'bg-sky-400' },
-  { key: 'vendido',      label: 'Vend.',  icon: '✅', cor: 'text-green-300',  bar: 'bg-green-500' },
-  { key: 'conversao',    label: 'Conv.',  icon: '🎯', cor: 'text-amber-300',  bar: 'bg-amber-400' },
 ] as const
 
 // Linha do ranking (dia e mês) — pódio pro top 3, destaque pro líder, consistente entre os dois painéis
@@ -407,7 +407,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const [localRot, setLocalRot] = useState<Record<string, number>>({})
   const [draft, setDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [cardAberto, setCardAberto] = useState<string | null>(null) // funil fixado por clique (mobile)
-  const [rankMetric, setRankMetric] = useState<'atendimentos' | 'leads' | 'orcamentos' | 'vendido' | 'conversao'>('atendimentos')
+  const [rankMetric, setRankMetric] = useState<'atendimentos' | 'leads' | 'orcamentos'>('atendimentos')
 
   const { data: dados } = useQuery<{ assign: Record<string, string>; pos: Record<string, Pos>; rot: Record<string, number> }>({
     queryKey: ['escritorio-mesas'],
@@ -638,7 +638,8 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
   const rankingMes = useMemo(() => {
     const online = new Set(vendedores.filter(v => v.online).map(v => (v.vendedor_nome.split(/\s+/)[0] || '').toUpperCase()))
     return [...(rankingMesRaw ?? [])]
-      .map(r => ({ ...r, online: online.has((r.vend || '').toUpperCase()) }))
+      .filter(r => !foraDoRanking(r.vend))
+      .map(r => ({ ...r, vend: nomeCadastrado(r.vend, vendedores.map(v => v.vendedor_nome)) ?? r.vend, online: online.has((r.vend || '').toUpperCase()) }))
       .sort((a, b) => (b[rankMetricMes] as number) - (a[rankMetricMes] as number) || b.atendimentos - a.atendimentos)
   }, [rankingMesRaw, vendedores, rankMetricMes])
 
@@ -1018,6 +1019,7 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
         </svg>
 
         {MESAS.map((m, idx) => {
+          if (foraDoRanking(assignMap[m.id])) return null
           const nome = assignMap[m.id]
           const info = nome ? infoDe[nome] : undefined
           const isOutro = info?.tipo === 'outro'
@@ -1191,15 +1193,13 @@ export function EscritorioMapa({ vendedores, live }: { vendedores: VendedorLite[
             const maxVal = Math.max(1, ...ranking.map(r => r[rankMetric] as number))
             return ranking.map((r, i) => {
               const val = r[rankMetric] as number
-              const display = rankMetric === 'conversao' ? `${Math.round(val * 100)}%` : val
+              const display = val
               return (
                 <RankRow key={r.nome} pos={i} nome={r.nome} online={r.online} display={display} val={val} maxVal={maxVal} cor={cfg.cor} bar={cfg.bar}
                   stats={[
                     { icon: '💬', val: r.atendimentos, title: 'atendimentos hoje' },
                     { icon: '📥', val: r.leads, title: 'leads hoje' },
                     { icon: '📄', val: r.orcamentos, title: 'orçamentos hoje' },
-                    { icon: '✅', val: r.vendido, title: 'vendidos' },
-                    ...(r.quente > 0 ? [{ icon: '🔥', val: r.quente, cor: 'text-orange-300', title: 'leads quentes' }] : []),
                   ]}
                 />
               )
