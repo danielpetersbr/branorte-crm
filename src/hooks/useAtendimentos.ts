@@ -1079,6 +1079,37 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
   })
 }
 
+// Selo do menu lateral ("17k" ao lado de Atendimentos). Mesmo número do `total` de
+// useAtendimentoKpis() sem filtro — mas SÓ a contagem, e devagar.
+// ⚠️ 29/09/2026: o menu usava useAtendimentoKpis() inteiro, que roda em TODA tela, pra cada
+// usuário logado, a cada 30 s — um count exact da view atendimentos_por_cliente (1,4 s em
+// média, pior caso 8 s = teto do authenticated) MAIS a lista de hoje, que o menu descartava.
+// Era a consulta que mais pesava no banco (a view = 22,5% de todo o tempo de banco desde 15/09)
+// e ajudava a derrubar por timeout as outras telas. Selo de menu não precisa ser ao vivo.
+export function useAtendimentosTotalMenu() {
+  return useQuery({
+    queryKey: ['atendimentos-total-menu'],
+    queryFn: async (): Promise<number | null> => {
+      const vendorFirst = await getCurrentVendorFirstName()
+      const { count, error } = await applyBaseFilters(
+        supabaseAuditoria
+          .from('atendimentos_por_cliente')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_internal', false),
+        undefined, vendorFirst,
+      )
+      // Degradável: sem número, o menu só não mostra o selo.
+      if (error) return null
+      return count ?? null
+    },
+    staleTime: 10 * 60_000,
+    refetchInterval: 10 * 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+}
+
 // ─── Contagem "aberto vs fechado" do funil (estado ATUAL da etiqueta WhatsApp) ──
 // Base INTEIRA (independe do filtro de data — etiqueta é estado atual, não do dia).
 // Respeita o escopo do vendedor logado (vê os seus + não-atribuídos), igual aos KPIs.
