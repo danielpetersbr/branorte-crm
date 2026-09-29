@@ -404,42 +404,47 @@ function SecaoVisaoGeral({ push }: { push: (t: string, tone?: ToastMsg['tone']) 
             Nenhum cliente com IA ligada agora. O vendedor liga pelo botão 🤖 na conversa do WhatsApp.
           </div>
         ) : (
-          <table className="w-full text-[12px]">
-            <thead className="bg-surface-2/50 text-ink-muted">
-              <tr>
-                <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Cliente</th>
-                <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Vendedor</th>
-                <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Respostas hoje</th>
-                <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Última atividade</th>
-                <th className="px-3 py-1.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {atendimentos.data!.map(a => (
-                <tr key={a.id} className="border-t border-border/40 hover:bg-surface-2/30">
-                  <td className="px-3 py-2">
-                    <div className="font-semibold text-ink">{a.nome_contato || foneDoChatId(a.chat_id)}</div>
-                    <div className="text-[10px] text-ink-faint font-mono">{foneDoChatId(a.chat_id)}</div>
-                  </td>
-                  <td className="px-3 py-2 text-ink-muted">{a.vendedor_nome ?? '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">
-                    {a.dia_ref === hoje ? a.respostas_hoje : 0}
-                  </td>
-                  <td className="px-3 py-2 text-right text-ink-faint tabular-nums">{formatDataHora(a.atualizado_em)}</td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      onClick={() => desligar.mutate(a.id)}
-                      disabled={desligar.isPending}
-                      className="px-2 py-1 rounded-md border border-danger/40 text-danger text-[11px] font-semibold hover:bg-danger/10 transition-colors disabled:opacity-50"
-                      title="Desligar a IA pra este cliente agora (o vendedor pode religar pela conversa)"
-                    >
-                      Desligar
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            {/* 29/09/2026: no celular (390px) a tabela passava da tela e o layout, que
+                tem overflow-x: clip, cortava as colunas da direita sem deixar rolar. Rola
+                só aqui dentro; no desktop ela cabe e nada muda. */}
+            <table className="w-full text-[12px]">
+              <thead className="bg-surface-2/50 text-ink-muted">
+                <tr>
+                  <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Cliente</th>
+                  <th className="text-left px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Vendedor</th>
+                  <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Respostas hoje</th>
+                  <th className="text-right px-3 py-1.5 font-semibold uppercase text-[10px] tracking-wider">Última atividade</th>
+                  <th className="px-3 py-1.5" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {atendimentos.data!.map(a => (
+                  <tr key={a.id} className="border-t border-border/40 hover:bg-surface-2/30">
+                    <td className="px-3 py-2">
+                      <div className="font-semibold text-ink">{a.nome_contato || foneDoChatId(a.chat_id)}</div>
+                      <div className="text-[10px] text-ink-faint font-mono">{foneDoChatId(a.chat_id)}</div>
+                    </td>
+                    <td className="px-3 py-2 text-ink-muted">{a.vendedor_nome ?? '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">
+                      {a.dia_ref === hoje ? a.respostas_hoje : 0}
+                    </td>
+                    <td className="px-3 py-2 text-right text-ink-faint tabular-nums">{formatDataHora(a.atualizado_em)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        onClick={() => desligar.mutate(a.id)}
+                        disabled={desligar.isPending}
+                        className="px-2 py-1 rounded-md border border-danger/40 text-danger text-[11px] font-semibold hover:bg-danger/10 transition-colors disabled:opacity-50"
+                        title="Desligar a IA pra este cliente agora (o vendedor pode religar pela conversa)"
+                      >
+                        Desligar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

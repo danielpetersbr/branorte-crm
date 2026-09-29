@@ -182,14 +182,22 @@ export function Representantes() {
              tom={alertas.length ? 'warning' : 'normal'} />
       </div>
 
-      <div className="flex gap-1.5 mb-3 border-b border-border">
-        {([['painel', 'Indicadores'], ['mapa', 'Mapa'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`], ['candidaturas', `Candidaturas${nNovas ? ` (${nNovas})` : ''}`]] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setAba(k)}
-            className={cn(
-              'px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all',
-              aba === k ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink',
-            )}>{label}</button>
-        ))}
+      {/* 29/09/2026: em 390px a última aba ("Candidaturas (3)") terminava em 410px —
+          o layout tem overflow-x: clip, então ela era cortada sem rolagem e ficava
+          inalcançável. A faixa rola aqui dentro; o
+          min-w-max impede os botões de encolherem e quebrarem o rótulo em 2 linhas,
+          e mantém a linha de baixo (border-b) do comprimento de todas as abas. No
+          desktop tudo cabe: a faixa continua da largura da página e nada muda. */}
+      <div className="overflow-x-auto mb-3">
+        <div className="flex gap-1.5 min-w-max border-b border-border">
+          {([['painel', 'Indicadores'], ['mapa', 'Mapa'], ['alertas', `Alertas (${alertas.length})`], ['visitas', `Visitas (${visitas.length})`], ['candidaturas', `Candidaturas${nNovas ? ` (${nNovas})` : ''}`]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setAba(k)}
+              className={cn(
+                'px-3 py-2 text-[13px] font-medium border-b-2 -mb-px transition-all',
+                aba === k ? 'border-accent text-ink' : 'border-transparent text-ink-muted hover:text-ink',
+              )}>{label}</button>
+          ))}
+        </div>
       </div>
 
       {/* Antes do erro/loading de propósito: a query de candidaturas é outra, e

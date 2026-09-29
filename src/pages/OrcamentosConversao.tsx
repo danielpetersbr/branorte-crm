@@ -142,42 +142,47 @@ export function OrcamentosConversao() {
           <Trophy className="h-4 w-4 text-accent" /> Ranking por vendedor
         </h2>
         <div className="border border-border rounded-md overflow-hidden">
-          <table className="w-full text-[13px]">
-            <thead className="bg-surface-2/60">
-              <tr>
-                <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Vendedor</th>
-                <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Total</th>
-                <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Aprovados</th>
-                <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Perdidos</th>
-                <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Conversão</th>
-                <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">R$ Aprovado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranking.map((v, idx) => (
-                <tr key={v.vendedor_nome} className="border-t border-border/40 hover:bg-surface-2/30">
-                  <td className="px-3 py-2 font-medium text-ink flex items-center gap-2">
-                    {idx === 0 && <Trophy className="h-3.5 w-3.5 text-yellow-500" />}
-                    {idx === 1 && <Trophy className="h-3.5 w-3.5 text-gray-400" />}
-                    {idx === 2 && <Trophy className="h-3.5 w-3.5 text-amber-700" />}
-                    {v.vendedor_nome}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{v.total}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-success font-bold">{v.aprovados}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-danger">{v.perdidos}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums font-semibold ${
-                    v.conversaoPct >= 30 ? 'text-success' : v.conversaoPct >= 15 ? 'text-warning' : 'text-ink-muted'
-                  }`}>
-                    {v.conversaoPct.toFixed(1)}%
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums font-bold text-ink">{formatBRLPrecise(v.totalAprovadoBRL)}</td>
+          {/* 29/09/2026: no celular (390px) a tabela passava da tela e o layout, que
+              tem overflow-x: clip, cortava as colunas da direita sem deixar rolar. Rola
+              só aqui dentro; no desktop ela cabe e nada muda. */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead className="bg-surface-2/60">
+                <tr>
+                  <th className="text-left px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Vendedor</th>
+                  <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Total</th>
+                  <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Aprovados</th>
+                  <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Perdidos</th>
+                  <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">Conversão</th>
+                  <th className="text-right px-3 py-2 text-[10px] uppercase tracking-wider text-ink-faint font-medium">R$ Aprovado</th>
                 </tr>
-              ))}
-              {ranking.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-6 text-ink-faint italic">Sem orçamentos no período selecionado</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {ranking.map((v, idx) => (
+                  <tr key={v.vendedor_nome} className="border-t border-border/40 hover:bg-surface-2/30">
+                    <td className="px-3 py-2 font-medium text-ink flex items-center gap-2">
+                      {idx === 0 && <Trophy className="h-3.5 w-3.5 text-yellow-500" />}
+                      {idx === 1 && <Trophy className="h-3.5 w-3.5 text-gray-400" />}
+                      {idx === 2 && <Trophy className="h-3.5 w-3.5 text-amber-700" />}
+                      {v.vendedor_nome}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ink-muted">{v.total}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-success font-bold">{v.aprovados}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-danger">{v.perdidos}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums font-semibold ${
+                      v.conversaoPct >= 30 ? 'text-success' : v.conversaoPct >= 15 ? 'text-warning' : 'text-ink-muted'
+                    }`}>
+                      {v.conversaoPct.toFixed(1)}%
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums font-bold text-ink">{formatBRLPrecise(v.totalAprovadoBRL)}</td>
+                  </tr>
+                ))}
+                {ranking.length === 0 && (
+                  <tr><td colSpan={6} className="text-center py-6 text-ink-faint italic">Sem orçamentos no período selecionado</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </Card>
     </div>

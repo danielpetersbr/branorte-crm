@@ -8,9 +8,12 @@ import { Search, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BRLInput } from '@/components/ui/BRLInput'
-import { calcularMontagem, inclusosMontagem, MONTAGEM_PADRAO, type MontagemCfg } from '@/lib/orcamento-montagem'
+import {
+  calcularMontagem, quadrosMontagem, comResponsavel, obsPorContaComMontagem,
+  MONTAGEM_PADRAO, MONTAGEM_QUADRO_TITULO, MONTAGEM_QUADRO_FABRICANTE, MONTAGEM_QUADRO_CLIENTE,
+  type MontagemCfg, type MontagemResponsavel,
+} from '@/lib/orcamento-montagem'
 import { letraItem } from '@/lib/utils'
-import { OBS_POR_CONTA_DEFAULT } from '@/lib/orcamento-defaults'
 
 export interface PreviewItem {
   uid?: string
@@ -2416,10 +2419,58 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
             const interactive = !renderMode && !!onUpdateMontagem
             if (!montagem?.ativo && !interactive) return null
 
+            // NO PDF/DOCX: os 2 quadros do roadmap #69 (29/09/2026). O 1º traz o que a
+            // Branorte cobra — os itens SEM o valor de cada um e UM total fechado; o 2º,
+            // o que fica POR CONTA DO CLIENTE, sem valor nenhum. O quanto de cada linha
+            // — e as pessoas e os dias por tras — e conta INTERNA: exposta ela vira
+            // negociacao item a item (pedido do Daniel, 22/09/2026).
+            // `interactive` ja e false em renderMode (PDF/DOCX).
+            if (!interactive) {
+              const q = quadrosMontagem(montagem, montagemBase)
+              if (!q.fabricante && !q.cliente) return null
+              // FUNCAO que devolve JSX (mesmo motivo do numCampo abaixo).
+              const quadro = (subtitulo: string, itens: string[], total: number | null) => (
+                <div data-no-break className="mt-3 border border-gray-700 rounded-md p-4 bg-white shadow-sm relative" style={{ zIndex: 1, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                  <div className="pb-2 border-b-2 border-gray-800 mb-2.5">
+                    <span className="font-bold text-[16px] tracking-wider uppercase text-gray-700">{MONTAGEM_QUADRO_TITULO}</span>{' '}
+                    <span className="font-bold text-[14px] text-gray-500">{subtitulo}</span>
+                  </div>
+                  <table className="w-full text-[16px] border-collapse">
+                    <tbody>
+                      {itens.map(item => (
+                        <tr key={item}>
+                          <td colSpan={2} className="py-1 text-gray-800">
+                            <span className="text-gray-400 mr-1.5">•</span>
+                            <span className="font-semibold">{item}</span>
+                          </td>
+                        </tr>
+                      ))}
+                      {total != null && (
+                        <tr className="border-t-2 border-gray-700 font-bold">
+                          <td className="py-2 text-gray-900">Valor total</td>
+                          <td className="py-2 text-right text-gray-900 tabular-nums w-[160px]">R$ {formatBRLBare(total)}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )
+              return (
+                <>
+                  {q.fabricante && quadro(MONTAGEM_QUADRO_FABRICANTE, q.fabricante.itens, q.fabricante.total)}
+                  {q.cliente && quadro(MONTAGEM_QUADRO_CLIENTE, q.cliente.itens, null)}
+                </>
+              )
+            }
+
             // montagemBase = proposta SEM a montagem. Nao da pra derivar do totalGeral,
             // que ja traz a montagem dentro dele — quem chama passa explicito.
             const real = calcularMontagem(montagem, montagemBase)
-            const inclusos = inclusosMontagem(montagem, montagemBase)
+            // Na tela o vendedor ve as 5 linhas, na ordem de sempre — inclusive a da
+            // Branorte zerada (29/09/2026): antes ela sumia junto com o campo do
+            // unitario, e nao dava pra marcar "por conta do cliente" nem voltar o valor.
+            const todas = real.todas
+            const semValor = real.total === 0 && real.linhasCliente.length === 0
 
             function patch(campo: keyof MontagemCfg, valor: number | boolean) {
               if (!onUpdateMontagem) return
@@ -2482,48 +2533,25 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   </div>
                 )}
 
-                {/* NO PDF: o cliente ve O QUE ESTA INCLUSO (deslocamento, passagem
-                    aerea, hotel...) e UM valor fechado. O quanto de cada um — e as
-                    pessoas e os dias por tras — e conta INTERNA: exposta ela vira
-                    negociacao item a item. Pedido do Daniel, 22/09/2026.
-                    `interactive` ja e false em renderMode (PDF/DOCX). */}
-                {!interactive ? (
-                  <table className="w-full text-[16px] border-collapse">
-                    <tbody>
-                      <tr>
-                        <td className="py-1.5 text-gray-800 align-top">
-                          <span className="text-gray-400 mr-1.5">•</span>
-                          <span className="font-semibold">Montagem dos equipamentos</span>
-                          {inclusos && (
-                            <div className="text-[14px] text-gray-600 mt-0.5 ml-4">
-                              Inclui {inclusos}.
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-1.5 text-right text-gray-900 tabular-nums font-bold w-[160px] align-top">
-                          R$ {formatBRLBare(real.total)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                ) : (
+                {/* Editor (só na tela). O PDF/DOCX sai lá em cima, nos 2 quadros. */}
                 <table className="w-full text-[16px] border-collapse">
                   <thead>
                     <tr>
                       <th className="text-left font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px]">Item</th>
+                      <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[13px] w-[150px]">Quem paga</th>
                       <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[13px] w-[130px]">Unitário</th>
-                      <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px] w-[160px]">Valor</th>
+                      <th className="text-right font-bold py-2 text-gray-600 uppercase tracking-wider text-[15px] w-[140px]">Valor</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {real.linhas.length === 0 && (
+                    {semValor && (
                       <tr className="border-t border-gray-200">
-                        <td colSpan={3} className="py-2 text-[13px] text-gray-400 italic">
+                        <td colSpan={4} className="py-2 text-[13px] text-gray-400 italic">
                           Preencha pessoas e dias pra montagem entrar na proposta.
                         </td>
                       </tr>
                     )}
-                    {real.linhas.map(linha => {
+                    {todas.map(linha => {
                       const campoUnit: Partial<Record<typeof linha.chave, keyof MontagemCfg>> = {
                         estadia: 'estadiaDia',
                         alimentacao: 'alimentacaoDia',
@@ -2531,15 +2559,29 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                         deslocamento: 'deslocamentoDia',
                       }
                       const campo = campoUnit[linha.chave]
+                      const doCliente = linha.responsavel === 'cliente'
                       return (
-                        <tr key={linha.chave} className="border-t border-gray-200">
+                        <tr key={linha.chave} className={`border-t border-gray-200 ${doCliente ? 'bg-amber-50/60' : ''}`}>
                           <td className="py-1.5 text-gray-800">
                             <span className="text-gray-400 mr-1.5">•</span>
-                            <span className="font-semibold">{linha.rotulo}</span>
-                            <span className="text-[13px] text-gray-500 ml-2">{linha.detalhe}</span>
+                            <span className={`font-semibold ${doCliente ? 'text-gray-500' : ''}`}>{linha.rotulo}</span>
+                            {!doCliente && <span className="text-[13px] text-gray-500 ml-2">{linha.detalhe}</span>}
                           </td>
                           <td className="py-1.5 text-right print:hidden">
-                            {campo ? (
+                            <select
+                              value={linha.responsavel}
+                              onChange={e => onUpdateMontagem?.(comResponsavel(montagem ?? MONTAGEM_PADRAO, linha.chave, e.target.value as MontagemResponsavel))}
+                              className={`text-[13px] font-semibold border rounded px-1 py-0.5 outline-none focus:border-emerald-500 ${doCliente ? 'text-amber-800 bg-amber-50 border-amber-300' : 'text-gray-800 bg-white border-gray-300'}`}
+                              title="Branorte cobra = entra no total. Por conta do cliente = sai do total e vai pro 2º quadro da proposta, sem valor."
+                            >
+                              <option value="branorte">Branorte cobra</option>
+                              <option value="cliente">Por conta do cliente</option>
+                            </select>
+                          </td>
+                          <td className="py-1.5 text-right print:hidden">
+                            {doCliente ? (
+                              <span className="text-[13px] text-gray-400">—</span>
+                            ) : campo ? (
                               <BRLInput
                                 value={Number(montagem?.[campo] ?? 0)}
                                 onChange={v => patch(campo, Math.max(0, v))}
@@ -2552,7 +2594,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                             )}
                           </td>
                           <td className="py-1.5 text-right text-gray-800 tabular-nums font-semibold">
-                            R$ {formatBRLBare(linha.valor)}
+                            {doCliente
+                              ? <span className="text-[13px] font-normal italic text-amber-700">fora do total</span>
+                              : <>R$ {formatBRLBare(linha.valor)}</>}
                           </td>
                         </tr>
                       )
@@ -2560,10 +2604,15 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                     <tr className="border-t-2 border-gray-700 font-bold">
                       <td className="py-2 text-gray-900">TOTAL DA MONTAGEM</td>
                       <td className="print:hidden"></td>
+                      <td className="print:hidden"></td>
                       <td className="py-2 text-right text-gray-900 tabular-nums">R$ {formatBRLBare(real.total)}</td>
                     </tr>
                   </tbody>
                 </table>
+                {real.linhasCliente.length > 0 && (
+                  <div className="print:hidden mt-2 text-[12px] text-amber-800">
+                    Na proposta, as linhas por conta do cliente saem num 2º quadro — "{MONTAGEM_QUADRO_TITULO} {MONTAGEM_QUADRO_CLIENTE}" — sem valor.
+                  </div>
                 )}
               </div>
             )
@@ -3472,12 +3521,9 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                 // equipamentos orcados acima (se necessario)" como POR CONTA DO
                 // CLIENTE. Se o orcamento esta COBRANDO montagem, o cliente lia as
                 // duas coisas no mesmo PDF — o valor cobrado e "e por sua conta".
-                // Com montagem no orcamento, essa linha sai sozinha.
-                const linhasBase = obsPorConta ?? OBS_POR_CONTA_DEFAULT
-                const cobrandoMontagem = calcularMontagem(montagem, montagemBase).total > 0
-                const linhas = cobrandoMontagem
-                  ? linhasBase.filter(l => !/montagem\s+dos\s+equipamentos/i.test(l))
-                  : linhasBase
+                // Com montagem no orcamento, essa linha sai sozinha. A regra mora em
+                // obsPorContaComMontagem (29/09/2026) pra o DOCX nativo usar a mesma.
+                const linhas = obsPorContaComMontagem(obsPorConta, montagem, montagemBase)
                 const podeEditar = !renderMode && !!onUpdateObsPorConta
                 const commit = (novas: string[]) => onUpdateObsPorConta && onUpdateObsPorConta(novas)
                 return (

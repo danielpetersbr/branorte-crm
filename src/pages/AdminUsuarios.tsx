@@ -251,51 +251,56 @@ function Section({ title, rows, muted, onApprove, onReject, onEdit, onRestore }:
       <div className="px-4 py-2 border-b border-surface-border bg-surface-secondary">
         <h2 className="text-sm font-semibold text-text-primary">{title} ({rows.length})</h2>
       </div>
-      <table className="w-full">
-        <thead>
-          <tr className="text-xs text-text-muted border-b border-surface-border">
-            <th className="text-left px-4 py-2">Nome</th>
-            <th className="text-left px-4 py-2">Email</th>
-            <th className="text-left px-4 py-2">Role</th>
-            <th className="text-left px-4 py-2">Cadastrado</th>
-            <th className="text-right px-4 py-2">Ações</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-surface-border">
-          {rows.map(u => (
-            <tr key={u.id}>
-              <td className="px-4 py-2 text-sm text-text-primary">{u.display_name || '—'}</td>
-              <td className="px-4 py-2 text-sm text-text-secondary">{u.email}</td>
-              <td className="px-4 py-2"><RoleBadge role={u.role} /></td>
-              <td className="px-4 py-2 text-xs text-text-muted">{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
-              <td className="px-4 py-2 text-right">
-                <div className="flex items-center justify-end gap-1">
-                  {onApprove && (
-                    <Button variant="primary" size="sm" onClick={() => onApprove(u)}>
-                      <Check className="h-4 w-4" /> Aprovar
-                    </Button>
-                  )}
-                  {onReject && (
-                    <Button variant="ghost" size="sm" onClick={() => onReject(u)}>
-                      <X className="h-4 w-4" /> Rejeitar
-                    </Button>
-                  )}
-                  {onEdit && (
-                    <Button variant="secondary" size="sm" onClick={() => onEdit(u)}>
-                      Editar
-                    </Button>
-                  )}
-                  {onRestore && (
-                    <Button variant="ghost" size="sm" onClick={() => onRestore(u)}>
-                      Reativar
-                    </Button>
-                  )}
-                </div>
-              </td>
+      {/* 29/09/2026: no celular (390px) a tabela passava da tela e o layout, que
+          tem overflow-x: clip, cortava as colunas da direita sem deixar rolar. Rola
+          só aqui dentro; no desktop ela cabe e nada muda. */}
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="text-xs text-text-muted border-b border-surface-border">
+              <th className="text-left px-4 py-2">Nome</th>
+              <th className="text-left px-4 py-2">Email</th>
+              <th className="text-left px-4 py-2">Role</th>
+              <th className="text-left px-4 py-2">Cadastrado</th>
+              <th className="text-right px-4 py-2">Ações</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-surface-border">
+            {rows.map(u => (
+              <tr key={u.id}>
+                <td className="px-4 py-2 text-sm text-text-primary">{u.display_name || '—'}</td>
+                <td className="px-4 py-2 text-sm text-text-secondary">{u.email}</td>
+                <td className="px-4 py-2"><RoleBadge role={u.role} /></td>
+                <td className="px-4 py-2 text-xs text-text-muted">{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
+                <td className="px-4 py-2 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    {onApprove && (
+                      <Button variant="primary" size="sm" onClick={() => onApprove(u)}>
+                        <Check className="h-4 w-4" /> Aprovar
+                      </Button>
+                    )}
+                    {onReject && (
+                      <Button variant="ghost" size="sm" onClick={() => onReject(u)}>
+                        <X className="h-4 w-4" /> Rejeitar
+                      </Button>
+                    )}
+                    {onEdit && (
+                      <Button variant="secondary" size="sm" onClick={() => onEdit(u)}>
+                        Editar
+                      </Button>
+                    )}
+                    {onRestore && (
+                      <Button variant="ghost" size="sm" onClick={() => onRestore(u)}>
+                        Reativar
+                      </Button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Card>
   )
 }
