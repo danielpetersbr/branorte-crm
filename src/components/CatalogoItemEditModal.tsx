@@ -19,8 +19,8 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   ATRIBUTOS_POR_CATEGORIA,
   parseSpecsParaAtributos,
-  atributosParaSpecs,
 } from '@/lib/categoria-atributos'
+import { montarSpecsParaSalvar, type SpecsCarregadas } from '@/lib/catalogo-specs-salvar'
 
 interface Props {
   open: boolean
@@ -52,6 +52,9 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   // Atributos estruturados por categoria (ex: capacidade_ton pra SILO).
   // Sao serializados/desserializados de/pra `specs` no banco.
   const [atributos, setAtributos] = useState<Record<string, string>>({})
+  // Specs como vieram do banco ao abrir (null no modo criar). O save devolve o
+  // texto original do que não mudou — ver src/lib/catalogo-specs-salvar.ts.
+  const [specsCarregadas, setSpecsCarregadas] = useState<SpecsCarregadas | null>(null)
   const [valor, setValor] = useState<string>('')
   const [motorCv, setMotorCv] = useState<string>('')
   const [motorPolos, setMotorPolos] = useState<string>('')
@@ -68,6 +71,10 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   const [erroValidacao, setErroValidacao] = useState<string | null>(null)
   const [previewFoto, setPreviewFoto] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // Motor/peneira/categoria do item como ele ABRIU (null no modo criar ou depois
+  // que o admin mexeu num deles). Enquanto não for null, o auto-preenchimento do
+  // MOINHO fica parado — ver `aindaComoCarregado`.
+  const moinhoCarregadoRef = useRef<{ cv: string; pen: string | undefined; moinho: boolean } | null>(null)
 
   const atualizar = useAtualizarItemCatalogo()
   const criar = useCriarItemCatalogo()
@@ -89,6 +96,8 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       setSpecs([])
       setNovaSpec('')
       setAtributos({})
+      setSpecsCarregadas(null)
+      moinhoCarregadoRef.current = null
       setValor('')
       setMotorCv('')
       setMotorPolos('')
@@ -110,12 +119,22 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     setNomeCompleto(item.nome_completo || '')
     // descricao é auto-gerada a partir das specs
     // Parseia specs: separa atributos estruturados (Capacidade: 200 ton) de specs livres
-    const parsed = parseSpecsParaAtributos(Array.isArray(item.specs) ? item.specs : [], item.categoria || '')
+    const specsDoBanco = Array.isArray(item.specs) ? item.specs : []
+    const parsed = parseSpecsParaAtributos(specsDoBanco, item.categoria || '')
     setAtributos(parsed.atributos)
     setSpecs(parsed.specsLivres)
+    setSpecsCarregadas({ categoria: item.categoria || '', specs: [...specsDoBanco] })
     setNovaSpec('')
     setValor(item.valor != null ? String(item.valor) : '')
-    setMotorCv(item.motor_padrao_cv != null ? String(item.motor_padrao_cv) : '')
+    const cvCarregado = item.motor_padrao_cv != null ? String(item.motor_padrao_cv) : ''
+    // Mesmos valores que os setState ao redor gravam — é com eles que
+    // `aindaComoCarregado` compara.
+    moinhoCarregadoRef.current = {
+      cv: cvCarregado,
+      pen: parsed.atributos.peneira_mm,
+      moinho: (item.categoria || '').trim().toUpperCase() === 'MOINHO',
+    }
+    setMotorCv(cvCarregado)
     setMotorPolos(item.motor_padrao_polos != null ? String(item.motor_padrao_polos) : '')
     setMotorQtd(item.motor_padrao_qtd != null ? String(item.motor_padrao_qtd) : '1')
     setMotoresExtras(Array.isArray(item.motores_extras) ? item.motores_extras : [])
@@ -156,8 +175,30 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     100: { martelos: 64, capacidade: 10000, funil: 45 },
   }
 
+  // O item ainda está como ABRIU? (29/09/2026)
+  // Os três effects de auto-preenchimento do MOINHO abaixo disparavam também ao
+  // ABRIR um item existente, porque motor/peneira "mudam" do vazio para o valor
+  // carregado. No TRITURADOR 50 CV (item 34), cujas linhas de peneira e martelos
+  // são texto livre, abrir preenchia peneira 3 e 48 martelos e trocava a
+  // capacidade 5.000 pela 6.000 da tabela; Salvar sem mexer em nada gravava
+  // "Capacidade: 6000 kg/h" e "Quantidade de martelos: 48" ao lado da linha
+  // "fabricado com 36 martelos" — o PDF passava a dizer 6 t/h e 48 e 36 martelos.
+  // Agora o auto-preenchimento só roda no modo criar ou depois que o admin muda
+  // motor, peneira ou categoria. A primeira mudança destrava de vez: voltar ao
+  // valor original depois disso recalcula como antes.
+  function aindaComoCarregado(): boolean {
+    const c = moinhoCarregadoRef.current
+    if (!c) return false
+    if (c.cv === motorCv && c.pen === atributos.peneira_mm && c.moinho === isMoinho) return true
+    moinhoCarregadoRef.current = null
+    return false
+  }
+
   useEffect(() => {
     if (!isMoinho) return
+    // "Tipo: Martelo" não volta pelo parse (a regex exige número) e cairia nas
+    // specs livres: cada abrir+salvar somaria mais uma linha igual.
+    if (aindaComoCarregado()) return
     setAtributos(a => (a.tipo_moinho && a.tipo_moinho !== '') ? a : { ...a, tipo_moinho: 'Martelo' })
   }, [isMoinho])
 
@@ -173,6 +214,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     if (!isMoinho || !motorCv) return
     const cv = Number(motorCv)
     if (!cv || cv <= 0) return
+    if (aindaComoCarregado()) return
     const ref = MOINHO_SPECS[cv]
     setAtributos(a => {
       const next = { ...a }
@@ -198,6 +240,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     const cv = Number(motorCv)
     const pen = Number(atributos.peneira_mm)
     if (!cv || cv <= 0 || !pen || pen <= 0) return
+    if (aindaComoCarregado()) return
     const ref = MOINHO_SPECS[cv]
     setAtributos(a => {
       // Se pen 3mm e tem ref na tabela real, usa o valor real
@@ -235,7 +278,12 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       .filter((a): a is NonNullable<typeof a> => !!a)
   }, [acessorios, acessoriosIds])
 
-  if (!open || !item) return null
+  // Só `!open` (29/09/2026). Era `!open || !item`: o "+ Novo Produto" do
+  // CatalogoAdmin abre com item=null, então o modal nunca aparecia e o modo CRIAR
+  // (reset acima, `criar.mutateAsync` no save) era inalcançável — não havia outro
+  // caminho na tela para inserir em catalogo_items. Daqui para baixo `item` pode
+  // ser null: os handlers já testam, e o JSX usa `item ?`/`item?.`.
+  if (!open) return null
 
   // ─── Handlers ────────────────────────────────────────────────────
   function adicionarSpec() {
@@ -317,8 +365,9 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       nome_curto: nomeCurto.trim(),
       nome_completo: nomeCompleto.trim() || nomeCurto.trim(),
       descricao: specs.filter(s => s.trim()).map(s => `· ${s}`).join('\n') || null,
-      // Junta atributos estruturados + specs livres
-      specs: atributosParaSpecs(atributos, specs.filter(s => s.trim().length > 0), categoria),
+      // Junta atributos estruturados + specs livres, devolvendo o texto original
+      // do que não mudou (senão abrir+salvar reescrevia a capacidade no PDF).
+      specs: montarSpecsParaSalvar(atributos, specs, categoria, specsCarregadas),
       valor: valor === '' ? 0 : Number(valor) || 0,
       motor_padrao_cv: motorCv === '' ? null : Number(motorCv) || null,
       motor_padrao_polos: motorPolos === '' ? null : Number(motorPolos) || null,
@@ -348,7 +397,9 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   }
 
   async function handleToggleOficial() {
-    if (!item) return
+    // Modo criar: ainda não há linha para atualizar — o status vai junto no INSERT
+    // (`is_oficial` do handleSalvar). Antes o botão ficava morto aqui.
+    if (!item) { setIsOficial(v => !v); return }
     const novo = !isOficial
     setIsOficial(novo)
     try {
@@ -632,10 +683,10 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                         <div className="flex-1 pl-3 text-[13.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
                           {(() => {
                             // Preview = atributos estruturados (Atributos do Silo, etc) + specs livres,
-                            // exatamente igual ao que vai ser salvo via atributosParaSpecs ao clicar Salvar.
+                            // exatamente igual ao que vai ser salvo (montarSpecsParaSalvar) ao clicar Salvar.
                             // Sem isso o vendedor nao via Altura/Diametro/Capacidade que estao no painel
                             // de atributos separado mas APARECEM no PDF final do orcamento.
-                            const specsFinais = atributosParaSpecs(atributos, specs.filter(s => s.trim().length > 0), categoria)
+                            const specsFinais = montarSpecsParaSalvar(atributos, specs, categoria, specsCarregadas)
                             if (specsFinais.length === 0) {
                               return <div className="text-[12px] text-amber-600 italic">⚠ Sem descrição — adicione bullets ou preencha os atributos abaixo</div>
                             }
@@ -961,7 +1012,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
             </div>
 
             {/* Metadata */}
-            {(item.atualizado_por || item.atualizado_em) && (
+            {item && (item.atualizado_por || item.atualizado_em) && (
               <p className="text-[10px] text-ink-faint">
                 Última atualização:{' '}
                 {item.atualizado_por || 'sistema'}

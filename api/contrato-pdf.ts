@@ -16,6 +16,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import chromium from '@sparticuz/chromium'
 import puppeteer from 'puppeteer-core'
+import { exigirAprovado } from './_lib/exigir-aprovado.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -38,8 +39,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!auth) return res.status(401).json({ error: 'no_auth' })
 
   const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
-  const { data: u, error: uErr } = await supa.auth.getUser(auth)
-  if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
+  // Conta APROVADA (29/09/2026): signup é público e nasce 'pending'; só JWT
+  // deixava conta recém-criada prender um Chromium de 1 GB por 60 s.
+  const acesso = await exigirAprovado(supa, auth)
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error, detail: acesso.detail })
 
   const { html } = (req.body ?? {}) as { html?: string }
   if (!html || typeof html !== 'string' || html.length < 50) {

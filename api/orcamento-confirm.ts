@@ -11,6 +11,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { settleWithin } from './_lib/orcamento-confirm-timeout.js'
+import { baseConfereComNumero, exigirAprovado, exigirPermissaoDoPapel, nomeDeArquivoSeguro } from './_lib/exigir-aprovado.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -42,8 +43,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!auth) return res.status(401).json({ error: 'no_auth' })
 
   const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
-  const { data: u, error: uErr } = await supa.auth.getUser(auth)
-  if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
+  // Conta APROVADA (29/09/2026): signup é público e nasce 'pending'. Com só JWT,
+  // qualquer conta marcava orçamento alheio como 'enviado' e mandava pro WhatsApp
+  // de um vendedor o link (7 dias) de QUALQUER arquivo do bucket.
+  const acesso = await exigirAprovado(supa, auth)
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error, detail: acesso.detail })
+  // Mesmo portão de papel do /api/orcamento-presign (orcamentos.criar = true):
+  // quem não monta orçamento não marca 'enviado' nem dispara o WhatsApp.
+  const papel = await exigirPermissaoDoPapel(supa, acesso.usuario, 'orcamentos.criar')
+  if (!papel.ok) return res.status(papel.status).json({ error: papel.error })
 
   const body = req.body as ConfirmBody
   const id = Number(body?.orcamento_id)
@@ -51,6 +59,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const mes = String(body?.mes || '').trim()
   const base = String(body?.base || '').trim()
   if (!id || !ano || !mes || !base) return res.status(400).json({ error: 'missing_fields' })
+  // Mesmas regras do /api/orcamento-presign (quem gera o caminho): o arquivo tem
+  // que estar em AAAA/MM e o base não pode ter barra/controle.
+  if (!/^\d{4}$/.test(ano)) return res.status(400).json({ error: 'invalid_ano' })
+  if (!/^(0[1-9]|1[0-2])$/.test(mes)) return res.status(400).json({ error: 'invalid_mes' })
+  if (base.length > 200 || !nomeDeArquivoSeguro(base)) return res.status(400).json({ error: 'invalid_base' })
+
+  // O base tem que ser DESTE orçamento (29/09/2026): antes o id e o base não
+  // tinham vínculo nenhum — o docx de um orçamento "confirmava" outro. Todo
+  // número em orcamentos_gerados segue 'AAAA - NNNN[-ALTn]' (medido: 1762 de 1762
+  // nos últimos 120 dias) e nomeBase() sempre põe esse número no nome.
+  const { data: orc, error: orcErr } = await supa
+    .from('orcamentos_gerados')
+    .select('numero')
+    .eq('id', id)
+    .maybeSingle()
+  if (orcErr) return res.status(500).json({ error: 'orcamento_lookup_failed', detail: orcErr.message })
+  if (!orc) return res.status(404).json({ error: 'orcamento_nao_encontrado' })
+  if (!baseConfereComNumero(base, (orc as { numero?: string | null }).numero)) {
+    return res.status(403).json({ error: 'base_nao_confere' })
+  }
 
   const folder = `${ano}/${mes}`
   const docxPath = `${folder}/${base}.docx`
@@ -119,9 +147,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 3. WhatsApp (opcional)
   if (body.send_whatsapp && body.whatsapp_envio_path && body.vendedor_nome) {
     try {
+      // Só assina o PDF de envio DESTE orçamento — exatamente o caminho que o
+      // presign devolveu (presign.envio.path). Antes aceitava qualquer path do
+      // bucket e o link de 7 dias ia pro WhatsApp (29/09/2026).
+      const envioPath = `_envios/${folder}/${base}.pdf`
+      if (body.whatsapp_envio_path !== envioPath) throw new Error('whatsapp_envio_path_invalido')
       const { data: signed, error: sErr } = await supa.storage
         .from('orcamentos-pendentes')
-        .createSignedUrl(body.whatsapp_envio_path, 60 * 60 * 24 * 7)
+        .createSignedUrl(envioPath, 60 * 60 * 24 * 7)
       if (sErr || !signed?.signedUrl) throw new Error(`signed_url: ${sErr?.message || 'sem url'}`)
 
       const invocation = await settleWithin(supa.functions.invoke('orcamento-enviar-meu-zap', {

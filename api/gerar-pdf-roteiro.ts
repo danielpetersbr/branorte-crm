@@ -28,6 +28,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import chromium from '@sparticuz/chromium'
 import puppeteer from 'puppeteer-core'
+import { exigirAprovado } from './_lib/exigir-aprovado.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -69,9 +70,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Mesma regra do gerar-pdf.ts: aceita a service_role pra chamadas server-side
   // (edge/cron gerando roteiro sem ninguém logado). Comparação exata, nunca prefixo.
+  // JWT de usuário: conta APROVADA (29/09/2026) — signup é público e nasce
+  // 'pending'; só JWT deixava conta recém-criada prender Chromium de 1,5 GB.
   if (auth !== SVC_KEY) {
-    const { data: u, error: uErr } = await supa.auth.getUser(auth)
-    if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
+    const acesso = await exigirAprovado(supa, auth)
+    if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error, detail: acesso.detail })
   }
 
   const body = req.body as {

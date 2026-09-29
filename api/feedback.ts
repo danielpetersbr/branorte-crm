@@ -3,6 +3,7 @@
 // logado (nao queremos endpoint anonimo aceitando spam).
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { exigirAprovado } from './_lib/exigir-aprovado.js'
 
 export const config = {
   api: {
@@ -41,8 +42,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!auth) return res.status(401).json({ error: 'no_auth' })
 
   const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
-  const { data: u, error: uErr } = await supa.auth.getUser(auth)
-  if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
+  // Conta APROVADA (29/09/2026): signup é público e nasce 'pending'; só JWT
+  // deixava conta recém-criada subir screenshot de 8 MB e gravar feedback com
+  // service role.
+  const acesso = await exigirAprovado(supa, auth)
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error, detail: acesso.detail })
 
   const body = req.body as FeedbackBody
   const tipo = body?.tipo
@@ -79,8 +83,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     descricao: body.descricao?.trim() || null,
     url_origem: body.url_origem || null,
     screenshot_url,
-    criado_por: u.user.id,
-    criado_por_nome: u.user.email || null,
+    criado_por: acesso.usuario.userId,
+    criado_por_nome: acesso.usuario.email || null,
   }).select('*').single()
 
   if (error) return res.status(500).json({ error: 'insert_failed', detail: error.message })

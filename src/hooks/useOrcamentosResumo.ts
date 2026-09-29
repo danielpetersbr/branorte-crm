@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { parseCustomRange, type DashboardPreset } from './useDashboard'
+import { rangeForPreset, type DashboardPreset } from './useDashboard'
 import { soVendedores } from '@/lib/vendedores-fora-do-ranking'
+import { recortarPeriodo } from '@/lib/periodo-preset'
 
 // Resumo das PROPOSTAS montadas no builder de orçamento (tabela orcamentos_gerados).
 // É a única fonte real de R$ no fluxo de lead. O status 'enviado'/'rascunho' do builder
@@ -35,19 +36,6 @@ interface OrcRow {
   cliente_nome: string | null
 }
 
-function desdeFromPreset(preset: DashboardPreset): string | null {
-  const _custom = parseCustomRange(preset)
-  if (_custom) return _custom.from.toISOString()
-  const now = new Date()
-  const d = (back: number) => { const x = new Date(now); x.setDate(x.getDate() - back); x.setHours(0, 0, 0, 0); return x.toISOString() }
-  if (preset === 'hoje') { const x = new Date(now); x.setHours(0, 0, 0, 0); return x.toISOString() }
-  if (preset === 'ontem') return d(1)
-  if (preset === '7d') return d(6)
-  if (preset === '30d') return d(29)
-  if (preset === 'mes') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  return null // Tudo
-}
-
 /** Teto de linhas por consulta. Ver o aviso de truncamento dentro do queryFn. */
 const TETO = 20_000
 
@@ -55,13 +43,20 @@ export function useOrcamentosResumo(preset: DashboardPreset = '') {
   return useQuery({
     queryKey: ['orcamentos-resumo-v3', preset],
     queryFn: async (): Promise<OrcamentosResumo> => {
-      const desde = desdeFromPreset(preset)
-      let q = supabase
-        .from('orcamentos_gerados')
-        .select('vendedor_nome, total_proposta, created_at, cliente_dados, cliente_nome')
-        .order('created_at', { ascending: false }) // mais recente primeiro → 1º visto = última proposta
-        .limit(TETO)
-      if (desde) q = q.gte('created_at', desde)
+      // Período com INÍCIO e FIM (29/09/2026). Antes havia aqui um `desdeFromPreset`
+      // próprio que só devolvia o começo, e a query só tinha `.gte`: "Ontem" às 17h
+      // somava também o que foi montado hoje, e o personalizado 01/08–15/08 ia até
+      // hoje. Agora o intervalo é o mesmo `rangeForPreset` do resto do Dashboard e o
+      // recorte aplica as duas pontas — ver src/lib/periodo-preset.ts.
+      const q = recortarPeriodo(
+        supabase
+          .from('orcamentos_gerados')
+          .select('vendedor_nome, total_proposta, created_at, cliente_dados, cliente_nome')
+          .order('created_at', { ascending: false }) // mais recente primeiro → 1º visto = última proposta
+          .limit(TETO),
+        'created_at',
+        rangeForPreset(preset, new Date()),
+      )
       const { data, error } = await q
       if (error) throw error
 

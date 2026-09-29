@@ -9,6 +9,7 @@
 
 import { createRoot } from 'react-dom/client'
 import { createElement } from 'react'
+import { supabase } from '@/lib/supabase'
 import {
   OrcamentoPreview,
   type OrcamentoPreviewProps,
@@ -252,11 +253,14 @@ export async function gerarDocxViaHtml(previewProps: OrcamentoPreviewProps): Pro
     const sizeKb = Math.round(new Blob([fullHtml]).size / 1024)
     console.log(`[gerarDocxViaHtml] HTML pronto: ${sizeKb}KB`)
 
-    // 6) Manda pro endpoint
+    // 6) Manda pro endpoint — com o JWT da sessão: desde 29/09/2026 o
+    // /api/orcamento-html-to-docx exige conta aprovada (antes era aberto).
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) throw new Error('Sem sessão ativa — relogue')
     const t0 = Date.now()
     const r = await fetch('/api/orcamento-html-to-docx', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({ html: fullHtml }),
     })
     if (!r.ok) {

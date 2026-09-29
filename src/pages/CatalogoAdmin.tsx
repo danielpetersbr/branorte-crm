@@ -230,9 +230,14 @@ export function CatalogoAdmin() {
   }
 
   function fecharEdicao() {
+    // Sem o setTimeout de 200 ms que havia aqui (29/09/2026). Ele existia "pra não
+    // piscar o conteúdo", mas o modal não renderiza nada com open=false, então não
+    // havia o que piscar. E com o "+ Novo Produto" funcionando ele virou armadilha:
+    // fechar um item e abrir outro em menos de 200 ms deixava o timer zerar o item
+    // do modal já aberto — que caía no modo CRIAR e, no Salvar, INSERIA uma cópia
+    // em vez de atualizar.
     setModalOpen(false)
-    // pequeno delay pra não piscar o conteúdo enquanto fecha
-    setTimeout(() => setItemEditando(null), 200)
+    setItemEditando(null)
   }
 
   async function handleToggleOficial(e: React.MouseEvent, item: CatalogoItemAdmin) {

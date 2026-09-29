@@ -18,6 +18,7 @@ import {
   mockSintegra,
   type SintegraResult,
 } from './_lib/sintegra-client.js'
+import { exigirAprovado } from './_lib/exigir-aprovado.js'
 
 export const config = { api: { bodyParser: { sizeLimit: '256kb' } }, maxDuration: 30 }
 
@@ -51,8 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const auth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
     if (!auth) return res.status(401).json({ error: 'no_auth' })
     const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
-    const { data: u, error } = await supa.auth.getUser(auth)
-    if (error || !u?.user) return res.status(401).json({ error: 'invalid_jwt' })
+    // Conta APROVADA (29/09/2026): signup é público e nasce 'pending'; só JWT
+    // deixava conta recém-criada consultar CPF/CNPJ/IE nas APIs pagas.
+    const acesso = await exigirAprovado(supa, auth)
+    if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error })
   }
 
   const body = (req.body || {}) as { documento?: string; tipo?: Tipo; uf?: string }

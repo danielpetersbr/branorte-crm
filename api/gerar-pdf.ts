@@ -21,9 +21,12 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import chromium from '@sparticuz/chromium'
 import puppeteer from 'puppeteer-core'
+import { exigirAprovado } from './_lib/exigir-aprovado.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
 const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Conta técnica que o ia-orcamento-worker usa para pedir PDF (ver o portão abaixo).
+const PDF_USER_EMAIL = process.env.PDF_USER_EMAIL || 'admin@branorte.com'
 
 // Permite override pra testes (dev local pode usar chrome stable)
 const CHROMIUM_PATH = process.env.CHROMIUM_PATH
@@ -51,8 +54,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!auth) return res.status(401).json({ error: 'no_auth' })
 
   const supa = createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } })
-  const { data: u, error: uErr } = await supa.auth.getUser(auth)
-  if (uErr || !u?.user) return res.status(401).json({ error: 'invalid_jwt', detail: uErr?.message })
+  // Conta APROVADA (29/09/2026): signup é público e nasce 'pending' — sem isso,
+  // qualquer conta recém-criada prendia um Chromium de 1 GB por 60 s.
+  // Exceção única: a conta técnica do ia-orcamento-worker (edge sem ninguém
+  // logado), que cunha sessão de PDF_USER_EMAIL (admin@branorte.com, SEM linha
+  // em user_profiles) — ver tokenDeUsuario() em
+  // supabase/functions/ia-orcamento-worker/index.ts. Mesma env e mesmo default
+  // do worker; se trocarem a conta lá, configure PDF_USER_EMAIL aqui também.
+  const acesso = await exigirAprovado(supa, auth, { contasTecnicas: [PDF_USER_EMAIL] })
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error, detail: acesso.detail })
 
   const body = req.body as { previewProps?: unknown; responseMode?: string; propsPath?: string }
   // propsPath: orçamento com fotos base64 gera previewProps de vários MB e o
