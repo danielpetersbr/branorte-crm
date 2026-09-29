@@ -450,6 +450,16 @@ export function Atendimentos() {
   const myVendorName = profile?.vendor_id
     ? (vendorsData ?? []).find(v => v.id === profile.vendor_id)?.name
     : (profile?.display_name || profile?.email?.split('@')[0])
+  // Quem pode excluir — espelha auditoria.delete_atendimentos (29/09/2026): admin apaga qualquer
+  // lead; vendedor só o DELE (primeiro nome do responsável = o dele); lead da fila (sem dono) e os
+  // demais papéis, não. Antes a lixeira aparecia pra todo mundo e o banco apagava de qualquer um,
+  // sem volta.
+  const podeExcluir = (responsavel: string | null | undefined) => {
+    if (profile?.role === 'admin') return true
+    if (profile?.role !== 'vendor') return false
+    const eu = primeiroNomeUp(myVendorName)
+    return !!eu && primeiroNomeUp(responsavel) === eu
+  }
 
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
@@ -1623,14 +1633,25 @@ export function Atendimentos() {
                                     <MessageCircle className="h-3.5 w-3.5" />
                                   </a>
                                 )}
-                                {/* EXCLUIR */}
+                                {/* EXCLUIR — só aparece pra quem o banco deixa apagar */}
+                                {podeExcluir(r.responsavel) && (
                                 <button
                                   type="button"
                                   disabled={deleteMut.isPending}
                                   onClick={() => {
                                     const label = r.nome || r.telefone || 'lead'
                                     if (window.confirm(`Excluir lead "${label}"?\n\nEssa ação remove ${ids.length} ${ids.length === 1 ? 'registro' : 'registros'} do banco. Não pode ser desfeita.`)) {
-                                      deleteMut.mutate(ids)
+                                      deleteMut.mutate(ids, {
+                                        // A RPC devolve success:false (sem erro HTTP) quando recusa —
+                                        // antes a tela tratava isso como sucesso e o lead só não sumia.
+                                        onSuccess: res => {
+                                          if (res?.success) return
+                                          window.alert(res?.error === 'forbidden_not_owner'
+                                            ? 'Não excluído: este lead (ou parte dos registros dele) é de outro vendedor.'
+                                            : 'Não excluído: você não tem permissão para excluir leads.')
+                                        },
+                                        onError: e => window.alert('Não consegui excluir: ' + (e as Error).message),
+                                      })
                                     }
                                   }}
                                   title="Excluir lead"
@@ -1638,6 +1659,7 @@ export function Atendimentos() {
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
+                                )}
                               </div>
                             )
                           })()}

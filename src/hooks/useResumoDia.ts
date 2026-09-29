@@ -78,10 +78,13 @@ export function useResumoDia(preset: DashboardPreset = '') {
   const vendedoresQ = useQuery<Array<{ vendedor_nome: string; online: boolean }>>({
     queryKey: ['vendor-dispatch-status', 'resumo-dia'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('vendor_dispatch_status')
         .select('vendedor_nome, online')
         .order('vendedor_nome')
+      // supabase-js NÃO lança: sem este throw a falha virava lista vazia e a tela
+      // dizia "Nenhum vendedor no painel." em vez de "não carregou" (29/09/2026).
+      if (error) throw error
       return ((data ?? []) as Array<{ vendedor_nome: string | null; online: boolean | null }>)
         .filter(v => !!v.vendedor_nome)
         .map(v => ({ vendedor_nome: v.vendedor_nome as string, online: !!v.online }))
@@ -94,7 +97,17 @@ export function useResumoDia(preset: DashboardPreset = '') {
   const fluxoQ = useQuery<Record<string, FluxoRow>>({
     queryKey: ['escritorio-fluxo-periodo', pFrom, pTo],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_fluxo_periodo', { p_from: pFrom, p_to: pTo })
+      // ⚠️ 29/09/2026: o `error` era descartado. Numa falha (timeout, API travada) a
+      // query "dava certo" com mapa vazio e o time todo aparecia com Leads 0,
+      // Orçamentos 0, Score 0% — e o refetch de 30 s trocava dado bom por esses zeros.
+      // Com o throw, a falha vira `fluxoIndisponivel` e a tela pinta "· · ·".
+      //
+      // Sem `placeholderData: prev => prev` DE PROPÓSITO: a key muda com o período, e
+      // segurar o dado anterior mostraria os números do período velho com o rótulo
+      // novo (o mesmo defeito consertado no useDashboard). Enquanto a key nova não
+      // chega, `fluxoCarregando` pinta "· · ·" em vez de zero.
+      const { data, error } = await supabase.rpc('escritorio_fluxo_periodo', { p_from: pFrom, p_to: pTo })
+      if (error) throw error
       const m: Record<string, FluxoRow> = {}
       for (const r of (data ?? []) as Array<{ vend: string; leads: number; orcamentos: number; atendimentos: number; ligacoes: number; ligacoes_captura: boolean }>)
         m[r.vend] = {
@@ -140,7 +153,10 @@ export function useResumoDia(preset: DashboardPreset = '') {
   const funilQ = useQuery<Record<string, FunilRow>>({
     queryKey: ['escritorio-funil'],
     queryFn: async () => {
-      const { data } = await supabase.rpc('escritorio_funil_vivo')
+      const { data, error } = await supabase.rpc('escritorio_funil_vivo')
+      // Mesmo padrão das outras (29/09/2026): antes a falha só era pega pelo "voltou
+      // vazio" de `funilIndisponivel`; com o throw o erro também chega no log do rq.
+      if (error) throw error
       const m: Record<string, FunilRow> = {}
       for (const r of (data ?? []) as Array<Record<string, any>>) {
         m[r.vendedor_nome] = {
@@ -202,5 +218,14 @@ export function useResumoDia(preset: DashboardPreset = '') {
     // diferentes e a tela precisa saber distinguir. Visto em produção 13/08: a RPC
     // respondia certo no banco (10 linhas) e a tela mostrava a coluna inteira zerada.
     funilIndisponivel: funilQ.isError || (!funilQ.isLoading && Object.keys(funilQ.data ?? {}).length === 0),
+    // Leads/Orçamentos/Ligações (e Atendidos fora de Hoje/Tudo) vêm SÓ do fluxo
+    // (29/09/2026). "Voltou vazio" também conta como fora: a RPC sempre devolve ao
+    // menos quem tem captura de ligação (CTE `cap`, independe do período), então
+    // mapa vazio não é "ninguém trabalhou", é resposta quebrada.
+    fluxoIndisponivel: fluxoQ.isError || (!fluxoQ.isLoading && Object.keys(fluxoQ.data ?? {}).length === 0),
+    // Key nova (troca de período) ainda sem resposta: não é falha — não acende o
+    // aviso —, mas o número também não existe ainda. Sem isto a tela pintava 0 com o
+    // rótulo do período novo até a RPC voltar.
+    fluxoCarregando: fluxoQ.isLoading,
   }
 }

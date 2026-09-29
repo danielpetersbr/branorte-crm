@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { parseMoeda } from '@/lib/moeda'
 
 type EquipItem = { nome?: string; qtd?: number; foto_url?: string | null }
 type Resumo = {
@@ -35,24 +36,9 @@ function fmtMoeda(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
-/** Parser de moeda BR robusto: entende "16.500", "1.234,56", "1500.50", "1500,50". */
-function parseMoeda(s: string): number {
-  let t = String(s).trim().replace(/[^\d.,]/g, '')
-  if (!t) return NaN
-  const hasComma = t.includes(','), hasDot = t.includes('.')
-  if (hasComma && hasDot) {
-    // o ÚLTIMO separador é o decimal
-    if (t.lastIndexOf(',') > t.lastIndexOf('.')) t = t.replace(/\./g, '').replace(',', '.') // 1.234,56
-    else t = t.replace(/,/g, '') // 1,234.56
-  } else if (hasComma) {
-    t = t.replace(',', '.') // 1234,56
-  } else if (hasDot) {
-    // só ponto: 3 dígitos após = milhar (16.500 -> 16500); senão decimal (1500.50)
-    const after = t.slice(t.lastIndexOf('.') + 1)
-    if (after.length === 3) t = t.replace(/\./g, '')
-  }
-  return Number(t)
-}
+// parseMoeda ("16.500" -> 16500, "1.234,56" -> 1234.56) mora em @/lib/moeda desde
+// 29/09/2026: o portal da transportadora e o FreteMapa tinham o parser ingênuo e
+// gravavam "16.500" como R$ 16,50. Uma regra só pros três formulários de frete.
 
 function resumoEquip(r: Resumo): string {
   const arr = Array.isArray(r.equipamentos_itens) ? r.equipamentos_itens : []
@@ -100,6 +86,9 @@ export function CotarFrete() {
 
   async function enviar() {
     const v = parseMoeda(valor)
+    // O parser compartilhado recusa lixo ("16.500 reais", "1,234.56") com NaN em vez de
+    // adivinhar — então quem digitou ALGO precisa ouvir "não entendi", não "informe".
+    if (valor.trim() && Number.isNaN(v)) { setErro('Não entendi o valor. Escreva só o número, ex.: 16.500 ou 16.500,00.'); return }
     if (!Number.isFinite(v) || v <= 0) { setErro('Informe o valor do frete (R$).'); return }
     const p = Number(prazo)
     if (!prazo || !Number.isFinite(p) || p <= 0) { setErro('Informe o prazo de entrega (dias).'); return }

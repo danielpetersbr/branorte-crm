@@ -13,6 +13,7 @@ import { useOrfaosPorVendedor, type OrfaosPorVendedor } from '@/hooks/useOrfaosP
 import { useCicloVenda, type CicloVenda as CicloVendaData } from '@/hooks/useCicloVenda'
 import { useDashboardEtiquetas, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
+import { RISCO_MIN_HORAS, RISCO_MAX_HORAS, RISCO_TOP } from '@/lib/dashboard-risco'
 
 import { Card, Inner, CardHeader } from './ui/Card'
 import { JanelaBadge } from './ui/JanelaBadge'
@@ -46,7 +47,8 @@ import { useJanela } from './DashboardFilterContext'
 
    3. Todo bloco carrega o carimbo da janela. Nesta aba convivem três janelas
       diferentes na mesma tela — snapshot (etiqueta de agora), período (o filtro
-      do topo) e fixa (órfãos = idade > 7 dias) — e antes nada avisava.
+      do topo) e fixa (órfãos = idade > 7 dias; a resgatar = parado de 24h a 14
+      dias) — e antes nada avisava.
    ──────────────────────────────────────────────────────────────────────────── */
 
 function capitalizar(s: string): string {
@@ -532,12 +534,19 @@ function PropostasPorEstagio({ status }: { status: PropostasStatus }) {
 // 6 · LEADS A RESGATAR (estava morto no arquivo antigo)
 // ═══════════════════════════════════════════════════════════════════════════
 
+// A janela do risco, dita em todo texto desta lista (29/09/2026). O hook só deixa
+// entrar lead parado de 24h a 14 dias (src/lib/dashboard-risco.ts — mesma régua do
+// card Crítico que traz o gerente até aqui). Medido no banco nesse dia: 72 na janela
+// e 653 acima de 14 dias. Um texto que falasse de "todo parado" mentiria duas vezes:
+// o vazio diria "nenhum parado" com centenas parados, e o rodapé esconderia o teto.
+const JANELA_RISCO = `${RISCO_MIN_HORAS}h a ${RISCO_MAX_HORAS / 24} dias`
+
 function LeadsResgatar({ leads }: { leads: LeadEmRisco[] }) {
   if (!leads.length) {
     return (
       <p className="flex items-center gap-2 py-3 text-label text-ink-faint">
         <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
-        Nenhum lead quente parado no momento.
+        Nenhum lead quente parado entre {RISCO_MIN_HORAS}h e {RISCO_MAX_HORAS / 24} dias.
       </p>
     )
   }
@@ -573,8 +582,10 @@ function LeadsResgatar({ leads }: { leads: LeadEmRisco[] }) {
         })}
       </ul>
       <p className="pt-3 text-micro text-ink-faint">
-        Quentes que sumiram no meio do atendimento, ordenados por valor e tempo parado — comece por cima. A lista é
-        cortada nos 8 primeiros: existem outros abaixo do corte.
+        Quentes que sumiram no meio do atendimento, parados de {JANELA_RISCO} (sem mensagem nem orçamento novo),
+        ordenados por valor e tempo parado — comece por cima. Mais antigos são reativação e não entram.
+        {/* Só afirma que há mais quando a lista bateu no corte: com menos de 8, não há. */}
+        {leads.length >= RISCO_TOP && ` A lista é cortada nos ${RISCO_TOP} primeiros: pode haver outros abaixo do corte.`}
       </p>
     </div>
   )
@@ -872,13 +883,16 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
 
       {/* ── 6 · Leads a resgatar ─────────────────────────────────────────────
           O hook calcula os leads em risco sobre TODOS os leads (rows), não sobre o
-          recorte do filtro: com 30d nenhum lead alcançaria 720h parado e o monte mais
-          caro sumiria. Por isso o carimbo aqui é snapshot, não período. */}
+          recorte do filtro do topo: com "Hoje" só entraria lead que chegou hoje, e
+          nenhum teria 24h parado. A janela é PRÓPRIA e fixa — parado de 24h a 14
+          dias (src/lib/dashboard-risco.ts, 29/09/2026); acima disso é reativação e
+          fica de fora de propósito. Por isso o carimbo é "fixo", não período — e não
+          mais "snapshot", cuja dica diz "acumulado de todos os tempos". */}
       <Card id="leads-resgatar">
         <CardHeader
           title="Leads a resgatar"
-          subtitle="Top 8 por valor parado — a lista é cortada, há mais abaixo"
-          janela={<JanelaBadge tipo="snapshot" label="estado de agora" />}
+          subtitle={`Top ${RISCO_TOP} por valor, parados de ${JANELA_RISCO} — mais antigos são reativação e não entram`}
+          janela={<JanelaBadge tipo="fixo" label={`parados ${JANELA_RISCO}`} />}
         />
         {data ? <LeadsResgatar leads={data.leadsEmRisco} /> : <Vazio>Carregando os leads…</Vazio>}
       </Card>

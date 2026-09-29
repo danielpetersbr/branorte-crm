@@ -21,7 +21,8 @@ import { supabase } from '@/lib/supabase'
 import { rpcInteira } from './useVisitas'
 import {
   hidratarParadas, indexarProgramacao, validarCfg, linhaDaCfg, linhaDaParada,
-  paradaDaLinha, cfgDaLinha, praHora,
+  paradaDaLinha, cfgDaLinha, praHora, paradasComVisita, planoDasParadas,
+  type ParadaGravada,
 } from '@/lib/viagem-db'
 import {
   CONFIG_PADRAO,
@@ -173,14 +174,25 @@ export function useViagem(id: string | null | undefined) {
   })
 }
 
+export interface SalvarViagemResultado {
+  /** id da viagem (novo ou o mesmo) */
+  id: string
+  /** nome das paradas com visita feita que saíram do plano mas ficaram no banco */
+  foraDoPlano: string[]
+}
+
 /**
- * Grava a viagem inteira. As paradas são apagadas e reinseridas — diff parada-a-parada
- * seria mais código pra manter e erraria toda vez que o otimizador reordenasse tudo.
- * Retorna o id da viagem (novo ou o mesmo).
+ * Grava a viagem inteira. As paradas SEM visita são apagadas e reinseridas — diff
+ * parada-a-parada seria mais código pra manter e erraria toda vez que o otimizador
+ * reordenasse tudo.
+ *
+ * Exceção (29/09/2026): parada com check-in, checkout ou relatório NUNCA é apagada —
+ * o relatório cai junto por ON DELETE CASCADE e o trabalho de campo do representante
+ * sumia sem aviso. Essas recebem UPDATE por id (planoDasParadas em lib/viagem-db).
  */
 export function useSalvarViagem() {
   const qc = useQueryClient()
-  return useMutation<string, Error, SalvarViagemInput>({
+  return useMutation<SalvarViagemResultado, Error, SalvarViagemInput>({
     mutationFn: async ({ id, cfg, paradas, programacao, status, observacoes }) => {
       validarCfg(cfg)
       const base = linhaDaCfg(cfg, programacao)
@@ -215,19 +227,56 @@ export function useSalvarViagem() {
         vistos.add(l.cli_key)
       }
 
+      // Paradas com visita feita (check-in/checkout/relatório) não podem ir no delete.
+      // Viagem nova não tem nenhuma. Erro na leitura ABORTA o salvar: sem saber o que
+      // tem visita, apagar às cegas é justamente o bug que isto fecha.
+      let comVisita: ParadaGravada[] = []
+      if (id) {
+        const { data: gravadas, error: erroGravadas } = await supabase
+          .from('viagem_paradas')
+          .select('id, cli_key, cli_keys, rotulo, cliente_nome, cidade, checkin_at, checkout_at')
+          .eq('viagem_id', viagemId)
+        if (erroGravadas) throw erroGravadas
+        const rows = (gravadas ?? []) as ParadaGravada[]
+        let comRelatorio: string[] = []
+        if (rows.length) {
+          const { data: rel, error: erroRel } = await supabase
+            .from('visita_relatorio').select('parada_id').in('parada_id', rows.map(r => r.id))
+          if (erroRel) throw erroRel
+          comRelatorio = ((rel ?? []) as { parada_id: string }[]).map(r => String(r.parada_id))
+        }
+        comVisita = paradasComVisita(rows, comRelatorio)
+      }
+      const plano = planoDasParadas(paradas.map((p, i) => ({ paradaId: p.id, linha: linhas[i] })), comVisita)
+
       // Sem transação no PostgREST: a validação acima roda ANTES do delete de propósito,
       // pra não apagar as paradas e descobrir o problema no insert.
-      const { error: erroLimpeza } = await supabase
-        .from('viagem_paradas').delete().eq('viagem_id', viagemId)
+      // Os filtros de checkin/checkout são a segunda trava: se o representante bater o
+      // check-in entre a leitura acima e este delete, a parada dele fica mesmo assim.
+      let limpeza = supabase.from('viagem_paradas').delete()
+        .eq('viagem_id', viagemId).is('checkin_at', null).is('checkout_at', null)
+      if (plano.preservar.length) limpeza = limpeza.not('id', 'in', `(${plano.preservar.join(',')})`)
+      const { error: erroLimpeza } = await limpeza
       if (erroLimpeza) throw erroLimpeza
 
-      if (linhas.length) {
-        const { error: erroInsert } = await supabase.from('viagem_paradas').insert(linhas)
+      // UPDATE só mexe no que linhaDaParada leva (ordem, dia, horários…): as colunas de
+      // check-in/checkout ficam intactas e o relatório continua apontando pro mesmo id.
+      for (const a of plano.atualizar) {
+        const { error: erroUpd } = await supabase
+          .from('viagem_paradas').update(a.linha).eq('id', a.id).eq('viagem_id', viagemId)
+        if (erroUpd) throw erroUpd
+      }
+
+      if (plano.inserir.length) {
+        const { error: erroInsert } = await supabase.from('viagem_paradas').insert(plano.inserir)
         if (erroInsert) throw erroInsert
       }
-      return viagemId
+      return {
+        id: viagemId,
+        foraDoPlano: plano.foraDoPlano.map(g => g.rotulo || g.cliente_nome || g.cidade || 'Parada'),
+      }
     },
-    onSuccess: (viagemId) => {
+    onSuccess: ({ id: viagemId }) => {
       qc.invalidateQueries({ queryKey: ['viagens'] })
       qc.invalidateQueries({ queryKey: ['viagens-quadro'] })
       qc.invalidateQueries({ queryKey: ['viagem', viagemId] })
@@ -280,9 +329,15 @@ export function useDuplicarViagem() {
       if (erroParadas) throw erroParadas
 
       const copias = ((rows ?? []) as Record<string, unknown>[]).map(r => {
+        // 29/09/2026: check-in/checkout também ficam na original — a cópia é roteiro
+        // NOVO, não aconteceu visita nela. Sem isto, o select('*') levava checkin_at
+        // e a parada copiada aparecia como "em visita / sem relatório" pro representante.
         const {
           id: _pid, viagem_id: _vid, created_at: _c, updated_at: _u,
-          confirmacao: _cf, confirmacao_em: _ce, ...campos
+          confirmacao: _cf, confirmacao_em: _ce,
+          checkin_at: _ci, checkin_lat: _cla, checkin_lng: _clo, checkin_distancia_m: _cd,
+          checkin_ponto_confiavel: _cp, checkin_por: _cpor, checkout_at: _co,
+          ...campos
         } = r
         return { ...campos, viagem_id: novoId, confirmacao: 'nao_solicitado', confirmacao_em: null }
       })

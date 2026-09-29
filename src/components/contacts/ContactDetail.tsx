@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select'
 import { formatPhone, whatsappLink, formatRelative } from '@/lib/utils'
 import { parseCrmMeta, getHumanNotes, updateCrmMeta, addHumanNote } from '@/lib/crm-fields'
 import type { CrmMeta } from '@/lib/crm-fields'
+import { lerValorBR } from '@/lib/financeiro-valor'
 import { X, MessageCircle, Phone, User, MapPin, Building, Thermometer, Send, DollarSign, Calendar, Hash } from 'lucide-react'
 import { TEMPERATURA_OPTIONS, FUNIL_OPTIONS, MOTIVO_PERDA_OPTIONS } from '@/types'
 import type { Contact } from '@/types'
@@ -14,6 +15,14 @@ import type { Contact } from '@/types'
 interface Props {
   contact: Contact
   onClose: () => void
+}
+
+/** O erro do supabase-js (PostgrestError) nem sempre é `instanceof Error`. */
+function mensagemDoErro(e: unknown): string {
+  if (e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string') {
+    return (e as { message: string }).message
+  }
+  return String(e)
 }
 
 export function ContactDetail({ contact, onClose }: Props) {
@@ -28,6 +37,17 @@ export function ContactDetail({ contact, onClose }: Props) {
   const [noteText, setNoteText] = useState('')
   const [valorInput, setValorInput] = useState(String(meta.valor || ''))
   const [followupDate, setFollowupDate] = useState(meta.followup || '')
+
+  // (29/09/2026) Salvar falhava CALADO. O useUpdateContact lança "Este contato nao e
+  // seu..." quando a RLS não casa (contato sem dono FORA do pool abre na ficha pelo
+  // filtro "Sem vendedor (todos)", mas o UPDATE exige pool), e ninguém aqui lia o erro:
+  // a anotação ficava na tela (estado local) e sumia ao reabrir. Agora o erro aparece
+  // no topo da ficha e o que não salvou volta ao valor de antes.
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  // O `contact` é o retrato de quando a ficha abriu (selectedContact da /contatos) e
+  // não se atualiza depois do mutate: o select de Vendedor voltava sozinho ao dono
+  // antigo MESMO quando salvou. O valor mostrado mora aqui.
+  const [vendorSel, setVendorSel] = useState(contact.vendor_id ?? '')
 
   const tel = contact.telefone_normalizado || contact.phone || ''
 
@@ -48,8 +68,16 @@ export function ContactDetail({ contact, onClose }: Props) {
   const orcDesc = getOrcDescricao(localNotes)
 
   const saveNotes = (newNotes: string) => {
+    const anterior = localNotes
     setLocalNotes(newNotes)
-    updateContact.mutate({ id: contact.id, notes: newNotes })
+    setErroSalvar(null)
+    // mutateAsync, não mutate({ onError }): o onError por chamada só dispara pro ÚLTIMO
+    // mutate do componente, e o "Atendeu" salva duas vezes em 500 ms.
+    updateContact.mutateAsync({ id: contact.id, notes: newNotes }).catch((e: unknown) => {
+      // Só desfaz se nada foi escrito por cima enquanto este save estava no ar.
+      setLocalNotes(atual => (atual === newNotes ? anterior : atual))
+      setErroSalvar(mensagemDoErro(e))
+    })
   }
 
   const handleTempChange = (temp: string) => {
@@ -98,8 +126,16 @@ export function ContactDetail({ contact, onClose }: Props) {
   }
 
   const handleSaveValor = () => {
-    const val = parseFloat(valorInput.replace(/[^\d.,]/g, '').replace(',', '.'))
-    if (!isNaN(val)) saveNotes(updateCrmMeta(localNotes, { valor: val }))
+    // (29/09/2026) Era parseFloat(texto.replace(',', '.')): "R$ 45.000,00" virava 45 e
+    // "15.000" virava 15, sem aviso. lerValorBR é o mesmo leitor do Financeiro (ponto de
+    // milhar, vírgula decimal) e devolve NaN na dúvida em vez de inventar número.
+    if (!valorInput.trim()) return
+    const val = lerValorBR(valorInput)
+    if (Number.isNaN(val)) {
+      setErroSalvar(`Valor não reconhecido: "${valorInput}". Digite como 45.000,00 ou 45000.`)
+      return
+    }
+    saveNotes(updateCrmMeta(localNotes, { valor: val }))
   }
 
   const handleSaveFollowup = () => {
@@ -114,11 +150,19 @@ export function ContactDetail({ contact, onClose }: Props) {
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-bg shadow-xl overflow-y-auto">
-        <div className="sticky top-0 bg-bg border-b border-border p-4 flex items-center justify-between z-10">
-          <h2 className="font-semibold text-lg text-text-primary">Detalhes do Contato</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-surface-tertiary">
-            <X className="h-5 w-5 text-text-muted" />
-          </button>
+        <div className="sticky top-0 bg-bg border-b border-border p-4 z-10">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-lg text-text-primary">Detalhes do Contato</h2>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-surface-tertiary">
+              <X className="h-5 w-5 text-text-muted" />
+            </button>
+          </div>
+          {/* No cabeçalho fixo: quem salvou lá embaixo, rolado, também vê. */}
+          {erroSalvar && (
+            <p role="alert" className="mt-2 rounded-md bg-danger-bg px-2.5 py-1.5 text-xs text-danger">
+              Não salvou: {erroSalvar}
+            </p>
+          )}
         </div>
 
         <div className="p-4 space-y-5">
@@ -270,8 +314,17 @@ export function ContactDetail({ contact, onClose }: Props) {
             <Select
               options={vendors.map(v => ({ value: v.id, label: v.name }))}
               placeholder="Sem vendedor"
-              value={contact.vendor_id ?? ''}
-              onChange={e => updateContact.mutate({ id: contact.id, vendor_id: e.target.value || null })}
+              value={vendorSel}
+              onChange={e => {
+                const anterior = vendorSel
+                const escolhido = e.target.value
+                setVendorSel(escolhido)
+                setErroSalvar(null)
+                updateContact.mutateAsync({ id: contact.id, vendor_id: escolhido || null }).catch((err: unknown) => {
+                  setVendorSel(atual => (atual === escolhido ? anterior : atual))
+                  setErroSalvar(mensagemDoErro(err))
+                })
+              }}
             />
           </div>
 
@@ -287,7 +340,12 @@ export function ContactDetail({ contact, onClose }: Props) {
               placeholder="Ex.: fechou o misturador, falta o frete. Volta a falar em outubro."
               onBlur={e => {
                 const v = e.target.value.trim() || null
-                if (v !== (contact.negociacao || null)) updateContact.mutate({ id: contact.id, negociacao: v })
+                if (v !== (contact.negociacao || null)) {
+                  setErroSalvar(null)
+                  // O texto fica no campo quando falha (não é desfeito): o vendedor copia.
+                  updateContact.mutateAsync({ id: contact.id, negociacao: v })
+                    .catch((err: unknown) => setErroSalvar(mensagemDoErro(err)))
+                }
               }}
               className="w-full rounded-lg border border-surface-border px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-500 resize-y"
             />

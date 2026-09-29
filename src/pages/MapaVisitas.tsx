@@ -15,6 +15,7 @@ import {
   type EtiquetasDoFone, type MapaEtiquetas, type ConversaDoCliente, type ClienteDeCamada,
 } from '@/lib/mapa-etiquetas'
 import { foneCanon } from '@/lib/fone-canon'
+import { escHtml } from '@/lib/html-escape'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -148,7 +149,10 @@ const brlCurto = (v: number) => {
 }
 // UF normalizada. Sem estado vira '—' (bucket próprio) pra não colidir com ''=“todos”.
 const ufKey = (uf: string | null) => (uf || '').trim().toUpperCase() || '—'
-const esc = (s: string | null) => (s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string))
+// 29/09/2026: a cópia local só escapava <>&, e o nome do cliente vai dentro de
+// title="…" nos popups — uma aspa no nome virava onmouseover rodando com a sessão
+// de quem abriu o mapa. Agora é o helper único, que escapa aspas também.
+const esc = escHtml
 const dataBR = (iso: string | null) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') : '—')
 const dataHoraBR = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
 // Normaliza texto pra busca: sem acento, minúsculo (ex "Ji-Paraná" casa "ji parana")
@@ -1305,11 +1309,22 @@ export function MapaVisitas() {
     setSalvandoViagem(true)
     try {
       // id presente = regrava por cima da mesma viagem (não cria uma cópia a cada salvar)
-      const id = await salvarViagemMut.mutateAsync({
+      const { id, foraDoPlano } = await salvarViagemMut.mutateAsync({
         id: viagemId ?? undefined, cfg: cfgViagem, paradas, programacao: prog, status: viagemStatus,
       })
       setViagemId(id)
       setViagemSalvaEm(new Date().toISOString())
+      // 29/09/2026: parada com check-in/relatório do representante não é apagada pelo
+      // salvar (o relatório ia junto). Se o gestor tirou uma dessas do plano, ela
+      // continua na viagem — avisar, senão ela "volta sozinha" ao reabrir.
+      if (foraDoPlano.length) {
+        window.alert(
+          `Viagem salva. ${foraDoPlano.length === 1 ? 'Esta parada já tem' : 'Estas paradas já têm'} visita registrada pelo representante `
+          + `(check-in ou relatório) e ${foraDoPlano.length === 1 ? 'continua' : 'continuam'} na viagem, mesmo fora do plano:\n\n`
+          + foraDoPlano.map(n => `• ${n}`).join('\n')
+          + '\n\nTirar do plano não apaga a visita. Para um roteiro sem ela, duplique a viagem (botão ⧉ em "Viagens salvas") e tire a parada da cópia.',
+        )
+      }
     } catch (e) {
       // O hook valida os CHECK do banco antes do INSERT e joga mensagem em pt-BR
       // ("o fim da jornada precisa ser depois do início"). Mostrar ela, não um

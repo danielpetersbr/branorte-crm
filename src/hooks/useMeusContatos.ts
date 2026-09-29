@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { erroDefinirDono, type RespostaDefinirDono } from '@/lib/definir-dono'
 
 /**
  * "Pegar pra mim", placar do vendedor e relatório de donos — tudo da /contatos.
@@ -169,7 +170,12 @@ export function useDefinirDono() {
         p_contact_id: contactId, p_vendor_id: vendorId,
       })
       if (error) throw error
-      return data as { ok: boolean; erro?: string; vendedor?: string }
+      // (29/09/2026) A RPC recusa com 200 + { ok: false, erro } — sem este throw o
+      // "ja_tem_dono"/"reservado_por_outro_vendedor" passava como sucesso. Ver definir-dono.ts.
+      const r = data as RespostaDefinirDono | null
+      const falha = erroDefinirDono(r)
+      if (falha) throw new Error(falha)
+      return r as RespostaDefinirDono
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['contatos-violacoes'] })
