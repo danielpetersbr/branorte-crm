@@ -38,7 +38,7 @@ import { useMotoresRedutorAdmin } from '@/hooks/useMotoresAdmin'
 import { calcularMontagem, normalizarMontagem, MONTAGEM_PADRAO, type MontagemCfg } from '@/lib/orcamento-montagem'
 import { fatorExportacao, inflarItemExportacao, desinflarItemExportacao } from '@/lib/orcamento-exportacao'
 import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
-import { decidirDestinoPasta } from '@/lib/orcamento-folder-scan'
+import { decidirDestinoPasta, saveFalhou } from '@/lib/orcamento-folder-scan'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -667,7 +667,7 @@ export function OrcamentoMontar() {
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
   const [saveMode, setSaveMode] = useState<'update' | 'alt' | 'new'>('new')
   const [saveDropdownOpen, setSaveDropdownOpen] = useState(false)
-  const [sucesso, setSucesso] = useState<{ orcamentoId: number; numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
+  const [sucesso, setSucesso] = useState<{ orcamentoId: number; numero: string; baixouDocx: boolean; baixouPdf: boolean; salvouNaPasta: boolean; viaServidor?: boolean; pdfBlob: Blob | null; cliente: string; erro?: string | null; aviso?: string | null; pdfErro?: string | null; whatsappEnviado?: boolean; whatsappMensagem?: string | null } | null>(null)
   const [enviandoWA, setEnviandoWA] = useState<'idle' | 'enviando' | 'enviado' | 'erro'>('idle')
   const [enviandoWAMsg, setEnviandoWAMsg] = useState<string>('')
   const [fotoPrincipal, setFotoPrincipal] = useState<string | null>(null)
@@ -4818,12 +4818,10 @@ export function OrcamentoMontar() {
 
       {/* Feedback de sucesso — toast premium. Fica VERMELHO se algo falhou. */}
       {sucesso && (() => {
-        // "✅ Orçamento salvo pelo servidor…" chega em `erro` (FinalizarMontarModal: a pasta Z:
-        // falhou e o fallback do servidor SALVOU). Não é falha: vermelho + "Tentar de novo"
-        // convidava a gerar de novo um orçamento que já está salvo (29/09/2026).
-        const salvoPeloServidor = !!sucesso.erro?.startsWith('✅')
-        const erroReal = salvoPeloServidor ? null : sucesso.erro
-        const algoFalhou = !!(erroReal || sucesso.pdfErro || (!sucesso.salvouNaPasta && !sucesso.baixouDocx))
+        // Pasta Z: que não abriu mas o servidor SALVOU chega em `aviso`, não em `erro`
+        // (FinalizarMontarModal, 29/09/2026). Não é falha: vermelho + "Tentar de novo"
+        // convidava a gerar de novo um orçamento que já está salvo (2026-2858, ALVARO).
+        const algoFalhou = saveFalhou(sucesso)
         const agora = new Date()
         const anoDestino = agora.getFullYear()
         const pastaDestino = decidirDestinoPasta('', agora).pastaNome
@@ -4854,6 +4852,7 @@ export function OrcamentoMontar() {
                 <FolderOpen className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
                 <span>
                   Salvo em <code className="text-[10px] bg-surface-2 px-1 rounded">Z:\1 - Comercial\3 - Orçamento\{anoDestino}\Orçamentos {anoDestino}\{pastaDestino}\</code>
+                  {sucesso.viaServidor && ' (pelo sincronizador, em até 30s)'}
                 </span>
               </div>
             )}
@@ -4870,16 +4869,19 @@ export function OrcamentoMontar() {
               </div>
             )}
             {/* Erros — surfacing pro vendedor saber que deu ruim */}
-            {erroReal && (
+            {sucesso.erro && (
               <div className="flex items-start gap-2 text-danger text-[10.5px] bg-danger/10 border border-danger/30 rounded p-2 mt-1">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span><strong>Upload falhou:</strong> {erroReal}</span>
+                <span><strong>Upload falhou:</strong> {sucesso.erro}</span>
               </div>
             )}
-            {salvoPeloServidor && (
+            {/* AVISO ≠ erro: o orçamento saiu inteiro, só não pelo caminho preferido
+                (gravação direta na pasta caiu e foi pelo servidor). Fica amarelo e NÃO
+                pinta o card de vermelho. */}
+            {sucesso.aviso && (
               <div className="flex items-start gap-2 text-warning text-[10.5px] bg-warning/10 border border-warning/30 rounded p-2 mt-1">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>{sucesso.erro}</span>
+                <span>{sucesso.aviso}</span>
               </div>
             )}
             {sucesso.pdfErro && (

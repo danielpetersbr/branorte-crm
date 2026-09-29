@@ -10,6 +10,10 @@ import {
   ImageRun, HeightRule, PageBreak,
 } from 'docx'
 import { OBS_POR_CONTA_DEFAULT } from '@/lib/orcamento-defaults'
+import {
+  MONTAGEM_QUADRO_TITULO, MONTAGEM_QUADRO_FABRICANTE, MONTAGEM_QUADRO_CLIENTE,
+  type MontagemQuadros,
+} from '@/lib/orcamento-montagem'
 
 export interface CustomDocxItem {
   letra: string                 // A, B, C...
@@ -85,15 +89,20 @@ export interface GerarCustomDocxOpts {
   dataVenda?: string | null
   prazoEntrega?: string | null
   observacoes?: string | null
-  // Seção "Observação — por conta do cliente". null/ausente = default histórico.
+  // Seção "Observação — por conta do cliente". null/ausente = default histórico;
+  // [] = nenhuma linha (vendedor apagou tudo) — igual à prévia.
   obsPorConta?: string[] | null
   vendedorNome?: string
   fotoPrincipal?: string | null
   // Foto/rascunho do bloco "Observações" (URL pública). Opcional.
   observacoesFoto?: string | null
   componentesExtras?: Array<{ nome: string; valor: number }>
-  /** Linhas da montagem, ja calculadas (mao de obra, estadia, passagem...). */
-  montagem?: Array<{ nome: string; valor: number }> | null
+  /**
+   * Os 2 quadros da montagem, já calculados por quadrosMontagem() — a mesma fonte
+   * da prévia/PDF. 1º = o que a Branorte cobra (itens + UM total, que soma no
+   * total da proposta); 2º = o que fica POR CONTA DO CLIENTE (só os itens).
+   */
+  montagemQuadros?: MontagemQuadros | null
   desconto?: { tipo: 'pct' | 'valor'; valor: number; base?: 'total' | 'equipamento'; manterValorParcelas?: boolean } | null
   parcelas?: CustomDocxParcela[]
   vendedoresContato?: Array<{ nome: string; telefone: string }>
@@ -616,7 +625,7 @@ function buildComponentesExtras(
       r(`R$ ${formatBRL(Number(c.valor) || 0)}`, { size: 20, color: '111827' }),
     ],
   }))
-  // Uma linha so (caso da MONTAGEM): o TOTAL repetiria o mesmo numero logo abaixo.
+  // Uma linha so: o TOTAL repetiria o mesmo numero logo abaixo.
   const totalPara = componentes.length === 1 ? null : new Paragraph({
     tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
     spacing: { before: 120, after: 40 },
@@ -640,6 +649,54 @@ function buildComponentesExtras(
     rows: [
       new TableRow({
         cantSplit: true,
+        children: [new TableCell({
+          margins: { top: 160, bottom: 160, left: 200, right: 200 },
+          children: [titulo, ...linhas, ...(totalPara ? [totalPara] : [])],
+        })],
+      }),
+    ],
+  })
+}
+
+// Quadro da MONTAGEM (roadmap #69, print do vendedor — 29/09/2026), igual ao da
+// prévia/PDF: título "MONTAGEM DOS ITENS ORÇADOS ACIMA:" + subtítulo, os itens SEM
+// o valor de cada um e, no 1º quadro, UM "Valor total". O 2º (POR CONTA DO
+// CLIENTE) sai sem valor nenhum. Antes este Word — o que vai pro Z:\ e é a base
+// do PDF do ConvertAPI quando o Puppeteer cai — tinha um bloco só, e as linhas do
+// cliente iam soltas lá embaixo, em "Observação — por conta do cliente".
+function buildMontagemQuadro(subtitulo: string, itens: string[], total: number | null): Table {
+  const titulo = new Paragraph({
+    spacing: { after: 120 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: '111827', space: 4 } },
+    children: [
+      r(MONTAGEM_QUADRO_TITULO.toUpperCase(), { bold: true, size: 22, color: '374151' }),
+      r(` ${subtitulo}`, { bold: true, size: 20, color: '6B7280' }),
+    ],
+  })
+  const linhas: Paragraph[] = itens.map(i => bullet(i, 20))
+  const totalPara = total == null ? null : new Paragraph({
+    tabStops: [{ type: TabStopType.RIGHT, position: 9600 }],
+    spacing: { before: 120, after: 40 },
+    border: { top: { style: BorderStyle.SINGLE, size: 6, color: 'D1D5DB', space: 4 } },
+    children: [
+      r('Valor total', { bold: true, size: 22, color: '111827' }),
+      new TextRun({ text: '\t', size: 22 }),
+      r(`R$ ${formatBRL(total)}`, { bold: true, size: 22, color: '111827' }),
+    ],
+  })
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      bottom: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      left: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      right: { style: BorderStyle.SINGLE, size: 8, color: '374151' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+    },
+    rows: [
+      new TableRow({
+        cantSplit: true,  // quadro não quebra entre páginas (igual data-no-break da prévia)
         children: [new TableCell({
           margins: { top: 160, bottom: 160, left: 200, right: 200 },
           children: [titulo, ...linhas, ...(totalPara ? [totalPara] : [])],
@@ -1137,10 +1194,15 @@ function buildCaixaPostal(): Paragraph[] {
 }
 
 function buildObservacoesPorContaCliente(obsPorConta?: string[] | null): Paragraph[] {
-  // Array salvo (editado pelo vendedor) tem prioridade; senão usa o default.
-  const items = Array.isArray(obsPorConta) && obsPorConta.length > 0
-    ? obsPorConta
-    : OBS_POR_CONTA_DEFAULT
+  // Array salvo (editado pelo vendedor) tem prioridade; só null/ausente cai no
+  // default — a MESMA regra da prévia (`obsPorConta ?? OBS_POR_CONTA_DEFAULT`).
+  // Lista VAZIA é resposta, não "sem resposta" (29/09/2026): antes [] virava as 5
+  // linhas históricas, e (a) o vendedor que apagou tudo via a prévia limpa e o
+  // Word do Z:\ cheio; (b) com montagem cobrada e só a linha "Montagem dos
+  // equipamentos orçados acima (se necessário)" salva, obsPorContaComMontagem
+  // tira essa linha e devolve [] — o Word voltava com "Painel elétrico", "Muck" e
+  // a própria linha da montagem, contradizendo o valor cobrado logo acima.
+  const items = Array.isArray(obsPorConta) ? obsPorConta : OBS_POR_CONTA_DEFAULT
   return items.map(t => bullet(t, 17))
 }
 
@@ -1296,10 +1358,16 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
     blocos.push(paragrafoVazio(80))
   }
 
-  // Montagem da fabrica (mao de obra + viagem da equipe). Soma no total da
-  // proposta, entao precisa sair no DOCX senao o total nao fecha com os itens.
-  if (opts.montagem && opts.montagem.length > 0) {
-    blocos.push(buildComponentesExtras(opts.montagem, 'MONTAGEM'))
+  // Montagem da fabrica (mao de obra + viagem da equipe). O 1º quadro soma no
+  // total da proposta, entao precisa sair no DOCX senao o total nao fecha com os
+  // itens. O 2º (por conta do cliente) nao tem valor — so avisa o que e com ele.
+  const quadros = opts.montagemQuadros
+  if (quadros?.fabricante) {
+    blocos.push(buildMontagemQuadro(MONTAGEM_QUADRO_FABRICANTE, quadros.fabricante.itens, quadros.fabricante.total))
+    blocos.push(paragrafoVazio(80))
+  }
+  if (quadros?.cliente) {
+    blocos.push(buildMontagemQuadro(MONTAGEM_QUADRO_CLIENTE, quadros.cliente.itens, null))
     blocos.push(paragrafoVazio(80))
   }
 

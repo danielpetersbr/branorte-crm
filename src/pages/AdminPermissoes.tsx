@@ -111,45 +111,50 @@ export function AdminPermissoes() {
       </div>
 
       <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-surface-secondary text-text-muted text-xs">
-            <tr>
-              <th className="text-left px-4 py-2 w-1/2">Feature</th>
-              {ASSIGNABLE_ROLES.map(role => (
-                <th key={role} className="px-4 py-2 text-center">
-                  <div>{ROLE_LABELS[role]}</div>
-                  <div className="flex justify-center gap-1 mt-1">
-                    <button
-                      onClick={() => setAll(role, true)}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-surface-border hover:bg-text-muted/20"
-                      title="Marcar tudo"
-                    >
-                      tudo
-                    </button>
-                    <button
-                      onClick={() => setAll(role, false)}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-surface-border hover:bg-text-muted/20"
-                      title="Desmarcar tudo"
-                    >
-                      nada
-                    </button>
-                  </div>
-                </th>
+        {/* 29/09/2026: no celular (390px) a tabela passava da tela e o layout, que
+            tem overflow-x: clip, cortava as colunas da direita sem deixar rolar. Rola
+            só aqui dentro; no desktop ela cabe e nada muda. */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-secondary text-text-muted text-xs">
+              <tr>
+                <th className="text-left px-4 py-2 w-1/2">Feature</th>
+                {ASSIGNABLE_ROLES.map(role => (
+                  <th key={role} className="px-4 py-2 text-center">
+                    <div>{ROLE_LABELS[role]}</div>
+                    <div className="flex justify-center gap-1 mt-1">
+                      <button
+                        onClick={() => setAll(role, true)}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-surface-border hover:bg-text-muted/20"
+                        title="Marcar tudo"
+                      >
+                        tudo
+                      </button>
+                      <button
+                        onClick={() => setAll(role, false)}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-surface-border hover:bg-text-muted/20"
+                        title="Desmarcar tudo"
+                      >
+                        nada
+                      </button>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map(group => (
+                <FeatureGroup
+                  key={group}
+                  title={group}
+                  features={FEATURE_CATALOG.filter(f => f.group === group)}
+                  draft={draft}
+                  onToggle={toggle}
+                />
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map(group => (
-              <FeatureGroup
-                key={group}
-                title={group}
-                features={FEATURE_CATALOG.filter(f => f.group === group)}
-                draft={draft}
-                onToggle={toggle}
-              />
-            ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card className="p-4 bg-surface-secondary">

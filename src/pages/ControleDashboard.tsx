@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { useControleVendas, type Periodo } from '@/hooks/useControleDashboard'
+import { useControleVendas, type Periodo, type ControleVendas } from '@/hooks/useControleDashboard'
+import { ORIGEM_TODAS, ORIGEM_NAO_INFORMADA, rotuloOrigemVenda } from '@/lib/vendas-origem'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -74,9 +75,69 @@ function MetaCard({ title, realizado, meta, pct, falta, icon: Icon }: {
   )
 }
 
+// Filtro por ORIGEM da venda (roadmap #80, pedido do marketing — 29/09/2026).
+// Recorta TODOS os números da tela. A linha de cobertura fica sempre à vista e
+// sempre sobre o total: a origem é a que o vendedor declarou no pedido e parte
+// das vendas não tem nenhuma — somar os chips não dá o faturamento, e a tela não
+// pode deixar parecer que dá.
+function FiltroOrigem({ data, origem, onChange }: {
+  data: ControleVendas; origem: string; onChange: (o: string) => void
+}) {
+  const { total, informada } = data.coberturaOrigem
+  const pctValor = total.valor > 0 ? (informada.valor / total.valor) * 100 : 0
+  const chips = [
+    { chave: ORIGEM_TODAS, rotulo: 'Todas', vendas: total.vendas },
+    ...data.origens,
+  ]
+  // Origem escolhida que sumiu da lista (ex.: pedido editado) continua visível
+  // como chip ativo — senão a tela mostraria números recortados sem dizer por quê.
+  if (origem !== ORIGEM_TODAS && !chips.some(c => c.chave === origem)) {
+    chips.push({ chave: origem, rotulo: rotuloOrigemVenda(origem), vendas: 0 })
+  }
+  return (
+    <Card className="p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted mr-1">Origem da venda</span>
+        {chips.map(c => {
+          const ativo = origem === c.chave
+          const semOrigem = c.chave === ORIGEM_NAO_INFORMADA
+          return (
+            <button
+              key={c.chave}
+              type="button"
+              aria-pressed={ativo}
+              onClick={() => onChange(c.chave)}
+              title={semOrigem ? 'Pedido sem origem, com "Não informado" ou "Não lembra"' : undefined}
+              className={`inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-full border transition-colors ${
+                ativo
+                  ? 'bg-accent border-accent text-white'
+                  : semOrigem
+                    ? 'border-dashed border-surface-border text-text-muted hover:text-text-primary'
+                    : 'border-surface-border bg-surface-secondary text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {c.rotulo}
+              {c.vendas > 0 && <span className={`tabular-nums ${ativo ? 'text-white/80' : 'text-text-muted'}`}>{c.vendas}</span>}
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-[11px] text-text-muted">
+        Origem informada em <span className="font-semibold text-text-secondary tabular-nums">{informada.vendas} de {total.vendas}</span> vendas
+        do mês ({fmtFull(informada.valor)} de {fmtFull(total.valor)} · {pctValor.toFixed(0)}% do valor).
+        É o que o vendedor marcou no pedido ("Como o cliente encontrou a empresa?"), não rastreio de lead.
+        {origem !== ORIGEM_TODAS && (
+          <span className="font-semibold text-text-secondary"> Todos os números abaixo são só de: {rotuloOrigemVenda(origem)}.</span>
+        )}
+      </p>
+    </Card>
+  )
+}
+
 export function ControleDashboard() {
   const [periodo, setPeriodo] = useState<Periodo>('mes')
-  const { data, isLoading } = useControleVendas(periodo)
+  const [origem, setOrigem] = useState<string>(ORIGEM_TODAS)
+  const { data, isLoading } = useControleVendas(periodo, origem)
 
   return (
     <div className="p-4 lg:p-8 space-y-4">
@@ -107,6 +168,8 @@ export function ControleDashboard() {
 
       {isLoading && !data ? <PageLoading /> : data && (
         <>
+          <FiltroOrigem data={data} origem={origem} onChange={setOrigem} />
+
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <KpiCard title="Valor Total (mês)" value={fmtFull(data.valorTotal)} icon={DollarSign} />

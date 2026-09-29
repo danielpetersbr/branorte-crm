@@ -1,9 +1,14 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import {
   startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   subMonths, format,
 } from 'date-fns'
+import {
+  ORIGEM_TODAS, ehPedidoGarantia, filtrarPorOrigem, resumirOrigens,
+  type OrigemResumo, type ResumoOrigens,
+} from '@/lib/vendas-origem'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Espelho do dashboard do controle.branorte.com — lê SOMENTE das mirror_* no
@@ -25,6 +30,8 @@ interface MirrorPedido {
   data_venda: string | null
   status: string | null
   payment_plan_json: { total?: number | string } | null
+  /** "Como o cliente encontrou a empresa?" do pedido — vem de raw->>'fonte_origem' (ver lib/vendas-origem). */
+  fonte_origem: string | null
 }
 
 const EXCLUIR_VENDEDOR = new Set(['DESCONHECIDO'])
@@ -79,6 +86,10 @@ export interface ControleVendas {
   metaSemanal: MetaProgresso
   metaCorrida: number
   totalVendasMes: number
+  /** Chips do filtro: vendas/valor do MÊS por origem, sempre sobre TODAS as origens. */
+  origens: OrigemResumo[]
+  /** Quanto das vendas do mês tem origem informada — o piso da atribuição, nunca escondido. */
+  coberturaOrigem: Pick<ResumoOrigens, 'total' | 'informada'>
 }
 
 async function fetchSettings(): Promise<Record<string, number>> {
@@ -98,10 +109,19 @@ async function fetchSettings(): Promise<Record<string, number>> {
 async function fetchPedidos(): Promise<MirrorPedido[]> {
   const { data, error } = await supabase
     .from('mirror_pedidos_venda')
-    .select('vendedor, vendedor_2, valor_total, ajuste_valor, ajuste_data, data_venda, status, payment_plan_json')
+    // fonte_origem não é coluna do espelho: o PostgREST extrai do jsonb `raw`
+    // (29/09/2026, roadmap #80). Sem trazer o raw inteiro, que é pesado.
+    .select('vendedor, vendedor_2, valor_total, ajuste_valor, ajuste_data, data_venda, status, payment_plan_json, fonte_origem:raw->>fonte_origem')
     .limit(20000)
   if (error) throw error
-  return (data ?? []) as MirrorPedido[]
+  return (data ?? []) as unknown as MirrorPedido[]
+}
+
+/** Vendas (qtd) e valor do pedido na janela — a MESMA conta dos KPIs do mês. */
+function medirNoPeriodo(p: MirrorPedido, from: string, to: string): { vendas: number; valor: number } {
+  const dv = (p.data_venda || '').slice(0, 10)
+  const conta = (p.status || '') !== 'CANCELADO' && dv >= from && dv <= to
+  return { vendas: conta ? 1 : 0, valor: valorNoPeriodo(p, from, to) }
 }
 
 function computeRanking(pedidos: MirrorPedido[], from: string, to: string, metaCorrida: number): VendedorRanking[] {
@@ -149,51 +169,88 @@ function computeFaturamento(pedidos: MirrorPedido[]): FaturamentoMes[] {
   return out
 }
 
-/** Hook único: puxa pedidos + settings uma vez e computa todos os widgets. */
-export function useControleVendas(periodo: Periodo) {
-  return useQuery({
-    queryKey: ['controle-vendas', periodo],
-    queryFn: async (): Promise<ControleVendas> => {
+/** Exportada só pro teste (lib/vendas-origem.test.ts): é aqui que o recorte vira número. */
+export function computeControleVendas(
+  espelho: MirrorPedido[], settings: Record<string, number>, periodo: Periodo, origem: string,
+): ControleVendas {
+  // GARANTIA não é venda (valor 0, criada pelo PedidoGarantia): o controle tira
+  // esses pedidos de TODAS as somas e o painel diz ser espelho dele. Aqui eles
+  // contavam em "Vendas no Mês" e puxavam o ticket médio pra baixo (3 em set/2026).
+  const todos = espelho.filter(p => !ehPedidoGarantia(p.fonte_origem))
+  const { from, to } = dateRange(periodo)
+  const metaCorrida = settings.corrida_vendas_meta || 285000
+  const metaMensal = settings.meta_mensal || 0
+  const metaSemanalValor = settings.meta_semanal || (metaMensal ? metaMensal / 4 : 0)
+
+  // Totais do MÊS atual (independente do toggle de período do ranking)
+  const mFrom = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+  const mTo = format(endOfMonth(new Date()), 'yyyy-MM-dd')
+
+  // Chips e cobertura olham TODAS as origens, mesmo com uma escolhida: é o que
+  // deixa ver que a soma das origens não fecha o total (a origem é piso).
+  const resumo = resumirOrigens(todos, p => medirNoPeriodo(p, mFrom, mTo))
+
+  // Daqui pra baixo TODO número do painel sai só da origem escolhida.
+  const pedidos = filtrarPorOrigem(todos, origem)
+
+  const ranking = computeRanking(pedidos, from, to, metaCorrida)
+  const faturamentoMensal = computeFaturamento(pedidos)
+
+  let valorTotal = 0, totalVendasMes = 0
+  for (const p of pedidos) {
+    const m = medirNoPeriodo(p, mFrom, mTo)
+    valorTotal += m.valor
+    totalVendasMes += m.vendas
+  }
+  const ticketMedio = totalVendasMes > 0 ? valorTotal / totalVendasMes : 0
+
+  // Meta semanal (semana corrente, seg-dom)
+  const wFrom = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const wTo = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  let realizadoSemana = 0
+  for (const p of pedidos) realizadoSemana += valorNoPeriodo(p, wFrom, wTo)
+
+  const metaMes: MetaProgresso = {
+    realizado: valorTotal, meta: metaMensal,
+    pct: metaMensal > 0 ? (valorTotal / metaMensal) * 100 : 0,
+    falta: Math.max(0, metaMensal - valorTotal),
+  }
+  const metaSemanal: MetaProgresso = {
+    realizado: realizadoSemana, meta: metaSemanalValor,
+    pct: metaSemanalValor > 0 ? (realizadoSemana / metaSemanalValor) * 100 : 0,
+    falta: Math.max(0, metaSemanalValor - realizadoSemana),
+  }
+
+  return {
+    ranking, faturamentoMensal, valorTotal, ticketMedio, metaMes, metaSemanal, metaCorrida, totalVendasMes,
+    origens: resumo.origens,
+    coberturaOrigem: { total: resumo.total, informada: resumo.informada },
+  }
+}
+
+/**
+ * Hook único: puxa pedidos + settings uma vez e computa todos os widgets.
+ *
+ * Período e origem NÃO entram na chave da consulta (29/09/2026): trocar o chip de
+ * origem é só recortar o que já veio, não baixar o espelho de novo. A chave segue
+ * começando por 'controle-vendas' porque ControlePedidos invalida por esse prefixo
+ * depois de editar/excluir pedido.
+ */
+export function useControleVendas(periodo: Periodo, origem: string = ORIGEM_TODAS) {
+  const q = useQuery({
+    queryKey: ['controle-vendas', 'base'],
+    queryFn: async () => {
       const [pedidos, settings] = await Promise.all([fetchPedidos(), fetchSettings()])
-      const { from, to } = dateRange(periodo)
-      const metaCorrida = settings.corrida_vendas_meta || 285000
-      const metaMensal = settings.meta_mensal || 0
-      const metaSemanalValor = settings.meta_semanal || (metaMensal ? metaMensal / 4 : 0)
-
-      const ranking = computeRanking(pedidos, from, to, metaCorrida)
-      const faturamentoMensal = computeFaturamento(pedidos)
-
-      // Totais do MÊS atual (independente do toggle de período do ranking)
-      const mFrom = format(startOfMonth(new Date()), 'yyyy-MM-dd')
-      const mTo = format(endOfMonth(new Date()), 'yyyy-MM-dd')
-      let valorTotal = 0, totalVendasMes = 0
-      for (const p of pedidos) {
-        valorTotal += valorNoPeriodo(p, mFrom, mTo)
-        const dv = (p.data_venda || '').slice(0, 10)
-        if ((p.status || '') !== 'CANCELADO' && dv >= mFrom && dv <= mTo) totalVendasMes += 1
-      }
-      const ticketMedio = totalVendasMes > 0 ? valorTotal / totalVendasMes : 0
-
-      // Meta semanal (semana corrente, seg-dom)
-      const wFrom = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-      const wTo = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-      let realizadoSemana = 0
-      for (const p of pedidos) realizadoSemana += valorNoPeriodo(p, wFrom, wTo)
-
-      const metaMes: MetaProgresso = {
-        realizado: valorTotal, meta: metaMensal,
-        pct: metaMensal > 0 ? (valorTotal / metaMensal) * 100 : 0,
-        falta: Math.max(0, metaMensal - valorTotal),
-      }
-      const metaSemanal: MetaProgresso = {
-        realizado: realizadoSemana, meta: metaSemanalValor,
-        pct: metaSemanalValor > 0 ? (realizadoSemana / metaSemanalValor) * 100 : 0,
-        falta: Math.max(0, metaSemanalValor - realizadoSemana),
-      }
-
-      return { ranking, faturamentoMensal, valorTotal, ticketMedio, metaMes, metaSemanal, metaCorrida, totalVendasMes }
+      return { pedidos, settings }
     },
-    placeholderData: (prev) => prev,
     staleTime: 60_000,
   })
+  const base = q.data
+  // dataUpdatedAt nas deps: um refetch com o mesmo conteúdo devolve o MESMO objeto
+  // (structural sharing), e as janelas "hoje/semana/mês" dependem do relógio.
+  const data = useMemo(
+    () => (base ? computeControleVendas(base.pedidos, base.settings, periodo, origem) : undefined),
+    [base, q.dataUpdatedAt, periodo, origem],
+  )
+  return { data, isLoading: q.isLoading }
 }

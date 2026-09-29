@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { supabase } from '@/lib/supabase'
+import { deslocamentoParaCaber } from '@/lib/cabe-na-tela'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Building2, X, MousePointerClick, UserPlus, Move, Check, RotateCw, Pencil } from 'lucide-react'
 
@@ -323,8 +324,42 @@ function FunilCard({ f, nome, below, open }: { f: FunilCardData; nome: string; b
   ]
   const max = Math.max(1, ...stages.map(s => s[1]))
   const conv = f.vendido + f.perdidos > 0 ? Math.round((f.vendido / (f.vendido + f.perdidos)) * 100) : 0
+
+  // Card que não cabe na tela é CORTADO, não rola (29/09/2026): o html/body tem
+  // overflow-x: clip. Centrado na mesa com 208px, no celular (390) a mesa da
+  // borda direita levava o card até 418px e sumiam os números e o "funil ao
+  // vivo" — e é justo no celular que o vendedor toca na mesa pra fixar o card.
+  // Mede onde o card cairia e empurra por margin-left (o translate do centro
+  // continua intacto) só o que passar; cabendo, o deslocamento é 0 e nada muda
+  // no desktop. O card fica montado mesmo invisível (opacity-0 até o hover),
+  // então a medida vale tanto pro toque quanto pro hover.
+  const ref = useRef<HTMLDivElement>(null)
+  const dxAplicado = useRef(0)
+  const ajustar = () => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    // Desconta o que já empurrei, senão o deslocamento se soma a cada medida.
+    const dx = deslocamentoParaCaber(r.left - dxAplicado.current, r.right - dxAplicado.current, document.documentElement.clientWidth)
+    if (dx === dxAplicado.current) return
+    dxAplicado.current = dx
+    el.style.marginLeft = dx ? `${dx}px` : ''
+  }
+  // A cada render: a mesa pode ter mudado de lugar (o layout é salvo por quem
+  // arrumou as mesas e chega aqui pelo refetch). Só lê; escreve se mudou.
+  useLayoutEffect(ajustar)
+  // Tela girou/redimensionou, ou a planta mudou de tamanho sem a tela mudar.
+  useEffect(() => {
+    const mesa = ref.current?.parentElement
+    const ro = mesa && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => ajustar()) : null
+    if (ro && mesa) ro.observe(mesa)
+    window.addEventListener('resize', ajustar)
+    return () => { ro?.disconnect(); window.removeEventListener('resize', ajustar) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ajustar só lê refs
+  }, [])
+
   return (
-    <div className={`absolute left-1/2 -translate-x-1/2 ${below ? 'top-full mt-2' : 'bottom-full mb-2'} z-50 w-52 rounded-lg bg-[#0b1220] ring-1 ring-white/15 shadow-xl shadow-black/70 p-2.5 transition-opacity duration-150 pointer-events-none ${open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+    <div ref={ref} className={`absolute left-1/2 -translate-x-1/2 ${below ? 'top-full mt-2' : 'bottom-full mb-2'} z-50 w-52 max-w-[calc(100vw-1rem)] rounded-lg bg-[#0b1220] ring-1 ring-white/15 shadow-xl shadow-black/70 p-2.5 transition-opacity duration-150 pointer-events-none ${open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
       <div className="text-[12px] font-bold text-ink mb-1.5 flex items-center justify-between">
         <span className="truncate">{nome}</span>
         <span className="text-[9px] text-ink-faint font-normal">funil ao vivo</span>

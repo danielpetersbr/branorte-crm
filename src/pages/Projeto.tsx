@@ -550,7 +550,11 @@ export function Projeto() {
           Projeto
         </h1>
 
-        <div className="flex items-center gap-0.5 mr-1 pr-1 border-r border-border">
+        {/* 29/09/2026: flex-wrap no grupo. A toolbar já quebrava linha, mas este
+            grupo não: em 390px ele terminava em 438px e o layout (overflow-x: clip)
+            cortava os últimos botões sem rolagem. Agora ele quebra dentro de si e
+            toda ferramenta fica alcançável. No desktop cabe numa linha e nada muda. */}
+        <div className="flex flex-wrap items-center gap-0.5 mr-1 pr-1 border-r border-border">
           <ToolBtn id="select" icon={MousePointer2} label="Selecionar" shortcut="S" />
           <ToolBtn id="wall" icon={Minus} label="Linha" shortcut="L" />
           <ToolBtn id="area" icon={Square} label="Retângulo" shortcut="R" />
