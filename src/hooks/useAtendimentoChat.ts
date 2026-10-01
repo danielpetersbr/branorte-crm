@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { chatChange, chatRefresh } from '@/lib/chat-realtime'
 import { CHAT_MEDIA_BUCKET, type ChatConversation, type ChatMessage, type ChatNote, type ChatOutbox } from '@/lib/atendimento-chat'
 
 export async function chatRpc<T>(action:string,args:Record<string,unknown>={}):Promise<T> {
@@ -11,6 +12,8 @@ export async function chatRpc<T>(action:string,args:Record<string,unknown>={}):P
 }
 interface ChatList {items:ChatConversation[];tags:string[];connection:{last_sync:string;version:string;number_final:string}|null}
 export interface ChatDetail {conversation:ChatConversation;contact:{city:string|null;state:string|null;empresa:string|null;email:string|null;status:string|null}|null;notes:ChatNote[];outbox:ChatOutbox[]}
+// Supabase reuses a same-topic channel until asynchronous removal completes.
+let chatRealtimeCleanup:Promise<unknown>=Promise.resolve()
 
 export function useAtendimentoChat(filters:{search:string;status:string;vendor:string;tag:string},selected:string|null) {
   const {profile}=useAuth()
@@ -20,19 +23,47 @@ export function useAtendimentoChat(filters:{search:string;status:string;vendor:s
   const session=useRef(crypto.randomUUID()).current
   const [leaseError,setLeaseError]=useState<string|null>(null)
   const enabled=!!profile?.approved_at && ['admin','vendor'].includes(profile.role)
+  const [realtimeConnected,setRealtimeConnected]=useState(false)
+  const [lastEventAt,setLastEventAt]=useState<number|null>(null)
+  const selectedRef=useRef(selected);selectedRef.current=selected
+  useEffect(()=>{
+    setRealtimeConnected(false)
+    if(!enabled)return
+    let stopped=false,timer:ReturnType<typeof setTimeout>|undefined
+    const pending=new Set<string>()
+    const topics=[profile!.role==='admin'?'crm-chat:all':`crm-chat:vendor:${profile!.vendor_id}`,'crm-chat:catalog']
+    const ready=new Set<string>()
+    const channels:ReturnType<typeof supabase.channel>[]=[]
+    void chatRealtimeCleanup.then(async()=>{
+      await supabase.realtime.setAuth()
+      if(stopped)return
+      channels.push(...topics.map(topic=>supabase.channel(topic,{config:{private:true}}).on('broadcast',{event:'change'},({payload})=>{
+      const change=chatChange(payload);if(stopped||!change)return
+      setLastEventAt(Date.now())
+      for(const key of chatRefresh(change,selectedRef.current))pending.add(key)
+      if(!timer)timer=setTimeout(()=>{timer=undefined;for(const key of pending)void qc.invalidateQueries({queryKey:[...base,key]});pending.clear()},100)
+      })))
+      channels.forEach((channel,i)=>channel.subscribe(status=>{
+        if(stopped)return
+        if(status==='SUBSCRIBED'){ready.add(topics[i]);void qc.invalidateQueries({queryKey:base})}else ready.delete(topics[i])
+        setRealtimeConnected(ready.size===topics.length)
+      }))
+    }).catch(()=>{if(!stopped)setRealtimeConnected(false)})
+    return()=>{stopped=true;if(timer)clearTimeout(timer);chatRealtimeCleanup=Promise.all([chatRealtimeCleanup,...channels.map(c=>supabase.removeChannel(c))]).catch(()=>{})}
+  },[enabled,profile?.id,profile?.role,profile?.vendor_id,qc])
   const list=useInfiniteQuery({
     queryKey:[...base,'list',filters],initialPageParam:null as {before:string;before_id:string}|null,enabled,
     queryFn:({pageParam})=>chatRpc<ChatList>('list',{...filters,...pageParam}),
     getNextPageParam:p=>p.items.length===100?{before:p.items[p.items.length-1].last_message_at,before_id:p.items[p.items.length-1].id}:undefined,
-    refetchInterval:10000,
+    refetchInterval:realtimeConnected?60000:10000,
   })
   const detail=useQuery({queryKey:[...base,'detail',selected],enabled:enabled&&!!selected,
-    queryFn:()=>chatRpc<ChatDetail>('detail',{id:selected}),refetchInterval:4000,retry:1})
+    queryFn:()=>chatRpc<ChatDetail>('detail',{id:selected}),refetchInterval:realtimeConnected?60000:4000,retry:1})
   const history=useInfiniteQuery({queryKey:[...base,'messages',selected],enabled:enabled&&!!selected,
     initialPageParam:null as {before:string;before_id:number}|null,
     queryFn:({pageParam})=>chatRpc<ChatMessage[]>('messages',{id:selected,...pageParam}),
     getNextPageParam:p=>p.length===50?{before:p[0].data_msg,before_id:p[0].id}:undefined,
-    refetchInterval:4000,retry:1,
+    refetchInterval:realtimeConnected?60000:4000,retry:1,
   })
   const conversations=useMemo(()=>{
     const m=new Map<string,ChatConversation>();list.data?.pages.forEach(p=>p.items.forEach(c=>{if(!m.has(c.id))m.set(c.id,c)}));
@@ -59,7 +90,7 @@ export function useAtendimentoChat(filters:{search:string;status:string;vendor:s
   },[selected,messages[messages.length-1]?.msg_id,history.isError,detail.isError])
   // Release libera apenas a sessão atual; a IA permanece pausada até decisão explícita.
   useEffect(()=>()=>{if(selected) void chatRpc('release',{id:selected,session}).catch(()=>{})},[selected,session])
-  return {list,detail,history,conversations,messages,conversation,session,ownsLease,leaseError,action,profile,
+  return {list,detail,history,conversations,messages,conversation,session,ownsLease,leaseError,action,profile,realtimeConnected,lastEventAt,
     invalidate:()=>qc.invalidateQueries({queryKey:base})}
 }
 

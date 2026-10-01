@@ -1,0 +1,261 @@
+diff --git a/background.js b/background.js
+index 7bd114d..4769d12 100644
+--- a/background.js
++++ b/background.js
+@@ -13,7 +13,7 @@ importScripts('wa-tab-picker.js')
+ // e assim que ela sabe que a copia terminou (o deploy apaga a pasta e copia arquivo por arquivo). Esqueceu de
+ // bumpar = ANA/DANIEL nao se atualizam sozinhos (heartbeat: 'pendente versoes_divergem:background_...'); a
+ // frota nao muda nada. O deploy-extensao.ps1 avisa em amarelo, igual ao AGENTE_V.
+-const BG_VERSAO = '1.70.26'
++const BG_VERSAO = '1.70.27'
+ 
+ const ALARM_NAME = 'branorte-sync'
+ const ALARM_WORKER = 'branorte-worker'   // processa scheduled+reminders
+@@ -4376,6 +4376,7 @@ let _iaFastLoopOn = false               // guarda: um único timer de ciclo ráp
+ // 30s do alarme). Sem chats ativos, volta pro ritmo lento pra não desperdiçar.
+ // Fica vivo enquanto o WhatsApp está aberto (porta wa-keepalive mantém o SW).
+ function startIaFastLoop() {
++  void crmStartStream()
+   if (_iaFastLoopOn) return
+   _iaFastLoopOn = true
+   const tick = async () => {
+@@ -4407,6 +4408,110 @@ function startIaFastLoop() {
+ 
+ // Marca o chat como NÃO LIDA no WhatsApp (quando a IA passa o bastão pro vendedor),
+ // pra a conversa "pular" e o vendedor notar.
++// CRM live transport, only ANA. Existing atomic queue claims remain authoritative.
++let _crmStreamOn = false, _crmQueueOn = false, _crmQueueAgain = false
++const _crmChats = new Map()
++let _crmFlushTimer = null, _crmFlushOn = false
++async function crmWakeQueue() {
++  _crmQueueAgain = true
++  if (_crmQueueOn) return
++  _crmQueueOn = true
++  try {
++    while (_crmQueueAgain) {
++      _crmQueueAgain = false
++      const cfg = await chrome.storage.local.get(['vendedor_nome', 'enabled'])
++      if (cfg.vendedor_nome !== 'ANA' || cfg.enabled === false || !podeAutomatizar()) break
++      try { await processarAgendamentos() } catch (_) {}
++    }
++  } finally { _crmQueueOn = false }
++}
++async function crmStartStream() {
++  if (_crmStreamOn) return
++  _crmStreamOn = true
++  let backoff = 1000
++  try {
++    for (;;) {
++      const cfg = await chrome.storage.local.get(['vendedor_nome', 'enabled'])
++      if (cfg.vendedor_nome !== 'ANA' || cfg.enabled === false || !podeAutomatizar()) break
++      const abort = new AbortController()
++      const timeout = setTimeout(() => abort.abort(), 125000)
++      try {
++        const response = await fetch(HUB_ENDPOINT + '/crm-events?vendedor=ANA', {
++          headers: { Authorization: 'Bearer ' + SHARED_SECRET }, signal: abort.signal
++        })
++        if (!response.ok || !response.body) throw new Error('stream_' + response.status)
++        const reader = response.body.getReader(), decoder = new TextDecoder()
++        let buffer = ''
++        for (;;) {
++          const { done, value } = await reader.read()
++          if (done) break
++          buffer += decoder.decode(value, { stream: true }).replace(/\r/g, '')
++          if (buffer.length > 16384) throw new Error('stream_frame_limit')
++          let end
++          while ((end = buffer.indexOf('\n\n')) >= 0) {
++            const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2)
++            if (/^event: (ready|wake)$/m.test(frame)) { backoff = 1000; void crmWakeQueue() }
++          }
++        }
++      } catch (_) { backoff = Math.min(30000, backoff * 2) }
++      finally { clearTimeout(timeout); abort.abort() }
++      await new Promise(resolve => setTimeout(resolve, backoff))
++    }
++  } finally { _crmStreamOn = false }
++}
++function crmScheduleFlush(delay = 200) {
++  if (!_crmFlushTimer) _crmFlushTimer = setTimeout(() => { _crmFlushTimer = null; void crmFlushMessages() }, delay)
++}
++async function crmFlushMessages() {
++  if (_crmFlushOn) return
++  _crmFlushOn = true
++  try {
++    const cfg = await chrome.storage.local.get(['vendedor_nome', 'enabled'])
++    if (cfg.vendedor_nome !== 'ANA' || cfg.enabled === false || !podeAutomatizar()) { _crmChats.clear(); return }
++    for (const [chat, item] of [..._crmChats]) {
++      _crmChats.delete(chat)
++      try {
++        const read = await chamarAgenteNaAba(item.tab, 'crmLive', [chat], 10000)
++        const rows = (read?.out || []).filter(m => !_CRM_SYSTEM_TYPES.has(m.tipo))
++        if (!rows.length) throw new Error('crm_no_messages')
++        const response = await fetch(MSGS_ENDPOINT, {
++          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + SHARED_SECRET },
++          body: JSON.stringify({ vendedor_nome: 'ANA', mensagens: rows, lote: 1 }),
++          signal: AbortSignal.timeout(15000)
++        })
++        if (!response.ok) throw new Error('crm_sync_' + response.status)
++        const result = await response.json()
++        await chrome.storage.local.set({ crm_live_last_message: { chat, at: Date.now(), ok: true } })
++        // Text is committed first. Media does not hold up another client's text.
++        const ids = new Set(rows.map(m => m.msg_id))
++        void crmSyncMedia(item.tab, (result.need_media || []).filter(p => ids.has(p.msg_id)))
++      } catch (_) {
++        if (item.attempt < 3 && !_crmChats.has(chat)) _crmChats.set(chat, { ...item, attempt: item.attempt + 1 })
++      }
++    }
++  } finally { _crmFlushOn = false; if (_crmChats.size) crmScheduleFlush(1500) }
++}
++const _CRM_SYSTEM_TYPES = new Set(['e2e_notification','notification_template','gp2','protocol','broadcast_notification','newsletter_admin_invite','revoked','call_log','ciphertext','notification'])
++async function crmSyncMedia(tab, pending) {
++  for (const p of pending.slice(0, 4)) {
++    try {
++      const dataUrl = await chamarAgenteNaAba(tab, 'crmMedia', [p], 15000)
++      if (!dataUrl) continue // Existing reconciliation retries expired/unavailable media.
++      await fetch(MSGS_ENDPOINT, {
++        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + SHARED_SECRET },
++        body: JSON.stringify({ vendedor_nome: 'ANA', media: [{ msg_id: p.msg_id, dataUrl }] }),
++        signal: AbortSignal.timeout(15000)
++      })
++    } catch (_) {}
++  }
++}
++chrome.runtime.onMessage.addListener((msg, sender) => {
++  if (msg?.type !== 'BRANORTE_CRM_MSG' || !sender.tab?.id || !/^https:\/\/web\.whatsapp\.com\//.test(sender.tab.url || '') || !/^\d+@(c\.us|lid)$/.test(msg.chat)) return
++  if (_crmChats.size >= 200 && !_crmChats.has(msg.chat)) return
++  _crmChats.set(msg.chat, { tab: sender.tab.id, attempt: 0 })
++  crmScheduleFlush()
++})
++
+ async function marcarNaoLida(chatId) {
+   const tabs = await queryAbasWa()
+   if (!tabs.length) return
+diff --git a/bsb-detect-chat.js b/bsb-detect-chat.js
+index 66acd1a..1f48f92 100644
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -49,7 +49,7 @@
+   // correcao ficou no disco de todo mundo e rodando em ninguem — so entraria em
+   // aba aberta do zero. O `background.js` avisa disso tres linhas acima de
+   // `reinjetarAgenteSeVelho`, e eu li o arquivo sem ver o topo dele.
+-  var AGENTE_V = '1.70.26'
++  var AGENTE_V = '1.70.27'
+   if (window.__bsbDetectAgent) {
+     if (window.__bsbAgenteV === AGENTE_V) {
+       // Mesma versao ja de pe. Reavisa que esta pronto e sai: o content script zera a flag
+@@ -1396,12 +1396,21 @@ async function buscarKanbanCompletoNoContextoWA(waJsUrl) {
+   function _mnReceber(m) {
+     try {
+       const id = m && m.id
+-      if (!id || id.fromMe) return
++      if (!id) return
+       const tipo = String(m.type || '')
+       if (_MN_SIST.has(tipo)) return
+       const r = id.remote
+       const chat = String((r && (r._serialized || (typeof r.toString === 'function' ? r.toString() : ''))) || '')
+-      if (!/@(c\.us|lid)$/i.test(chat)) return          // grupo, status, canal: nao e cliente da IA
++      if (!/@(c\.us|lid)$/i.test(chat)) return          // grupo, status, canal: nao e cliente da IA
++      // CRM observes both directions; the AI queue below still receives customers only.
++      const crmMid = String(id._serialized || '')
++      const crmSeen = window.__bsbCrmSeen || (window.__bsbCrmSeen = new Set())
++      if (crmMid && !crmSeen.has(crmMid)) {
++        crmSeen.add(crmMid)
++        if (crmSeen.size > 500) crmSeen.delete(crmSeen.values().next().value)
++        window.dispatchEvent(new CustomEvent('bsb:crm-message', { detail: JSON.stringify({ chat, id: crmMid }) }))
++      }
++      if (id.fromMe) return
+       const st = _mnEstado()
+       const mid = String(id._serialized || '')
+       if (mid) {
+@@ -1492,7 +1501,51 @@ async function buscarKanbanCompletoNoContextoWA(waJsUrl) {
+     } catch (_) { return '' }
+   }
+ 
+-  const FNS = {
++  const FNS = {
++    crmLive: async (chat) => {
++      if (!/@(c\.us|lid)$/.test(chat)) return { out: [] }
++      const W = window.WPP
++      let phone = chat.endsWith('@c.us') ? chat.split('@')[0] : ''
++      const model = W?.whatsapp?.ChatStore?.get?.(chat)
++      if (!phone) {
++        const pn = model?.contact?.phoneNumber || model?.phoneNumber || model?.contact?.id
++        const s = pn?._serialized || (typeof pn === 'string' ? pn : '')
++        if (/@c\.us$/.test(s)) phone = s.split('@')[0]
++        if (!phone && W?.contact?.getPhoneFromLid) {
++          try { const p = await W.contact.getPhoneFromLid(chat); const s = p?._serialized || String(p || ''); phone = s.split('@')[0].replace(/\D/g, '') } catch {}
++        }
++      }
++      if (!/^\d{10,15}$/.test(phone)) phone = null
++      return lerMensagensFunil([{ chat_id: chat, phone }], 10)
++    },
++    crmMedia: async (p) => {
++      const serial = (p.from_me ? 'true' : 'false') + '_' + p.chat_id + '_' + p.msg_id
++      const okBlob = blob => blob?.size > 0 && blob.size <= 6000000
++      const toDataUrl = blob => new Promise(resolve => {
++        const fr = new FileReader(); fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : null); fr.onerror = () => resolve(null); fr.readAsDataURL(blob)
++      })
++      for (const id of [serial, p.msg_id]) {
++        try {
++          const blob = await window.WPP.chat.downloadMedia(id)
++          if (okBlob(blob)) return await toDataUrl(blob)
++        } catch {}
++      }
++      // Some WA builds only download from a hydrated message model.
++      try {
++        const messages = await window.WPP.chat.getMessages(p.chat_id, { count: 40 })
++        const model = (messages || []).find(m => {
++          const id = m?.id?._serialized || m?.id?.id || m?.key?.id || ''
++          return id === serial || id === p.msg_id || String(id).slice(String(id).lastIndexOf('_') + 1) === p.msg_id
++        })
++        if (model) {
++          let blob
++          try { blob = await window.WPP.chat.downloadMedia(model) } catch {}
++          if (!okBlob(blob) && model.downloadMedia) { try { blob = await model.downloadMedia() } catch {} }
++          if (okBlob(blob)) return await toDataUrl(blob)
++        }
++      } catch {}
++      return null
++    },
+     lerEtiquetas: (u, sa) => lerEtiquetasNoContextoWA(u || waJsUrl, sa === true),   // (1.70.26) sa so vem da ANA
+     kanban: (u) => buscarKanbanCompletoNoContextoWA(u || waJsUrl),
+     persona: (desde) => varrerComandosPersona(desde),
+diff --git a/wa-sidebar.js b/wa-sidebar.js
+index 36f08e0..3cd4f9e 100644
+--- a/wa-sidebar.js
++++ b/wa-sidebar.js
+@@ -2205,6 +2205,14 @@ Leva menos de 10 segundos:
+   // pergunta ao agente residente por aqui — mesmo canal, mesma fila, sem segundo listener.
+   try { window.__bsbPerguntarAgente = perguntarAgente } catch (_) {}
+ 
++  window.addEventListener('bsb:crm-message', (event) => {
++    try {
++      const value = JSON.parse(event.detail)
++      if (!value || !/^\d+@(c\.us|lid)$/.test(value.chat) || typeof value.id !== 'string') return
++      chrome.runtime.sendMessage({ type: 'BRANORTE_CRM_MSG', chat: value.chat }).catch(() => {})
++    } catch (_) {}
++  })
++
+   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+     if (msg?.type !== 'BSB_AGENT_CALL') return
+     perguntarAgente(msg.fn, msg.args, msg.timeoutMs || 20000)
+diff --git a/manifest.json b/manifest.json
+index 017864b..cf3ac07 100644
+--- a/manifest.json
++++ b/manifest.json
+@@ -1,7 +1,7 @@
+ {
+   "manifest_version": 3,
+   "name": "Branorte WA Sync",
+-  "version": "1.70.26",
++  "version": "1.70.27",
+   "description": "Sincroniza etiquetas WhatsApp Web com CRM Branorte. Compatível com Wascript.",
+   "_comentario_csp": "(17/09/2026) wasm-unsafe-eval e o MINIMO pra gravar audio no CRM (crm.html). O encoder Opus e WebAssembly, e o MV3 bloqueia WASM em pagina de extensao sem isso. O wa-sidebar.js nunca precisou porque roda como content script, sob a CSP do web.whatsapp.com — nao sob a da extensao. Sem esta linha o botao de microfone falha calado.",
+   "content_security_policy": {
+@@ -103,4 +103,4 @@
+     "default_popup": "popup.html",
+     "default_title": "Branorte WA Sync"
+   }
+-}
+\ No newline at end of file
++}

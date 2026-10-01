@@ -37,6 +37,43 @@ Deno.serve(async (req: Request) => {
   const parts = url.pathname.split('/').filter(Boolean)
   const resource = parts[parts.length - 1]
 
+  // Server-side private Broadcast -> authenticated VPS stream. No client data or JWT is exposed.
+  if (req.method === 'GET' && resource === 'crm-events') {
+    if (url.searchParams.get('vendedor') !== 'ANA') return json({ error: 'invalid_worker' }, 400)
+    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } })
+    const encoder = new TextEncoder()
+    let channel: ReturnType<typeof sb.channel>, pulse: ReturnType<typeof setInterval>, expiry: ReturnType<typeof setTimeout>
+    let closed = false
+    const close = () => {
+      if (closed) return
+      closed = true
+      clearInterval(pulse); clearTimeout(expiry)
+      req.signal.removeEventListener('abort', close)
+      if (channel) void sb.removeChannel(channel)
+    }
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (frame: string) => { if (!closed) { try { controller.enqueue(encoder.encode(frame)) } catch { close() } } }
+        const finish = () => { if (!closed) { close(); try { controller.close() } catch {} } }
+        if (req.signal.aborted) { finish(); return }
+        req.signal.addEventListener('abort', close, { once: true })
+        pulse = setInterval(() => send(': heartbeat\n\n'), 15000)
+        expiry = setTimeout(finish, 110000)
+        send(': connecting\n\n')
+        try { await sb.realtime.setAuth(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!) } catch { finish(); return }
+        if (closed) return
+        channel = sb.channel('crm-worker:ANA', { config: { private: true } })
+          .on('broadcast', { event: 'wake' }, () => send('event: wake\ndata: {}\n\n'))
+          .subscribe((status, error) => {
+            if (status === 'SUBSCRIBED') send('event: ready\ndata: {}\n\n')
+            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') { console.warn('[crm-stream]', status, error?.message?.slice(0, 160)); finish() }
+          })
+      },
+      cancel: close,
+    })
+    return new Response(stream, { headers: { ...CORS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' } })
+  }
+
   // BULK aditivo: reminders + scheduled de TODOS os vendedores numa unica chamada.
   // Substitui o loop por vendedor (N x 2 chamadas) por 1 chamada. Paths antigos seguem iguais.
   if (req.method === 'GET' && resource === 'bulk') {
