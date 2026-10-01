@@ -141,3 +141,24 @@ test('failed SSE authentication backs off rather than retrying in a tight loop',
   assert.equal([...h.timers.values()].filter(timer => timer.delay === 2000).length, 1)
   h.cfg.enabled = false; await h.runTimer(2000); await run
 })
+test('stream waits for central-role verification instead of permanently exiting during startup', async () => {
+  let central = false, requests = 0
+  const h = harness({ podeAutomatizar: () => central, fetch: async () => { requests++; return { ok: false, status: 503 } } })
+  const run = h.context.crmStartStream(); await settle()
+  assert.equal(requests, 0)
+  assert.ok([...h.timers.values()].some(timer => timer.delay === 5000), 'Central verification must be retried')
+  central = true; await h.runTimer(5000)
+  assert.equal(requests, 1)
+  h.cfg.enabled = false; await h.runTimer(2000); await run
+})
+test('an already-running fast loop restarts live transport after ANA is enabled again', async () => {
+  let requests = 0
+  const h = harness({ fetch: async () => { requests++; return { ok: true, body: { getReader: () => ({ read: async () => new Promise(() => {}) }) } } } })
+  h.cfg.enabled = false
+  Object.assign(h.context, { cicloIaAtendente: async () => {}, cicloConsultasInternas: async () => {}, naHora: () => false, filaQuente: () => false })
+  vm.runInContext('let _iaFastLoopOn = false; let _iaAtdUltAtivos = 0;\n' + bg.slice(bg.indexOf('function startIaFastLoop()'), bg.indexOf('// CRM live transport,')), h.context)
+  h.context.startIaFastLoop(); await settle()
+  assert.equal(requests, 0)
+  h.cfg.enabled = true; await h.runTimer(25000)
+  assert.equal(requests, 1)
+})

@@ -1,12 +1,12 @@
 # ANA live transport patch
 
-`ana-crm-live-1.70.27.patch` updates the existing ANA extension from 1.70.26 to 1.70.27. It contains only the changed lines and their context; the legacy extension and its credentials must remain outside this repository.
+`ana-crm-live-1.70.28.patch` updates the existing ANA extension from 1.70.26 to 1.70.28. It contains only the changed lines and their context; the legacy extension and its credentials must remain outside this repository.
 
 Apply against the exact VPS baseline, keeping original line endings:
 
 ```sh
-git -c core.autocrlf=false apply --check /path/to/ana-crm-live-1.70.27.patch
-git -c core.autocrlf=false apply /path/to/ana-crm-live-1.70.27.patch
+git -c core.autocrlf=false apply --check /path/to/ana-crm-live-1.70.28.patch
+git -c core.autocrlf=false apply /path/to/ana-crm-live-1.70.28.patch
 ```
 
 Validate the real patched files offline:
@@ -16,7 +16,7 @@ $env:CRM_EXT_DIR = 'C:\path\to\patched-extension'
 node --test tools/vps/crm-live.test.cjs
 ```
 
-The tests execute the actual CRM transport block and resident-agent functions with controlled WhatsApp, storage, timer and HTTP boundaries. They cover incoming and cellphone outgoing events, duplicate and ciphertext handling, LID phone resolution, image thumbnails, media model fallback and size limit, serialized queue wakeups, scope checks, retries, new messages during uploads, fragmented SSE and reconnect backoff. They never connect to WhatsApp or send messages.
+The tests execute the actual CRM transport block and resident-agent functions with controlled WhatsApp, storage, timer and HTTP boundaries. They cover incoming and cellphone outgoing events, duplicate and ciphertext handling, LID phone resolution, image thumbnails, media model fallback and size limit, serialized queue wakeups, scope checks, retries, new messages during uploads, fragmented SSE, reconnect backoff, delayed central-role verification and restart after re-enabling ANA. They never connect to WhatsApp or send messages.
 
 Deployment is scoped to `/opt/branorte/ext-ana`. Back up the four original files and verify their hashes before replacing them. Publish `manifest.json` last so the existing safe auto-update mechanism sees a complete version. Preserve the connected phone session and all other sellers' containers. The existing scheduled-message compare-and-set claim remains responsible for preventing duplicate sends.
 

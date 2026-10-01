@@ -1,5 +1,5 @@
 diff --git a/background.js b/background.js
-index 7bd114d..4769d12 100644
+index 7bd114d..2958e11 100644
 --- a/background.js
 +++ b/background.js
 @@ -13,7 +13,7 @@ importScripts('wa-tab-picker.js')
@@ -7,11 +7,11 @@ index 7bd114d..4769d12 100644
  // bumpar = ANA/DANIEL nao se atualizam sozinhos (heartbeat: 'pendente versoes_divergem:background_...'); a
  // frota nao muda nada. O deploy-extensao.ps1 avisa em amarelo, igual ao AGENTE_V.
 -const BG_VERSAO = '1.70.26'
-+const BG_VERSAO = '1.70.27'
++const BG_VERSAO = '1.70.28'
  
  const ALARM_NAME = 'branorte-sync'
  const ALARM_WORKER = 'branorte-worker'   // processa scheduled+reminders
-@@ -4376,6 +4376,7 @@ let _iaFastLoopOn = false               // guarda: um único timer de ciclo ráp
+@@ -4376,9 +4376,11 @@ let _iaFastLoopOn = false               // guarda: um único timer de ciclo ráp
  // 30s do alarme). Sem chats ativos, volta pro ritmo lento pra não desperdiçar.
  // Fica vivo enquanto o WhatsApp está aberto (porta wa-keepalive mantém o SW).
  function startIaFastLoop() {
@@ -19,7 +19,11 @@ index 7bd114d..4769d12 100644
    if (_iaFastLoopOn) return
    _iaFastLoopOn = true
    const tick = async () => {
-@@ -4407,6 +4408,110 @@ function startIaFastLoop() {
++    void crmStartStream()
+     try { await cicloIaAtendente() } catch (_) {}
+     // Pega carona no mesmo tick: sem consulta aberta e so uma chamada leve ao edge.
+     try { await cicloConsultasInternas() } catch (_) {}
+@@ -4407,6 +4409,112 @@ function startIaFastLoop() {
  
  // Marca o chat como NÃO LIDA no WhatsApp (quando a IA passa o bastão pro vendedor),
  // pra a conversa "pular" e o vendedor notar.
@@ -47,7 +51,9 @@ index 7bd114d..4769d12 100644
 +  try {
 +    for (;;) {
 +      const cfg = await chrome.storage.local.get(['vendedor_nome', 'enabled'])
-+      if (cfg.vendedor_nome !== 'ANA' || cfg.enabled === false || !podeAutomatizar()) break
++      if (cfg.vendedor_nome !== 'ANA' || cfg.enabled === false) break
++      // Role verification can still be pending when the extension starts.
++      if (!podeAutomatizar()) { await new Promise(resolve => setTimeout(resolve, 5000)); continue }
 +      const abort = new AbortController()
 +      const timeout = setTimeout(() => abort.abort(), 125000)
 +      try {
@@ -131,7 +137,7 @@ index 7bd114d..4769d12 100644
    const tabs = await queryAbasWa()
    if (!tabs.length) return
 diff --git a/bsb-detect-chat.js b/bsb-detect-chat.js
-index 66acd1a..1f48f92 100644
+index 66acd1a..6ad1168 100644
 --- a/bsb-detect-chat.js
 +++ b/bsb-detect-chat.js
 @@ -49,7 +49,7 @@
@@ -139,7 +145,7 @@ index 66acd1a..1f48f92 100644
    // aba aberta do zero. O `background.js` avisa disso tres linhas acima de
    // `reinjetarAgenteSeVelho`, e eu li o arquivo sem ver o topo dele.
 -  var AGENTE_V = '1.70.26'
-+  var AGENTE_V = '1.70.27'
++  var AGENTE_V = '1.70.28'
    if (window.__bsbDetectAgent) {
      if (window.__bsbAgenteV === AGENTE_V) {
        // Mesma versao ja de pe. Reavisa que esta pronto e sai: o content script zera a flag
@@ -240,7 +246,7 @@ index 36f08e0..3cd4f9e 100644
      if (msg?.type !== 'BSB_AGENT_CALL') return
      perguntarAgente(msg.fn, msg.args, msg.timeoutMs || 20000)
 diff --git a/manifest.json b/manifest.json
-index 017864b..cf3ac07 100644
+index 017864b..3b5eabf 100644
 --- a/manifest.json
 +++ b/manifest.json
 @@ -1,7 +1,7 @@
@@ -248,7 +254,7 @@ index 017864b..cf3ac07 100644
    "manifest_version": 3,
    "name": "Branorte WA Sync",
 -  "version": "1.70.26",
-+  "version": "1.70.27",
++  "version": "1.70.28",
    "description": "Sincroniza etiquetas WhatsApp Web com CRM Branorte. Compatível com Wascript.",
    "_comentario_csp": "(17/09/2026) wasm-unsafe-eval e o MINIMO pra gravar audio no CRM (crm.html). O encoder Opus e WebAssembly, e o MV3 bloqueia WASM em pagina de extensao sem isso. O wa-sidebar.js nunca precisou porque roda como content script, sob a CSP do web.whatsapp.com — nao sob a da extensao. Sem esta linha o botao de microfone falha calado.",
    "content_security_policy": {
