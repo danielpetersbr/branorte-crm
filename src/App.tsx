@@ -71,6 +71,7 @@ const IaTeste = lazy(() => import('@/pages/IaTeste').then(m => ({ default: m.IaT
 const Reunioes = lazy(() => import('@/pages/Reunioes').then(m => ({ default: m.Reunioes })))
 const Ligacoes = lazy(() => import('@/pages/Ligacoes').then(m => ({ default: m.Ligacoes })))
 const Agenda = lazy(() => import('@/pages/Agenda').then(m => ({ default: m.Agenda })))
+const AtendimentoWhatsApp = lazy(() => import('@/pages/AtendimentoWhatsApp').then(m => ({ default: m.AtendimentoWhatsApp })))
 const RelatorioLider = lazy(() => import('@/pages/RelatorioLider').then(m => ({ default: m.RelatorioLider })))
 const ReuniaoTime = lazy(() => import('@/pages/ReuniaoTime').then(m => ({ default: m.ReuniaoTime })))
 const FreteCotacao = lazy(() => import('@/pages/FreteCotacao'))
@@ -370,6 +371,9 @@ function AppRoutes() {
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
   const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
+  if (loc.pathname === '/whatsapp' && (!['admin', 'vendor'].includes(profile.role) || !can('menu.whatsapp'))) {
+    return <Navigate to={profile.role === 'vendor' ? '/atendimentos' : '/'} replace />
+  }
   // Frete liberado pra TODOS os roles (exceto a fila de aprovação /frete/aprovar, gateada).
   const freteLiberado = loc.pathname.startsWith('/frete') && !loc.pathname.startsWith('/frete/aprovar')
   if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !freteLiberado) {
@@ -462,7 +466,8 @@ function AppRoutes() {
      * autenticado (mesma fonte da Área do Vendedor).
      */
     const funilOk = p === '/funil' && can('menu.funil')
-    const allowed = freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const whatsappOk = p === '/whatsapp' && can('menu.whatsapp')
+    const allowed = whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -602,6 +607,7 @@ function AppRoutes() {
             papel, so que gerando numero e documento como a fabrica espera. */}
         <Route path="/controle/novo-pedido-rapido" element={<ControleNovoPedido />} />
         <Route path="/atendimentos" element={<Atendimentos />} />
+        <Route path="/whatsapp" element={<AtendimentoWhatsApp />} />
         {/* Adm de Reunião — pauta + checklist de tarefas + resumo */}
         <Route path="/reunioes" element={<Reunioes />} />
         {/* ⚠️ /reuniao/<token> (singular, público) é checado ANTES do gate de auth. */}

@@ -28,6 +28,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.dashboard', label: 'Dashboard', group: 'Menu' },
   { key: 'menu.campanhas', label: 'Análise de Campanhas (leads, orçamentos e venda por anúncio)', group: 'Menu' },
   { key: 'menu.atendimentos', label: 'Atendimentos', group: 'Menu' },
+  { key: 'menu.whatsapp', label: 'Atendimento WhatsApp (número da Ana)', group: 'Menu' },
   { key: 'menu.contatos', label: 'Contatos', group: 'Menu' },
   { key: 'menu.funil', label: 'Funil', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
@@ -118,6 +119,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     // REGRA: chave `true` pro papel `vendor` em role_permissions tem que estar
     // AQUI TAMBÉM. As duas listas são a mesma verdade em momentos diferentes.
     'menu.atendimentos': true,
+    'menu.whatsapp': true,
     'menu.orcamentos': true,
     'menu.projeto_3d': true,
     'menu.viabilidade': true,

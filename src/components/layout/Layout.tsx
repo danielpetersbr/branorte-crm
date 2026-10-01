@@ -105,6 +105,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
       { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
+      { to: '/whatsapp', label: 'Atendimento WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
       { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
       { to: '/campanhas', label: 'Análise de Campanhas', icon: Megaphone, permKey: 'menu.campanhas' },
       // Cada vendedor abre a DELE: a tela deriva o nome de user_profiles.vendor_id e
@@ -261,6 +262,7 @@ const NAV_GROUPS: NavGroup[] = [
 const MOBILE_NAV: NavItem[] = [
   { to: '/', label: 'Início', icon: LayoutDashboard },
   { to: '/atendimentos', label: 'Atender', icon: MessageSquare, countKey: 'atendimentos' },
+  { to: '/whatsapp', label: 'WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
   { to: '/orcamentos/montar', label: 'Orçar', icon: FilePlus2 },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
   { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
@@ -400,7 +402,7 @@ export function Layout() {
   const mobileBase = profile?.role === 'visualizador'
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
     : profile?.role === 'vendor'
-    ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/orcamentos/montar')
+    ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/whatsapp' || l.to === '/orcamentos/montar')
     : MOBILE_NAV
   // Respeita permKey: item só entra na barra se o usuário tiver a permissão.
   const mobileNav = mobileBase.filter(visible)

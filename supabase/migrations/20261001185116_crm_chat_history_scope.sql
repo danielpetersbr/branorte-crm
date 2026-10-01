@@ -1,0 +1,1 @@
+create policy crm_ana_history_scope on public.wa_chat_messages as restrictive for select to authenticated using(vendedor_nome<>'ANA' or not(select private.crm_chat_is_vendor()) or chat_id=any((select private.crm_chat_allowed_wa())::text[]));
