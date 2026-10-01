@@ -1,0 +1,67 @@
+diff --git a/popup.js b/popup.js
+index a96bb2c..ac13f61 100644
+--- a/popup.js
++++ b/popup.js
+@@ -17,0 +18 @@ const $funilKill = document.getElementById('funilKill')
++let _popupCentralVendor = null
+@@ -100 +101,5 @@ async function carregar() {
+-  carregarCentral(cfg.vendedor_nome)
++  const centralVendor = String(cfg.vendedor_nome || '').trim()
++  if (centralVendor !== _popupCentralVendor) {
++    _popupCentralVendor = centralVendor
++    void carregarCentral(centralVendor, true)
++  }
+@@ -266,0 +272,2 @@ async function callCentral(action, vendedor) {
++  const abort = new AbortController()
++  const timeout = setTimeout(() => abort.abort(), 10000)
+@@ -268,0 +276 @@ async function callCentral(action, vendedor) {
++      signal: abort.signal,
+@@ -274,0 +283 @@ async function callCentral(action, vendedor) {
++  finally { clearTimeout(timeout) }
+@@ -293 +302,4 @@ function pintarCentral(j) {
+-async function carregarCentral(vendedor) {
++const CENTRAL_STATUS_TTL_MS = 60000
++let _centralStatusCache = null, _centralStatusFlight = null
++let _centralStatusEpoch = 0, _centralViewVendor = ''
++async function carregarCentral(vendedor, force = false) {
+@@ -296 +308,3 @@ async function carregarCentral(vendedor) {
+-  if (!vendedor) { $box.style.display = 'none'; return }
++  vendedor = String(vendedor || '').trim()
++  _centralViewVendor = vendedor
++  if (!vendedor) { _centralStatusEpoch++; _centralStatusCache = null; $box.style.display = 'none'; return }
+@@ -298 +312,23 @@ async function carregarCentral(vendedor) {
+-  pintarCentral(await callCentral('status', vendedor))
++  if (force) {
++    _centralStatusEpoch++
++    _centralStatusCache = null
++    // A post-mutation check must start after an older role read finishes.
++    if (_centralStatusFlight?.vendor === vendedor) await _centralStatusFlight.promise
++  }
++  if (_centralStatusCache?.vendor === vendedor && Date.now() - _centralStatusCache.at < CENTRAL_STATUS_TTL_MS) {
++    pintarCentral(_centralStatusCache.result)
++    return _centralStatusCache.result
++  }
++  if (_centralStatusFlight?.vendor === vendedor) return _centralStatusFlight.promise
++  const epoch = _centralStatusEpoch
++  const flight = { vendor: vendedor, at: Date.now(), promise: null }
++  flight.promise = (async () => {
++    const result = await callCentral('status', vendedor)
++    if (epoch === _centralStatusEpoch && _centralViewVendor === vendedor) {
++      _centralStatusCache = { vendor: vendedor, at: flight.at, result }
++      pintarCentral(result)
++    }
++    return result
++  })().finally(() => { if (_centralStatusFlight === flight) _centralStatusFlight = null })
++  _centralStatusFlight = flight
++  return flight.promise
+@@ -309,0 +346 @@ if (document.getElementById('marcarCentral')) {
++    await carregarCentral(v, true)
+@@ -319 +356 @@ if (document.getElementById('liberarCentral')) {
+-    carregarCentral(v)
++    await carregarCentral(v, true)
+@@ -324,0 +362,5 @@ setInterval(carregar, 1000)
++// Local counters stay live every second; role reconciliation uses the network once per minute.
++setInterval(() => {
++  chrome.storage.local.get(['vendedor_nome'])
++    .then(cfg => carregarCentral(cfg.vendedor_nome)).catch(() => {})
++}, CENTRAL_STATUS_TTL_MS)

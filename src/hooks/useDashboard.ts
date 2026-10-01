@@ -4,16 +4,12 @@ import { foneCanon } from '@/lib/fone-canon'
 import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { memoPorSnapshot } from '@/lib/memo-por-snapshot'
+import { decodeDashboardSnapshot } from '@/lib/dashboard-snapshot'
 import { RISCO_TOP, entraEmRisco, horasSemAtividade } from '@/lib/dashboard-risco'
 
 
-// Teto de linhas puxadas da view. Precisa ser MAIOR que o total de contatos, senão
-// o Dashboard corta os mais antigos (ordenado por data desc) e tanto a contagem total
-// quanto o filtro de período ficam errados sobre o conjunto truncado. Os cálculos de
-// forecast/gráficos usam o conjunto TOTAL, por isso o filtro de período é client-side
-// (não dá pra filtrar no servidor sem quebrá-los). TODO: migrar pra agregação no banco
-// (RPC) quando a view passar de ~30k linhas.
-const DASHBOARD_LIMIT = 50000
+// A RPC lê o conjunto completo (teto de 50 mil) uma vez. Período continua client-side
+// para preservar forecast, séries e troca instantânea dos filtros.
 const META_MENSAL_REAIS = 2_000_000
 
 // '' = Tudo · presets fixos · `custom:YYYY-MM-DD:YYYY-MM-DD` = período personalizado.
@@ -377,34 +373,15 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
   return useQuery({
     queryKey: ['dashboard-data-v3'],
     select,
-    queryFn: async (): Promise<DashboardRaw> => {
-      // Read PAGINADO: a view tem 10.4k linhas. Um único read (~7,8 MB) estoura o
-      // statement_timeout de 8 s do role `authenticated` sob carga (frota + crons) e volta
-      // 500 com `57014`. Em páginas de 2500 cada resposta é leve e sempre completa.
-      const PAGE = 2500
-      const SEL = 'id, nome, telefone, responsavel, criativo_codigo, origem, motivo_contato, finalidade_fabrica, qual_animal, quantos_animais, quando_investir, tocou_botao_em, o_que_precisa, data, last_message_at, is_internal, chegou_no_vendedor, orcamento_enviado, orcamento_valor, status_real, status_vendedor, finished_at'
-      const rows: RawRow[] = []
-      for (let from = 0; from < DASHBOARD_LIMIT; from += PAGE) {
-        // Retry POR PÁGINA: um 57014 numa página não pode jogar fora as páginas que já
-        // vieram — repetir o loop inteiro rebaixava ~6 MB e empilhava carga justo quando o
-        // banco estava saturado. Backoff curto; se as 3 tentativas falharem, sobe o erro.
-        let chunk: RawRow[] | null = null
-        let ultimoErro: unknown = null
-        for (let tentativa = 0; tentativa < 3 && chunk === null; tentativa++) {
-          if (tentativa > 0) await new Promise(r => setTimeout(r, 1500 * tentativa))
-          const pageRes = await supabaseAuditoria
-            .from('atendimentos_por_cliente')
-            .select(SEL)
-            .eq('is_internal', false)
-            .order('data', { ascending: false, nullsFirst: false })
-            .range(from, from + PAGE - 1)
-          if (pageRes.error) { ultimoErro = pageRes.error; continue }
-          chunk = (pageRes.data ?? []) as RawRow[]
-        }
-        if (chunk === null) throw ultimoErro
-        rows.push(...chunk)
-        if (chunk.length < PAGE) break
-      }
+    queryFn: async ({ signal }): Promise<DashboardRaw> => {
+      // Antes cada página recalculava os mesmos 18 mil leads (~1,1s de SQL por página).
+      // Snapshot compacto evita oito passagens pela view e repetições das chaves JSON.
+      const { data: snapshot, error } = await supabaseAuditoria
+        .rpc('dashboard_snapshot')
+        .abortSignal(signal)
+      if (error) throw error
+      signal.throwIfAborted()
+      const rows = decodeDashboardSnapshot(snapshot) as unknown as RawRow[]
       // Criativo muda raramente: cache próprio de 30 min, fora do refetch de 3 min do read
       // grande. fetchQuery dedupa entre abas/telas que já tenham buscado.
       const criativoNomes = await qc.fetchQuery({
@@ -423,8 +400,8 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
       try {
         const [orcRes, sitRes] = await Promise.all([
-          (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }),
-          (supabase as any).rpc('dashboard_fone_situacao'),
+          (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }).abortSignal(signal),
+          (supabase as any).rpc('dashboard_fone_situacao').abortSignal(signal),
         ])
         if (!orcRes?.error) {
           for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number; ultimo_em?: string | null }[]) {
@@ -442,12 +419,12 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
           }
         }
       } catch { /* maps vazios -> fallback; dashboard não quebra */ }
+      signal.throwIfAborted()
       return { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes }
     },
     staleTime: 120_000,
-    refetchInterval: 180_000,  // read pesado (~6MB) — refetch a cada 3min p/ não somar carga ao polling da frota
-    // O retry de verdade agora é POR PÁGINA (acima). Aqui fica 1 tentativa extra só pra
-    // falha fora do loop (RPCs de orçamento) — antes eram 3, e cada uma rebaixava tudo.
+    refetchInterval: 180_000,
+    // Uma repetição com backoff; sem empilhar retries por página sobre o banco.
     retry: 1,
     retryDelay: () => 3000,
     // Sem placeholderData: com a key fixa não existe "key nova ainda sem dado" na troca
