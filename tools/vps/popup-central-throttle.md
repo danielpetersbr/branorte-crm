@@ -32,3 +32,5 @@ No background, manifest, automation cadence, central ownership or WhatsApp login
 ## VPS deployment evidence
 
 Published at 2026-10-01 23:24:08 UTC to the eleven existing extension folders: alvaro, ana, daniel, eder, edilson-jr, gustavo, igor, jardel, lucas, pedro and ramon. Every original hash matched the expected baseline before replacement. Each original file was backed up and hash-checked under `/opt/branorte/backups/crm-performance-20261001/<seller>/popup.js`; backups are readable only by their owner. A verified staged popup was copied through a temporary file and atomically replaced each target. All eleven final hashes matched the patched hash above. Background and manifest hashes were checked before and after and remained identical. No containers were restarted. Already open popup windows retain their previous script until closed and reopened.
+
+For rollback, restore the backed-up contents while preserving the destination file's permissions and owner. Backups have mode `600`; copying their metadata onto a normally `644` extension file can prevent Chrome from reading it. Verify the restored hash against the original above before reopening the popup.

@@ -69,7 +69,7 @@ O teste [dashboard_compact_snapshot.sql](../supabase/tests/dashboard_compact_sna
 
 Esses tempos foram medidos no SQL; não incluem rede, download, decodificação ou renderização no navegador. A função permanece `SECURITY INVOKER`; seus grants permitem `authenticated` e `service_role` e negam `anon`. A invocação anônima via REST foi negada com SQLSTATE `42501`. Essa equivalência confirma preservação do comportamento anterior sob as roles testadas; não é uma auditoria completa das políticas existentes.
 
-Referência da implementação: [20261001232334_dashboard_compact_snapshot.sql](../supabase/migrations/20261001232334_dashboard_compact_snapshot.sql). A verificação de interface autenticada após publicação ainda estava pendente no fechamento desta auditoria.
+Referência da implementação: [20261001232334_dashboard_compact_snapshot.sql](../supabase/migrations/20261001232334_dashboard_compact_snapshot.sql). A verificação de interface autenticada após publicação está registrada abaixo.
 
 ## Carregamento do navegador
 
@@ -95,7 +95,11 @@ Popups já abertos precisam fechar e abrir para carregar o novo script. Nenhum c
 - Extensão: **8 testes de concorrência, timeout, troca de vendedor e ações manuais passaram**; sintaxe verificada.
 - Banco: comparação integral do snapshot em papéis reais; anonimato negado; fixtures do índice em transação revertida; índice válido/pronto/ativo.
 - Build de produção concluído e revisão independente sem bloqueadores.
-- Verificação de interface na prévia e produção ainda pendente neste registro inicial.
+- Prévia: login, quiz público, portal de transportadoras e carregamento da rota de impressão conferidos. Sem dados injetados, a impressão exibiu sua mensagem esperada de ausência de dados; não foi gerado um PDF completo nesta auditoria.
+- PR #123 integrado. Produção do commit `a12eef5` confirmada como `Ready`, `Current`, às **23:32:40 UTC**, no Vercel.
+- Produção autenticada: indicadores visíveis cerca de **4,7 s após reload**, incluindo automação e espera pelo componente. É uma observação única com a sessão/cache existentes, não um benchmark de rede ou percentil de usuários.
+- Dashboard em Hoje: 101 leads, 71 qualificados, 9 clientes com proposta, 1 venda de R$ 350; em 7 dias: 315 leads, 185 qualificados, 57 clientes com proposta e 17 vendas. Os dados mudam naturalmente; a equivalência estática foi provada pelo teste SQL.
+- Navegação ao WhatsApp: lista carregada e **Tempo real conectado**, número final 1144. Nenhum envio de teste foi feito. Nenhum erro foi registrado no console durante o QA autenticado do dashboard e WhatsApp.
 
 ## Gargalos restantes e próximas correções candidatas
 
@@ -121,6 +125,6 @@ O catálogo estimava `wa_sync_debug` em 2,55 milhões de registros e 1,62 GB tot
 
 ## Limites e referências
 
-Esta auditoria não executou carga artificial contra endpoints de clientes, não enviou mensagens e não fez `EXPLAIN ANALYZE` em jobs ou atualizações. Os ganhos de cron e a equivalência do snapshot estão medidos; a latência completa da interface e a estabilidade prolongada exigem observação após publicação. O índice acrescenta armazenamento e manutenção nas escritas; não altera permissões ou filtros.
+Esta auditoria não executou carga artificial contra endpoints de clientes, não enviou mensagens e não fez `EXPLAIN ANALYZE` em jobs ou atualizações. Os ganhos de cron e a equivalência do snapshot estão medidos; o QA autenticado passou. A distribuição de latência entre usuários e a estabilidade prolongada exigem observação adicional. O índice acrescenta armazenamento e manutenção nas escritas; não altera permissões ou filtros.
 
 O desenho segue as orientações do PostgreSQL sobre [índices multicoluna](https://www.postgresql.org/docs/current/indexes-multicolumn.html) e [criação concorrente de índices](https://www.postgresql.org/docs/current/sql-createindex.html). Índices iniciados pelo predicado de igualdade permitem limitar a faixa percorrida; `CONCURRENTLY` evita bloquear as escritas durante a construção e deve ser executado fora de uma transação explícita.
