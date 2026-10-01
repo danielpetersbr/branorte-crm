@@ -7,6 +7,7 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '86400',
 }
 
 const TABELAS = {
@@ -33,12 +34,57 @@ Deno.serve(async (req: Request) => {
   }
 
   const url = new URL(req.url)
-  // Path: /wa-contact-hub/<resource> ; resource in {notes, scheduled, reminders, calendar}
   const parts = url.pathname.split('/').filter(Boolean)
   const resource = parts[parts.length - 1]
+
+  // BULK aditivo: reminders + scheduled de TODOS os vendedores numa unica chamada.
+  // Substitui o loop por vendedor (N x 2 chamadas) por 1 chamada. Paths antigos seguem iguais.
+  if (req.method === 'GET' && resource === 'bulk') {
+    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    const status = url.searchParams.get('status')
+    const vendedor = url.searchParams.get('vendedor')
+    async function load(tab: string, orderCol: string) {
+      let q = sb.from(tab).select('*')
+      if (status) q = q.eq('status', status)
+      if (vendedor) q = q.eq('vendedor_nome', vendedor.toUpperCase())
+      const { data, error } = await q.order(orderCol, { ascending: true }).limit(2000)
+      if (error) throw new Error(error.message)
+      return data ?? []
+    }
+    try {
+      const [reminders, scheduled] = await Promise.all([
+        load('wa_reminders', 'remind_at'),
+        load('wa_scheduled_messages', 'scheduled_at'),
+      ])
+      return json({ reminders, scheduled })
+    } catch (e) {
+      return json({ error: 'server_error', detail: String(e).slice(0, 300) }, 500)
+    }
+  }
+
+  // ANUNCIO (v8, 17/09/2026) — ADITIVO, no mesmo padrao do `bulk`.
+  // Mostra pro vendedor QUAL ANUNCIO o cliente viu antes de cair no WhatsApp dele,
+  // com o link do video/arte. Medido em 17/09: 71% dos leads entregues sabem o anuncio
+  // e 61,6% tem o link do video.
+  //   GET /wa-contact-hub/anuncio?phone=5548999...
+  // Resposta: { ok, tem: bool, anuncio: {...} | null }
+  if (req.method === 'GET' && resource === 'anuncio') {
+    const phone = url.searchParams.get('phone') ?? url.searchParams.get('telefone')
+    if (!phone) return json({ error: 'phone_required' }, 400)
+    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    try {
+      const { data, error } = await sb.rpc('anuncio_do_cliente', { p_telefone: phone })
+      if (error) return json({ error: error.message }, 500)
+      const item = Array.isArray(data) ? data[0] : data
+      return json({ ok: true, tem: !!item, anuncio: item ?? null })
+    } catch (e) {
+      return json({ error: 'server_error', detail: String(e).slice(0, 300) }, 500)
+    }
+  }
+
   const tabela = TABELAS[resource as keyof typeof TABELAS]
   if (!tabela) {
-    return json({ error: 'invalid_resource', valid: Object.keys(TABELAS) }, 400)
+    return json({ error: 'invalid_resource', valid: [...Object.keys(TABELAS), 'bulk', 'anuncio'] }, 400)
   }
 
   const sb = createClient(
@@ -57,7 +103,6 @@ Deno.serve(async (req: Request) => {
       if (chatId) q = q.eq('chat_id', chatId)
       if (status) q = q.eq('status', status)
 
-      // Ordenação default por recurso
       if (resource === 'notes') q = q.order('is_pinned', { ascending: false }).order('created_at', { ascending: false })
       else if (resource === 'scheduled') q = q.order('scheduled_at', { ascending: true })
       else if (resource === 'reminders') q = q.order('remind_at', { ascending: true })
@@ -73,10 +118,8 @@ Deno.serve(async (req: Request) => {
       const body = await req.json().catch(() => ({})) as Record<string, unknown>
       if (body.vendedor_nome) body.vendedor_nome = String(body.vendedor_nome).toUpperCase()
       if (body.id) {
-        // Update
         const id = String(body.id)
         delete body.id
-        // Sempre atualiza updated_at se a tabela tiver
         if (resource === 'notes') (body as any).updated_at = new Date().toISOString()
         const { data, error } = await sb.from(tabela).update(body).eq('id', id).select().single()
         if (error) return json({ error: error.message }, 500)
@@ -87,12 +130,20 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, item: data }, 201)
     }
 
-    // ===== PATCH: atualização parcial via querystring id =====
+    // ===== PATCH: atualizacao parcial via querystring id =====
     if (req.method === 'PATCH') {
       const id = url.searchParams.get('id')
       if (!id) return json({ error: 'id_required' }, 400)
       const body = await req.json().catch(() => ({})) as Record<string, unknown>
       if (resource === 'notes') (body as any).updated_at = new Date().toISOString()
+      // Claim compare-and-set: duas instâncias nunca recebem sucesso para o mesmo envio.
+      // Também impede ressuscitar uma mensagem cancelada quando o vendedor assume a conversa.
+      if (resource === 'scheduled' && body.status === 'sending') {
+        const { data, error } = await sb.rpc('crm_chat_queue_claim', { p_id: id })
+        if (error) return json({ error: error.message }, 500)
+        if (!data) return json({ error: 'message_not_pending' }, 409)
+        return json({ ok: true, item: data })
+      }
       const { data, error } = await sb.from(tabela).update(body).eq('id', id).select().single()
       if (error) return json({ error: error.message }, 500)
       return json({ ok: true, item: data })
