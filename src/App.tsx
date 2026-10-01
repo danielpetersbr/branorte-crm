@@ -1,17 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, QueryCache, MutationCache } from '@tanstack/react-query'
-import { lazy, useState, useEffect, type CSSProperties } from 'react'
+import { lazy, Suspense, useState, useEffect, type CSSProperties } from 'react'
 import { Toaster } from 'sonner'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
 import { Layout } from '@/components/layout/Layout'
-import { Dashboard } from '@/pages/Dashboard'
-import { MobileHome } from '@/pages/MobileHome'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { Atendimentos } from '@/pages/Atendimentos'
-import { Login } from '@/pages/Login'
-import { Signup } from '@/pages/Signup'
-import { Pendente } from '@/pages/Pendente'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useTrilhaAcesso } from '@/hooks/useAcesso'
@@ -22,8 +16,14 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { InstallPrompt } from '@/components/InstallPrompt'
 import { NovaVersaoBanner } from '@/components/NovaVersaoBanner'
 
-// Páginas grandes ou pouco-acessadas vão lazy pra reduzir bundle inicial
-// (era 2.9MB tudo junto). Cada uma carrega só quando vendedor navega pra ela.
+// Cada página carrega na sua rota. A boundary em App cobre também páginas
+// públicas/login/portal, que retornam antes da boundary interna do Layout.
+const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })))
+const MobileHome = lazy(() => import('@/pages/MobileHome').then(m => ({ default: m.MobileHome })))
+const Atendimentos = lazy(() => import('@/pages/Atendimentos').then(m => ({ default: m.Atendimentos })))
+const Login = lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })))
+const Signup = lazy(() => import('@/pages/Signup').then(m => ({ default: m.Signup })))
+const Pendente = lazy(() => import('@/pages/Pendente').then(m => ({ default: m.Pendente })))
 const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })))
 const Campanhas = lazy(() => import('@/pages/Campanhas').then(m => ({ default: m.Campanhas })))
 const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.Contacts })))
@@ -100,35 +100,14 @@ const PedidoVendaGarantia = lazy(() => import('@/pages/pedido-venda/PedidoGarant
 const Supervisao = lazy(() => import('@/pages/Supervisao').then(m => ({ default: m.Supervisao })))
 const SupervisaoVendedor = lazy(() => import('@/pages/SupervisaoVendedor').then(m => ({ default: m.SupervisaoVendedor })))
 
-// /print/orcamento é importado direto (sem lazy) pra evitar precisar de Suspense
-// no fallback antes do auth. Rota usada APENAS pelo Puppeteer server-side.
-import PrintOrcamento from '@/pages/PrintOrcamento'
-// /print/roteiro — mesma ideia, pro PDF do roteiro de viagem (/mapa-visitas).
-import PrintRoteiro from '@/pages/PrintRoteiro'
-
-// /sso é o pouso do login automático vindo do controle.branorte.com.
-// Importado direto (sem lazy) porque roda antes do gate de auth.
-import { SsoLanding } from '@/pages/SsoLanding'
-
-// /avaliacao é a página PÚBLICA de avaliação de atendimento, aberta pelo link
-// que a extensão WA Sync envia ao cliente. Import direto: roda deslogada.
-import { Avaliacao } from '@/pages/Avaliacao'
-
-// /reuniao/<token> é a página PÚBLICA de feedback pós-reunião, aberta pelo link
-// que o gestor manda pros vendedores. Import direto: roda deslogada.
-import { ReuniaoFeedback } from '@/pages/ReuniaoFeedback'
-
-// /cotar-frete/<token> é a página PÚBLICA da cotação reversa de frete, aberta pela
-// transportadora pelo link que o Jardel envia no WhatsApp. Roda deslogada.
-import { CotarFrete } from '@/pages/CotarFrete'
-
-// /monte-sua-fabrica é o quiz PÚBLICO: o produtor responde 7 perguntas e vê a
-// linha de equipamentos que atende ele, do recebimento à expedição. Import
-// direto (sem lazy) pelo mesmo motivo das de cima: roda ANTES do gate de auth,
-// onde não existe Suspense pra segurar o chunk.
-import { MonteSuaFabrica } from '@/pages/MonteSuaFabrica'
-// /transportadora — portal das transportadoras (auth própria, fora do app do staff).
-import { TransportadoraApp } from '@/pages/TransportadoraApp'
+const PrintOrcamento = lazy(() => import('@/pages/PrintOrcamento'))
+const PrintRoteiro = lazy(() => import('@/pages/PrintRoteiro'))
+const SsoLanding = lazy(() => import('@/pages/SsoLanding').then(m => ({ default: m.SsoLanding })))
+const Avaliacao = lazy(() => import('@/pages/Avaliacao').then(m => ({ default: m.Avaliacao })))
+const ReuniaoFeedback = lazy(() => import('@/pages/ReuniaoFeedback').then(m => ({ default: m.ReuniaoFeedback })))
+const CotarFrete = lazy(() => import('@/pages/CotarFrete').then(m => ({ default: m.CotarFrete })))
+const MonteSuaFabrica = lazy(() => import('@/pages/MonteSuaFabrica').then(m => ({ default: m.MonteSuaFabrica })))
+const TransportadoraApp = lazy(() => import('@/pages/TransportadoraApp').then(m => ({ default: m.TransportadoraApp })))
 
 // Hosts dedicados ao Portal de Transportadoras. Quando o app é acessado por um
 // destes domínios, a raiz já serve o portal (sem precisar do path /transportadora,
@@ -795,7 +774,9 @@ export default function App() {
       <AuthProvider>
         <ToasterDoCrm />
         <BrowserRouter>
-          <AppRoutes />
+          <Suspense fallback={<PageLoading />}>
+            <AppRoutes />
+          </Suspense>
           <OverlaysGlobais />
         </BrowserRouter>
       </AuthProvider>
