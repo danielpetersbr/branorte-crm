@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { chatChange, chatRefresh } from '@/lib/chat-realtime'
 import { ChatRpcError } from '@/lib/chat-rpc-error'
+import type { ChatOrigin } from '@/lib/chat-origin'
 import { chatQueueCursor, mergeHistoryPages, orderChatQueue, type ChatQueue } from '@/lib/chat-productivity'
 import { CHAT_MEDIA_BUCKET, privateChatMediaPath, type ChatConversation, type ChatMessage, type ChatNote, type ChatOutbox } from '@/lib/atendimento-chat'
 
@@ -79,6 +80,9 @@ export function useAtendimentoChat(filters:{search:string;status:string;vendor:s
   })
   const sales=useQuery({queryKey:[...base,'sales',selected],enabled:enabled&&!!selected,
     queryFn:()=>chatRpc<ChatSales>('sales',{id:selected}),staleTime:60000,retry:1})
+  const origin=useQuery({queryKey:[...base,'origin',selected],enabled:enabled&&!!selected,
+    queryFn:async()=>{const {data,error}=await supabase.rpc('crm_chat_origin',{p_conversation_id:selected});if(error)throw new ChatRpcError(error);return data as ChatOrigin},
+    staleTime:60000,refetchInterval:60000,retry:1})
   const conversations=useMemo(()=>{
     const m=new Map<string,ChatConversation>();list.data?.pages.forEach(p=>p.items.forEach(c=>{if(!m.has(c.id))m.set(c.id,c)}));
     return orderChatQueue([...m.values()],filters.queue)
@@ -102,7 +106,7 @@ export function useAtendimentoChat(filters:{search:string;status:string;vendor:s
   },[selected,messages[messages.length-1]?.msg_id,history.isError,detail.isError])
   // Release libera apenas a sessão atual; a IA permanece pausada até decisão explícita.
   useEffect(()=>()=>{if(selected) void chatRpc('release',{id:selected,session}).catch(()=>{})},[selected,session])
-  return {list,detail,history,historyResults,searchMessages,sales,conversations,messages,conversation,session,ownsLease,leaseError,action,profile,realtimeConnected,lastEventAt,
+  return {list,detail,history,historyResults,searchMessages,sales,origin,conversations,messages,conversation,session,ownsLease,leaseError,action,profile,realtimeConnected,lastEventAt,
     invalidate:()=>qc.invalidateQueries({queryKey:base})}
 }
 
