@@ -88,7 +88,10 @@ const CSS = `
   tr.total td { background: #f2f2f2; font-weight: 700; }
   .a-left { text-align: left; } .a-center { text-align: center; } .a-right { text-align: right; }
   td.forte { font-weight: 700; }
-  .assin { margin-top: 22pt; text-align: center; page-break-inside: avoid; }
+  .assin {
+    padding-top: 30mm; text-align: center;
+    page-break-inside: avoid; break-inside: avoid;
+  }
   .assin .linha {
     width: 82mm; margin: 0 auto 3pt; border-top: 1px solid #000;
   }

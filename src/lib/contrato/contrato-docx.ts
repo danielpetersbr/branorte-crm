@@ -6,7 +6,7 @@
 
 import {
   Document, Packer, Paragraph, TextRun, AlignmentType, Footer,
-  Table, TableRow, TableCell, WidthType, ShadingType, BorderStyle,
+  Table, TableRow, TableCell, WidthType, ShadingType, BorderStyle, LineRuleType,
 } from 'docx'
 import type { ContratoDados } from './contrato-dados'
 import { montarBlocosContrato, nomeArquivoContrato, type Bloco, type CelulaBloco } from './contrato-blocos'
@@ -85,13 +85,18 @@ function renderBloco(bl: Bloco): (Paragraph | Table)[] {
 
     case 'assinatura':
       return [
-        new Paragraph({ spacing: { before: 420, after: 0 }, children: [r(' ')] }),
+        new Paragraph({
+          spacing: { before: 0, after: 0, line: 1701, lineRule: LineRuleType.EXACT },
+          keepNext: true, children: [r(' ')],
+        }),
         new Paragraph({
           alignment: AlignmentType.CENTER, spacing: { after: 40 },
+          keepNext: true,
           children: [r('_____________________________________________________')],
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER, spacing: { after: 20 },
+          keepNext: true,
           children: [r(bl.nome, { bold: true })],
         }),
         new Paragraph({
