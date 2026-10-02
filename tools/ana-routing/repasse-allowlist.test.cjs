@@ -70,10 +70,13 @@ test('inactive contingency preserves the existing legacy path without adding an 
 })
 test('commercial and doubt prompts defer seller selection to the configured routine',()=>{
   const prompt=section(ia,'      if (CONTINGENCIA) persona +=','      const user = `CONVERSA')
-  const fn=vm.runInNewContext(compile(`(function(vendedoresRepasseAna,cfg){let persona='';const CONTINGENCIA=true,CONSULTA_DANIEL=true;${prompt}\nreturn persona})`))
-  const result=fn(parser,{anaContingenciaRepasse:config({repasse_duvidas:true})})
-  assert.match(result,/vendedores habilitados/i)
-  assert.doesNotMatch(result,/Daniel, Ramon ou Gustavo/)
-  assert.match(result,/NÃO invente números/)
-  assert.match(result,/não escolha nem prometa um vendedor antes da confirmação/i)
+  const fn=vm.runInNewContext(compile(`(function(vendedoresRepasseAna,cfg,PACOTE_VENDEDOR=false){let persona='';const CONTINGENCIA=true,CONSULTA_DANIEL=true;${prompt}\nreturn persona})`))
+  for(const mode of [false,true]) {
+    const result=fn(parser,{anaContingenciaRepasse:config({repasse_duvidas:true})},mode)
+    assert.match(result,/vendedores habilitados/i)
+    assert.doesNotMatch(result,/Daniel, Ramon ou Gustavo/)
+    assert.match(result,/NÃO invente números/)
+    assert.match(result,/não escolha nem prometa um vendedor antes da confirmação/i)
+    if(mode) assert.match(result,/WhatsApp do vendedor após o encaminhamento confirmado/)
+  }
 })

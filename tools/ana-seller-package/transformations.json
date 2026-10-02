@@ -1,0 +1,86 @@
+{
+  "slug": "ia-atendente",
+  "expectedVersion": 257,
+  "baseline_version": 257,
+  "baseline_index_sha256": "984421c7cf221e77fec3930913c24d32c02f07f002a2eb49e6d07f952a11c842",
+  "baseline_crm_gate_sha256": "66f423d70c999720046e0cd23faa93b782ec6a715f51a26b97aea671b7b5e794",
+  "candidate_index_sha256": "a7f151fbdc8c7d42018d79ba72fd461698bc139c71b554bf1c0aa4d83582e3e1",
+  "candidate_crm_gate_sha256": "66f423d70c999720046e0cd23faa93b782ec6a715f51a26b97aea671b7b5e794",
+  "files": [
+    {
+      "name": "index.ts",
+      "replacements": [
+        {
+          "before": "async function precoContinuarAna(c: any): Promise<any> {",
+          "after": "// Modo de canal explícito: início inclusivo, fim exclusivo; ausência de fim permite operação permanente.\nfunction pacoteVendedorAna(cfg: any, agoraMs: number): boolean {\n  const iso = (v: unknown) => typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(v) ? Date.parse(v) : NaN\n  if (!cfg || cfg.ativo !== true || !Number.isFinite(agoraMs)) return false\n  const inicio = iso(cfg.inicio), fim = cfg.fim == null ? Infinity : iso(cfg.fim)\n  return Number.isFinite(inicio) && (fim === Infinity || Number.isFinite(fim)) && fim > inicio && agoraMs >= inicio && agoraMs < fim\n}\n// Última proteção da resposta: não confirma material removido nem valores pela conta da Ana.\nfunction respostaSemPacoteAna(texto: string, proxima: string | null, energia: 'tri' | 'mono' | null, aguardando: boolean): string {\n  const t = String(texto || '')\n  const material = /(?:te\\s+|lhe\\s+)?(?:mandei|mando|enviei|envio|enviando|encaminhei|encaminho|encaminhando|anexei|anexando|vou\\s+(?:(?:te|lhe)\\s+)?(?:mandar|enviar|encaminhar))[^.!?]*(?:foto|v[ií]deo|imagem|tabela|material|cat[aá]logo|pacote)|(?:segue|seguem|confira|veja|aqui\\s+est[aá]|em\\s+anexo)[^.!?]*(?:foto|v[ií]deo|imagem|tabela|material|cat[aá]logo|pacote)/i.test(t)\n  if (!material && !numeroDeDinheiroPorteira(t)) return t\n  if (aguardando) return 'Estou aguardando a confirmação dessa informação.'\n  return continuarQualificacaoAna(proxima, energia) || 'Os valores e materiais ficam com a equipe comercial. Posso continuar ajudando com as características do equipamento.'\n}\nasync function precoContinuarAna(c: any): Promise<any> {\n  if (c.pacoteVendedor === true) return { texto: continuarQualificacaoAna(c.proximaPergunta, c.energiaTurno)\n    || 'Para seguir com o atendimento, qual modelo ou capacidade você procura?', midias: [] }",
+          "countExpected": 1
+        },
+        {
+          "before": "    anaContingenciaRepasse: falhou ? null : cfg.ana_contingencia_preco,",
+          "after": "    anaPacoteVendedor: falhou ? null : cfg.ana_pacote_vendedor,\n    anaContingenciaRepasse: falhou ? null : cfg.ana_contingencia_preco,",
+          "countExpected": 1
+        },
+        {
+          "before": "      const CONTINGENCIA = PORTEIRA && cfg.anaContingenciaPreco === true",
+          "after": "      const CONTINGENCIA = PORTEIRA && cfg.anaContingenciaPreco === true\n      const PACOTE_VENDEDOR = CONTINGENCIA && pacoteVendedorAna(cfg.anaPacoteVendedor, Date.now())",
+          "countExpected": 1
+        },
+        {
+          "before": "      const user = `CONVERSA (WhatsApp, cliente ${",
+          "after": "      if (PACOTE_VENDEDOR) persona += '\\n\\nCANAL COMERCIAL ATUAL: a Ana identifica e qualifica a necessidade, mas fotos, vídeos, tabelas e valores serão enviados pelo WhatsApp do vendedor após o encaminhamento confirmado. Não envie nem afirme ter enviado material ou preço pela Ana. Se faltam dados, faça a próxima pergunta útil. Pedido de preço com identificação incompleta não é motivo para consultar internamente. Dúvidas técnicas não confirmadas, atendimento humano e consultas pendentes continuam respeitando as travas existentes. Não prometa um vendedor antes da confirmação da rotina.'\n      const user = `CONVERSA (WhatsApp, cliente ${",
+          "countExpected": 1
+        },
+        {
+          "before": "permitirMidia: cfg.permitirMidia, cod: _codPrimP || await _codAdAnaP() })",
+          "after": "permitirMidia: cfg.permitirMidia, cod: _codPrimP || await _codAdAnaP(), pacoteVendedor: PACOTE_VENDEDOR, proximaPergunta: porteiraProxPergunta, energiaTurno: energiaTurnoAna })",
+          "countExpected": 1
+        },
+        {
+          "before": "if (cfg.anaMenorMini === true && !(_v240 && _v240.acao !== 'fora')",
+          "after": "if (!PACOTE_VENDEDOR && cfg.anaMenorMini === true && !(_v240 && _v240.acao !== 'fora')",
+          "countExpected": 1
+        },
+        {
+          "before": "          if (cfg.anaMenorMini === true) {",
+          "after": "          if (!PACOTE_VENDEDOR && cfg.anaMenorMini === true) {",
+          "countExpected": 1
+        },
+        {
+          "before": "...((cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')) ? { anaPend: true } : {})",
+          "after": "...((!PACOTE_VENDEDOR && cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')) ? { anaPend: true } : {})",
+          "countExpected": 1
+        },
+        {
+          "before": "...(_menorRepV2407 ? ({ menorV2407: _menorRepV2407 } as any) : {})",
+          "after": "...(!PACOTE_VENDEDOR && _menorRepV2407 ? ({ menorV2407: _menorRepV2407 } as any) : {})",
+          "countExpected": 1
+        },
+        {
+          "before": "if (!_v240 || _v240.acao === 'fora') _pkAna = _alvoRep",
+          "after": "if (!PACOTE_VENDEDOR && (!_v240 || _v240.acao === 'fora')) _pkAna = _alvoRep",
+          "countExpected": 1
+        },
+        {
+          "before": "            else if (_v240.acao === 'passa_B') {",
+          "after": "            else if (!PACOTE_VENDEDOR && _v240 && _v240.acao === 'passa_B') {",
+          "countExpected": 1
+        },
+        {
+          "before": "if (!_pkAna && equipTxt && !equipEhFabrica && !(_v240 &&",
+          "after": "if (!PACOTE_VENDEDOR && !_pkAna && equipTxt && !equipEhFabrica && !(_v240 &&",
+          "countExpected": 1
+        },
+        {
+          "before": "if (rep && rep.ok && rep.dispatchId && cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')",
+          "after": "if (!PACOTE_VENDEDOR && rep && rep.ok && rep.dispatchId && cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')",
+          "countExpected": 1
+        },
+        {
+          "before": "      const clienteMsg = ultCliente ?",
+          "after": "      if (PACOTE_VENDEDOR) {\n        fabricaMidias = []; midia = null\n        texto = respostaSemPacoteAna(texto, porteiraProxPergunta, energiaTurnoAna,\n          !!consultaAberta || !!contDuvidaDaniel || st.estado === 'WAITING_INTERNAL_GUIDANCE')\n      }\n      const clienteMsg = ultCliente ?",
+          "countExpected": 1
+        }
+      ]
+    }
+  ]
+}

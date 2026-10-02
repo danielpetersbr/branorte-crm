@@ -1,0 +1,132 @@
+diff --git a/index.ts b/index.ts
+index 6d02993..a712032 100644
+--- a/index.ts
++++ b/index.ts
+@@ -1696,7 +1696,24 @@ function contingenciaHumano(st: any): boolean {
+   return st?.estado === 'HUMAN_TAKEOVER' || !!st?.assumido_por || !!st?.bloqueado_em
+     || ['vendedor_assumiu_detector', 'vendedor_desligou', 'vendedor_assumiu_consulta', 'vendedor_bloqueou'].includes(String(st?.motivo_desligamento || ''))
+ }
++// Modo de canal explícito: início inclusivo, fim exclusivo; ausência de fim permite operação permanente.
++function pacoteVendedorAna(cfg: any, agoraMs: number): boolean {
++  const iso = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(v) ? Date.parse(v) : NaN
++  if (!cfg || cfg.ativo !== true || !Number.isFinite(agoraMs)) return false
++  const inicio = iso(cfg.inicio), fim = cfg.fim == null ? Infinity : iso(cfg.fim)
++  return Number.isFinite(inicio) && (fim === Infinity || Number.isFinite(fim)) && fim > inicio && agoraMs >= inicio && agoraMs < fim
++}
++// Última proteção da resposta: não confirma material removido nem valores pela conta da Ana.
++function respostaSemPacoteAna(texto: string, proxima: string | null, energia: 'tri' | 'mono' | null, aguardando: boolean): string {
++  const t = String(texto || '')
++  const material = /(?:te\s+|lhe\s+)?(?:mandei|mando|enviei|envio|enviando|encaminhei|encaminho|encaminhando|anexei|anexando|vou\s+(?:(?:te|lhe)\s+)?(?:mandar|enviar|encaminhar))[^.!?]*(?:foto|v[ií]deo|imagem|tabela|material|cat[aá]logo|pacote)|(?:segue|seguem|confira|veja|aqui\s+est[aá]|em\s+anexo)[^.!?]*(?:foto|v[ií]deo|imagem|tabela|material|cat[aá]logo|pacote)/i.test(t)
++  if (!material && !numeroDeDinheiroPorteira(t)) return t
++  if (aguardando) return 'Estou aguardando a confirmação dessa informação.'
++  return continuarQualificacaoAna(proxima, energia) || 'Os valores e materiais ficam com a equipe comercial. Posso continuar ajudando com as características do equipamento.'
++}
+ async function precoContinuarAna(c: any): Promise<any> {
++  if (c.pacoteVendedor === true) return { texto: continuarQualificacaoAna(c.proximaPergunta, c.energiaTurno)
++    || 'Para seguir com o atendimento, qual modelo ou capacidade você procura?', midias: [] }
+   const ind = c.rep?.modelo_indicado || null
+   let pa = passosAnaDoRepasse(ind, c.rep?.modelo_sem_indicacao || null, c.dc, c.conv, c.equipTxt, c.equipEhFabrica, 'pediu_preco', '')
+   if (!ind?.slug) pa = aplicarPacoteAnuncioAna(pa, alvoPacoteAnuncioAna(c.cod, c.conv), c.dc, c.conv)
+@@ -2514,6 +2531,7 @@ async function carregarConfig(supa: any) {
+     // (v240.8) KG/H DITO + CORRECAO DO CLIENTE da ANA: so {"v":{"ativo":true}} liga; ausente, false ou leitura com erro = v240.4
+     anaKghDito: !falhou && !!cfg.ana_kgh_dito && typeof cfg.ana_kgh_dito === 'object' && cfg.ana_kgh_dito.ativo === true,
+     // (v239b) PRECO PELO ANUNCIO da ANA: so {"v":{"ativo":true}} liga; ausente, false ou leitura com erro = v239
++    anaPacoteVendedor: falhou ? null : cfg.ana_pacote_vendedor,
+     anaContingenciaRepasse: falhou ? null : cfg.ana_contingencia_preco,
+     anaContingenciaPreco: !falhou && cfg.ana_contingencia_preco?.ativo === true,
+     anaContingenciaDuvidas: !falhou && cfg.ana_contingencia_preco?.consultar_daniel === true,
+@@ -10754,6 +10772,7 @@ Deno.serve(async (req: Request) => {
+       const cfg = await carregarConfig(supa)
+       if (PORTEIRA && cfg.configFalhou) return j({ ok: false, skip: 'contingencia_config_indisponivel' }, 503)
+       const CONTINGENCIA = PORTEIRA && cfg.anaContingenciaPreco === true
++      const PACOTE_VENDEDOR = CONTINGENCIA && pacoteVendedorAna(cfg.anaPacoteVendedor, Date.now())
+       const CONSULTA_DANIEL = CONTINGENCIA && cfg.anaContingenciaDuvidas === true
+       if (CONTINGENCIA && contingenciaHumano(st)) return j({ ok: false, skip: 'contingencia_controle_humano' })
+       if (CONTINGENCIA) {
+@@ -11505,6 +11524,7 @@ Deno.serve(async (req: Request) => {
+         : '\n\nCONTINGÊNCIA COMERCIAL (ordem atual do Daniel, prevalece sobre regras anteriores): mantenha atendimento pela Ana, sem repassar nem prometer contato de vendedor. Os preços e tabelas oficiais são inseridos por uma rotina separada: NÃO invente números, desconto, frete ou condição. Continue esclarecendo a necessidade e dúvidas conhecidas. Pedido de humano: explique que a equipe comercial está indisponível neste canal. Respeite recusa e pedido para parar.'
+       if (CONSULTA_DANIEL && cfg.anaContingenciaRepasse?.repasse_duvidas === true) persona += '\n\nORDEM ATUAL DO DANIEL: se houver dúvida que não consegue confirmar com segurança, use consultar_vendedor com a pergunta exata. O sistema transfere o atendimento a um dos vendedores habilitados na configuração e envia a pergunta ao mesmo consultor. Não escolha nem prometa um nome antes da confirmação do encaminhamento. Não invente preço, condição, frete, prazo ou resposta técnica. Se só faltam dados para identificar o produto, pergunte ao cliente. Valores confirmados no catálogo oficial podem ser informados normalmente.'
+       else if (CONSULTA_DANIEL) persona += '\n\nORDEM ATUAL DO DANIEL: qualquer dúvida que você NÃO consiga confirmar com segurança deve ser consultada ao Daniel, sem transferir o atendimento. No JSON, use consultar_vendedor (string de até 500 caracteres) com a pergunta exata que precisa confirmar. Inclui dúvida técnica, preço sem tabela, frete, prazo, desconto, parcelamento e condições especiais. NÃO responda por suposição nem prometa condição sem aprovação. Se só faltam dados do cliente para identificar o produto, pergunte ao próprio cliente. texto deve informar de forma breve que você vai confirmar a informação. Nunca diga que já recebeu uma resposta que ainda não chegou.'
++      if (PACOTE_VENDEDOR) persona += '\n\nCANAL COMERCIAL ATUAL: a Ana identifica e qualifica a necessidade, mas fotos, vídeos, tabelas e valores serão enviados pelo WhatsApp do vendedor após o encaminhamento confirmado. Não envie nem afirme ter enviado material ou preço pela Ana. Se faltam dados, faça a próxima pergunta útil. Pedido de preço com identificação incompleta não é motivo para consultar internamente. Dúvidas técnicas não confirmadas, atendimento humano e consultas pendentes continuam respeitando as travas existentes. Não prometa um vendedor antes da confirmação da rotina.'
+       const user = `CONVERSA (WhatsApp, cliente ${(PORTEIRA ? nomePrev : nome_contato) || 'sem nome'}):\n${conversa}${blocoSei}\n\n`
+         + (_enterrada
+           ? `⚠️ A SUA ÚLTIMA MENSAGEM ACIMA SAIU ENQUANTO O CLIENTE AINDA ESCREVIA. Ele mandou "${String(ult.body || ult.transcricao || '').slice(0, 200)}" antes de ler o que você disse — então o que você perguntou por último pode já estar respondido por ele. NÃO repita a pergunta. NÃO peça desculpa longa. Responda ao que ELE disse, como continuação natural da conversa (no máximo um "ah, entendi" curto no começo).\n\n`
+@@ -13062,7 +13082,7 @@ Deno.serve(async (req: Request) => {
+           //  - a Ana ja disse a Mini e agora veio gado/sal (sem ele repetir): ela corrige numa frase.
+           // Falha = a fala de sempre.
+           //  (rodada 3) a correcao roda TAMBEM com o porte dito ("e pra gado, umas 300 cabecas"); o R1, so sem porte.
+-          if (cfg.anaMenorMini === true && !(_v240 && _v240.acao !== 'fora') && !_equipAvulso && !nfEspera && !_vagaCodP
++          if (!PACOTE_VENDEDOR && cfg.anaMenorMini === true && !(_v240 && _v240.acao !== 'fora') && !_equipAvulso && !nfEspera && !_vagaCodP
+             && !_FORA_DO_ESCOPO_PORTEIRA.test(convCliente)) {
+             try {
+               const _mk0V: any = ((st.dados_coletados || {})._menor_v2407 && typeof st.dados_coletados._menor_v2407 === 'object'
+@@ -13174,7 +13194,7 @@ Deno.serve(async (req: Request) => {
+           || alvoPacoteAnuncioAna(null, String(ult?.body || ult?.transcricao || ''))
+           || (equipTxt && /\d+\s*(?:kg|cv|ton)/i.test(String(ult?.body || ult?.transcricao || ''))))
+         if (!encerrar && (pediuPrecoCont || retomaPrecoCont)) {
+-          _contResposta = await precoContinuarAna({ rep: repassePorteira, dc: dadosMem, conv: convCliente, equipTxt, equipEhFabrica, permitirMidia: cfg.permitirMidia, cod: _codPrimP || await _codAdAnaP() })
++          _contResposta = await precoContinuarAna({ rep: repassePorteira, dc: dadosMem, conv: convCliente, equipTxt, equipEhFabrica, permitirMidia: cfg.permitirMidia, cod: _codPrimP || await _codAdAnaP(), pacoteVendedor: PACOTE_VENDEDOR, proximaPergunta: porteiraProxPergunta, energiaTurno: energiaTurnoAna })
+         } else if (!encerrar && (vendedorAssumir || repassePorteira)) {
+           _contResposta = { texto: repassePorteira?.motivo === 'pediu_humano'
+             ? 'A equipe comercial está indisponível neste canal agora. Posso continuar te ajudando por aqui.'
+@@ -14109,7 +14129,7 @@ Deno.serve(async (req: Request) => {
+           // do pacote do modelo ja foram no R1 (dry-run no poll, 1 chamada, so nesse caso), o disparo NASCE com b_quem_mandou 'ana_sincrono'
+           // (o v22c chama so com texto) e a Ana nao manda de novo (jaMandou). Sem a chave ou sem a marca: nada.
+           let _menorRepV2407: any = null
+-          if (cfg.anaMenorMini === true) {
++          if (!PACOTE_VENDEDOR && cfg.anaMenorMini === true) {
+             try {
+               const _mkMV: any = (dcT && dcT._menor_v2407 && typeof dcT._menor_v2407 === 'object' && dcT._menor_v2407.v === 1) ? dcT._menor_v2407 : null
+               if (_mkMV) {
+@@ -14135,8 +14155,8 @@ Deno.serve(async (req: Request) => {
+             indicado: repassePorteira.modelo_indicado || null, semIndicacao: repassePorteira.modelo_sem_indicacao || null,
+             ...(_alvoRep ? { anuncio: _alvoRep } : {}),
+             ...(_eqRep ? { equip: _eqRep } : {}),   // (v240.2)
+-            ...((cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')) ? { anaPend: true } : {}),   // (PACOTE UMA VEZ)
+-            ...(_menorRepV2407 ? ({ menorV2407: _menorRepV2407 } as any) : {}),   // (v240.7)
++            ...((!PACOTE_VENDEDOR && cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')) ? { anaPend: true } : {}),   // (PACOTE UMA VEZ)
++            ...(!PACOTE_VENDEDOR && _menorRepV2407 ? ({ menorV2407: _menorRepV2407 } as any) : {}),   // (v240.7)
+             ...((_v240 && _v240.repArgs) ? _v240.repArgs : {}) })   // (v240 CONV) pos/ab/trilha (so codigos); sem a chave: nada
+           if (repasseQualificadoCont && !rep.ok) {
+             const volta = await supa.from('ia_atendimentos').update({ ativo: true, motivo_desligamento: null, atualizado_em: new Date().toISOString() })
+@@ -14160,8 +14180,8 @@ Deno.serve(async (req: Request) => {
+               repassePorteira.motivo, String(resumoT || '').replace(/\n/g, ' · '))   // (v240 CONV, rodada 2) passa: o equipamento do pacote aceito
+             // (v240 CONV) braco A: a Ana ja mandou o pacote (o vendedor chama so com texto). Braco B: o vendedor manda o pacote — a Ana
+             // so manda se o disparo nao sai agora (checagem na hora: sincronoBAna). Fora do A/B e sem a chave: a v239 (v239b).
+-            if (!_v240 || _v240.acao === 'fora') _pkAna = _alvoRep ? _pkPre : _eqRep ? _pkEq : await pacoteAnaCliente(_paRep)   // (v240.2) _pkEq
+-            else if (_v240.acao === 'passa_B') {
++            if (!PACOTE_VENDEDOR && (!_v240 || _v240.acao === 'fora')) _pkAna = _alvoRep ? _pkPre : _eqRep ? _pkEq : await pacoteAnaCliente(_paRep)   // (v240.2) _pkEq
++            else if (!PACOTE_VENDEDOR && _v240 && _v240.acao === 'passa_B') {
+               _v240.sinc = await sincronoBAna(supa, rep, Date.now())
+               // (ADENDO A1, rev. 27/09) ja_na_fila com o disparo do braco B da PROPRIA ANA pra esta conversa (a passagem da cadencia
+               // correu junto): ja marcado = a Ana ja mandou o pacote, nao manda de novo; sem marca = ela manda e marca la embaixo
+@@ -14223,7 +14243,7 @@ Deno.serve(async (req: Request) => {
+             texto = _antesDoRepasse(_pkAna.texto, _fraseRep)
+           }
+           // (v236) AVULSO (Daniel 26/09): foto e video do equipamento — o mesmo acervo do assistente —, SEM preco
+-          if (!_pkAna && equipTxt && !equipEhFabrica && !(_v240 && (_v240.acao === 'passa_A' || _v240.acao === 'passa_B'))) {   // (v240 CONV, rodada 2)
++          if (!PACOTE_VENDEDOR && !_pkAna && equipTxt && !equipEhFabrica && !(_v240 && (_v240.acao === 'passa_A' || _v240.acao === 'passa_B'))) {   // (v240 CONV, rodada 2)
+             try {
+               // So o acervo equipamento_midia (foto e video de verdade). As respostas rapidas por capacidade (midiaPorCapacidade)
+               // sao ARTES DE PRECO (lista-preco/.../preco-*.jpg): nao servem aqui. E a trava de URL pega qualquer arte que entrar.
+@@ -14258,7 +14278,7 @@ Deno.serve(async (req: Request) => {
+           // (PACOTE UMA VEZ) as midias da Ana estao NESTA resposta? Troca o pend pelo marcador (o vendedor chama so com texto) ou so tira o pend.
+           let _puvRep: any = null
+           // So quando ha o que fechar: o INSERT levou o pend, ou a Ana mandou um pacote com slug (ja_na_fila). Repasse sem pacote = nenhuma consulta a mais.
+-          if (rep && rep.ok && rep.dispatchId && cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')
++          if (!PACOTE_VENDEDOR && rep && rep.ok && rep.dispatchId && cfg.anaPacoteUmaVez !== false && (!_v240 || _v240.acao === 'fora')
+             && ((rep as any).puvPend === true || (!!_pkAna && !!slugPacotePUVAna(_paRep)))) {
+             try {
+               _puvRep = await fechaPUVAna(supa, { rep, pk: _pkAna, paAna: _paRep, midiasResp: fabricaMidias, chat: String(chat_id), ligado: true })
+@@ -14426,6 +14446,11 @@ Deno.serve(async (req: Request) => {
+         texto = (!_anaJaSeApresentou ? APRESENTACAO_PORTEIRA + ' ' : '') + _contResposta.texto
+         fabricaMidias = _contResposta.midias; midia = null
+       }
++      if (PACOTE_VENDEDOR) {
++        fabricaMidias = []; midia = null
++        texto = respostaSemPacoteAna(texto, porteiraProxPergunta, energiaTurnoAna,
++          !!consultaAberta || !!contDuvidaDaniel || st.estado === 'WAITING_INTERNAL_GUIDANCE')
++      }
+       const clienteMsg = ultCliente ? (_midiaLogP(ultCliente) ? _txtLogP(ultCliente) : String(ultCliente.body || ultCliente.transcricao || '')).slice(0, 400) : ''
+       const transcricaoLog = [...msgs].sort((a: any, b: any) => (a.t ?? 0) - (b.t ?? 0)).slice(-16)
+         .map((m: any) => ({ de: m.fromMe ? 'ia' : 'cliente', txt: (_midiaLogP(m) ? _txtLogP(m) : String(m.body || m.transcricao || (m.type && m.type !== 'chat' ? '[' + m.type + ']' : ''))).slice(0, 280), t: m.t ?? null }))
