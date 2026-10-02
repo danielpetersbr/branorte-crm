@@ -1,0 +1,59 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.33'
++const BG_VERSAO = '1.70.34'
+@@ -2114,0 +2115,23 @@
++}
++
++// ANA snapshots include real membership and label names, not only aggregate counts.
++function crmLabelSnapshotKey(vendedor, result) {
++  if (String(vendedor || '').toUpperCase().trim() !== 'ANA') {
++    return [...result.payload].sort((a, b) => String(a.id).localeCompare(String(b.id)))
++      .map(e => `${e.id}:${e.count}`).join('|')
++  }
++  // A partial/unknown read is not an empty label set. Preserve the last confirmed snapshot.
++  if (result.labels_confiavel !== true) return null
++  const byKey = (a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))
++  const catalog = (result.payload || []).map(e => [String(e.id), String(e.name || ''), e.color ?? null, e.count ?? 0]).sort(byKey)
++  const chats = (result.chats_etiquetas || []).map(c => [String(c.chat_id || ''), String(c.phone || ''),
++    [...new Set((c.label_ids || []).map(String))].sort()]).sort(byKey)
++  return JSON.stringify({ v: 1, catalog, chats })
++}
++function crmLabelSnapshotAck(vendedor, result, ack) {
++  if (String(vendedor || '').toUpperCase().trim() !== 'ANA') return true
++  if (result.labels_confiavel !== true || ack?.ok !== true || ack.heartbeat !== false) return false
++  const rows = (result.chats_etiquetas || []).slice(0, 5000)
++    .filter(c => c && typeof c.phone === 'string' && c.phone.length >= 10 && Array.isArray(c.label_ids))
++  return ack.chat_labels_raw === (result.chats_etiquetas || []).length
++    && ack.chat_labels_filtered === rows.length && ack.chat_labels === rows.length
+@@ -2367,2 +2390 @@
+-      const key = [...result.payload].sort((a,b) => String(a.id).localeCompare(String(b.id)))
+-        .map(e => `${e.id}:${e.count}`).join('|')
++      const key = crmLabelSnapshotKey(cfg.vendedor_nome, result)
+@@ -2407 +2429 @@
+-      if (fullKey === cfg.last_snapshot_key) {
++      if (key === null || fullKey === cfg.last_snapshot_key) {
+@@ -2439 +2461,2 @@
+-                heartbeat_only: true, skip_reason: 'sem_mudanca', wpp_ready: true, ...ativDiag, porta: _portaDiag,
++                heartbeat_only: true, skip_reason: key === null ? 'labels_untrusted' : 'sem_mudanca', wpp_ready: true, ...ativDiag, porta: _portaDiag,
++                ...(key === null ? { labels_confiavel: false } : {}),
+@@ -3137,0 +3161,3 @@
++          if (!crmLabelSnapshotAck(cfg.vendedor_nome, result, respJson)) {
++            throw new Error('ANA: etiquetas não confirmadas pelo servidor; snapshot preservado para nova tentativa.')
++          }
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.33'
++  var AGENTE_V = '1.70.34'
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -2 +2 @@
+-// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.33'
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.34'
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.33",
++  "version": "1.70.34",

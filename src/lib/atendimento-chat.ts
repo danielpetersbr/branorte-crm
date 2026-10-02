@@ -69,6 +69,9 @@ export interface ChatConversation {
   human_hold:boolean; lock_user_id:string|null; lock_session_id:string|null; lock_until:string|null;
   avatar_url?:string|null;
   waiting_since?:string|null; follow_up_at?:string|null; lock_user_name?:string|null;
+  ana_tags?:string[];
+  resolution_source?:'ana'|'crm'|null; resolution_reason?:string|null;
+  resolved_at?:string|null; resolution_observed_at?:string|null;
 }
 export interface ChatMessage {
   id:number; msg_id:string; from_me:boolean; tipo:string; body:string|null;

@@ -222,7 +222,7 @@ test('ANA avatar cadence is independent from snapshot changes, bounded and singl
   await ctx.crmSyncAvatarsIfDue('ANA', 7); assert.equal(calls, 4)
   ctx.podeAutomatizar = () => true; await ctx.crmSyncAvatarsIfDue('DANIEL', 7); assert.equal(calls, 4)
   const hook = bg.indexOf('void crmSyncAvatarsIfDue(cfg.vendedor_nome, tab.id)')
-  const snapshotGate = bg.indexOf('if (fullKey === cfg.last_snapshot_key)')
+  const snapshotGate = bg.indexOf('fullKey === cfg.last_snapshot_key')
   assert.ok(hook > 0 && hook < snapshotGate)
 })
 test('ANA avatar cursor advances before unsuccessful lookups and wraps after the final batch', async () => {

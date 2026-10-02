@@ -28,6 +28,12 @@ Finalizar/liberar a sessão não religa a IA automaticamente. A decisão de reat
 
 ## Organização do atendimento
 
+**Etiquetas da Ana** mostra as etiquetas reais sincronizadas do WhatsApp final 1144 na lista, no cabeçalho e nos dados do cliente. Use o filtro próprio para localizar essas conversas. As etiquetas criadas dentro desta tela ficam identificadas como **Etiquetas do CRM**; a edição dessas etiquetas continua independente do WhatsApp.
+
+Em **Finalizadas**, a conversa informa se o encerramento veio da Ana ou do CRM e apresenta o motivo registrado quando disponível. A classificação da Ana usa as etiquetas de encerramento reconhecidas pelo sistema, como **Resolvidos**, **Outros assuntos** e **Nunca respondeu**. Pausar a IA ou assumir o atendimento não equivale a finalizar. Quando o horário exibido vem da sincronização da etiqueta, a tela o identifica como atualização observada; não inventa o momento exato de uma finalização antiga. O carregamento inicial desses encerramentos também não é contado como finalizações realizadas hoje.
+
+Uma mensagem posterior do cliente reabre o atendimento. Uma etiqueta de encerramento antiga não fecha novamente essa conversa quando muda apenas uma etiqueta de vendedor ou outra etiqueta neutra. Reabertura e atendimento assumido no CRM têm prioridade sobre snapshots antigos; a sincronização não interfere em uma sessão ativa nem em envios pendentes. Etiquetas removidas não reabrem automaticamente um atendimento.
+
 **Aguardando resposta** separa os clientes cuja última mensagem confirmada ainda não recebeu resposta. Abrir a conversa continua marcando a mensagem como lida, mas não remove o cliente dessa fila. A fila mostra a espera desde a última mensagem recebida e prioriza os pendentes mais antigos. Os contadores do resumo consultam toda a carteira autorizada, inclusive conversas ainda não carregadas na lista.
 
 O cabeçalho distingue o **responsável pela carteira** de quem está **atendendo agora** com sessão ativa. O campo permite preparar um rascunho antes de assumir; o botão próximo ao campo assume e dá foco ao texto. Envio, upload e gravação continuam exigindo a sessão exclusiva. Assumir nunca envia o rascunho automaticamente.
@@ -45,6 +51,8 @@ O resumo mostra aguardando resposta, retornos vencidos, sem responsável (admini
 Validação de produtividade em 02/10/2026: 1.226 testes Node e 62 testes de transporte passaram, assim como o build Vite e os testes SQL transacionais após aplicação da migração em produção. As revisões cobriram carteira, autorização, filas paginadas, citações, repetição segura de envio, lembretes internos, respostas compartilhadas e vínculos comerciais. ANA 1.70.33 ativa e conectada ao final 1144 às 12:09:21 UTC, sem reinício nem mensagem real de teste a clientes. Métricas de resposta e finalização começam nesta atualização.
 
 Referências de produto: [Chatwoot](https://github.com/chatwoot/chatwoot), [Whaticket](https://github.com/canove/whaticket-community), [Front](https://help.front.com/en/articles/2403), [Intercom](https://www.intercom.com/). Implementação nativa no CRM; não exige instalar outro atendimento nem trocar a API do número.
+
+Validação de etiquetas da Ana em 02/10/2026: 1.248 testes da aplicação, 74 testes de transporte e build Vite passaram. A migração `20261002124434_crm_chat_ana_labels_resolution.sql` foi aplicada; os testes SQL de etiquetas, produtividade e autoria passaram em transações com rollback após a aplicação. O carregamento inicial exibiu etiquetas em 181 conversas e reconheceu 43 encerramentos históricos pela Ana, sem contar nenhum deles como finalizado hoje. Um atendimento com atividade mais recente permaneceu aberto. ANA 1.70.34 confirmou 25 etiquetas e 205 conversas no snapshot completo das 12:37:08 UTC, final 1144, sem reinício ou mensagem real de teste.
 
 Validação da atualização de mídia: 1.131 testes Node, 37 testes do transporte, 19 testes dos sincronizadores, build Vite e testes SQL aplicados com rollback para autorização, carteira, mídia privada, limites, lease, idempotência, nomes de anexos e confirmação. O navegador gerou e reproduziu áudio sintético Ogg/Opus com o mesmo gravador da aplicação. A checagem TypeScript não encontrou erros nos arquivos alterados; a checagem global mantém erros prévios em módulos legados. Nenhum teste foi enviado a clientes.
 
