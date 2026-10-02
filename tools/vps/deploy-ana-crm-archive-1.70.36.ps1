@@ -17,7 +17,7 @@ $baseline = [ordered]@{
   'manifest.json' = 'a10390c60f853bf0828af4a576576de9011e8c4e482b8d61097fc13f965a708a'
 }
 $approved = [ordered]@{
-  'background.js' = '675949f01eac380ea94bf7a46184bf7605a4c0297f2ebf863c1e64c9ab32d98f'
+  'background.js' = '85bc973d74d052f62497d72530392c46c86718c6a7aa349cf8f515e6e63d2272'
   'bsb-detect-chat.js' = 'ce00639170c5653b0caecb50dd4b978789a7a640966e5c7b886f6b8ef90dc1d4'
   'painel-worker.js' = '15a2f384f27da1279a2c044bc5f8f069e98804e077f236becba298d03bdcd18a'
   'manifest.json' = '494cb798927fa69a6905b22bbe786fc36edbde984eee275d0675a107af73b645'

@@ -107,16 +107,16 @@
 +  try {
 +    const close = action.payload.crm_close, key = String(action.id || '')
 +    if (!/^\d+$/.test(key)) return { ok: false, erro: 'wpp_crm_archive_undo_action_invalid' }
++    const stored = await chrome.storage.local.get('crm_archive_undo')
++    const pending = { ...(stored.crm_archive_undo || {}) }
++    pending[key] = { action_id: key, chat_id: action.chat_id, marker: close.marker, conversation_id: close.conversation_id, label_id: close.label_id }
++    await chrome.storage.local.set({ crm_archive_undo: pending })
 +    const current = await crmAnaAutomationGate('ANA', action.chat_id)
 +    if (!current.allowed && ['crm_closed_until_inbound', 'crm_ana_blocked', 'legacy_ia_blocked'].includes(current.reason)) {
 +      await crmClearArchiveUndo(action)
 +      return { ok: true, ignored: true, erro: 'superada: crm_close_stale' }
 +    }
 +    if (!current.allowed && current.reason !== 'crm_human_hold') return { ok: false, erro: 'wpp_crm_archive_undo_current_unavailable' }
-+    const stored = await chrome.storage.local.get('crm_archive_undo')
-+    const pending = { ...(stored.crm_archive_undo || {}) }
-+    pending[key] = { action_id: key, chat_id: action.chat_id, marker: close.marker, conversation_id: close.conversation_id, label_id: close.label_id }
-+    await chrome.storage.local.set({ crm_archive_undo: pending })
 +    const undo = await arqAnaNaPagina(tab, crmAnaPaginaUndoArchive, [action.chat_id])
 +    if (!undo || !undo.ok) return undo || { ok: false, erro: 'wpp_crm_archive_undo_sem_retorno' }
 +    await crmClearArchiveUndo(action)

@@ -95,6 +95,19 @@ test('a newer completed closure preserves its archive and clears only the exact 
     assert.equal(h.events.filter(e => e === 'unarchive').length, 1)
   }
 })
+test('normal gate outage after stale finalization persists proof before lookup and recovers on retry or drain', async () => {
+  for (const drain of [false, true]) {
+    const h = harness({ finalStale: true }), originalFetch = h.ctx.fetch
+    let failNormal = true
+    h.ctx.fetch = async (url, init) => { if (!JSON.parse(init.body).close && failNormal) { failNormal = false; throw new TypeError('network') } return originalFetch(url, init) }
+    const first = await h.run(); assert.equal(first.ok, false); assert.equal(h.chat.archive, true)
+    assert.equal(h.state.crm_archive_undo['42'].marker, marker)
+    vm.runInContext('_crmAnaGateRetryUntil.clear()', h.ctx) // advance the bounded failure retry without sleeping
+    if (drain) await h.ctx.crmDrainArchiveUndo()
+    else assert.equal((await h.run()).ignored, true)
+    assert.equal(h.chat.archive, false); assert.equal(h.state.crm_archive_undo['42'], undefined)
+  }
+})
 test('inbound/reopen generation change between label and archive prevents archival', async () => {
   const h = harness({ stale: true }); const r = await h.run(); assert.equal(r.ignored, true); assert.ok(!h.events.includes('archive')); assert.equal(h.writes.length, 0)
 })
