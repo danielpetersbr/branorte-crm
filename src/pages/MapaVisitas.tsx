@@ -15,12 +15,19 @@ import {
   type EtiquetasDoFone, type MapaEtiquetas, type ConversaDoCliente, type ClienteDeCamada,
 } from '@/lib/mapa-etiquetas'
 import { foneCanon } from '@/lib/fone-canon'
+import {
+  normalizarBuscaMapa, criarIndiceBusca, passaBuscaMapa, indexarClientesDaLista,
+  chaveCoordenadaMapa, geometriaDosPontos, criarCacheLimitesMapa,
+} from '@/lib/mapa-visitas-regras'
 import { escHtml } from '@/lib/html-escape'
+import { parseLocalizacaoMapa } from '@/lib/mapa-localizacao'
+import { assinaturaRota } from '@/lib/mapa-rota-assinatura'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
 import { CompletarCidade } from '@/components/mapa/CompletarCidade'
+import { MapaDialog, MapaPainel } from '@/components/mapa/MapaDialog'
 import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemStatus } from '@/hooks/useViagens'
 import { ViagensSalvas } from '@/components/mapa/ViagensSalvas'
 import { supabase } from '@/lib/supabase'
@@ -50,6 +57,10 @@ const CENTRO_BR: [number, number] = [-15.78, -47.93]
 // Referência ESTÁVEL pro default do hook de etiquetas: `= new Map()` inline
 // criaria um Map novo a cada render e invalidaria todos os useMemo que dependem dele.
 const MAPA_ETIQ_VAZIO: MapaEtiquetas = new Map()
+const LISTA_VAZIA: OrcamentoLinha[] = []
+const PONTOS_VAZIOS: OrcamentoPonto[] = []
+const VISITAS_VAZIAS: Visita[] = []
+const MARCACOES_VAZIAS: Record<string, Marcacao> = {}
 
 const CORES = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4']
 const CINZA = '#9ca3af'
@@ -430,13 +441,14 @@ type VisitaFiltro = 'todos' | 'visitados' | 'pendentes'
 // Padrão 24 meses: mantém a tela parecida com a de antes da carga do histórico.
 
 export function MapaVisitas() {
-  const { data: visitas = [], isLoading } = useVisitas()
-  const { data: orcPontos = [], isLoading: loadingOrc, refetch: refetchOrc } = useOrcamentosMapa()
-  const { data: lista = [] } = useListaOrcamentos()
+  const [showLista, setShowLista] = useState(false)
+  const { data: visitas = VISITAS_VAZIAS, isLoading } = useVisitas()
+  const { data: orcPontos = PONTOS_VAZIOS, isLoading: loadingOrc, error: errorOrc, refetch: refetchOrc } = useOrcamentosMapa()
+  const { data: lista = LISTA_VAZIA, isLoading: loadingListaQuery, error: errorListaQuery, refetch: refetchListaQuery } = useListaOrcamentos({ enabled: showLista })
   const { data: vendasCount = 0 } = useVendasMapaCount()
   const { data: etiquetasWa = [] } = useEtiquetas()
-  const { data: etiqMap = MAPA_ETIQ_VAZIO } = useEtiquetasMapa()
-  const { data: marc = {} } = useMapaMarcacoes()
+  const { data: etiqMap = MAPA_ETIQ_VAZIO, isLoading: loadingEtiquetasMapa, error: errorEtiquetasMapa, refetch: refetchEtiquetasMapa } = useEtiquetasMapa()
+  const { data: marc = MARCACOES_VAZIAS, isLoading: loadingMarcacoes, error: errorMarcacoes, refetch: refetchMarcacoes } = useMapaMarcacoes()
   const { data: ufsVisiveis = [] } = useUfsVisiveis()
   const salvarMarc = useSalvarMarcacao()
   const salvarViagemMut = useSalvarViagem()
@@ -454,6 +466,11 @@ export function MapaVisitas() {
   // Fila de completar cidade dos clientes salvos pelo card da extensão.
   const [cidadeAberta, setCidadeAberta] = useState(false)
   const [busca, setBusca] = useState('')
+  const [buscaProcessada, setBuscaProcessada] = useState('')
+  useEffect(() => {
+    const timer = window.setTimeout(() => setBuscaProcessada(busca), 180)
+    return () => window.clearTimeout(timer)
+  }, [busca])
   const [sugAberta, setSugAberta] = useState(false)
   const [vendFiltro, setVendFiltro] = useState<VendFiltro>('todos')
   const [visitaFiltro, setVisitaFiltro] = useState<VisitaFiltro>('todos')
@@ -500,7 +517,6 @@ export function MapaVisitas() {
   }, [])
   const [ufSel, setUfSel] = useState<string>('')   // '' = todos os estados
   const [ufSheet, setUfSheet] = useState(false)    // painel por estado no celular
-  const [showLista, setShowLista] = useState(false)
   const [porCliente, setPorCliente] = useState(false)   // lista/CSV: 1 linha por cliente
   // modal de marcação (visita feita + anotação)
   const [marcarAlvo, setMarcarAlvo] = useState<{ chave: string; cliente: string | null; telefone: string | null } | null>(null)
@@ -683,7 +699,14 @@ export function MapaVisitas() {
 
   const comCoord = useMemo(() => visitas.filter(v => v.lat != null && v.lng != null), [visitas])
   const semCoord = visitas.length - comCoord.length
-  const termo = busca.trim().toLowerCase()
+  const termo = normalizarBuscaMapa(buscaProcessada)
+  const buscaVisitas = useMemo(() => criarIndiceBusca(comCoord, v =>
+    [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]), [comCoord])
+  const buscaOrcamentos = useMemo(() => criarIndiceBusca(orcPontos, p =>
+    [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]), [orcPontos])
+  const buscaLista = useMemo(() => criarIndiceBusca(showLista ? lista : LISTA_VAZIA, r =>
+    [r.numero, r.cliente, r.equipamento, r.cidade, r.uf, r.vendedor]), [lista, showLista])
+  const clientesDaLista = useMemo(() => indexarClientesDaLista(showLista ? orcPontos : PONTOS_VAZIOS, showLista ? lista : LISTA_VAZIA), [orcPontos, lista, showLista])
   // filtro por status/valor. 'alto' = orçado ≥100 mil (estrela+diamante);
   // 'diamante' = orçado ≥300 mil. Ambos só valem pra NÃO vendidos.
   const passaFiltro = (vendido: boolean, total: number | null) => {
@@ -730,36 +753,56 @@ export function MapaVisitas() {
     return visitaFiltro === 'visitados' ? feito : !feito
   }
 
-  const visFiltradas = useMemo(
+  const visSemBusca = useMemo(
     () => comCoord.filter(v =>
       (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
       (!ufSel || ufKey(v.estado) === ufSel) &&
-      passaEtiqueta(etiquetasSel, etiquetasDaVisita(v)) &&
-      (!termo || [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]
-        .some(x => (x || '').toLowerCase().includes(termo)))
+      passaEtiqueta(etiquetasSel, etiquetasDaVisita(v))
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [comCoord, vendedorSel, termo, ufSel, etiquetasSel, byVendId, globId]
+    [comCoord, vendedorSel, ufSel, etiquetasSel, byVendId, globId]
+  )
+  const visFiltradas = useMemo(
+    () => visSemBusca.filter(v => passaBuscaMapa(buscaVisitas.get(v), termo)),
+    [visSemBusca, buscaVisitas, termo]
   )
   // Base = todos os filtros MENOS o de estado. É dela que sai o painel "por estado"
   // (se saísse de orcFiltrados, ao escolher um estado os outros sumiriam da lista).
-  const orcBase = useMemo(
+  const orcSemBusca = useMemo(
     () => orcPontos.filter(p =>
       (!vendedorSel || (p.vendedor || '—') === vendedorSel) &&
       passaFiltro(p.vendido, p.total) &&
       passaVisita(p) &&
       passaEtq(p) &&
-      passaPeriodo(p.data_recente) &&
-      (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
-        .some(x => (x || '').toLowerCase().includes(termo)))
+      passaPeriodo(p.data_recente)
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, marc, etiquetasSel, etiqPorCliente]
+    [orcPontos, vendedorSel, vendFiltro, visitaFiltro, periodo, marc, etiquetasSel, etiqPorCliente]
+  )
+  const orcBase = useMemo(
+    () => orcSemBusca.filter(p => passaBuscaMapa(buscaOrcamentos.get(p), termo)),
+    [orcSemBusca, buscaOrcamentos, termo]
   )
   const orcFiltrados = useMemo(
     () => (ufSel ? orcBase.filter(p => ufKey(p.uf) === ufSel) : orcBase),
     [orcBase, ufSel]
   )
+
+  const geometria = useMemo(() => geometriaDosPontos([
+    ...(showVis ? visFiltradas.map(v => [v.lat as number, v.lng as number] as [number, number]) : []),
+    ...(showOrc ? orcFiltrados.map(p => [p.lat, p.lng] as [number, number]) : []),
+  ]), [showVis, showOrc, visFiltradas, orcFiltrados])
+  const cacheLimitesRef = useRef<ReturnType<typeof criarCacheLimitesMapa> | null>(null)
+  if (!cacheLimitesRef.current) cacheLimitesRef.current = criarCacheLimitesMapa()
+  const limitePorCoord = useMemo(() => cacheLimitesRef.current!(geometria), [geometria])
+  const ultimaGeometriaEnquadradaRef = useRef('')
+  const boundsResultadosRef = useRef<[number, number][]>([])
+  const enquadrarResultados = () => {
+    if (boundsResultadosRef.current.length) {
+      mapRef.current?.fitBounds(boundsResultadosRef.current, { padding: [50, 50], maxZoom: 10 })
+      ultimaGeometriaEnquadradaRef.current = geometria.chave
+    }
+  }
 
   // Quantos clientes o PERÍODO está escondendo, mantidos TODOS os demais filtros —
   // inclusive a BUSCA. Sem o termo, digitar "goi" mostrava "8 clientes · +2.998
@@ -779,15 +822,14 @@ export function MapaVisitas() {
         passaVisita(p) &&
         passaEtq(p) &&
         (!ufSel || ufKey(p.uf) === ufSel) &&
-        (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
-          .some(x => (x || '').toLowerCase().includes(termo)))
+        passaBuscaMapa(buscaOrcamentos.get(p), termo)
       if (!passaOsOutros || passaPeriodo(p.data_recente)) continue
       total++
       if (p.vendido) vendidos++
     }
     return { total, vendidos }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, ufSel, periodo, marc, etiquetasSel, etiqPorCliente])
+  }, [orcPontos, vendedorSel, termo, vendFiltro, visitaFiltro, ufSel, periodo, marc, etiquetasSel, etiqPorCliente, buscaOrcamentos])
 
   // Opções do filtro de etiqueta COM contagem, respeitando os outros filtros —
   // mesma regra da soma por estado: tudo, menos o próprio facet. Entram as
@@ -801,8 +843,7 @@ export function MapaVisitas() {
         passaVisita(p) &&
         passaPeriodo(p.data_recente) &&
         (!ufSel || ufKey(p.uf) === ufSel) &&
-        (!termo || [p.cliente, p.cidade, p.uf, p.telefone, p.fone, p.numeros, p.vendedor]
-          .some(x => (x || '').toLowerCase().includes(termo)))
+        passaBuscaMapa(buscaOrcamentos.get(p), termo)
       if (passa) base.push({ chave: foneCanon(p.telefone) || foneCanon(p.fone), conversa: etiqDoPonto(p) })
     }
     // As duas camadas contam, deduplicadas pelo telefone canônico. Descartar as
@@ -814,13 +855,12 @@ export function MapaVisitas() {
       const passa =
         (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
         (!ufSel || ufKey(v.estado) === ufSel) &&
-        (!termo || [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]
-          .some(x => (x || '').toLowerCase().includes(termo)))
+        passaBuscaMapa(buscaVisitas.get(v), termo)
       if (passa) base.push({ chave: foneCanon(v.telefone), conversa: etiquetasDaVisita(v) })
     }
     return opcoesEtiquetaDeCamadas(base)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orcPontos, comCoord, showOrc, showVis, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, ufSel, marc, etiqPorCliente, byVendId, globId])
+  }, [orcPontos, comCoord, showOrc, showVis, vendedorSel, termo, vendFiltro, visitaFiltro, periodo, ufSel, marc, etiqPorCliente, byVendId, globId, buscaOrcamentos, buscaVisitas])
 
   // Soma por ESTADO do que está no mapa. 1 valor por cliente: orçamento mais recente
   // (ou, se já comprou, a soma das vendas dele) — mesmo valor que decide ⭐/💎 no pino.
@@ -838,35 +878,42 @@ export function MapaVisitas() {
   const ufMaior = porUF[0]?.total || 1
   const ufSomaGeral = useMemo(() => porUF.reduce((s, u) => s + u.total, 0), [porUF])
 
-  // Autocomplete de CIDADES: índice de cidades distintas (dos orçamentos) + contagem.
-  // Respeita o PERÍODO — senão sugere "Goiânia · 33 clientes" e o mapa mostra 4.
-  // (Não sai de orcBase porque orcBase já filtra pela busca: seria circular.)
+  // Autocomplete respeita as camadas e demais filtros, excluindo a própria busca.
+  // Uma pessoa presente nas duas camadas conta uma vez na cidade/UF.
   const cidadesIndex = useMemo(() => {
-    const m = new Map<string, { cidade: string; uf: string; n: number }>()
-    for (const p of orcPontos) {
-      if (!p.cidade || !passaPeriodo(p.data_recente)) continue
-      const key = (p.cidade + '|' + (p.uf || '')).toLowerCase()
+    const m = new Map<string, { cidade: string; uf: string; clientes: Set<string> }>()
+    const adicionar = (cidade: string | null, uf: string | null, cliente: string) => {
+      if (!cidade || (ufSel && ufKey(uf) !== ufSel)) return
+      const key = `${normalizarBuscaMapa(cidade)}|${ufKey(uf)}`
       const e = m.get(key)
-      if (e) e.n++
-      else m.set(key, { cidade: p.cidade, uf: p.uf || '', n: 1 })
+      if (e) e.clientes.add(cliente)
+      else m.set(key, { cidade, uf: uf || '', clientes: new Set([cliente]) })
     }
-    return [...m.values()]
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orcPontos, periodo])
+    if (showOrc) for (const p of orcSemBusca) adicionar(p.cidade, p.uf, foneCanon(p.telefone) || foneCanon(p.fone) || `orc:${p.cli_key}`)
+    if (showVis) for (const v of visSemBusca) adicionar(v.cidade, v.estado, foneCanon(v.telefone) || `vis:${v.id}`)
+    return [...m.values()].map(({ cidade, uf, clientes }) => ({ cidade, uf, n: clientes.size }))
+  }, [orcSemBusca, visSemBusca, showOrc, showVis, ufSel])
 
   // Sugestões conforme digita: "começa com" primeiro, depois mais clientes. Top 8.
   const sugestoesCidade = useMemo(() => {
-    const q = normTxt(busca)
+    const q = normalizarBuscaMapa(buscaProcessada)
     if (q.length < 2) return []
     return cidadesIndex
-      .filter(c => normTxt(c.cidade + ' ' + c.uf).includes(q))
+      .filter(c => normalizarBuscaMapa(c.cidade + ' ' + c.uf).includes(q))
       .sort((a, b) => {
-        const sa = normTxt(a.cidade).startsWith(q) ? 0 : 1
-        const sb = normTxt(b.cidade).startsWith(q) ? 0 : 1
+        const sa = normalizarBuscaMapa(a.cidade).startsWith(q) ? 0 : 1
+        const sb = normalizarBuscaMapa(b.cidade).startsWith(q) ? 0 : 1
         return sa - sb || b.n - a.n
       })
       .slice(0, 8)
-  }, [busca, cidadesIndex])
+  }, [buscaProcessada, cidadesIndex])
+
+  const handleSelecionarCidade = (c: { cidade: string; uf: string }) => {
+    setBusca(c.cidade)
+    setBuscaProcessada(c.cidade)
+    setUfSel(ufKey(c.uf))
+    setSugAberta(false)
+  }
 
   // pontos dentro do raio (a partir do centro), ordenados por distância
   const noRaio = useMemo(() => {
@@ -928,16 +975,39 @@ export function MapaVisitas() {
   }, [orcFiltrados, etiqPorCliente, etiquetasSel])
 
   // lista (tabela) filtrada
+  const precisaClientesLista = !!vendedorSel || visitaFiltro !== 'todos' || etiquetasSel.size > 0
+  const loadingLista = loadingListaQuery || (precisaClientesLista && loadingOrc) ||
+    (visitaFiltro !== 'todos' && loadingMarcacoes) || (etiquetasSel.size > 0 && loadingEtiquetasMapa)
+  const errorLista = errorListaQuery || (precisaClientesLista && errorOrc) ||
+    (visitaFiltro !== 'todos' && errorMarcacoes) || (etiquetasSel.size > 0 && errorEtiquetasMapa)
+  const refetchLista = () => Promise.all([
+    refetchListaQuery(),
+    ...(precisaClientesLista ? [refetchOrc()] : []),
+    ...(visitaFiltro !== 'todos' ? [refetchMarcacoes()] : []),
+    ...(etiquetasSel.size > 0 ? [refetchEtiquetasMapa()] : []),
+  ])
   const listaFiltrada = useMemo(() => {
-    return lista.filter(r =>
-      passaFiltro(r.vendido, r.total) &&
-      passaPeriodo(r.data_emissao) &&
-      (!ufSel || ufKey(r.uf) === ufSel) &&
-      (!termo || [r.numero, r.cliente, r.equipamento, r.cidade, r.uf]
-        .some(x => (x || '').toLowerCase().includes(termo)))
-    )
+    if (!showLista || loadingLista || errorLista) return LISTA_VAZIA
+    return lista.filter(r => {
+      const clientes = clientesDaLista(r)
+      const vendedor = r.vendedor || (clientes.length === 1 ? clientes[0].vendedor : null) || '—'
+      if (vendedorSel && vendedor !== vendedorSel) return false
+      if (!passaFiltro(r.vendido, r.total) || !passaPeriodo(r.data_emissao)) return false
+      if (ufSel && ufKey(r.uf) !== ufSel) return false
+      if (!passaBuscaMapa(buscaLista.get(r), termo)) return false
+      if (visitaFiltro !== 'todos') {
+        // No confirmed identity is different from a known client not yet marked.
+        if (!clientes.length && !marc[chaveMarc(null, null, r.cliente)]) return false
+        const feito = clientes.length
+          ? clientes.some(p => !!marc[chaveMarc(p.telefone, p.fone, p.cliente)]?.visitado)
+          : !!marc[chaveMarc(null, null, r.cliente)]?.visitado
+        if (visitaFiltro === 'visitados' ? !feito : feito) return false
+      }
+      if (etiquetasSel.size && !clientes.some(p => passaEtq(p))) return false
+      return true
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lista, termo, vendFiltro, periodo, ufSel])
+  }, [lista, showLista, loadingLista, errorLista, termo, vendedorSel, vendFiltro, visitaFiltro, periodo, ufSel, marc, etiquetasSel, etiqPorCliente, buscaLista, clientesDaLista])
 
   // "1 linha por cliente". A lista é de ORÇAMENTOS — o mesmo cliente aparece uma vez
   // por proposta, e quem tem quatro propostas ocupa quatro linhas. Está certo pro
@@ -978,9 +1048,10 @@ export function MapaVisitas() {
     return [...grupos.values()]
   }, [listaFiltrada])
 
-  const baseLista: LinhaLista[] = porCliente
+  const baseLista = useMemo<LinhaLista[]>(() => porCliente
     ? listaPorCliente
-    : listaFiltrada.map(r => ({ ...r, n_orc: 1, numeros: r.numero || '' }))
+    : listaFiltrada.map(r => ({ ...r, n_orc: 1, numeros: r.numero || '' })),
+  [porCliente, listaPorCliente, listaFiltrada])
 
   // lista ordenada (clique no header)
   const sortedLista = useMemo(() => {
@@ -1040,7 +1111,7 @@ export function MapaVisitas() {
   }
 
   // ── viagem: dados derivados ───────────────────────────────────────────────
-  const kCoord = (lat: number, lng: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`
+  const kCoord = chaveCoordenadaMapa
 
   // Índice coordenada -> clientes ali. É o que permite escolher UM entre os
   // sobrepostos (§6) — sem isso só dá pra clicar em quem o Leaflet pintou por cima.
@@ -1205,6 +1276,7 @@ export function MapaVisitas() {
         body: JSON.stringify({ pontos }), signal: ac.signal,
       })
       const j = r.ok ? await r.json() : null
+      if (ac.signal.aborted || abortRotaRef.current !== ac) return
       if (!j || j.erro || !Array.isArray(j.trechos) || !j.trechos.length) {
         setProvedorRota('estimado')
         setTrechos(new Map())
@@ -1231,12 +1303,12 @@ export function MapaVisitas() {
         setGeoTrechos(g)
       }
     } catch (e) {
-      if ((e as Error)?.name !== 'AbortError') {
+      if (!ac.signal.aborted && abortRotaRef.current === ac && (e as Error)?.name !== 'AbortError') {
         setProvedorRota('estimado')
         setTrechos(new Map())
       }
     } finally {
-      setCalculandoRota(false)
+      if (abortRotaRef.current === ac) setCalculandoRota(false)
     }
   }
   const geometriasRef = useRef<Array<Array<[number, number]>>>([])
@@ -1250,15 +1322,16 @@ export function MapaVisitas() {
 
   // Recalcula sozinho quando muda o conjunto/ordem — com debounce, pra não
   // bater na API a cada clique (§10 e §23).
-  const primeiroRenderViagem = useRef(true)
+  const rotaAssinatura = assinaturaRota(paradas.filter(roteavel), cfgViagem, modoViagem)
   useEffect(() => {
+    abortRotaRef.current?.abort()
+    setCalculandoRota(false)
     if (!modoViagem) return
-    if (primeiroRenderViagem.current) { primeiroRenderViagem.current = false; return }
-    if (!paradas.length) { setTrechos(new Map()); geometriasRef.current = []; setGeoTrechos(new Map()); return }
+    if (!paradas.some(roteavel)) { setTrechos(new Map()); geometriasRef.current = []; setGeoTrechos(new Map()); return }
     const t = window.setTimeout(() => { void calcularRota() }, 900)
-    return () => window.clearTimeout(t)
+    return () => { window.clearTimeout(t); abortRotaRef.current?.abort() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modoViagem, paradas.map(p => p.id).join('|'), cfgViagem.origem?.lat, cfgViagem.origem?.lng, cfgViagem.retornarOrigem])
+  }, [rotaAssinatura])
 
   async function gerarPdfViagem() {
     setGerandoPdf(true)
@@ -1531,39 +1604,7 @@ export function MapaVisitas() {
     // Quantos pinos (das DUAS camadas) caem em cada coordenada. Precisa ser o total
     // pra calibrar o anel externo — e pra visita e orçamento da mesma cidade não
     // sentarem um em cima do outro.
-    const totalPorCoord = new Map<string, number>()
-    const contar = (lat: number, lng: number) => {
-      const k = kCoord(lat, lng)
-      totalPorCoord.set(k, (totalPorCoord.get(k) ?? 0) + 1)
-    }
-    if (showVis) for (const v of visFiltradas) contar(v.lat as number, v.lng as number)
-    if (showOrc) for (const p of orcFiltrados) contar(p.lat, p.lng)
-
-    // Até onde a pilha pode abrir sem entrar na cidade do lado. Sem isto o teto é
-    // só o RAIO_MAX_M, e onde as sedes são coladas (83 das 316 pilhas têm vizinha
-    // a menos de 3 km) o leque atravessa a divisa. O limite é METADE do caminho
-    // até a coordenada mais próxima — passou disso, o pino está mais perto da
-    // outra cidade do que da própria.
-    const limitePorCoord = new Map<string, number>()
-    {
-      const pts = [...totalPorCoord.keys()].map(k => {
-        const [a, b] = k.split(',')
-        return { k, lat: +a, lng: +b }
-      })
-      for (const p of pts) {
-        if ((totalPorCoord.get(p.k) ?? 1) <= 1) continue
-        let min = Infinity
-        for (const q of pts) {
-          if (q.k === p.k) continue
-          // equirretangular: erro irrelevante nesta escala e MUITO mais barato
-          const dx = (q.lng - p.lng) * Math.cos((p.lat * Math.PI) / 180)
-          const dy = q.lat - p.lat
-          const d2 = dx * dx + dy * dy
-          if (d2 < min) min = d2
-        }
-        if (min < Infinity) limitePorCoord.set(p.k, (Math.sqrt(min) * 111_320) / 2)
-      }
-    }
+    const { totalPorCoord } = geometria
 
     const usados = new Map<string, number>()
     /** Reserva o próximo slot livre da coordenada. [dx, dy, anelMax, limiteM]; [0,0,0,0] = ponto solto. */
@@ -1574,7 +1615,8 @@ export function MapaVisitas() {
       const i = usados.get(k) ?? 0
       usados.set(k, i + 1)
       const [dx, dy] = anelHex(i)
-      return [dx, dy, anelDoIndice(total - 1), limitePorCoord.get(k) ?? RAIO_MAX_M]
+      const limite = limitePorCoord.get(k)
+      return [dx, dy, anelDoIndice(total - 1), limite != null && Number.isFinite(limite) ? limite : RAIO_MAX_M]
     }
     if (showVis) {
       for (const v of visFiltradas) {
@@ -1664,13 +1706,18 @@ export function MapaVisitas() {
       }
     }
     espalhadosRef.current = espalhados
+    boundsResultadosRef.current = bounds
     // No modo viagem o enquadramento é da ROTA — não pode ser roubado a cada
     // repintura de pino, senão o mapa pula toda vez que um filtro muda.
-    if (bounds.length && !centro && !modoViagemRef.current) map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
+    if (bounds.length && !centro && !modoViagemRef.current && ultimaGeometriaEnquadradaRef.current !== geometria.chave) {
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 })
+      ultimaGeometriaEnquadradaRef.current = geometria.chave
+    }
+    if (!bounds.length) ultimaGeometriaEnquadradaRef.current = ''
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showVis, showOrc, visFiltradas, orcFiltrados, vendedores, byVendId, globId, marc,
-      modo, temaEscuro, etiqPorCliente, etiquetasSel])   // trocar de modo ou de tema repinta os pinos
+      modo, temaEscuro, etiqPorCliente, etiquetasSel, geometria, limitePorCoord])   // trocar de modo ou de tema repinta os pinos
 
   // Mantém o contexto do popup atual sem forçar repintura da camada de pinos.
   useEffect(() => {
@@ -2003,9 +2050,9 @@ export function MapaVisitas() {
       {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
       <style>{`.leaflet-marker-icon.marc-check{pointer-events:none!important}`}</style>
       {/* HEADER + TOOLBAR — só no desktop. No celular o mapa é tela cheia com filtros flutuantes. */}
-      <div className="hidden md:flex flex-wrap items-center justify-between gap-2 md:gap-3 shrink-0">
+      <div className="hidden md:flex flex-col gap-3 shrink-0 rounded-xl border border-border bg-surface px-4 py-3">
         <div>
-          <h1 className="text-[18px] md:text-[22px] font-semibold text-ink tracking-tight">Mapa de Visitas</h1>
+          <h1 className="text-[22px] font-semibold text-ink tracking-tight">Mapa de clientes</h1>
           <p className="text-[13px] text-ink-muted">
             {ufsVisiveis.length > 0 && (
               <span className="mr-2 px-2 py-0.5 rounded-full bg-accent-bg border border-accent/30 text-accent text-[11px] font-bold"
@@ -2013,31 +2060,38 @@ export function MapaVisitas() {
                 🗺️ {ufsVisiveis.join(' · ')}
               </span>
             )}
-            {showOrc && <>{orcFiltrados.length} clientes com orçamento{orcStats.vendido > 0 && <> · <span className="text-blue-600 font-semibold">{orcStats.vendido} vendidos</span></>}</>}
+            {showOrc && <>{orcFiltrados.length} clientes no mapa{orcStats.vendido > 0 && <> · <span className="text-accent font-semibold">{orcStats.vendido} vendidos</span></>}</>}
             {showOrc && showVis && ' · '}
             {/* "sem localização" dava a entender falha de geocode. Medido em 03/09/2026:
                 os 857 registros sem coordenada estão TODOS sem cidade E sem UF — ninguém
                 preencheu. O que falta é cadastro, e é isso que o rótulo tem que dizer. */}
-            {showVis && <>{visFiltradas.length} visitas{semCoord > 0 && <> · <button
+            {showVis && <>{visFiltradas.length} registros de visita no mapa{semCoord > 0 && <> · <button
               onClick={() => setCidadeAberta(true)}
               className="text-warning underline underline-offset-2 hover:opacity-80 font-semibold"
-              title="Cliente salvo pelo card 📍 Dados pra visita da extensão, mas sem cidade/UF — sem isso não há onde plotar. Clique pra completar aqui mesmo.">
-              {semCoord} sem cidade preenchida</button></>}</>}
+              title="Registros sem coordenadas. Abra a fila para completar os cadastros que ainda precisam de cidade e estado.">
+              {semCoord} sem coordenadas · completar cadastro</button></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          <div className="relative w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full">
+          <div className="relative w-full lg:w-72" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSugAberta(false) }}>
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-ink-faint pointer-events-none">🔍</span>
             <input
               value={busca}
               onChange={e => { setBusca(e.target.value); setSugAberta(true) }}
               onFocus={() => setSugAberta(true)}
-              onBlur={() => window.setTimeout(() => setSugAberta(false), 150)}
-              onKeyDown={e => { if (e.key === 'Escape') setSugAberta(false) }}
+              onKeyDown={e => {
+                if (e.key === 'Escape') setSugAberta(false)
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault(); setSugAberta(true)
+                  const parent = e.currentTarget.parentElement
+                  window.requestAnimationFrame(() => parent?.querySelector<HTMLButtonElement>('ul button')?.focus())
+                }
+              }}
               placeholder="Buscar cidade, cliente, telefone, Nº…"
+              aria-label="Buscar cidade, cliente, telefone ou número de orçamento"
               autoComplete="off"
-              className="h-9 w-full sm:w-56 pl-8 pr-7 rounded-md bg-surface border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+              className="h-10 w-full pl-8 pr-7 rounded-lg bg-surface-2 border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
             />
             {busca && (
               <button onClick={() => { setBusca(''); setSugAberta(false) }} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]" title="Limpar busca">✕</button>
@@ -2050,7 +2104,7 @@ export function MapaVisitas() {
                   <li key={i}>
                     <button
                       onMouseDown={e => e.preventDefault()}
-                      onClick={() => { setBusca(c.cidade); setSugAberta(false) }}
+                      onClick={() => handleSelecionarCidade(c)}
                       className="w-full text-left px-3 py-2.5 hover:bg-surface-2 active:bg-surface-2 flex items-center gap-2"
                     >
                       <span className="text-[13px] shrink-0">📍</span>
@@ -2068,14 +2122,16 @@ export function MapaVisitas() {
               Filtros (popover) | Ver como | camadas | Lista · Viagem. O Raio foi pra
               sidebar, que é onde ele entrega a lista. O que está filtrando vira chip na
               linha de baixo. O celular tem a própria faixa, mais abaixo, e não mudou. */}
-          <div className="flex items-center gap-2 w-full overflow-x-auto flex-nowrap md:contents pb-1 [&>*]:shrink-0">
+          <div className="flex flex-wrap items-center gap-2 [&>*]:shrink-0">
           <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)}
+            aria-label="Vendedor dos clientes no mapa"
             title="Vendedor do cliente (o do orçamento mais recente)"
             className={`h-9 px-2.5 rounded-md border text-[13px] font-semibold ${vendedorSel ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink'}`}>
             <option value="">Todos os vendedores</option>
             {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
           <select value={periodo} onChange={e => setPeriodo(e.target.value as PeriodoFiltro)}
+            aria-label="Período dos orçamentos no mapa"
             title="Período pela data do orçamento. Registros sem data aparecem sempre."
             className="h-9 px-2.5 rounded-md bg-surface border border-border text-[13px] font-semibold text-ink">
             {PERIODO_LABEL.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
@@ -2089,9 +2145,33 @@ export function MapaVisitas() {
               <span className="text-ink-faint text-[11px]">▾</span>
             </button>
             {filtrosAberto && (
-              <>
-                <div className="fixed inset-0 z-[1190]" onClick={() => setFiltrosAberto(false)} />
-                <div className="absolute left-0 top-full mt-1 z-[1200] w-[26rem] rounded-lg border border-border bg-surface shadow-lg p-3 space-y-3 text-[12.5px]">
+              <MapaDialog title="Filtros do mapa" onClose={() => setFiltrosAberto(false)} sheet>
+                <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
+                  <h2 className="text-[16px] font-semibold">Filtros do mapa</h2>
+                  <button onClick={() => setFiltrosAberto(false)} aria-label="Fechar filtros" className="h-10 w-10 rounded-lg hover:bg-surface-2">✕</button>
+                </div>
+                <div className="min-h-0 overflow-y-auto p-4 pb-safe space-y-4 text-[12.5px]">
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1.5 text-[12px] font-medium text-ink-muted">
+                      <span>Vendedor</span>
+                      <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)} className="h-10 w-full rounded-lg border border-border bg-surface-2 px-2 text-ink">
+                        <option value="">Todos os vendedores</option>
+                        {vendedores.map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5 text-[12px] font-medium text-ink-muted">
+                      <span>Período dos orçamentos</span>
+                      <select value={periodo} onChange={e => setPeriodo(e.target.value as PeriodoFiltro)} className="h-10 w-full rounded-lg border border-border bg-surface-2 px-2 text-ink">
+                        {PERIODO_LABEL.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-ink-faint">O período usa a data do orçamento. Registros sem data continuam visíveis.</p>
+                  <fieldset className="flex flex-wrap gap-3 rounded-lg border border-border p-3">
+                    <legend className="px-1 text-[11px] font-semibold text-ink-muted">Camadas no mapa</legend>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={showOrc} onChange={e => setShowOrc(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--accent))]" />Clientes de orçamentos</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={showVis} onChange={e => setShowVis(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--accent))]" />Registros de visita</label>
+                  </fieldset>
                   <div>
                     <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-1.5 px-1">Situação</div>
                     <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
@@ -2138,14 +2218,14 @@ export function MapaVisitas() {
                     </select>
                   </div>
                   <div className="flex items-center justify-between border-t border-border pt-2.5">
-                    <button onClick={limparFiltros} disabled={nFiltros === 0}
+                    <button onClick={() => { limparFiltros(); setVendedorSel(''); setBusca(''); setPeriodo('tudo') }}
                       className="text-[12px] font-semibold text-accent hover:underline disabled:text-ink-faint disabled:no-underline disabled:cursor-default">
-                      Limpar filtros
+                      Limpar todos os filtros
                     </button>
                     <button onClick={() => setFiltrosAberto(false)} className="h-8 px-3 rounded-md bg-accent text-white text-[12px] font-semibold">Fechar</button>
                   </div>
                 </div>
-              </>
+              </MapaDialog>
             )}
           </span>
           <span className="w-px h-6 bg-border mx-0.5" aria-hidden="true" />
@@ -2154,15 +2234,15 @@ export function MapaVisitas() {
           <span className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold">Ver como</span>
           <div className="flex h-9 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
             {MODOS.map(([v, label, ajuda]) => (
-              <button key={v} onClick={() => setModo(v)} title={`${label} — ${ajuda}`}
+              <button key={v} onClick={() => setModo(v)} aria-pressed={modo === v} title={`${label} — ${ajuda}`}
                 className={`px-2.5 transition-colors ${modo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>
-                {modo === v ? label : label.split(' ')[0]}
+                {label.replace('Por ', '')}
               </button>
             ))}
           </div>
           <span className="w-px h-6 bg-border mx-0.5" aria-hidden="true" />
-          <button className={togglePill(showOrc)} onClick={() => setShowOrc(v => !v)} title="Camada: pinos a partir dos orçamentos">💰 Orçamentos</button>
-          <button className={togglePill(showVis)} onClick={() => setShowVis(v => !v)} title="Camada: visitas anotadas no WhatsApp">📍 Visitas</button>
+          <button className={togglePill(showOrc)} aria-pressed={showOrc} onClick={() => setShowOrc(v => !v)} title="Camada: pinos a partir dos orçamentos">💰 Orçamentos</button>
+          <button className={togglePill(showVis)} aria-pressed={showVis} onClick={() => setShowVis(v => !v)} title="Camada: visitas anotadas no WhatsApp">📍 Visitas</button>
           <span className="w-px h-6 bg-border mx-0.5" aria-hidden="true" />
           {/* NÃO é toggle: a lista abre um overlay `fixed inset-0` que cobre esta
               própria barra, então o botão fica inalcançável no estado ligado e o
@@ -2170,10 +2250,15 @@ export function MapaVisitas() {
               Quem fecha é o ✕ / o backdrop do próprio overlay. */}
           <button className={acaoPill} onClick={() => setShowLista(true)}
             title="Abrir a lista de orçamentos (fecha pelo ✕ ou clicando fora)">📋 Lista</button>
+          <button className={acaoPill} onClick={enquadrarResultados} title="Mostrar todos os resultados atuais no mapa">Enquadrar resultados</button>
           <button
-            onClick={() => (modoViagem ? sairDaViagem() : entrarNaViagem())}
+            onClick={() => {
+              if (!modoViagem) entrarNaViagem()
+              if (window.matchMedia('(max-width: 1023px)').matches) setViagemSheet(true)
+              else if (modoViagem) sairDaViagem()
+            }}
             title="Montar roteiro de visitas escolhendo clientes pelo pino"
-            className={`h-9 px-3 rounded-md border text-[13px] font-bold transition-colors ${modoViagem ? 'bg-blue-600 border-blue-600 text-white' : 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100'}`}
+            className={`h-9 px-3 rounded-lg border text-[13px] font-bold transition-colors ${modoViagem ? 'bg-accent border-accent text-white' : 'bg-accent-bg border-accent/30 text-accent hover:border-accent'}`}
           >
             {/* Com paradas fora do modo (rascunho restaurado depois de um F5) o botão
                 mostra a contagem — senão o trabalho fica invisível e parece perdido. */}
@@ -2204,28 +2289,35 @@ export function MapaVisitas() {
 
       {geocodar.data && showVis && (
         <div className="hidden md:block shrink-0 rounded-md border border-border bg-surface-2 text-[12px] text-ink-muted px-3 py-2">
-          {geocodar.data.atualizados} localizado(s).
+          {geocodar.data.atualizados > 0 ? `${geocodar.data.atualizados} novas localizações atualizadas.` : 'Nenhuma nova localização atualizada.'}
           {geocodar.data.falhas?.length ? ` Não achei: ${geocodar.data.falhas.join(', ')}.` : ''}
         </div>
       )}
 
       <div className="relative flex-1 min-h-0 md:flex md:gap-3">
-        <div ref={divRef} className="absolute inset-0 md:static md:flex-1 md:rounded-xl md:border md:border-border overflow-hidden z-0" />
+        <div ref={divRef} className="absolute inset-0 md:relative md:flex-1 md:rounded-xl md:border md:border-border overflow-hidden z-0" />
         {(isLoading || loadingOrc) && (
           <div className="absolute inset-0 flex items-center justify-center z-[400]"><PageLoading /></div>
         )}
 
         {/* ===== MOBILE: filtros flutuando SOBRE o mapa (tela cheia) ===== */}
         <div className="md:hidden absolute top-2 left-2 right-2 z-[1000] flex flex-col gap-2 pointer-events-none">
-          <div className="relative pointer-events-auto">
+          <div className="relative pointer-events-auto" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSugAberta(false) }}>
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-ink-faint pointer-events-none">🔍</span>
             <input
               value={busca}
               onChange={e => { setBusca(e.target.value); setSugAberta(true) }}
               onFocus={() => setSugAberta(true)}
-              onBlur={() => window.setTimeout(() => setSugAberta(false), 150)}
-              onKeyDown={e => { if (e.key === 'Escape') setSugAberta(false) }}
+              onKeyDown={e => {
+                if (e.key === 'Escape') setSugAberta(false)
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault(); setSugAberta(true)
+                  const parent = e.currentTarget.parentElement
+                  window.requestAnimationFrame(() => parent?.querySelector<HTMLButtonElement>('ul button')?.focus())
+                }
+              }}
               placeholder="Buscar cidade, cliente…"
+              aria-label="Buscar cidade ou cliente no mapa"
               autoComplete="off"
               className="h-11 w-full pl-9 pr-9 rounded-xl bg-surface/95 backdrop-blur border border-border text-[15px] text-ink placeholder:text-ink-faint outline-none focus:border-accent shadow"
             />
@@ -2237,7 +2329,7 @@ export function MapaVisitas() {
                 <li className="px-3 py-1 text-[10px] uppercase tracking-wide text-ink-faint select-none">Cidades</li>
                 {sugestoesCidade.map((c, i) => (
                   <li key={i}>
-                    <button onMouseDown={e => e.preventDefault()} onClick={() => { setBusca(c.cidade); setSugAberta(false) }} className="w-full text-left px-3 py-3 active:bg-surface-2 flex items-center gap-2">
+                    <button onMouseDown={e => e.preventDefault()} onClick={() => handleSelecionarCidade(c)} className="w-full text-left px-3 py-3 active:bg-surface-2 flex items-center gap-2">
                       <span className="text-[14px] shrink-0">📍</span>
                       <span className="flex-1 truncate text-[14px] text-ink">{c.cidade}{c.uf ? ` - ${c.uf}` : ''}</span>
                       <span className="text-[12px] tabular-nums text-ink-faint shrink-0">{c.n}</span>
@@ -2247,137 +2339,44 @@ export function MapaVisitas() {
               </ul>
             )}
           </div>
-          <div className="pointer-events-auto flex items-center gap-1.5 overflow-x-auto flex-nowrap [&>*]:shrink-0">
-            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
-              {MODOS.map(([v, label, ajuda]) => (
-                <button key={v} onClick={() => setModo(v)} title={ajuda}
-                  className={`px-2.5 ${modo === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label.split(' ')[0]}</button>
-              ))}
-            </div>
-            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow"
-                 title="Período pela data do orçamento. Registros sem data aparecem sempre.">
-              {PERIODO_LABEL_CURTO.map(([v, label]) => (
-                <button key={v} onClick={() => setPeriodo(v)} className={`px-3 ${periodo === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
-              ))}
-            </div>
-            {/* O aviso de ocultos vive no cabeçalho, que é `hidden md:flex` — sem este
-                chip o celular escondia 57% da base calado. */}
-            {showOrc && ocultos.total > 0 && (
-              <button onClick={() => setPeriodo('tudo')}
-                className="h-9 px-3 rounded-lg border border-warning/40 bg-surface/95 backdrop-blur text-[12px] font-semibold text-warning shadow"
-                title={`${ocultos.total} clientes fora da janela de ${rotuloPeriodo(periodo)}. Toque para ver tudo.`}>
-                +{ocultos.total} ocultos ✕
-              </button>
-            )}
-            {/* mesmo aviso do desktop: ⭐/💎 sem efeito visual fora do modo Valor */}
-            {showOrc && modo !== 'valor' && (vendFiltro === 'alto' || vendFiltro === 'diamante') && (
-              <button onClick={() => setModo('valor')}
-                className="h-9 px-3 rounded-lg border border-warning/40 bg-surface/95 backdrop-blur text-[12px] font-semibold text-warning shadow"
-                title="O filtro de valor está ativo, mas estrela e diamante só são desenhados no modo Por valor">
-                {vendFiltro === 'diamante' ? '💎' : '⭐'} ver formas ↗
-              </button>
-            )}
-            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
-              {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
-                <button key={v} onClick={() => setVendFiltro(v)} className={`px-3 ${vendFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`}>{label}</button>
-              ))}
-            </div>
-            <div className="flex h-9 rounded-lg overflow-hidden border border-border bg-surface/95 backdrop-blur text-[12px] font-semibold shadow">
-              {([['todos', 'Todas'], ['visitados', '✅'], ['pendentes', '⏳']] as [VisitaFiltro, string][]).map(([v, label]) => (
-                <button key={v} onClick={() => setVisitaFiltro(v)} className={`px-3 ${visitaFiltro === v ? 'bg-accent text-white' : 'text-ink-muted'}`} title={v === 'visitados' ? 'Visitadas' : v === 'pendentes' ? 'A visitar' : 'Todas'}>{label}</button>
-              ))}
-            </div>
-            <button onClick={() => setEtiqAberto(true)}
-              className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${etiquetasSel.size ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>
-              🏷️ {rotuloEtiquetas}
+          <div className="pointer-events-auto flex items-center gap-2">
+            <select value={modo} onChange={e => setModo(e.target.value as ModoMapa)} aria-label="Visualização do mapa"
+              className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface/95 px-3 text-[12px] font-semibold text-ink shadow backdrop-blur">
+              {MODOS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+            <button onClick={() => setFiltrosAberto(true)} aria-haspopup="dialog"
+              className={`h-10 rounded-lg border px-3 text-[12px] font-semibold shadow backdrop-blur ${nFiltros || vendedorSel ? 'border-accent bg-accent text-white' : 'border-border bg-surface/95 text-ink'}`}>
+              Filtros{nFiltros + (vendedorSel ? 1 : 0) > 0 ? ` (${nFiltros + (vendedorSel ? 1 : 0)})` : ''}
             </button>
-            {/* mesmo tratamento do desktop: title no wrapper (controle disabled não
-                despacha evento de mouse) e cursor coerente com o estado */}
-            <span title={modoViagem ? 'Indisponível durante a viagem' : 'Lista quem está perto de um ponto (não filtra os pinos)'}>
-              <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} disabled={modoViagem}
-                className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow disabled:opacity-40 disabled:cursor-not-allowed ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🎯 Raio</button>
-            </span>
-            <button onClick={() => setShowVis(v => !v)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${showVis ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>📍 Visitas</button>
-            <button onClick={() => setUfSheet(true)} className={`h-9 px-3 rounded-lg border text-[12px] font-semibold shadow ${ufSel ? 'bg-accent text-white border-accent' : 'bg-surface/95 backdrop-blur border-border text-ink-muted'}`}>🗺️ {ufSel || 'Estados'}</button>
-            <button
-              onClick={() => { if (modoViagem) { setViagemSheet(true) } else { entrarNaViagem(); setViagemSheet(true) } }}
-              className={`h-9 px-3 rounded-lg border text-[12px] font-bold shadow ${modoViagem ? 'bg-blue-600 text-white border-blue-600' : 'bg-surface/95 backdrop-blur border-blue-300 text-blue-700'}`}
-            >
-              🧭 {modoViagem || paradas.length > 0 ? `Viagem ${paradas.length}` : 'Viagem'}
+          </div>
+          <div className="pointer-events-auto grid grid-cols-4 gap-1.5">
+            <button onClick={() => setShowLista(true)} className="h-10 rounded-lg border border-border bg-surface/95 text-[12px] font-semibold text-ink shadow">Lista</button>
+            <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} disabled={modoViagem} aria-pressed={modoRaio}
+              title={modoViagem ? 'Indisponível durante a viagem' : 'Ver clientes próximos de um ponto'}
+              className={`h-10 rounded-lg border text-[12px] font-semibold shadow disabled:opacity-40 ${modoRaio ? 'bg-accent text-white border-accent' : 'bg-surface/95 border-border text-ink'}`}>Raio</button>
+            <button onClick={enquadrarResultados} title="Enquadrar todos os resultados atuais no mapa" className="h-10 rounded-lg border border-border bg-surface/95 text-[12px] font-semibold text-ink shadow">Enquadrar</button>
+            <button onClick={() => { if (!modoViagem) entrarNaViagem(); setViagemSheet(true) }}
+              className={`h-10 rounded-lg border text-[12px] font-bold shadow ${modoViagem ? 'bg-accent text-white border-accent' : 'bg-accent-bg border-accent/30 text-accent'}`}>
+              {modoViagem || paradas.length ? `Viagem ${paradas.length}` : 'Viagem'}
             </button>
+          </div>
+          <div className="pointer-events-auto flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-surface/95 px-3 py-1.5 text-[11px] text-ink-muted shadow backdrop-blur">
+            <span>{showOrc && `${orcFiltrados.length} clientes`}{showOrc && showVis && ' · '}{showVis && `${visFiltradas.length} registros de visita`}{!showOrc && !showVis && 'Nenhuma camada ligada'}</span>
+            {vendedorSel && <button onClick={() => setVendedorSel('')} aria-label={`Remover filtro do vendedor ${vendedorSel}`} className="font-semibold text-accent">{vendedorSel} ✕</button>}
+            {ufSel && <button onClick={() => setUfSel('')} aria-label="Remover filtro de estado" className="font-semibold text-accent">{ufSel} ✕</button>}
+            {showOrc && ocultos.total > 0 && <button onClick={() => setPeriodo('tudo')} className="font-semibold text-warning">+{ocultos.total} fora do período · ver tudo</button>}
+            {showVis && semCoord > 0 && <button onClick={() => setCidadeAberta(true)} className="font-semibold text-warning underline underline-offset-2">{semCoord} sem coordenadas · completar</button>}
+            {avisoFormaValor && <button onClick={() => setModo('valor')} className="font-semibold text-warning">Ver formas de valor ↗</button>}
           </div>
           {modoRaio && (
             <div className="pointer-events-auto flex items-center gap-2 rounded-lg bg-surface/95 backdrop-blur border border-border px-3 py-2 text-[12px] text-ink shadow">
               {!centro ? <span className="text-ink-muted">Toque no mapa pra centrar</span> : <span className="shrink-0"><b>{noRaio.length}</b> em {raioKm}km</span>}
-              <input type="range" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="flex-1 min-w-0" />
+              <input type="range" aria-label="Distância do raio em quilômetros" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="flex-1 min-w-0" />
               {centro && <button onClick={() => setCentro(null)} className="text-accent shrink-0">limpar</button>}
             </div>
           )}
         </div>
 
-        {/* ===== MOBILE: legenda flutuante (canto inferior esquerdo) =====
-            SEGUE O MODO. Antes mostrava sempre as faixas de idade — no modo "por
-            estado" o mapa está pintado por UF e a legenda dizia outra coisa; no
-            "por idade" são 4 faixas e ela mostrava 3. Legenda que não corresponde
-            ao que está desenhado é pior que legenda nenhuma. */}
-        {/* bottom-14, não bottom-2: o seletor Mapa|Satélite do Leaflet fica em
-            bottomleft a 10px da borda e, colapsado, virou um ícone de 44px que
-            caía inteiro atrás desta legenda (o mapa é z-0 e cria contexto de
-            empilhamento, então o controle não sobe). Ele continuava clicável —
-            a legenda é pointer-events-none — mas invisível.
-            A conta: 10px de margem + 44px do toggle + 2px de borda em cima e
-            embaixo (.leaflet-touch) = topo em 58px. bottom-16 (64px) deixa 6px
-            de folga; bottom-14 (56px) ainda encostava 2px na borda. */}
-        <div className="md:hidden absolute left-2 bottom-16 z-[1000] bg-surface/90 backdrop-blur rounded-lg border border-border px-2.5 py-2 text-[11px] shadow pointer-events-none">
-          <div className="flex flex-col gap-1">
-            {modo === 'estado' && (<>
-              <div className="text-ink-faint uppercase tracking-wide text-[9px] mb-0.5">Cor = estado</div>
-              {statsUF.slice(0, 5).map(([uf, n]) => (
-                <div key={uf} className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: corDoEstado(uf === '—' ? null : uf, temaEscuro) }} />
-                  <span className="text-ink-muted font-semibold">{uf === '—' ? 'sem UF' : uf}</span>
-                  <span className="ml-auto pl-2 tabular-nums text-ink-faint">{n}</span>
-                </div>
-              ))}
-              {statsUF.length > 5 && <div className="text-ink-faint">+{statsUF.length - 5} estados</div>}
-            </>)}
-            {modo === 'idade' && (<>
-              <div className="text-ink-faint uppercase tracking-wide text-[9px] mb-0.5">Cor = idade · 4 faixas</div>
-              {FAIXAS_IDADE4.map(f => (
-                <div key={f.id} className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: corDaFaixa4(f.id, temaEscuro) }} />
-                  <span className="text-ink-muted">{f.rotulo}</span>
-                  <span className="ml-auto pl-2 tabular-nums text-ink-faint">{statsIdade4.get(f.id) ?? 0}</span>
-                </div>
-              ))}
-              {/* "Sem data" é bucket próprio e usa o MESMO cinza de "mais de 1 ano".
-                  Sem esta linha o celular mostra pino cinza sem legenda e a contagem
-                  de "mais de 1 ano" fica curta — e o filtro de período garante que
-                  essa população está em tela ("registros sem data aparecem sempre"). */}
-              {(statsIdade4.get('sem-data') ?? 0) > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full ring-1 ring-border" style={{ backgroundColor: corDaFaixa4('sem-data', temaEscuro) }} />
-                  <span className="text-ink-muted">Sem data</span>
-                  <span className="ml-auto pl-2 tabular-nums text-ink-faint">{statsIdade4.get('sem-data')}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="text-ink-muted font-semibold">Vendido</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{statsIdade4.get('vendido') ?? 0}</span></div>
-            </>)}
-            {modo === 'valor' && (<>
-              <div className="text-ink-faint uppercase tracking-wide text-[9px] mb-0.5">Cor = idade · 3 faixas</div>
-              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERDE }} /><span className="text-ink-muted">Até 1 mês</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.verde}</span></div>
-              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: VERMELHO }} /><span className="text-ink-muted">1–3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vermelho}</span></div>
-              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CINZA_VELHO }} /><span className="text-ink-muted">+3 meses</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.cinza}</span></div>
-              <div className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AZUL_VENDIDO }} /><span className="text-ink-muted font-semibold">Vendido</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.vendido}</span></div>
-              {(orcStats.estrela > 0 || orcStats.diamante > 0) && (
-                <div className="mt-1 pt-1 border-t border-border flex flex-col gap-1">
-                  <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('estrela', '#64748b', 13) }} /><span className="text-ink-muted">⭐ ≥ 100 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.estrela}</span></div>
-                  <div className="flex items-center gap-1.5"><span className="w-3 flex justify-center" dangerouslySetInnerHTML={{ __html: svgForma('diamante', '#64748b', 12) }} /><span className="text-ink-muted">💎 ≥ 300 mil</span><span className="ml-auto pl-2 tabular-nums text-ink-faint">{orcStats.diamante}</span></div>
-                </div>
-              )}
-            </>)}
-          </div>
-        </div>
 
         {/* Desktop: no modo viagem o painel lateral vira a viagem (§4 do spec).
             A sidebar de legenda/estados volta inteira ao sair — nada é perdido. */}
@@ -2385,7 +2384,7 @@ export function MapaVisitas() {
             notebook (1280-1440) o painel fixo espremia o mapa e, junto com o
             menu lateral aberto, era o que fazia o roteiro cortar. */}
         {modoViagem && (
-          <div className="hidden md:flex w-[320px] lg:w-[360px] xl:w-[400px] shrink-0 min-w-0 rounded-xl border border-border bg-surface overflow-hidden">
+          <div className="hidden lg:flex w-[320px] xl:w-[360px] shrink-0 min-w-0 rounded-xl border border-border bg-surface overflow-hidden">
             <PainelViagem
               cfg={cfgViagem} setCfg={setCfgViagem}
               paradas={paradas} setParadas={setParadas}
@@ -2413,27 +2412,30 @@ export function MapaVisitas() {
           </div>
         )}
 
-        {/* sidebar (legenda / lista do raio) — só no desktop */}
-        <div className={`${modoViagem ? 'hidden' : 'hidden md:block'} w-56 shrink-0 rounded-xl border border-border bg-surface p-3 overflow-y-auto`}>
+        {/* A legenda e a lista do raio usam o mesmo painel em qualquer tela. */}
+        {!modoViagem && (
+        <MapaPainel title={modoRaio && centro ? `Clientes em ${raioKm} km (${noRaio.length})` : 'Legenda e estados'}
+          summary={modoRaio && centro ? 'Resultados dos filtros atuais, em ordem de distância.' : `${MODOS.find(([v]) => v === modo)?.[1]} · 1 ponto por cliente de orçamento.`}>
+          {fecharPainel => (<>
           {/* RAIO (02/09/2026): saiu da barra de cima. Ele não filtra os pinos — só
               alimenta ESTA lista — então o botão fica aqui, ao lado do resultado.
               Na viagem a sidebar some, e entrarNaViagem já desliga o raio. */}
           {showOrc && (
             <div className="mb-2 pb-2 border-b border-border">
               <div className="flex items-center gap-2">
-                <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }}
+                <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null); else fecharPainel() }}
                   title="Lista quem está perto de um ponto do mapa (não filtra os pinos)"
                   className={`h-7 px-2 rounded-md border text-[12px] font-semibold transition-colors ${modoRaio ? 'bg-accent-bg border-accent/40 text-accent' : 'bg-surface border-border text-ink-muted hover:text-ink'}`}>
                   🎯 Raio
                 </button>
                 {modoRaio && (!centro
-                  ? <span className="text-[11px] text-ink-muted leading-tight">clique no mapa pra centrar</span>
+                  ? <button onClick={fecharPainel} className="text-[11px] font-semibold text-accent hover:underline">Marcar centro no mapa ↗</button>
                   : <button onClick={() => setCentro(null)} className="text-[11px] font-semibold text-accent hover:underline">limpar ponto</button>)}
               </div>
               {modoRaio && (
                 <label className="mt-2 flex items-center gap-1.5 text-[11px] text-ink-muted">
-                  <input type="range" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="flex-1 min-w-0" />
-                  <input type="number" min={1} value={raioKm} onChange={e => setRaioKm(Math.max(1, Number(e.target.value) || 1))}
+                  <input type="range" aria-label="Distância do raio em quilômetros" min={10} max={1000} step={10} value={raioKm} onChange={e => setRaioKm(Number(e.target.value))} className="flex-1 min-w-0" />
+                  <input type="number" aria-label="Raio em quilômetros" min={1} value={raioKm} onChange={e => setRaioKm(Math.max(1, Number(e.target.value) || 1))}
                     className="h-6 w-14 px-1 rounded border border-border bg-surface text-ink tabular-nums text-right" /> km
                 </label>
               )}
@@ -2445,9 +2447,9 @@ export function MapaVisitas() {
               <ul className="space-y-1">
                 {noRaio.map((p, i) => (
                   <li key={i}>
-                    <button onClick={() => focarPonto(p)} className="w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
+                    <button onClick={() => { fecharPainel(); focarPonto(p) }} className="w-full text-left rounded-md px-2 py-1.5 hover:bg-surface-2 transition-colors">
                       <div className="flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: corOrcamento(p) }} />
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: corDoPino(p) }} />
                         <span className="text-[12px] text-ink truncate flex-1">{p.cliente || '—'}</span>
                         <span className="text-[11px] tabular-nums text-ink-faint">{p.dist.toFixed(0)}km</span>
                       </div>
@@ -2611,7 +2613,9 @@ export function MapaVisitas() {
               )}
             </>
           )}
-        </div>
+          </>)}
+        </MapaPainel>
+        )}
       </div>
 
 
@@ -2649,7 +2653,7 @@ export function MapaVisitas() {
       {modoViagem && !viagemSheet && (
         <button
           onClick={() => setViagemSheet(true)}
-          className="md:hidden fixed left-2 right-2 bottom-2 z-[1250] h-12 rounded-xl bg-blue-600 text-white shadow-lg flex items-center gap-2 px-3"
+          className="lg:hidden fixed left-2 right-2 bottom-2 z-[1250] h-12 rounded-xl bg-accent text-white shadow-lg flex items-center gap-2 px-3"
         >
           <span className="text-[16px]">🧭</span>
           <span className="text-[13px] font-bold">{paradas.length} parada(s)</span>
@@ -2662,10 +2666,10 @@ export function MapaVisitas() {
 
       {/* Celular: folha do planejamento */}
       {modoViagem && viagemSheet && (
-        <div className="md:hidden fixed inset-0 z-[1300] bg-black/40 flex items-end" onClick={() => setViagemSheet(false)}>
-          <div className="bg-surface w-full rounded-t-2xl border-t border-border h-[82vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="shrink-0 flex justify-center pt-2 pb-1" onClick={() => setViagemSheet(false)}>
-              <span className="h-1 w-10 rounded-full bg-border" />
+        <MapaDialog title="Planejamento de viagem" onClose={() => setViagemSheet(false)} sheet className="h-[82dvh] md:max-w-xl">
+            <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-border">
+              <h2 className="text-[14px] font-semibold">Planejamento de viagem</h2>
+              <button onClick={() => setViagemSheet(false)} aria-label="Recolher planejamento de viagem" className="h-10 w-10 rounded-lg hover:bg-surface-2 text-ink-muted">✕</button>
             </div>
             <div className="flex-1 min-h-0">
               <PainelViagem
@@ -2693,8 +2697,7 @@ export function MapaVisitas() {
                 carregando={carregandoViagem}
               />
             </div>
-          </div>
-        </div>
+        </MapaDialog>
       )}
 
       {/* Aviso flutuante enquanto escolhe a origem clicando no mapa */}
@@ -2782,14 +2785,14 @@ export function MapaVisitas() {
 
       {/* Overlay: lista (tabela) */}
       {showLista && (
-        <div className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLista(false)}>
-          <div className="bg-surface rounded-xl border border-border w-full max-w-[1200px] max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <MapaDialog title="Lista de clientes e orçamentos" description="Resultados dos filtros atuais. Cada cliente pode ter vários orçamentos." onClose={() => setShowLista(false)} className="max-w-[1200px]">
+          <div className="min-h-0 max-h-[88dvh] flex flex-col">
             <div className="flex flex-wrap items-center gap-2 md:gap-3 p-3 border-b border-border shrink-0">
               <h2 className="text-[16px] font-semibold text-ink">{porCliente ? 'Clientes' : 'Orçamentos cadastrados'}</h2>
               <span className="text-[12px] text-ink-muted">
                 {porCliente
                   ? `${sortedLista.length} clientes · ${listaFiltrada.length} orçamentos`
-                  : `${sortedLista.length} de ${lista.length}`}
+                  : `${sortedLista.length} orçamentos de ${lista.length} cadastrados`}
               </span>
               {ufSel && (
                 <button onClick={() => setUfSel('')} className="text-[12px] font-semibold text-accent hover:underline" title="Tirar o filtro de estado">
@@ -2797,32 +2800,34 @@ export function MapaVisitas() {
                 </button>
               )}
               <div className="relative ml-2">
-                <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" className="h-8 w-52 px-2 rounded-md bg-surface-2 border border-border text-[13px] text-ink outline-none focus:border-accent" />
+                <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente, cidade, Nº…" aria-label="Buscar na lista" className="h-10 w-full sm:w-52 px-2 rounded-lg bg-surface-2 border border-border text-[13px] text-ink outline-none focus:border-accent" />
               </div>
-              <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold"
-                   title="Período pela data do orçamento. Registros sem data aparecem sempre.">
-                {PERIODO_LABEL.map(([v, label]) => (
-                  <button key={v} onClick={() => setPeriodo(v)} className={`px-2.5 ${periodo === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>{label}</button>
-                ))}
-              </div>
-              <div className="flex h-8 rounded-md border border-border overflow-hidden text-[12px] font-semibold">
-                {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ Alto valor'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => (
-                  <button key={v} onClick={() => setVendFiltro(v)} className={`px-2.5 ${vendFiltro === v ? 'bg-accent-bg text-accent' : 'bg-surface text-ink-muted hover:text-ink'}`}>{label}</button>
-                ))}
-              </div>
+              <select value={periodo} onChange={e => setPeriodo(e.target.value as PeriodoFiltro)} aria-label="Período da lista" className="h-10 rounded-lg border border-border bg-surface-2 px-2 text-[12px] text-ink">
+                {PERIODO_LABEL.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+              </select>
+              <select value={vendFiltro} onChange={e => setVendFiltro(e.target.value as VendFiltro)} aria-label="Situação e valor dos orçamentos" className="h-10 rounded-lg border border-border bg-surface-2 px-2 text-[12px] text-ink">
+                {([['todos', 'Todos'], ['orcados', 'Só orçados'], ['vendidos', 'Vendidos'], ['alto', '⭐ ≥100 mil'], ['diamante', '💎 ≥300 mil']] as [VendFiltro, string][]).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+              </select>
               <button
                 onClick={() => setPorCliente(v => !v)}
+                aria-pressed={porCliente}
                 title="Junta as propostas do mesmo cliente numa linha só, somando os valores"
                 className={`h-8 px-3 rounded-md border text-[12px] font-semibold ${porCliente
                   ? 'bg-accent-bg border-accent/40 text-accent'
                   : 'bg-surface border-border text-ink-muted hover:text-ink'}`}>
                 👤 1 linha por cliente
               </button>
-              <button onClick={baixarCSV} className="h-8 px-3 rounded-md bg-accent-bg border border-accent/30 text-accent text-[12px] font-semibold ml-auto">⬇ CSV</button>
-              <button onClick={() => setShowLista(false)} className="h-8 w-8 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
+              <button onClick={baixarCSV} disabled={loadingLista || !!errorLista || !sortedLista.length} className="h-10 px-3 rounded-lg bg-accent-bg border border-accent/30 text-accent text-[12px] font-semibold ml-auto disabled:opacity-40">⬇ CSV</button>
+              <button onClick={() => setShowLista(false)} aria-label="Fechar lista" className="h-10 w-10 rounded-lg hover:bg-surface-2 text-ink-muted">✕</button>
             </div>
-            <div className="overflow-auto flex-1">
-              <table className="w-full text-[12px] table-fixed">
+            <div className="shrink-0 border-b border-border bg-surface-2 px-3 py-2 text-[11px] text-ink-muted">
+              Filtros do mapa aplicados. Um cliente pode ter vários orçamentos; o período considera a data de cada orçamento.
+              {(etiquetasSel.size > 0 || visitaFiltro !== 'todos') && <span className="block mt-1 text-warning">Filtros de etiqueta e visita consideram apenas propostas com cliente identificado; limpar esses filtros mostra também os registros sem vínculo.</span>}
+              <span className="block md:hidden mt-1">Deslize a tabela para ver todas as colunas.</span>
+            </div>
+            <div className="min-h-0 overflow-auto flex-1">
+              <table className="w-full min-w-[940px] text-[12px] table-fixed">
+                <caption className="sr-only">Clientes e orçamentos filtrados. Use os botões no cabeçalho para ordenar e o nome do cliente para abrir no mapa.</caption>
                 <colgroup>
                   <col style={{ width: '92px' }} /><col style={{ width: '88px' }} /><col style={{ width: '190px' }} />
                   <col /><col style={{ width: '150px' }} /><col style={{ width: '108px' }} /><col style={{ width: '92px' }} />
@@ -2830,20 +2835,22 @@ export function MapaVisitas() {
                 <thead className="sticky top-0 z-10 bg-surface-2 text-ink-muted">
                   <tr className="text-left">
                     {([['numero', porCliente ? 'Nºs' : 'Nº', ''], ['data', porCliente ? 'Último' : 'Data', ''], ['cliente', 'Cliente', ''], [null, porCliente ? 'Orçamentos' : 'Equipamento', ''], ['cidade', 'Cidade', ''], ['total', 'Total', 'text-right'], ['vendido', 'Status', '']] as [typeof sortKey | null, string, string][]).map(([k, label, cls]) => (
-                      <th key={label} className={`px-3 py-2 font-semibold ${cls} ${k ? 'cursor-pointer select-none hover:text-ink' : ''}`} onClick={() => k && ordenarPor(k)}>
-                        {label}{k && sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                      <th key={label} scope="col" aria-sort={k && sortKey === k ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined} className={`px-3 py-2 font-semibold ${cls}`}>
+                        {k ? <button onClick={() => ordenarPor(k)} className="inline-flex min-h-8 items-center gap-1 rounded px-1 hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{label}{sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}</button> : label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedLista.map((r, i) => (
+                  {!loadingLista && !errorLista && sortedLista.map((r, i) => (
                     <tr key={i} onClick={() => focarLinha(r)}
                         className={`border-t border-border hover:bg-accent-bg/40 ${r.lat != null ? 'cursor-pointer' : ''}`}
                         title={r.lat != null ? 'Ver no mapa' : 'Sem localização'}>
                       <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted truncate" title={porCliente ? r.numeros : ''}>{porCliente ? r.numeros || '—' : r.numero}</td>
                       <td className="px-3 py-1.5 whitespace-nowrap text-ink-muted">{dataBR(r.data_emissao)}</td>
-                      <td className="px-3 py-1.5 text-ink font-medium truncate" title={r.cliente || ''}>{r.cliente || '—'}</td>
+                      <td className="px-3 py-1.5 text-ink font-medium truncate" title={r.cliente || ''}>
+                        {r.lat != null && r.lng != null ? <button onClick={e => { e.stopPropagation(); focarLinha(r) }} aria-label={`Ver ${r.cliente || 'cliente'} no mapa`} className="block max-w-full truncate text-left text-accent hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">{r.cliente || '—'}</button> : <>{r.cliente || '—'}<span className="block text-[10px] font-normal text-ink-faint">Sem coordenadas</span></>}
+                      </td>
                       <td className={`px-3 py-1.5 truncate ${r.equipamento === '(venda sem orçamento)' ? 'text-ink-faint italic' : 'text-ink-muted'}`} title={r.equipamento || ''}>{r.equipamento || '—'}</td>
                       <td className="px-3 py-1.5 truncate text-ink-muted" title={[r.cidade, r.uf].filter(Boolean).join(' - ')}>{[r.cidade, r.uf].filter(Boolean).join(' - ') || '—'}</td>
                       <td className="px-3 py-1.5 whitespace-nowrap text-right tabular-nums text-ink">{brl(r.total)}</td>
@@ -2854,42 +2861,45 @@ export function MapaVisitas() {
                       </td>
                     </tr>
                   ))}
-                  {sortedLista.length === 0 && (
-                    <tr><td colSpan={7} className="px-3 py-6 text-center text-ink-muted">Nada encontrado.</td></tr>
+                  {loadingLista && <tr><td colSpan={7} className="px-3 py-8 text-center text-ink-muted" role="status">Carregando orçamentos…</td></tr>}
+                  {errorLista && <tr><td colSpan={7} className="px-3 py-8 text-center text-ink-muted"><p role="alert">Não foi possível carregar a lista.</p><button onClick={() => void refetchLista()} className="mt-2 rounded-lg border border-accent/30 bg-accent-bg px-3 py-2 font-semibold text-accent">Tentar novamente</button></td></tr>}
+                  {!loadingLista && !errorLista && sortedLista.length === 0 && (
+                    <tr><td colSpan={7} className="px-3 py-6 text-center text-ink-muted">Nenhum orçamento nos filtros atuais.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center gap-4 px-3 py-2 border-t border-border shrink-0 text-[12px] text-ink-muted bg-surface-2 rounded-b-xl">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 border-t border-border shrink-0 text-[12px] text-ink-muted bg-surface-2 rounded-b-xl">
               <span>
                 <b className="text-ink">{sortedLista.length}</b> {porCliente ? 'clientes' : 'orçamentos'}
                 {porCliente && <> · <b className="text-ink">{listaFiltrada.length}</b> orçamentos somados</>}
               </span>
               <span>Soma: <b className="text-ink tabular-nums">{brl(somaTotal)}</b></span>
-              <span className="ml-auto text-ink-faint">Clique numa linha pra ver no mapa · clique no cabeçalho pra ordenar</span>
+              <span className="hidden md:block ml-auto text-ink-faint">Abra um cliente no mapa · ordene pelo cabeçalho</span>
             </div>
           </div>
-        </div>
+        </MapaDialog>
       )}
 
       {/* Modal: marcar visita + anotação */}
       {marcarAlvo && (
-        <div className="fixed inset-0 z-[1300] bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4" onClick={() => setMarcarAlvo(null)}>
-          <div className="bg-surface w-full md:max-w-md rounded-t-2xl md:rounded-2xl border border-border p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+        <MapaDialog title="Registrar visita e anotação" onClose={() => setMarcarAlvo(null)} sheet>
+          <div className="min-h-0 overflow-y-auto p-4 pb-safe flex flex-col gap-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-[15px] font-semibold text-ink truncate">{marcarAlvo.cliente || 'Cliente'}</div>
                 {marcarAlvo.telefone && <div className="text-[12px] text-ink-muted">📱 {marcarAlvo.telefone}</div>}
               </div>
-              <button onClick={() => setMarcarAlvo(null)} className="h-8 w-8 shrink-0 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
+              <button onClick={() => setMarcarAlvo(null)} aria-label="Fechar registro de visita" className="h-10 w-10 shrink-0 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
             </div>
             <label className="flex items-center gap-2 text-[14px] text-ink cursor-pointer select-none">
               <input type="checkbox" checked={formVisitado} onChange={e => setFormVisitado(e.target.checked)} className="h-4 w-4 accent-green-600" />
               <span className="font-medium">✅ Visita já realizada</span>
             </label>
             <div>
-              <div className="text-[12px] text-ink-muted mb-1">Anotação</div>
+              <label htmlFor="mapa-visita-nota" className="block text-[12px] text-ink-muted mb-1">Anotação</label>
               <textarea
+                id="mapa-visita-nota"
                 value={formNota}
                 onChange={e => setFormNota(e.target.value)}
                 rows={4}
@@ -2908,9 +2918,9 @@ export function MapaVisitas() {
                 {salvarMarc.isPending ? 'Salvando…' : 'Salvar'}
               </button>
             </div>
-            {salvarMarc.isError && <div className="text-[12px] text-red-600">Não consegui salvar. Tenta de novo.</div>}
+            {salvarMarc.isError && <div role="alert" className="text-[12px] text-red-600">Não consegui salvar. Tenta de novo.</div>}
           </div>
-        </div>
+        </MapaDialog>
       )}
     </div>
   )
@@ -2935,42 +2945,54 @@ function CorrigirLocalModal({
   const [buscando, setBuscando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const buscaEnderecoRef = useRef<AbortController | null>(null)
+  useEffect(() => {
+    buscaEnderecoRef.current?.abort()
+    setBuscando(false)
+    setErro(null)
+    return () => buscaEnderecoRef.current?.abort()
+  }, [txt])
 
   async function interpretar() {
     setErro(null)
     const t = txt.trim()
     if (!t) return
-    const g = t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || t.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)
-    if (g) return setCoord({ lat: Number(g[1]), lng: Number(g[2]) })
-    const c = t.match(/^\s*(-?\d+[.,]\d+)\s*[,;]\s*(-?\d+[.,]\d+)\s*$/)
-    if (c) return setCoord({ lat: Number(c[1].replace(',', '.')), lng: Number(c[2].replace(',', '.')) })
+    const local = parseLocalizacaoMapa(t)
+    if (local.tipo === 'coordenadas') return setCoord({ lat: local.lat, lng: local.lng })
+    if (local.tipo !== 'endereco') return setErro(local.mensagem)
+    buscaEnderecoRef.current?.abort()
+    const ac = new AbortController()
+    buscaEnderecoRef.current = ac
     setBuscando(true)
     try {
-      const busca = [t, parada.cidade, parada.uf].filter(Boolean).join(', ')
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(busca)}`)
+      const busca = [local.endereco, parada.cidade, parada.uf].filter(Boolean).join(', ')
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(busca)}`, { signal: ac.signal })
       const j = await r.json()
+      if (ac.signal.aborted || buscaEnderecoRef.current !== ac) return
       if (Array.isArray(j) && j[0]) {
-        setCoord({ lat: Number(j[0].lat), lng: Number(j[0].lon) })
+        const ponto = parseLocalizacaoMapa(`${j[0].lat}, ${j[0].lon}`)
+        if (ponto.tipo !== 'coordenadas') { setErro('O endereço retornou coordenadas inválidas. Cole as coordenadas do Google Maps.'); return }
+        setCoord({ lat: ponto.lat, lng: ponto.lng })
         setEndereco(String(j[0].display_name).split(',').slice(0, 4).join(',').trim())
       } else {
-        setErro('Não achei esse endereço. Cole o link do Google Maps da propriedade — é mais confiável pra zona rural.')
+        setErro('Não achei esse endereço. Cole as coordenadas ou o link completo do Google Maps da propriedade.')
       }
     } catch {
-      setErro('Falha na busca. Cole o link do Google Maps.')
+      if (!ac.signal.aborted) setErro('Falha na busca. Cole as coordenadas ou o link completo do Google Maps.')
     } finally {
-      setBuscando(false)
+      if (buscaEnderecoRef.current === ac) setBuscando(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[1400] bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onFechar}>
-      <div className="bg-surface w-full md:max-w-md rounded-t-2xl md:rounded-2xl border border-border p-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+    <MapaDialog title="Confirmar localização do cliente" onClose={onFechar} sheet>
+      <div className="min-h-0 overflow-y-auto p-4 pb-safe flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="text-[15px] font-semibold text-ink truncate">{nomeParada(parada)}</div>
             <div className="text-[12px] text-ink-muted">{[parada.cidade, parada.uf].filter(Boolean).join('/') || '—'}</div>
           </div>
-          <button onClick={onFechar} className="h-8 w-8 shrink-0 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
+          <button onClick={onFechar} aria-label="Fechar confirmação de localização" className="h-10 w-10 shrink-0 rounded-md hover:bg-surface-2 text-ink-muted">✕</button>
         </div>
 
         <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 px-3 py-2 text-[11.5px] text-amber-900 dark:text-amber-300 leading-snug">
@@ -2979,13 +3001,15 @@ function CorrigirLocalModal({
         </div>
 
         <div>
-          <div className="text-[12px] text-ink-muted mb-1">Link do Google Maps, coordenada ou endereço</div>
+          <label htmlFor="mapa-localizacao" className="block text-[12px] text-ink-muted mb-1">Link completo do Google Maps, coordenada ou endereço</label>
           <div className="flex gap-1.5">
             <input
+              id="mapa-localizacao"
               value={txt}
-              onChange={e => { setTxt(e.target.value); setCoord(null) }}
+              onChange={e => { setTxt(e.target.value); setCoord(null); setEndereco('') }}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void interpretar() } }}
-              placeholder="https://maps.app.goo.gl/… ou -5.0919, -42.8034"
+              placeholder="Link completo ou -5.0919, -42.8034"
+              aria-describedby="mapa-localizacao-ajuda"
               className="flex-1 min-w-0 h-10 px-3 rounded-lg bg-surface-2 border border-border text-[13.5px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
             />
             <button onClick={() => void interpretar()} disabled={buscando || !txt.trim()}
@@ -2993,7 +3017,8 @@ function CorrigirLocalModal({
               {buscando ? '…' : 'Ler'}
             </button>
           </div>
-          {erro && <div className="text-[11.5px] text-red-600 mt-1.5 leading-snug">{erro}</div>}
+          <p id="mapa-localizacao-ajuda" className="mt-1.5 text-[11px] text-ink-faint leading-snug">Para links curtos, abra no Google Maps e copie as coordenadas.</p>
+          {erro && <div role="alert" className="text-[11.5px] text-red-600 mt-1.5 leading-snug">{erro}</div>}
         </div>
 
         {coord && (
@@ -3004,6 +3029,7 @@ function CorrigirLocalModal({
                className="text-[11.5px] font-semibold text-accent">conferir no Google Maps ↗</a>
             <input
               value={endereco} onChange={e => setEndereco(e.target.value)}
+              aria-label="Endereço da localização, opcional"
               placeholder="Endereço (opcional, pra registro)"
               className="mt-2 w-full h-8 px-2 rounded-md bg-surface border border-border text-[12px] text-ink placeholder:text-ink-faint outline-none"
             />
@@ -3023,6 +3049,6 @@ function CorrigirLocalModal({
           {salvando ? 'Salvando…' : 'Confirmar localização'}
         </button>
       </div>
-    </div>
+    </MapaDialog>
   )
 }

@@ -170,8 +170,9 @@ export interface OrcamentoLinha {
   vendedor: string | null
 }
 
-export function useListaOrcamentos() {
+export function useListaOrcamentos(opts?: { enabled?: boolean }) {
   return useQuery<OrcamentoLinha[]>({
+    enabled: opts?.enabled ?? true,
     queryKey: ['lista-orcamentos-mapa', 'json'],
     queryFn: async () => {
       return rpcInteira<OrcamentoLinha>('lista_orcamentos_mapa')
