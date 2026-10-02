@@ -40,7 +40,7 @@ export function normalizarOrigem(origem: string | null | undefined): string {
 export function agruparVendasPorEstado(pedidosAtivos: Pedido[]): Array<{ estado: string; valor: number; quantidade: number }> {
   const grupos = new Map<string, { estado: string; valor: number; quantidade: number }>()
   for (const pedido of pedidosAtivos) {
-    const estado = pedido.estado || 'N/D'
+    const estado = pedido.estado?.trim().toUpperCase() || 'N/D'
     const grupo = grupos.get(estado) || { estado, valor: 0, quantidade: 0 }
     grupo.valor += getValorPedido(pedido); grupo.quantidade += 1; grupos.set(estado, grupo)
   }

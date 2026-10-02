@@ -2,8 +2,9 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { buscarVendasControle, analisarVendasControle } from "@/lib/controle-vendas-api";
 import { expandirPedidos, getValorPedido, consultaPertenceAoContexto, percentualComissaoControle, exportacaoPertenceAoContexto, type Pedido } from "@/components/controle/vendas-original/calculos";
 import { pedidosFisicos, valorVendaFisica, agruparFabricasVendidas, agruparEquipamentosVendidos, agruparVendasPorEstado, normalizarOrigem } from "@/components/controle/vendas-original/graficos-dados";
-import { evolucaoAnualPDFPronta, exigirEvolucaoAnualPDF, escalaBarrasPDF, segmentoBarraPDF, dadosConversaoOrigemPDF, capturaMapaPDF } from "@/components/controle/vendas-original/pdf-graficos";
+import { evolucaoAnualPDFPronta, exigirEvolucaoAnualPDF, capturaMapaPDF } from "@/components/controle/vendas-original/pdf-graficos";
 import { periodoMesAnterior } from "@/components/controle/vendas-original/periodos";
+import { diasEntreContatoEVenda, conversaoNoMesmoMes } from "@/components/controle/vendas-original/conversao-dados";
 import "@/components/controle/vendas-original/theme.css";
 import { Button } from "@/components/pedido-ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/pedido-ui/card";
@@ -19,11 +20,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCan } from "@/hooks/usePermissions";
 import { podeNavegarPedidosVendas, linhasVisiveisVendas } from "@/components/controle/vendas-original/navegacao";
 import { toast as sonnerToast } from "sonner";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { criarRelatorioVendasPDF, type RelatorioVendasPDFInput } from "@/components/controle/vendas-original/relatorio-pdf";
+import { resumoAuditoriaVendas } from "@/components/controle/vendas-original/auditoria-dados";
 import html2canvas from "html2canvas";
 import BrazilMap from "@/components/controle/vendas-original/BrazilMap";
-import { registerNotoSansFont, sanitizePdfText } from "@/components/controle/vendas-original/pdfFonts";
+
 import DOMPurify from "dompurify";
 import { useVendedoresControleVendas, mesclarVendedoresComDados, normalizarVendedor, type VendedorControleVendas } from "@/hooks/useVendedoresControleVendas";
 
@@ -422,26 +423,19 @@ export default function ControleVendasOriginal() {
   // Lista de pedidos respeitando o filtro de valor mínimo (mantém todos os status)
   const pedidosFiltrados = pedidos.filter(passaFiltroValorMinimo);
   // Métricas principais - excluir cancelados dos cálculos de valor
-  const pedidosAtivos = pedidosFiltrados.filter(p => p.status !== 'CANCELADO');
+  const auditoriaVendas = resumoAuditoriaVendas(pedidos, valorMinimoFiltro);
+  const { pedidosAtivos, totalCarregados, totalCancelados, excluidosPorValor } = auditoriaVendas;
   const vendasFisicas = pedidosFisicos(pedidosAtivos);
   const valorTotal = pedidosAtivos.reduce((acc, p) => acc + getValorPedido(p), 0);
   const totalVendas = pedidosAtivos.length;
   const ticketMedio = totalVendas > 0 ? valorTotal / totalVendas : 0;
 
   // ===== Auditoria do filtro =====
-  const totalCarregados = pedidos.length;
-  const totalCancelados = pedidos.filter(p => p.status === 'CANCELADO').length;
-  const excluidosPorValor = filtroValorMinimo
-    ? pedidos.filter(p => !passaFiltroValorMinimo(p)).length
-    : 0;
-  const comDataContato = vendasFisicas.filter(p => p.data_primeiro_contato && p.data_venda).length;
+
+  const comDataContato = vendasFisicas.filter(p => diasEntreContatoEVenda(p.data_primeiro_contato, p.data_venda) !== null).length;
   const comEstado = pedidosAtivos.filter(p => p.estado && p.estado !== 'N/D').length;
   const comOrigem = pedidosAtivos.filter(p => normalizarOrigem(p.fonte_origem) !== 'Não informado').length;
-  const conversoesMesmoMes = vendasFisicas.filter(p => {
-    if (!p.data_primeiro_contato || !p.data_venda) return false;
-    return p.data_primeiro_contato.split('T')[0].substring(0, 7) ===
-           p.data_venda.split('T')[0].substring(0, 7);
-  }).length;
+  const conversoesMesmoMes = vendasFisicas.filter(p => conversaoNoMesmoMes(p.data_primeiro_contato, p.data_venda)).length;
 
   // Nomes usados nas agregações por vendedor: cadastrados + quem de fato tem venda
   // no período. A união é o que garante que a soma do ranking feche com o
@@ -502,34 +496,15 @@ export default function ControleVendasOriginal() {
   const dadosFabricas = agruparFabricasVendidas(pedidosAtivos);
   const dadosEquipamentos = agruparEquipamentosVendidos(pedidosAtivos);
 
-  const parseDateSafe = (dateStr: string | null | undefined): Date | null => {
-    if (!dateStr) return null;
-    try {
-      // Remove timezone e pega apenas a parte da data
-      const cleanDate = dateStr.split('T')[0];
-      const parsed = new Date(cleanDate + 'T00:00:00');
-      return isNaN(parsed.getTime()) ? null : parsed;
-    } catch {
-      return null;
-    }
-  };
-
   // Tempo médio de fechamento por vendedor
   const tempoMedioPorVendedor = nomesVendedores.map(vendedor => {
-    const vendas = pedidosFisicos(pedidosAtivos.filter(p => normalizarVendedor(p.vendedor) === vendedor)).filter(p => {
-      const inicio = parseDateSafe(p.data_primeiro_contato);
-      const fim = parseDateSafe(p.data_venda);
-      return inicio !== null && fim !== null;
-    });
+    const vendas = pedidosFisicos(pedidosAtivos.filter(p => normalizarVendedor(p.vendedor) === vendedor))
+      .filter(p => diasEntreContatoEVenda(p.data_primeiro_contato, p.data_venda) !== null);
     
     if (vendas.length === 0) return { vendedor, dias: 0, quantidade: 0 };
     
     const totalDias = vendas.reduce((acc, p) => {
-      const inicio = parseDateSafe(p.data_primeiro_contato)!;
-      const fim = parseDateSafe(p.data_venda)!;
-      const diffMs = fim.getTime() - inicio.getTime();
-      const diffDias = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
-      return acc + diffDias;
+      return acc + diasEntreContatoEVenda(p.data_primeiro_contato, p.data_venda)!;
     }, 0);
     
     return {
@@ -553,23 +528,14 @@ export default function ControleVendasOriginal() {
     return acc;
   }, {} as Record<string, { origem: string; valor: number; quantidade: number }>);
 
-  const dadosOrigem = Object.values(vendasPorOrigem)
-    .sort((a, b) => b.valor - a.valor)
-    .slice(0, 8);
+  const dadosTodasOrigens = Object.values(vendasPorOrigem)
+    .sort((a, b) => b.valor - a.valor);
+  const dadosOrigem = dadosTodasOrigens.slice(0, 8);
 
   // Conversões Rápidas - vendas que começaram e fecharam no mesmo mês por origem
   const conversoesRapidas = vendasFisicas.reduce((acc, pedido) => {
-    const dataContato = pedido.data_primeiro_contato;
-    const dataVenda = pedido.data_venda;
-    
-    if (!dataContato || !dataVenda) return acc;
-    
-    // Extrai mês/ano de cada data
-    const contatoMesAno = dataContato.split('T')[0].substring(0, 7); // YYYY-MM
-    const vendaMesAno = dataVenda.split('T')[0].substring(0, 7);
-    
-    // Só conta se começou e fechou no mesmo mês
-    if (contatoMesAno === vendaMesAno) {
+    // Contato posterior à venda não representa uma conversão válida.
+    if (conversaoNoMesmoMes(pedido.data_primeiro_contato, pedido.data_venda)) {
       const origem = normalizarOrigem(pedido.fonte_origem);
       if (!acc[origem]) {
         acc[origem] = { origem, quantidade: 0, valor: 0 };
@@ -587,13 +553,8 @@ export default function ControleVendasOriginal() {
 
   // Tempo médio de conversão por origem
   const tempoConversaoPorOrigem = vendasFisicas.reduce((acc, pedido) => {
-    const dataContato = parseDateSafe(pedido.data_primeiro_contato);
-    const dataVenda = parseDateSafe(pedido.data_venda);
-    
-    if (!dataContato || !dataVenda) return acc;
-    
-    const diffMs = dataVenda.getTime() - dataContato.getTime();
-    const dias = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+    const dias = diasEntreContatoEVenda(pedido.data_primeiro_contato, pedido.data_venda);
+    if (dias === null) return acc;
     
     const origem = normalizarOrigem(pedido.fonte_origem);
     if (!acc[origem]) {
@@ -626,947 +587,86 @@ export default function ControleVendasOriginal() {
   };
 
   const exportarPDF = async () => {
-    if (loading || !authContexto || !pedidos.length) return;
+    if (loading || exportingPDF || !authContexto || !pedidos.length) return;
     const capturaPDF = { dono: authContexto, consulta: contextoAnalise, geracaoPedidos: geracaoPedidos.current, geracaoAno: geracaoAno.current };
-    const exportacaoVigente = () => exportacaoPertenceAoContexto(capturaPDF, {
-      montado: montado.current, dono: authAtual.current, consulta: analiseAtual.current,
-      geracaoPedidos: geracaoPedidos.current, geracaoAno: geracaoAno.current, acessoNegado: bloqueioAtualRef.current === authContexto,
-    });
+    const validarExportacao = () => {
+      if (!exportacaoPertenceAoContexto(capturaPDF, {
+        montado: montado.current, dono: authAtual.current, consulta: analiseAtual.current,
+        geracaoPedidos: geracaoPedidos.current, geracaoAno: geracaoAno.current, acessoNegado: bloqueioAtualRef.current === authContexto,
+      })) throw new Error('A sessão ou os filtros mudaram. Gere o relatório novamente.');
+    };
     setExportingPDF(true);
-    const toastDestaExportacao = sonnerToast.loading("Gerando relatório premium...");
+    const toastDestaExportacao = sonnerToast.loading('Gerando relatório premium...');
     pdfToast.current = toastDestaExportacao;
-    
     try {
       exigirEvolucaoAnualPDF(estadoEvolucaoAnual);
-      const doc = new jsPDF();
-      
-      // Tenta carregar fonte Unicode para suporte completo a acentos
-      const useNotoSans = await registerNotoSansFont(doc);
-      if (!exportacaoVigente()) throw new Error('A sessão ou o período mudou. Gere o relatório novamente.');
-      const fontName = useNotoSans ? 'NotoSans' : 'helvetica';
-      
-      const BRANORTE_COLORS = {
-        azul: [25, 55, 109] as [number, number, number],
-        verde: [0, 153, 51] as [number, number, number],
-        cinza: [248, 250, 252] as [number, number, number],
-        destaque: [59, 130, 246] as [number, number, number],
-        dourado: [234, 179, 8] as [number, number, number],
+      validarExportacao();
+      const geradoEm = new Date();
+      const dataPeriodo = periodoFiltro === 'mes-passado'
+        ? new Date(geradoEm.getFullYear(), geradoEm.getMonth() - 1, 1)
+        : periodoFiltro === 'mes-especifico'
+          ? new Date(anoSelecionado, mesSelecionado, 1) : geradoEm;
+      const periodo = periodoFiltro === 'trimestre-atual'
+        ? `Trimestre ${Math.floor(geradoEm.getMonth() / 3) + 1} de ${geradoEm.getFullYear()}`
+        : periodoFiltro === 'ano-atual'
+          ? `Ano de ${geradoEm.getFullYear()}`
+          : format(dataPeriodo, "MMMM 'de' yyyy", { locale: ptBR });
+      // Congela as séries da mesma renderização antes da captura assíncrona do mapa.
+      const dadosPDF: Omit<RelatorioVendasPDFInput, 'mapa'> = {
+        geradoEm, periodo: periodo.charAt(0).toUpperCase() + periodo.slice(1),
+        anoEvolucao: anoAtual, vendedor: vendedorFiltro === 'todos' ? 'Todos os vendedores' : vendedorFiltro,
+        valorMinimo: valorMinimoFiltro, valorTotal, totalRegistros: totalVendas, ticketMedio,
+        pedidosUnicos: vendasFisicas.length, ajustes: pedidosAtivos.filter(p => p._isAjuste).length,
+        cancelados: pedidosFiltrados.filter(p => p.status === 'CANCELADO').length, meta: metaGeral,
+        vendedores: vendasPorVendedor.map(v => ({ ...v })), evolucao: dadosVendasPorMes.map(v => ({ ...v })),
+        fabricas: dadosFabricas.map(v => ({ ...v })), equipamentos: dadosEquipamentos.map(v => ({ ...v })),
+        fechamento: tempoMedioPorVendedor.map(v => ({ ...v })), estados: dadosEstados.map(v => ({ ...v })),
+        origens: dadosTodasOrigens.map(v => ({ ...v })), rapidas: dadosConversoesRapidas.map(v => ({ ...v })),
+        conversao: dadosTempoConversao.map(v => ({ ...v })), registros: pedidosFiltrados.map(p => ({ ...p })),
+        // Mantém a regra do Controle e o escopo global autorizado da consulta.
+        comissoes: isAdmin ? vendasPorVendedor
+          .filter(v => v.valor > 0 && !['DANIEL', 'PATRICK'].includes(normalizarVendedor(v.vendedor)))
+          .map(v => {
+            const config = vendedoresFonte.find(vc => normalizarVendedor(vc.nome) === normalizarVendedor(v.vendedor));
+            const percentual = percentualComissaoControle(config?.percentual_comissao);
+            return { vendedor: v.vendedor, quantidade: v.quantidade, valor: v.valor, percentual, comissao: v.valor * percentual / 100 };
+          }) : undefined,
       };
-      
-      const addWatermark = () => {
-        doc.setFontSize(60);
-        doc.setTextColor(200, 200, 200);
-        doc.setFont(fontName, "bold");
-        doc.text("BRANORTE", 105, 150, { align: 'center', angle: 45 });
-        doc.setTextColor(0, 0, 0);
-      };
-
-      // Adiciona header padrão em páginas
-      const addPageHeader = (title: string) => {
-        doc.setFillColor(...BRANORTE_COLORS.azul);
-        doc.rect(0, 0, 210, 18, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(12);
-        doc.setFont(fontName, "bold");
-        doc.text("BRANORTE - Relatorio Executivo", 15, 12);
-        doc.setFontSize(9);
-        doc.setFont(fontName, "normal");
-        doc.text(sanitizePdfText(title), 195, 12, { align: 'right' });
-      };
-
-      // Garante que um bloco (título + tabela) caiba na página atual.
-      // Se não couber, adiciona nova página e reposiciona yPos.
-      const ensureSpace = (estHeight: number, continuationTitle: string) => {
-        const pageH = 297; // A4 mm
-        const bottomMargin = 22;
-        if (yPos + estHeight > pageH - bottomMargin) {
-          doc.addPage();
-          addPageHeader(continuationTitle);
-          yPos = 28;
-        }
-      };
-
-      // Estima altura de uma tabela autoTable simples (em mm)
-      const estimateTableHeight = (rowCount: number, rowH = 7, headerH = 9, titleH = 10) => {
-        return titleH + headerH + (rowCount * rowH) + 6;
-      };
-
-      // ============ PÁGINA 1: Capa + KPIs ============
-      // Header Executivo
-      doc.setFillColor(...BRANORTE_COLORS.azul);
-      doc.rect(0, 0, 210, 50, 'F');
-      
-      // Faixa dourada decorativa
-      doc.setFillColor(...BRANORTE_COLORS.dourado);
-      doc.rect(0, 50, 210, 3, 'F');
-      
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(32);
-      doc.setFont(fontName, "bold");
-      doc.text("BRANORTE", 15, 25);
-      doc.setFontSize(14);
-      doc.setFont(fontName, "normal");
-      doc.text("Relatorio Executivo de Vendas", 15, 38);
-      
-      // Badge Premium removido conforme solicitação
-      
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
-      doc.setFont(fontName, "normal");
-      doc.text(`Gerado: ${format(new Date(), "dd/MM/yyyy 'as' HH:mm")}`, 195, 45, { align: 'right' });
-      
-      // Período do relatório (sem emoji)
-      let yPos = 65;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(11);
-      doc.setFont(fontName, "bold");
-      // Calcular período real com mês e ano
-      const hoje = new Date();
-      let periodoTexto = '';
-      if (periodoFiltro === 'mes-atual') {
-        periodoTexto = format(hoje, "MMMM 'de' yyyy", { locale: ptBR });
-      } else if (periodoFiltro === 'mes-passado') {
-        const mesPassado = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-        periodoTexto = format(mesPassado, "MMMM 'de' yyyy", { locale: ptBR });
-      } else if (periodoFiltro === 'mes-especifico') {
-        const mesEspecifico = new Date(anoSelecionado, mesSelecionado, 1);
-        periodoTexto = format(mesEspecifico, "MMMM 'de' yyyy", { locale: ptBR });
-      } else if (periodoFiltro === 'trimestre-atual') {
-        const inicioTrimestre = new Date(hoje.getFullYear(), Math.floor(hoje.getMonth() / 3) * 3, 1);
-        periodoTexto = `Trimestre ${Math.floor(hoje.getMonth() / 3) + 1} de ${hoje.getFullYear()}`;
-      } else {
-        periodoTexto = `Ano de ${hoje.getFullYear()}`;
-      }
-      // Capitalizar primeira letra
-      periodoTexto = periodoTexto.charAt(0).toUpperCase() + periodoTexto.slice(1);
-      doc.text(`Periodo: ${periodoTexto}${vendedorFiltro !== 'todos' ? ` | Vendedor: ${vendedorFiltro}` : ''}`, 15, yPos);
-      
-      // ============ SEÇÃO: KPIs VISUAIS ============
-      yPos = 80;
-      doc.setFontSize(14);
-      doc.setFont(fontName, "bold");
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.text("INDICADORES PRINCIPAIS", 15, yPos);
-      
-      yPos += 8;
-      // 3 cards distribuídos em toda a largura útil (180mm de 15 a 195)
-      const cardW = 58;
-      const cardGap = 3;
-      // Card 1: Total Vendas
-      doc.setFillColor(240, 253, 244);
-      doc.roundedRect(15, yPos, cardW, 35, 3, 3, 'F');
-      doc.setDrawColor(...BRANORTE_COLORS.verde);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(15, yPos, cardW, 35, 3, 3, 'S');
-      doc.setTextColor(100, 100, 100);
-      doc.setFontSize(9);
-      doc.setFont(fontName, "normal");
-      doc.text("TOTAL EM VENDAS", 15 + cardW / 2, yPos + 11, { align: 'center' });
-      doc.setTextColor(...BRANORTE_COLORS.verde);
-      doc.setFontSize(13);
-      doc.setFont(fontName, "bold");
-      doc.text(formatarValor(valorTotal), 15 + cardW / 2, yPos + 24, { align: 'center' });
-      
-      // Card 2: Pedidos
-      const card2X = 15 + cardW + cardGap;
-      doc.setFillColor(239, 246, 255);
-      doc.roundedRect(card2X, yPos, cardW, 35, 3, 3, 'F');
-      doc.setDrawColor(...BRANORTE_COLORS.destaque);
-      doc.roundedRect(card2X, yPos, cardW, 35, 3, 3, 'S');
-      doc.setTextColor(100, 100, 100);
-      doc.setFontSize(9);
-      doc.setFont(fontName, "normal");
-      doc.text("REGISTROS DE VENDA", card2X + cardW / 2, yPos + 11, { align: 'center' });
-      doc.setTextColor(...BRANORTE_COLORS.destaque);
-      doc.setFontSize(20);
-      doc.setFont(fontName, "bold");
-      doc.text(totalVendas.toString(), card2X + cardW / 2, yPos + 26, { align: 'center' });
-      
-      // Card 3: Ticket Medio
-      const card3X = 15 + (cardW + cardGap) * 2;
-      doc.setFillColor(254, 249, 195);
-      doc.roundedRect(card3X, yPos, cardW, 35, 3, 3, 'F');
-      doc.setDrawColor(...BRANORTE_COLORS.dourado);
-      doc.roundedRect(card3X, yPos, cardW, 35, 3, 3, 'S');
-      doc.setTextColor(100, 100, 100);
-      doc.setFontSize(9);
-      doc.setFont(fontName, "normal");
-      doc.text("TICKET MEDIO", card3X + cardW / 2, yPos + 11, { align: 'center' });
-      doc.setTextColor(161, 98, 7);
-      doc.setFontSize(13);
-      doc.setFont(fontName, "bold");
-      doc.text(formatarValor(ticketMedio), card3X + cardW / 2, yPos + 24, { align: 'center' });
-      
-      // ============ SEÇÃO: Ranking de Vendedores (sem emojis) ============
-      yPos += 45;
-      doc.setFontSize(12);
-      doc.setFont(fontName, "bold");
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.text("RANKING DE VENDEDORES", 15, yPos);
-      yPos += 3;
-      
-      // Dados do ranking SEM emojis
-      const rankingData = vendasPorVendedor
-        .filter(v => v.valor !== 0)
-        .map((v, i) => [
-          `${i + 1}o`,
-          sanitizePdfText(v.vendedor),
-          v.quantidade.toString(),
-          formatarValor(v.valor),
-          formatarValor(v.ticketMedio)
-        ]);
-      
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Pos.', 'Vendedor', 'Vendas', 'Valor Total', 'Ticket Medio']],
-        body: rankingData,
-        theme: 'striped',
-        headStyles: { 
-          fillColor: BRANORTE_COLORS.azul, 
-          textColor: [255, 255, 255], 
-          fontSize: 9,
-          fontStyle: 'bold',
-          font: fontName
-        },
-        bodyStyles: { fontSize: 9, font: fontName },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
-        columnStyles: { 
-          0: { halign: 'center', cellWidth: 20 }, 
-          2: { halign: 'center' },
-          3: { halign: 'right', fontStyle: 'bold' }, 
-          4: { halign: 'right' } 
-        },
-        margin: { left: 15, right: 15, top: 25, bottom: 20 }
-      });
-      
-      yPos = (doc as any).lastAutoTable.finalY + 10;
-      
-      // Tempo Médio de Fechamento (sem emoji)
-      const tempoVendedoresAtivos = tempoMedioPorVendedor.filter(v => v.quantidade > 0);
-      if (tempoVendedoresAtivos.length > 0) {
-        ensureSpace(estimateTableHeight(tempoVendedoresAtivos.length), "Tempo Medio de Fechamento");
-        doc.setFontSize(12);
-        doc.setFont(fontName, "bold");
-        doc.setTextColor(...BRANORTE_COLORS.azul);
-        doc.text("TEMPO MEDIO DE FECHAMENTO", 15, yPos);
-        yPos += 3;
-        
-        const tempoData = tempoVendedoresAtivos
-          .map((v, i) => [
-            `${i + 1}o`,
-            sanitizePdfText(v.vendedor),
-            `${v.dias} dias`,
-            v.quantidade.toString()
-          ]);
-        
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Pos.', 'Vendedor', 'Tempo Medio', 'Vendas']],
-          body: tempoData,
-          theme: 'striped',
-          headStyles: { fillColor: BRANORTE_COLORS.azul, textColor: [255, 255, 255], fontSize: 9, font: fontName },
-          bodyStyles: { fontSize: 9, font: fontName },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: { 0: { halign: 'center', cellWidth: 15 }, 2: { halign: 'center' }, 3: { halign: 'center' } },
-          margin: { left: 15, right: 15, top: 25, bottom: 20 },
-          rowPageBreak: 'avoid'
-        });
-        yPos = (doc as any).lastAutoTable.finalY + 10;
-      }
-      
-      // ============ HELPERS DE GRÁFICOS NATIVOS (vetoriais, sem html2canvas) ============
-      const truncarTexto = (txt: string, max: number) => {
-        const s = sanitizePdfText(txt || '');
-        return s.length > max ? s.slice(0, max - 1) + '…' : s;
-      };
-
-      const formatarValorCurto = (v: number) => {
-        if (Math.abs(v) >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-        if (Math.abs(v) >= 1_000) return `R$ ${(v / 1_000).toFixed(0)}k`;
-        return `R$ ${v.toFixed(0)}`;
-      };
-
-      // Barras verticais (evolução temporal)
-      const drawVerticalBarChart = (opts: {
-        x: number; y: number; w: number; h: number;
-        data: { label: string; valor: number }[];
-        color: [number, number, number];
-        formatValor: (v: number) => string;
-      }) => {
-        const { x, y, w, h, data, color, formatValor } = opts;
-        const padL = 18, padR = 6, padT = 10, padB = 14;
-        const innerX = x + padL;
-        const innerY = y + padT;
-        const innerW = w - padL - padR;
-        const innerH = h - padT - padB;
-        const escala = escalaBarrasPDF(data.map(d => d.valor));
-
-        // Eixos
-        doc.setDrawColor(200, 200, 200);
-        doc.setLineWidth(0.2);
-        doc.line(innerX, innerY, innerX, innerY + innerH);
-        const zeroY = innerY + (1 - escala.zero) * innerH;
-        doc.line(innerX, zeroY, innerX + innerW, zeroY);
-
-        // Grid e labels Y (4 níveis)
-        doc.setFontSize(6);
-        doc.setTextColor(140, 140, 140);
-        for (let i = 0; i <= 4; i++) {
-          const gy = innerY + innerH - (innerH * i) / 4;
-          doc.setDrawColor(235, 235, 235);
-          doc.line(innerX, gy, innerX + innerW, gy);
-          const v = escala.minimo + (escala.maximo - escala.minimo) * i / 4;
-          doc.text(formatarValorCurto(v), innerX - 1, gy + 1.2, { align: 'right' });
-        }
-
-        if (data.length === 0) return;
-        const slot = innerW / data.length;
-        const barW = Math.min(slot * 0.65, 14);
-
-        data.forEach((d, i) => {
-          const cx = innerX + slot * i + slot / 2;
-          const segmento = segmentoBarraPDF(d.valor, escala);
-          const bh = segmento.comprimento * innerH;
-          const by = innerY + (1 - segmento.inicio - segmento.comprimento) * innerH;
-          doc.setFillColor(...color);
-          if (bh > 0) doc.rect(cx - barW / 2, by, barW, bh, 'F');
-
-          // Label X (mês)
-          doc.setFontSize(6);
-          doc.setTextColor(100, 100, 100);
-          doc.text(truncarTexto(d.label, 7), cx, innerY + innerH + 4, { align: 'center' });
-
-          // Valor no topo (se couber)
-          if (bh > 6) {
-            doc.setFontSize(5.5);
-            doc.setTextColor(60, 60, 60);
-            const valorY = d.valor < 0 ? by + bh - 2 : by - 1;
-            if (d.valor < 0) doc.setTextColor(255, 255, 255);
-            doc.text(formatValor(d.valor), cx, valorY, { align: 'center' });
-          }
-        });
-      };
-
-      // Barras horizontais (rankings)
-      const drawHorizontalBarChart = (opts: {
-        x: number; y: number; w: number;
-        data: { label: string; valor: number; sufixo?: string }[];
-        color: [number, number, number];
-        formatValor: (v: number) => string;
-        rowH?: number;
-      }) => {
-        const { x, y, w, data, color, formatValor } = opts;
-        const rowH = opts.rowH ?? 7;
-        const labelW = 38;
-        const valueW = 26;
-        const barAreaX = x + labelW + 2;
-        const barAreaW = w - labelW - valueW - 4;
-        const escala = escalaBarrasPDF(data.map(d => d.valor));
-        let ry = y;
-        if (escala.minimo < 0) {
-          doc.setFont(fontName, 'normal');
-          doc.setFontSize(6);
-          doc.setTextColor(100, 100, 100);
-          doc.text('0', barAreaX + escala.zero * barAreaW, y - 1, { align: 'center' });
-        }
-
-        data.forEach(d => {
-          // Label
-          doc.setFontSize(7.5);
-          doc.setFont(fontName, 'normal');
-          const linhas = doc.splitTextToSize(sanitizePdfText(d.label), labelW - 2) as string[];
-          const altura = Math.max(rowH, linhas.length * 3.2 + 2);
-          if (ry + altura > 272) {
-            doc.addPage();
-            addPageHeader('Graficos de Performance - continuacao');
-            ry = 28;
-            doc.setFontSize(7.5);
-            doc.setFont(fontName, 'normal');
-          }
-          doc.setTextColor(60, 60, 60);
-          const centroY = ry + altura / 2;
-          doc.text(linhas, x, centroY - (linhas.length - 1) * 1.6 + 1.4);
-
-          // Trilho
-          const trackH = rowH * 0.55;
-          const trackY = centroY - trackH / 2;
-          doc.setFillColor(238, 240, 245);
-          doc.roundedRect(barAreaX, trackY, barAreaW, trackH, 0.8, 0.8, 'F');
-
-          // Barra
-          const segmento = segmentoBarraPDF(d.valor, escala);
-          const bw = segmento.comprimento * barAreaW;
-          doc.setFillColor(...color);
-          if (bw > 0) doc.roundedRect(barAreaX + segmento.inicio * barAreaW, trackY, bw, trackH, Math.min(0.8, bw / 2), 0.8, 'F');
-          if (escala.minimo < 0) {
-            const zeroX = barAreaX + escala.zero * barAreaW;
-            doc.setDrawColor(160, 160, 160);
-            doc.line(zeroX, trackY, zeroX, trackY + trackH);
-          }
-
-          // Valor à direita
-          doc.setFontSize(7.5);
-          doc.setFont(fontName, 'bold');
-          doc.setTextColor(40, 40, 40);
-          const valorTexto = formatValor(d.valor) + (d.sufixo || '');
-          const larguraValor = doc.getTextWidth(valorTexto);
-          if (larguraValor > valueW) doc.setFontSize(7.5 * valueW / larguraValor);
-          doc.text(valorTexto, x + w, centroY + 1.4, { align: 'right' });
-          ry += altura;
-        });
-        return ry;
-      };
-
-      // ============ PÁGINA 2: Gráficos Nativos ============
-      doc.addPage();
-      addPageHeader("Graficos de Performance");
-
-      yPos = 28;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(12);
-      doc.setFont(fontName, "bold");
-      doc.text(`EVOLUCAO DE VENDAS - ANO ${anoAtual}`, 15, yPos);
-
-      const evolucaoDados = (dadosVendasPorMes || [])
-        .slice(-12)
-        .map((m: any) => ({ label: m.mes, valor: Number(m.valor) || 0 }));
-
-      drawVerticalBarChart({
-        x: 15, y: yPos + 3, w: 180, h: 70,
-        data: evolucaoDados,
-        color: BRANORTE_COLORS.destaque,
-        formatValor: formatarValorCurto,
-      });
-
-      // Vendas por Vendedor (top 10) - barras horizontais
-      yPos = yPos + 80;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(12);
-      doc.setFont(fontName, "bold");
-      doc.text("VENDAS POR VENDEDOR (TOP 10)", 15, yPos);
-
-      const vendedoresChart = vendasPorVendedor
-        .filter(v => v.valor !== 0)
-        .slice(0, 10)
-        .map(v => ({ label: v.vendedor, valor: v.valor }));
-
-      drawHorizontalBarChart({
-        x: 15, y: yPos + 4, w: 180,
-        data: vendedoresChart,
-        color: BRANORTE_COLORS.verde,
-        formatValor: formatarValorCurto,
-        rowH: 8,
-      });
-
-      // ============ PÁGINA 2.5: Origem + Conversões + Tempo ============
-      doc.addPage();
-      addPageHeader("Origem, Conversoes e Tempo");
-
-      yPos = 28;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(12);
-      doc.setFont(fontName, "bold");
-      doc.text("ORIGEM DOS CLIENTES (TOP 8)", 15, yPos);
-      doc.setFontSize(8);
-      doc.setFont(fontName, "normal");
-      doc.setTextColor(100, 100, 100);
-      doc.text("Valor de vendas por canal de origem (top 8)", 15, yPos + 5);
-
-      const origemChart = (dadosOrigem || [])
-        .filter(o => o.origem !== 'N/D')
-        .slice(0, 8)
-        .map(o => ({ label: o.origem, valor: o.valor }));
-
-      yPos = drawHorizontalBarChart({
-        x: 15, y: yPos + 9, w: 180,
-        data: origemChart,
-        color: BRANORTE_COLORS.azul,
-        formatValor: formatarValorCurto,
-        rowH: 7.5,
-      });
-
-      yPos += 8;
-      ensureSpace(30, 'Conversoes Rapidas');
-
-      // Conversões Rápidas
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(12);
-      doc.setFont(fontName, "bold");
-      doc.text("CONVERSOES RAPIDAS (TOP 8)", 15, yPos);
-      doc.setFontSize(8);
-      doc.setFont(fontName, "normal");
-      doc.setTextColor(100, 100, 100);
-      doc.text("Vendas iniciadas e fechadas no mesmo mes", 15, yPos + 5);
-
-      const conversoesChart = (dadosConversoesRapidas || [])
-        .filter(c => c.origem !== 'N/D')
-        .slice(0, 8)
-        .map(c => ({ label: c.origem, valor: c.quantidade }));
-
-      yPos = drawHorizontalBarChart({
-        x: 15, y: yPos + 9, w: 180,
-        data: conversoesChart,
-        color: BRANORTE_COLORS.verde,
-        formatValor: (v) => v.toString(),
-        rowH: 7.5,
-      });
-
-      yPos += 8;
-      ensureSpace(30, 'Tempo Medio de Conversao');
-
-      // Tempo Médio de Conversão
-      {
-        doc.setTextColor(...BRANORTE_COLORS.azul);
-        doc.setFontSize(12);
-        doc.setFont(fontName, "bold");
-        doc.text("TEMPO MEDIO DE CONVERSAO", 15, yPos);
-        doc.setFontSize(8);
-        doc.setFont(fontName, "normal");
-        doc.setTextColor(100, 100, 100);
-        doc.text("Dias entre primeiro contato e fechamento, por origem", 15, yPos + 5);
-
-        const tempoChart = dadosConversaoOrigemPDF(dadosTempoConversao);
-
-        drawHorizontalBarChart({
-          x: 15, y: yPos + 9, w: 180,
-          data: tempoChart,
-          color: BRANORTE_COLORS.dourado,
-          formatValor: (v) => v.toString(),
-          rowH: 7,
-        });
-      }
-
-
-      // ============ PÁGINA 3: MAPA DO BRASIL (página dedicada) ============
-      doc.addPage();
-      addPageHeader("Distribuicao Geografica");
-      
-      yPos = 42;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(14);
-      doc.setFont(fontName, "bold");
-      doc.text("MAPA DE VENDAS POR ESTADO", 15, yPos);
-      
-      // Linha decorativa abaixo do título
-      doc.setDrawColor(...BRANORTE_COLORS.verde);
-      doc.setLineWidth(0.8);
-      doc.line(15, yPos + 2, 90, yPos + 2);
-      
-      yPos += 8;
-      
-      if (!mapaRef.current) throw new Error('O mapa ainda não está disponível. Gere o relatório novamente.');
-      {
-          // O relatorio e impresso em preto e branco, entao o mapa vai SEMPRE claro,
-          // independente do tema da tela. `onclone` mexe so na copia que o html2canvas
-          // renderiza — a tela nao pisca e o tema do usuario nao muda.
-          const { canvas, imgData } = await capturaMapaPDF(async () => {
-          const canvas = await html2canvas(mapaRef.current!, {
-            backgroundColor: '#ffffff',
-            scale: 3,
-            useCORS: true,
-            logging: false,
-            onclone: (clonedDoc) => {
-              // Tira o modo escuro da copia: BrazilMap usa tokens semanticos
-              // (text-foreground, bg-card, border-border), entao sem a classe `dark`
-              // tudo resolve para a paleta clara — texto escuro sobre fundo branco.
-              clonedDoc.documentElement.classList.remove('dark');
-              clonedDoc.body.classList.remove('dark');
-              clonedDoc.querySelectorAll('.controle-vendas-original').forEach(el => (el as HTMLElement).classList.add('controle-vendas-original-pdf'));
-              // O wrapper e `bg-white dark:bg-card`; com a classe removida ja seria
-              // branco, mas fixo aqui para nao depender da ordem de cascata.
-              const wrapper = clonedDoc.querySelector('[data-pdf-mapa]') as HTMLElement | null;
-              if (wrapper) {
-                wrapper.style.backgroundColor = '#ffffff';
-                wrapper.style.color = '#0f172a';
-
-                // Divisa dos estados: no mapa ela e BRANCA, o que so funciona sobre
-                // fundo escuro. Em fundo branco os estados "sem dados" (#e8f5f5, quase
-                // branco) ficariam sem contorno e o mapa viraria uma mancha unica no
-                // papel. Troco por cinza medio, que sobrevive ao preto e branco.
-                wrapper.querySelectorAll('svg path').forEach((p) => {
-                  const path = p as SVGPathElement;
-                  if ((path.getAttribute('stroke') || '').toLowerCase() === '#ffffff') {
-                    path.setAttribute('stroke', '#94a3b8'); // slate-400
-                    path.setAttribute('stroke-width', '0.6');
-                  }
-                });
-              }
+      const mapaElemento = mapaRef.current;
+      if (!mapaElemento) throw new Error('O mapa ainda não está disponível. Gere o relatório novamente.');
+      const mapa = await capturaMapaPDF(async () => {
+        const canvas = await html2canvas(mapaElemento, {
+          backgroundColor: '#ffffff', scale: 1.5, useCORS: true, logging: false,
+          onclone: clonedDoc => {
+            clonedDoc.documentElement.classList.remove('dark');
+            clonedDoc.body.classList.remove('dark');
+            clonedDoc.querySelectorAll('.controle-vendas-original').forEach(el => (el as HTMLElement).classList.add('controle-vendas-original-pdf'));
+            const wrapper = clonedDoc.querySelector('[data-pdf-mapa]') as HTMLElement | null;
+            if (wrapper) {
+              wrapper.style.backgroundColor = '#ffffff';
+              wrapper.style.color = '#0f172a';
+              wrapper.querySelectorAll('svg path').forEach(path => {
+                if ((path.getAttribute('stroke') || '').toLowerCase() === '#ffffff') {
+                  path.setAttribute('stroke', '#94a3b8');
+                  path.setAttribute('stroke-width', '0.6');
+                }
+              });
             }
-          });
-          if (!canvas.width || !canvas.height) throw new Error('Mapa sem dimensões');
-          return { canvas, imgData: canvas.toDataURL('image/png') };
-          });
-          
-          // Largura disponível na página (A4: 210mm) com margens de 15mm
-          const pageWidth = 210;
-          const margin = 15;
-          const maxWidth = pageWidth - (margin * 2); // 180mm
-          const maxHeight = 210; // espaço vertical disponível
-          
-          // Calcular dimensões mantendo proporção real do canvas capturado
-          const ratio = canvas.width / canvas.height;
-          let imgWidth = maxWidth;
-          let imgHeight = imgWidth / ratio;
-          
-          if (imgHeight > maxHeight) {
-            imgHeight = maxHeight;
-            imgWidth = imgHeight * ratio;
-          }
-          
-          // Centralizar horizontalmente
-          const xPos = (pageWidth - imgWidth) / 2;
-          
-          // Card branco com borda cinza clara: em impressao P&B, fundo escuro vira
-          // uma mancha de toner e o texto do painel some. Borda em vez de preenchimento
-          // colorido mantem o card delimitado no papel.
-          const padding = 3;
-          doc.setFillColor(255, 255, 255);
-          doc.setDrawColor(203, 213, 225); // slate-300
-          doc.setLineWidth(0.3);
-          doc.roundedRect(
-            xPos - padding,
-            yPos - padding,
-            imgWidth + (padding * 2),
-            imgHeight + (padding * 2),
-            3, 3, 'FD'
-          );
-          
-          doc.addImage(imgData, 'PNG', xPos, yPos, imgWidth, imgHeight);
-          
-          // Legenda explicativa abaixo do mapa
-          const legendY = yPos + imgHeight + padding + 8;
-          doc.setFontSize(8);
-          doc.setFont(fontName, "italic");
-          doc.setTextColor(120, 120, 120);
-          doc.text(
-            "Intensidade da cor representa o volume de vendas por estado. Numeros indicam ranking dos top 10.",
-            pageWidth / 2,
-            legendY,
-            { align: 'center' }
-          );
-      }
-      
-      // ============ PÁGINA 4: Estados + Origens (Tabelas) ============
-      doc.addPage();
-      addPageHeader("Analise por Estado e Origem");
-      
-      yPos = 28;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(14);
-      doc.setFont(fontName, "bold");
-      doc.text("TOP 10 ESTADOS", 15, yPos);
-      yPos += 5;
-      
-      const estadosTop10 = dadosEstados
-        .filter(e => e.estado !== 'N/D')
-        .slice(0, 10)
-        .map((e, i) => [
-          `${i + 1}o`,
-          sanitizePdfText(e.estado),
-          e.quantidade.toString(),
-          formatarValor(e.valor)
-        ]);
-      
-      if (estadosTop10.length > 0) {
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Pos.', 'UF', 'Qtd', 'Valor']],
-          body: estadosTop10,
-          theme: 'striped',
-          headStyles: { fillColor: BRANORTE_COLORS.azul, textColor: [255, 255, 255], fontSize: 9, font: fontName },
-          bodyStyles: { fontSize: 9, font: fontName },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: { 
-            0: { halign: 'center', cellWidth: 20 }, 
-            1: { cellWidth: 25 },
-            2: { halign: 'center', cellWidth: 20 }, 
-            3: { halign: 'right' } 
           },
-          margin: { left: 15, right: 105, top: 25, bottom: 20 },
-          tableWidth: 90
         });
-        yPos = (doc as any).lastAutoTable.finalY + 10;
-      }
-      
-      // Origem dos Clientes
-      const origensData = dadosOrigem
-        .filter(o => o.origem !== 'N/D')
-        .map((o, i) => [
-          `${i + 1}o`,
-          sanitizePdfText(o.origem),
-          o.quantidade.toString(),
-          formatarValor(o.valor)
-        ]);
-      
-      if (origensData.length > 0) {
-        ensureSpace(estimateTableHeight(origensData.length), "Origem dos Clientes");
-        doc.setFontSize(14);
-        doc.setFont(fontName, "bold");
-        doc.setTextColor(...BRANORTE_COLORS.azul);
-        doc.text("ORIGEM DOS CLIENTES", 15, yPos);
-        yPos += 5;
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Pos.', 'Origem', 'Pedidos', 'Valor Total']],
-          body: origensData,
-          theme: 'striped',
-          headStyles: { fillColor: BRANORTE_COLORS.azul, textColor: [255, 255, 255], fontSize: 9, font: fontName },
-          bodyStyles: { fontSize: 9, font: fontName },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: { 0: { halign: 'center', cellWidth: 20 }, 2: { halign: 'center' }, 3: { halign: 'right' } },
-          margin: { left: 15, right: 15, top: 25, bottom: 20 },
-          rowPageBreak: 'avoid'
-        });
-        yPos = (doc as any).lastAutoTable.finalY + 10;
-      }
-      
-      // Conversões Rápidas
-      if (dadosConversoesRapidas.length > 0) {
-        const conversoesData = dadosConversoesRapidas
-          .filter(c => c.origem !== 'N/D')
-          .map((c, i) => [
-            `${i + 1}o`,
-            sanitizePdfText(c.origem),
-            c.quantidade.toString(),
-            formatarValor(c.valor)
-          ]);
-        
-        ensureSpace(estimateTableHeight(conversoesData.length), "Conversoes Rapidas");
-        doc.setFontSize(14);
-        doc.setFont(fontName, "bold");
-        doc.setTextColor(...BRANORTE_COLORS.azul);
-        doc.text("CONVERSOES RAPIDAS (mesmo mes)", 15, yPos);
-        yPos += 5;
-        
-        autoTable(doc, {
-          startY: yPos,
-          head: [['Pos.', 'Origem', 'Conversoes', 'Valor']],
-          body: conversoesData,
-          theme: 'striped',
-          headStyles: { fillColor: BRANORTE_COLORS.verde, textColor: [255, 255, 255], fontSize: 9, font: fontName },
-          bodyStyles: { fontSize: 9, font: fontName },
-          alternateRowStyles: { fillColor: [240, 253, 244] },
-          columnStyles: { 0: { halign: 'center', cellWidth: 20 }, 2: { halign: 'center' }, 3: { halign: 'right' } },
-          margin: { left: 15, right: 15, top: 25, bottom: 20 },
-          rowPageBreak: 'avoid'
-        });
-      }
-      
-      // ============ PÁGINA 4: Listagem Completa de Vendas ============
-      doc.addPage();
-      addPageHeader("Listagem de Vendas");
-      
-      yPos = 28;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(14);
-      doc.setFont(fontName, "bold");
-      doc.text(`LISTAGEM DE VENDAS (${pedidosFiltrados.length} registros)`, 15, yPos);
-      yPos += 5;
-      doc.setFontSize(7);
-      doc.setFont(fontName, "normal");
-      doc.setTextColor(71, 85, 105);
-      doc.text("Pedidos compartilhados aparecem por vendedor. Cancelados nao entram no total de vendas ativas.", 15, yPos);
-      yPos += 5;
-      
-      const vendasData = pedidosFiltrados.map(p => [
-        sanitizePdfText(p.pedido_numero || p.numero_orcamento),
-        sanitizePdfText((p.cliente || '-').substring(0, 30)),
-        sanitizePdfText(p.vendedor),
-        sanitizePdfText(p.estado || '-'),
-        formatarData(p.data_venda),
-        formatarValor(getValorPedido(p)),
-        sanitizePdfText(p.status)
-      ]);
-      
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Pedido', 'Cliente', 'Vendedor', 'UF', 'Data', 'Valor', 'Status']],
-        body: vendasData,
-        theme: 'striped',
-        headStyles: { 
-          fillColor: BRANORTE_COLORS.azul, 
-          textColor: [255, 255, 255], 
-          fontSize: 7,
-          fontStyle: 'bold',
-          font: fontName
-        },
-        bodyStyles: { fontSize: 7, font: fontName },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
-        columnStyles: { 
-          0: { cellWidth: 22 }, 
-          1: { cellWidth: 45 },
-          2: { cellWidth: 22 },
-          3: { cellWidth: 12, halign: 'center' },
-          4: { cellWidth: 18, halign: 'center' },
-          5: { halign: 'right', fontStyle: 'bold' },
-          6: { halign: 'center', cellWidth: 22 }
-        },
-        margin: { left: 10, right: 10, top: 25, bottom: 20 },
-        didDrawPage: (data) => {
-          // Header em páginas extras geradas pelo autoTable
-          if (data.pageNumber > 1) {
-            addPageHeader("Listagem de Vendas (continuacao)");
-          }
-        },
-        didParseCell: (data) => {
-          if (data.column.index === 6 && data.section === 'body') {
-            const status = data.cell.raw as string;
-            if (status === 'FECHADO') {
-              data.cell.styles.textColor = [0, 153, 51];
-              data.cell.styles.fontStyle = 'bold';
-            } else if (status === 'CANCELADO') {
-              data.cell.styles.textColor = [220, 38, 38];
-            }
-          }
-        }
+        if (!canvas.width || !canvas.height) throw new Error('Mapa sem dimensões.');
+        return { imagem: canvas.toDataURL('image/jpeg', 0.88), largura: canvas.width, altura: canvas.height };
       });
-      
-      // Rodapé com totais
-      const finalY = (doc as any).lastAutoTable.finalY + 5;
-      if (finalY < 270) {
-        doc.setFillColor(240, 240, 240);
-        doc.roundedRect(10, finalY, 190, 20, 3, 3, 'F');
-        doc.setTextColor(...BRANORTE_COLORS.azul);
-        doc.setFontSize(10);
-        doc.setFont(fontName, "bold");
-        doc.text(`VENDAS ATIVAS: ${totalVendas} | ${formatarValor(valorTotal)}`, 105, finalY + 12, { align: 'center' });
-      }
-      
-      // ============ PÁGINA 5: Resumo (removido Fábricas e Equipamentos Separados) ============
-      
-      // ============ PÁGINA DE COMISSÕES ============
-      // A tabela geral pertence somente ao escopo global autorizado.
-      if (isAdmin) {
-      doc.addPage();
-      addPageHeader("Comissoes dos Vendedores");
-      
-      yPos = 32;
-      doc.setTextColor(...BRANORTE_COLORS.azul);
-      doc.setFontSize(14);
-      doc.setFont(fontName, "bold");
-      doc.text("COMISSOES DO PERIODO", 15, yPos);
-      yPos += 5;
-      
-      // Percentuais vêm da mesma origem privada autorizada desta consulta.
-      const vendedoresComissao = vendedoresFonte.map(v => ({
-        nome: normalizarVendedor(v.nome), comissao_percentual: v.percentual_comissao,
-      }));
-
-      // Vendedores que não devem aparecer no relatório de comissões
-      const vendedoresExcluidos = ['DANIEL', 'PATRICK'];
-      
-      // Calcular comissões baseadas nas vendas do período (excluindo vendedores específicos)
-      const comissoesData = vendasPorVendedor
-        .filter(v => v.valor > 0 && !vendedoresExcluidos.includes(v.vendedor.toUpperCase()))
-        .map((v, i) => {
-          const vendedorConfig = vendedoresComissao.find(
-            vc => vc.nome === v.vendedor.toUpperCase()
-          );
-          // Regra explícita do Controle original para cadastro ausente/zero.
-          const percentual = percentualComissaoControle(vendedorConfig?.comissao_percentual);
-          const comissaoCalculada = v.valor * (percentual / 100);
-          
-          return {
-            posicao: `${i + 1}o`,
-            vendedor: sanitizePdfText(v.vendedor),
-            vendas: v.quantidade,
-            valorVendas: v.valor,
-            percentual: `${percentual}%`,
-            comissao: comissaoCalculada
-          };
-        });
-      
-      // Tabela de comissões
-      const comissoesTableData = comissoesData.map(c => [
-        c.posicao,
-        c.vendedor,
-        c.vendas.toString(),
-        formatarValor(c.valorVendas),
-        c.percentual,
-        formatarValor(c.comissao)
-      ]);
-      
-      autoTable(doc, {
-        startY: yPos,
-        head: [['Pos.', 'Vendedor', 'Vendas', 'Total Vendas', '%', 'Comissao']],
-        body: comissoesTableData,
-        theme: 'striped',
-        headStyles: { 
-          fillColor: BRANORTE_COLORS.verde, 
-          textColor: [255, 255, 255], 
-          fontSize: 9,
-          fontStyle: 'bold',
-          font: fontName
-        },
-        bodyStyles: { fontSize: 9, font: fontName },
-        alternateRowStyles: { fillColor: [240, 253, 244] },
-        columnStyles: { 
-          0: { halign: 'center', cellWidth: 15 }, 
-          1: { cellWidth: 40 },
-          2: { halign: 'center', cellWidth: 20 },
-          3: { halign: 'right', cellWidth: 35 },
-          4: { halign: 'center', cellWidth: 15 },
-          5: { halign: 'right', cellWidth: 35, textColor: BRANORTE_COLORS.verde, fontStyle: 'bold' }
-        },
-        margin: { left: 15, right: 15, top: 25, bottom: 20 },
-        rowPageBreak: 'avoid'
-      });
-      
-      yPos = (doc as any).lastAutoTable.finalY + 15;
-      
-      // Total de comissões e vendas dos vendedores comissionáveis (consistente com a tabela acima)
-      const totalComissoes = comissoesData.reduce((acc, c) => acc + c.comissao, 0);
-      const totalVendasComissionaveis = comissoesData.reduce((acc, c) => acc + c.valorVendas, 0);
-      const totalPedidosComissionaveis = comissoesData.reduce((acc, c) => acc + c.vendas, 0);
-      const ticketMedioComissionavel = totalPedidosComissionaveis > 0
-        ? totalVendasComissionaveis / totalPedidosComissionaveis
-        : 0;
-      
-      // Resumo Executivo Final
-      yPos += 45;
-      if (yPos < 220) {
-        doc.setFillColor(...BRANORTE_COLORS.azul);
-        doc.roundedRect(15, yPos, 180, 50, 5, 5, 'F');
-        
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(14);
-        doc.setFont(fontName, "bold");
-        doc.text("RESUMO EXECUTIVO", 105, yPos + 15, { align: 'center' });
-        
-        doc.setFontSize(11);
-        doc.setFont(fontName, "normal");
-        doc.text(`Total em Vendas: ${formatarValor(valorTotal)}`, 35, yPos + 28);
-        doc.text(`Vendedores: ${comissoesData.length}`, 130, yPos + 28);
-      }
-      
-      // ============ PAGINAÇÃO DINÂMICA FINAL ============
-      // Adiciona watermark e rodapé em TODAS as páginas (paginação dinâmica)
-      }
-      const totalPages = doc.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        
-        // Watermark removido conforme solicitação
-        
-        // Rodapé em todas as páginas
-        doc.setFontSize(8);
-        doc.setFont(fontName, "normal");
-        doc.setTextColor(100, 100, 100);
-        doc.text(`Pagina ${i} de ${totalPages}`, 105, 290, { align: 'center' });
-        doc.text('BRANORTE - Documento Confidencial', 15, 290);
-        doc.text(format(new Date(), 'dd/MM/yyyy HH:mm'), 180, 290);
-      }
-      
-      if (!exportacaoVigente()) throw new Error('A sessão ou o período mudou. Gere o relatório novamente.');
-      doc.save(`relatorio-vendas-premium-${format(new Date(), "dd-MM-yyyy")}.pdf`);
+      validarExportacao();
+      const doc = await criarRelatorioVendasPDF({ ...dadosPDF, mapa }, validarExportacao);
+      validarExportacao();
+      doc.save(`relatorio-vendas-premium-${format(geradoEm, 'dd-MM-yyyy')}.pdf`);
       sonnerToast.dismiss(toastDestaExportacao);
-      sonnerToast.success("Relatorio Premium exportado com sucesso!");
-      
+      sonnerToast.success('Relatório Premium exportado com sucesso!');
     } catch (error) {
       if (!montado.current || authAtual.current !== authContexto) return;
-      console.error("Erro ao exportar PDF:", error);
       sonnerToast.dismiss(toastDestaExportacao);
-      sonnerToast.error("Erro ao exportar relatorio");
+      sonnerToast.error(error instanceof Error ? error.message : 'Erro ao exportar relatório.');
     } finally {
       sonnerToast.dismiss(toastDestaExportacao);
       if (pdfToast.current === toastDestaExportacao) pdfToast.current = null;
@@ -1579,7 +679,7 @@ export default function ControleVendasOriginal() {
 
   // Filtros locais da Listagem de Vendas
   const listagemMeta = useMemo(() => ({
-    ufs: Array.from(new Set(pedidosFiltrados.map(p => (p.estado || '').toUpperCase()).filter(Boolean))).sort(),
+    ufs: Array.from(new Set(pedidosFiltrados.map(p => (p.estado || '').trim().toUpperCase()).filter(Boolean))).sort(),
     vends: Array.from(new Set(pedidosFiltrados.map(p => (p.vendedor || '').toUpperCase()).filter(Boolean))).sort(),
     origens: Array.from(new Set(pedidosFiltrados.map(p => normalizarOrigem(p.fonte_origem)).filter(o => o && o !== '-'))).sort(),
     statuses: Array.from(new Set(pedidosFiltrados.map(p => (p.status || '').toUpperCase()).filter(Boolean))).sort(),
@@ -1588,7 +688,7 @@ export default function ControleVendasOriginal() {
   const listagemFiltrada = useMemo(() => {
     const busca = tabelaBusca.trim().toLowerCase();
     return pedidosFiltrados.filter(p => {
-      if (tabelaFiltroUF !== 'todos' && (p.estado || '').toUpperCase() !== tabelaFiltroUF) return false;
+      if (tabelaFiltroUF !== 'todos' && (p.estado || '').trim().toUpperCase() !== tabelaFiltroUF) return false;
       if (tabelaFiltroVendedor !== 'todos' && (p.vendedor || '').toUpperCase() !== tabelaFiltroVendedor) return false;
       if (tabelaFiltroOrigem !== 'todos' && normalizarOrigem(p.fonte_origem) !== tabelaFiltroOrigem) return false;
       if (tabelaFiltroStatus !== 'todos' && (p.status || '').toUpperCase() !== tabelaFiltroStatus) return false;
@@ -1816,7 +916,7 @@ export default function ControleVendasOriginal() {
                     <div className="flex justify-between"><span className="text-muted-foreground">Carregados (período)</span><span className="font-mono font-semibold">{totalCarregados}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">— Cancelados</span><span className="font-mono">{totalCancelados}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">— Abaixo do valor mínimo</span><span className="font-mono">{excluidosPorValor}</span></div>
-                    <div className="flex justify-between border-t border-border/40 pt-1 mt-1"><span className="font-semibold">= Pedidos ativos (base)</span><span className="font-mono font-bold text-primary">{pedidosAtivos.length}</span></div>
+                    <div className="flex justify-between border-t border-border/40 pt-1 mt-1"><span className="font-semibold">= Registros ativos (base)</span><span className="font-mono font-bold text-primary">{pedidosAtivos.length}</span></div>
                   </div>
 
                   <div className="rounded-md border border-border/40 bg-card p-3 space-y-1">
@@ -1826,7 +926,7 @@ export default function ControleVendasOriginal() {
                       {filtroValorMinimo ? <> ≥ <span className="font-semibold text-foreground">{valorMinimoFiltro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</span></> : ' (sem corte)'}
                     </p>
                     <p className="text-muted-foreground mt-2">
-                      Vendedor 1/2 dividem o crédito 50/50, mas o filtro avalia o <strong>valor total</strong> — vendas grandes divididas não são cortadas indevidamente.
+                      Vendas compartilhadas usam os valores atribuídos a cada vendedor; sem valores definidos, a divisão é 50/50 em centavos. O filtro avalia o <strong>valor total do pedido</strong>.
                     </p>
                   </div>
 

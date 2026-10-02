@@ -136,3 +136,60 @@ test('filtro normalizado vale para vendedor principal e pedidos sem compartilham
 test('nenhuma linha fora das datas da consulta é incorporada', () => {
   assert.deepEqual(expandirPedidos([pedido({ data_venda: '2026-09-01' })], '2026-10-01', '2026-10-31', 'todos'), [])
 })
+
+for (const valor of [100.01, -100.01, 0.01, -0.01]) {
+  test(`split implícito de ${valor} fecha em centavos e atribui excedente assinado ao vendedor 1`, () => {
+    const linhas = expandirPedidos([pedido({ vendedor_2: 'BETA', valor_total: valor })], '2026-10-01', '2026-10-31', 'todos')
+    const valores = linhas.map(getValorPedido)
+    const centavos = Math.round(valor * 100)
+    const primeiro = Math.sign(centavos) * Math.ceil(Math.abs(centavos) / 2)
+    assert.deepEqual(valores, [primeiro / 100, (centavos - primeiro) / 100])
+    assert.equal(valores.reduce((s, v) => s + Math.round(v * 100), 0), centavos)
+    assert.equal(valores.reduce((s, v) => s + Number(v.toFixed(2)), 0).toFixed(2), valor.toFixed(2))
+  })
+}
+
+for (const ajuste of [0.01, -0.01, 100.01, -100.01]) {
+  test(`ajuste datado ${ajuste} mantém a base compartilhada idêntica antes e durante seu mês`, () => {
+    const original = pedido({ vendedor_2: 'BETA', valor_total: 100.01, data_venda: '2026-09-10',
+      ajuste_valor: ajuste, ajuste_data: '2026-10-05' })
+    const venda = expandirPedidos([original], '2026-09-01', '2026-09-30', 'todos')
+    const alteracao = expandirPedidos([original], '2026-10-01', '2026-10-31', 'todos')
+    const ano = expandirPedidos([original], '2026-01-01', '2026-12-31', 'todos')
+    assert.deepEqual(venda.map(getValorPedido), [50.01, 50])
+    assert.deepEqual(ano.filter(p => !p._isAjuste).map(getValorPedido), venda.map(getValorPedido))
+    const centavosAjuste = Math.round(ajuste * 100)
+    const primeiro = Math.sign(centavosAjuste) * Math.ceil(Math.abs(centavosAjuste) / 2)
+    assert.deepEqual(alteracao.map(getValorPedido), [primeiro / 100, (centavosAjuste - primeiro) / 100])
+    assert.equal(ano.reduce((s, p) => s + Math.round(getValorPedido(p) * 100), 0), 10001 + centavosAjuste)
+    for (const vendedor of ['ALFA', 'BETA']) {
+      assert.deepEqual(expandirPedidos([original], '2026-01-01', '2026-12-31', vendedor).map(getValorPedido),
+        ano.filter(p => p.vendedor === vendedor).map(getValorPedido))
+    }
+  })
+}
+
+test('ajuste ímpar datado preserva splits explícitos finais e não introduz meio centavo', () => {
+  const original = pedido({ vendedor_2: 'BETA', data_venda: '2026-09-10', valor_total: 100.02,
+    valor_split_v1: 75.02, valor_split_v2: 25.01, ajuste_valor: 0.01, ajuste_data: '2026-10-05' })
+  const ano = expandirPedidos([original], '2026-01-01', '2026-12-31', 'todos')
+  assert.deepEqual(ano.filter(p => !p._isAjuste).map(getValorPedido), [75.01, 25.01])
+  assert.deepEqual(ano.filter(p => p._isAjuste).map(getValorPedido), [0.01, 0])
+  assert.equal(ano.filter(p => p.vendedor === 'ALFA').reduce((s, p) => s + Math.round(getValorPedido(p) * 100), 0), 7502)
+  assert.equal(ano.filter(p => p.vendedor === 'BETA').reduce((s, p) => s + Math.round(getValorPedido(p) * 100), 0), 2501)
+})
+
+test('um split explícito com centavos mantém seu valor e complementa o outro pelo total final', () => {
+  const original = pedido({ vendedor_2: 'BETA', valor_total: 100.01, valor_split_v1: 60.01,
+    ajuste_valor: 0.01, ajuste_data: '2026-10-05' })
+  const ano = expandirPedidos([original], '2026-01-01', '2026-12-31', 'todos')
+  assert.deepEqual(ano.filter(p => !p._isAjuste).map(getValorPedido), [60, 40.01])
+  assert.deepEqual(ano.filter(p => p._isAjuste).map(getValorPedido), [0.01, 0])
+})
+
+test('sem data de ajuste as parcelas da base e do ajuste continuam juntas na venda', () => {
+  const original = pedido({ vendedor_2: 'BETA', valor_total: 100.01, ajuste_valor: 0.01 })
+  const linhas = expandirPedidos([original], '2026-10-01', '2026-10-31', 'todos')
+  assert.deepEqual(linhas.map(getValorPedido), [50.02, 50])
+  assert.ok(linhas.every(p => !p._isAjuste))
+})

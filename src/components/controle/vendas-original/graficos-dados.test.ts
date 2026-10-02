@@ -141,3 +141,17 @@ test('dataset dos estados conserva todas as 27 UFs e o valor total sem limite de
   assert.equal(estados.reduce((s: number, e: { valor: number }) => s + e.valor, 0), 27000)
   assert.deepEqual(new Set(estados.map((e: { estado: string }) => e.estado)), new Set(ufs))
 })
+
+test('caixa e espaços da UF não fragmentam o valor nem sobrescrevem o estado no mapa', () => {
+  const linhas = [
+    pedido({ id: 'rs-maiusculo', estado: 'RS', valor_total: 100 }),
+    pedido({ id: 'rs-minusculo', estado: 'rs', valor_total: 200 }),
+    pedido({ id: 'rs-espacos', estado: ' rs ', valor_total: 300 }),
+  ]
+  assert.deepEqual(dados.agruparVendasPorEstado(linhas), [{ estado: 'RS', valor: 600, quantidade: 3 }])
+})
+
+test('UF ausente ou vazia usa um único grupo não informado mantendo seu valor', () => {
+  const linhas = [pedido({ id: 'nulo', estado: null }), pedido({ id: 'vazio', estado: '  ' })]
+  assert.deepEqual(dados.agruparVendasPorEstado(linhas), [{ estado: 'N/D', valor: 2000, quantidade: 2 }])
+})

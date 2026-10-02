@@ -56,6 +56,14 @@ export const getValorPedido = (pedido: Pedido): number => {
   return valor + ajuste;
 };
 
+// O centavo excedente pertence ao vendedor 1, com o sinal do valor original.
+// Base e ajuste são repartidos separadamente para a data do ajuste não mudar a venda.
+const ratearCentavos = (valor: number): [number, number] => {
+  const centavos = Math.round(valor * 100);
+  const primeiro = Math.sign(centavos) * Math.ceil(Math.abs(centavos) / 2);
+  return [primeiro / 100, (centavos - primeiro) / 100];
+};
+
 // Valores explícitos de split representam o total final no ranking original.
 // Um ajuste datado pertence ao seu próprio período e é dividido 50/50, como
 // nas comissões: subtrai essa parte da venda e a lança em ajuste_data. Sem data,
@@ -79,17 +87,20 @@ export const expandirPedidos = (
     const vendedor2 = p.vendedor_2?.trim().toUpperCase();
     const split1 = p.valor_split_v1;
     const split2 = p.valor_split_v2;
+    const ajustes = vendedor2 ? ratearCentavos(ajuste) : [ajuste, 0];
+    const bases = ratearCentavos(getValorPedido({ ...p, _valorOverride: undefined, ajuste_valor: 0 }));
+    const totaisImplicitos = bases.map((base, i) => (Math.round(base * 100) + Math.round(ajustes[i] * 100)) / 100);
     const partes = vendedor2
-      ? [{ vendedor, sufixo: '_v1', valor: split1 != null ? Number(split1) : split2 != null ? totalFinal - Number(split2) : totalFinal / 2 },
-         { vendedor: vendedor2, sufixo: '_v2', valor: split2 != null ? Number(split2) : split1 != null ? totalFinal - Number(split1) : totalFinal / 2 }]
+      ? [{ vendedor, sufixo: '_v1', valor: split1 != null ? Number(split1) : split2 != null ? (Math.round(totalFinal * 100) - Number(split2) * 100) / 100 : totaisImplicitos[0] },
+         { vendedor: vendedor2, sufixo: '_v2', valor: split2 != null ? Number(split2) : split1 != null ? (Math.round(totalFinal * 100) - Number(split1) * 100) / 100 : totaisImplicitos[1] }]
       : [{ vendedor, sufixo: '', valor: totalFinal }];
-    for (const parte of partes) {
+    for (const [indice, parte] of partes.entries()) {
       if (filtroAtivo && filtroAtivo !== 'TODOS' && filtroAtivo !== parte.vendedor) continue;
-      const ajusteParte = vendedor2 ? ajuste / 2 : ajuste;
+      const ajusteParte = ajustes[indice];
       if (dentro(dataVendaStr)) {
         expanded.push({ ...p, vendedor: parte.vendedor,
           _displayId: `${p.id}${parte.sufixo}${ajusteDatado ? '_base' : ''}`,
-          _valorOverride: parte.valor - (ajusteDatado ? ajusteParte : 0), _isAjuste: false });
+          _valorOverride: ajusteDatado ? (parte.valor * 100 - ajusteParte * 100) / 100 : parte.valor, _isAjuste: false });
       }
       if (ajusteDatado && dentro(ajusteDataStr)) {
         expanded.push({ ...p, vendedor: parte.vendedor,
