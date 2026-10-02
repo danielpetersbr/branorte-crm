@@ -10,7 +10,7 @@ import { chatRpc, useAtendimentoChat, useChatMedia, useChatHistoryMedia } from '
 import { attachmentExtension, attachmentType, CHAT_ATTACHMENT_ACCEPT, CHAT_MEDIA_BUCKET, CHAT_PRIVATE_MEDIA_PREFIX, chatMessageSenderName, displayMessageBody, privateChatMediaPath, resolveAttachmentMime, validateAttachment, type ChatMessage } from '@/lib/atendimento-chat'
 import { clearPendingSend, readPendingSend, savePendingSend, type PendingChatSend } from '@/lib/chat-pending-send'
 import { clearChatDraft, readChatDraft, saveChatDraft } from '@/lib/chat-drafts'
-import { createChatRecorder } from '@/lib/chat-recorder'
+import { disposeChatRecorder, prepareChatRecorder } from '@/lib/chat-recorder'
 import { recoverRejectedChatQuote, type RecoveredChatAttachment } from '@/lib/chat-rpc-error'
 import { ChatAttachmentPreview, ChatAvatar, ChatMedia as Media } from '@/components/chat/ChatMedia'
 import { ChatQuickReplies } from '@/components/chat/ChatQuickReplies'
@@ -59,6 +59,7 @@ export function AtendimentoWhatsApp() {
   const pendingRequest=useRef<(PendingChatSend&{file:File|null;url?:string})|null>(null)
   const recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null),cancelRecording=useRef(false)
   const sendingGeneration=useRef<number|null>(null),recordingGeneration=useRef<number|null>(null),canCompose=useRef(false),dragDepth=useRef(0)
+  const canRecordDraft=useRef(false),recordContext=useRef(''),previouslyOwnedLease=useRef(false)
   const chatGeneration=useRef(0),fileInput=useRef<HTMLInputElement>(null),bottom=useRef<HTMLDivElement>(null),scrollArea=useRef<HTMLDivElement>(null)
   const stickToBottom=useRef(true),prependHeight=useRef<number|null>(null)
   const messageInput=useRef<HTMLTextAreaElement>(null)
@@ -72,6 +73,9 @@ export function AtendimentoWhatsApp() {
   const blocked=chat.detail.isError||chat.history.isError
   const draftDisabled=!c||sending||uncertain||blocked||preparingRecording
   canCompose.current=chat.ownsLease&&!sending&&!uncertain&&!blocked
+  recordContext.current=[selected,chat.profile?.id,chat.profile?.role,chat.profile?.vendor_id].join(':')
+  const recordingAllowed=!!selected&&c?.id===selected&&!!chat.profile?.approved_at&&['admin','vendor'].includes(chat.profile.role)&&c.status==='open'&&!sending&&!uncertain&&!blocked
+  canRecordDraft.current=recordingAllowed
   const contacts=useQuery({queryKey:['crm-chat-contacts',chat.profile?.id,chat.profile?.vendor_id,contactSearch],enabled:showNew,
     queryFn:()=>chatRpc<Array<{id:string;name:string;phone:string;vendor_id:string|null}>>('contacts',{search:contactSearch})})
   useEffect(()=>{const t=setTimeout(()=>setDebounced(search),250);return()=>clearTimeout(t)},[search])
@@ -88,8 +92,13 @@ export function AtendimentoWhatsApp() {
     setReply(saved?.reply_msg_id?{reply_msg_id:saved.reply_msg_id,reply_preview:saved.reply_preview??null,reply_sender_name:saved.reply_sender_name??null}:null)
     setHistorySearch('');setHistoryDebounced('');focusAfterClaim.current=null;setRecoveredAttachment(null)
     setRecording(false);setPreparingRecording(false);setSending(false);setDraft(saved?saved.body:restored);setDraftSaveError(false);setAttachment(null);setAttachmentMenu(false);setDragging(false);setNote('');setUncertain(!!saved);stickToBottom.current=true;prependHeight.current=null
-  },[selected,chat.profile?.id])
-  useEffect(()=>{if(chat.ownsLease)return;cancelRecording.current=true;recorder.current?.state==='recording'&&recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop());setAttachmentMenu(false);setDragging(false);dragDepth.current=0},[chat.ownsLease])
+  },[selected,chat.profile?.id,chat.profile?.role,chat.profile?.vendor_id])
+  useEffect(()=>{
+    if(chat.ownsLease){previouslyOwnedLease.current=true;return}
+    if(previouslyOwnedLease.current){cancelRecording.current=true;recorder.current?.state==='recording'&&recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop())}
+    previouslyOwnedLease.current=false;setAttachmentMenu(false);setDragging(false);dragDepth.current=0
+  },[chat.ownsLease])
+  useEffect(()=>{if(recordingAllowed)return;cancelRecording.current=true;recorder.current?.state==='recording'&&recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop())},[recordingAllowed])
   useEffect(()=>{
     const area=scrollArea.current
     if(prependHeight.current!==null&&area){area.scrollTop=area.scrollHeight-prependHeight.current;prependHeight.current=null}
@@ -101,7 +110,7 @@ export function AtendimentoWhatsApp() {
     return()=>clearInterval(t)
   },[recording])
   useEffect(()=>{if(recordSeconds>=120&&recording)recorder.current?.stop()},[recordSeconds,recording])
-  useEffect(()=>()=>{chatGeneration.current++;canCompose.current=false;cancelRecording.current=true;recorder.current?.state==='recording'&&recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop())},[])
+  useEffect(()=>()=>{chatGeneration.current++;canCompose.current=false;canRecordDraft.current=false;cancelRecording.current=true;recorder.current?.state==='recording'&&recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop())},[])
 
   async function act(name:string,args:Record<string,unknown>={}) {
     try {await chat.action.mutateAsync({name,...args});return true} catch(e){toast.error((e as Error).message);return false}
@@ -135,26 +144,30 @@ export function AtendimentoWhatsApp() {
   }
   function openAttachmentPicker(accept:string){if(!canCompose.current)return;setAttachmentMenu(false);if(fileInput.current){fileInput.current.accept=accept;fileInput.current.click()}}
   async function startRecording() {
-    if(!canCompose.current||recorder.current||recordingGeneration.current!==null)return
+    if(!canRecordDraft.current||recorder.current||recordingGeneration.current!==null)return
     if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){toast.error('Este navegador não permite gravação de áudio. Envie um arquivo de áudio.');return}
-    const generation=chatGeneration.current
-    recordingGeneration.current=generation;setPreparingRecording(true)
+    const generation=chatGeneration.current,context=recordContext.current,startedWithLease=chat.ownsLease
+    const sameContext=()=>generation===chatGeneration.current&&context===recordContext.current
+    const isCurrent=()=>sameContext()&&canRecordDraft.current&&!cancelRecording.current&&(!startedWithLease||canCompose.current)
+    recordingGeneration.current=generation;cancelRecording.current=false;setPreparingRecording(true)
     try {
-      const s=await navigator.mediaDevices.getUserMedia({audio:true})
-      if(generation!==chatGeneration.current||!canCompose.current){s.getTracks().forEach(t=>t.stop());return}
-      stream.current=s;cancelRecording.current=false
-      const r=await createChatRecorder(s)
-      if(generation!==chatGeneration.current||!canCompose.current){s.getTracks().forEach(t=>t.stop());return}
+      const prepared=await prepareChatRecorder({isCurrent,onStream:s=>{stream.current=s}})
+      if(!prepared)return
+      const {stream:s,recorder:r}=prepared
+      if(!isCurrent()){disposeChatRecorder(r);s.getTracks().forEach(t=>t.stop());return}
       const mime=r.mimeType,chunks:Blob[]=[];recorder.current=r
       if(!mime.includes('ogg'))toast.info('Este áudio será enviado como arquivo de áudio. Você pode ouvi-lo antes de enviar.')
       r.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}
-      r.onerror=()=>{s.getTracks().forEach(t=>t.stop());if(generation!==chatGeneration.current||recorder.current!==r)return;cancelRecording.current=true;setRecording(false);recorder.current=null;stream.current=null;toast.error('Não foi possível gravar o áudio.')}
-      r.onstop=()=>{s.getTracks().forEach(t=>t.stop());if(generation!==chatGeneration.current||recorder.current!==r)return
-        setRecording(false);recorder.current=null;stream.current=null;if(cancelRecording.current||!canCompose.current)return
-        const blob=new Blob(chunks,{type:mime});chooseFile(new File([blob],`audio-${Date.now()}.${mime.includes('mp4')?'m4a':mime.includes('ogg')?'ogg':'webm'}`,{type:mime}))}
+      r.onerror=()=>{disposeChatRecorder(r);s.getTracks().forEach(t=>t.stop());if(!sameContext()||recorder.current!==r)return;cancelRecording.current=true;setRecording(false);recorder.current=null;stream.current=null;toast.error('Não foi possível gravar o áudio.')}
+      r.onstop=()=>{disposeChatRecorder(r);s.getTracks().forEach(t=>t.stop());if(!sameContext()||recorder.current!==r)return
+        const keepAudio=isCurrent();setRecording(false);recorder.current=null;stream.current=null;if(!keepAudio)return
+        const blob=new Blob(chunks,{type:mime}),file=new File([blob],`audio-${Date.now()}.${mime.includes('mp4')?'m4a':mime.includes('ogg')?'ogg':'webm'}`,{type:mime})
+        if(!file.size){toast.error('Nenhum áudio foi capturado. Tente gravar novamente.');return}
+        const error=validateAttachment(file);if(error){toast.error(error);return}
+        setAttachment(file);setRecoveredAttachment(null);setAttachmentMenu(false)}
       r.start(1000);setRecording(true);setRecordSeconds(0)
-    } catch(e){if(generation===chatGeneration.current){stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;recorder.current=null;toast.error((e as Error).name==='NotAllowedError'?'Permita o microfone no navegador para gravar áudio.':(e as Error).message)}}
-    finally{if(generation===chatGeneration.current){recordingGeneration.current=null;setPreparingRecording(false)}}
+    } catch(e){if(sameContext()){if(recorder.current)disposeChatRecorder(recorder.current);stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;recorder.current=null;toast.error((e as Error).name==='NotAllowedError'?'Permita o microfone no navegador para gravar áudio.':(e as Error).name==='NotFoundError'?'Nenhum microfone encontrado. Conecte um microfone e tente novamente.':(e as Error).name==='NotReadableError'?'Não foi possível acessar o microfone. Feche outros aplicativos que estejam usando-o e tente novamente.':(e as Error).message)}}
+    finally{if(sameContext()){recordingGeneration.current=null;if(!recorder.current)stream.current=null;setPreparingRecording(false)}}
   }
   async function send() {
     const generation=chatGeneration.current,user=chat.profile?.id
@@ -278,7 +291,7 @@ export function AtendimentoWhatsApp() {
             {attachment&&<ChatAttachmentPreview file={attachment} disabled={sending||uncertain} onRemove={()=>{setAttachment(null);setRecoveredAttachment(null)}}/>}
             {!attachment&&recoveredAttachment&&<div className="mb-2 rounded-lg border border-border p-3"><div className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{recoveredAttachment.filename||'Anexo preservado'}</span><button type="button" aria-label="Remover anexo preservado" disabled={sending||uncertain} onClick={()=>setRecoveredAttachment(null)}><X size={15}/></button></div><Media type={attachmentType(recoveredAttachment.mime||'')||'document'} url={recoveredMedia.data||null} filename={recoveredAttachment.filename}/></div>}
             {uncertain&&<p role="alert" className="mb-2 text-xs text-amber-500">A solicitação pode ter chegado. Confirme o mesmo envio antes de escrever outra mensagem.{pendingRequest.current?.path&&` Anexo preservado: ${pendingRequest.current.filename||'arquivo'}.`}</p>}
-            {recording?<div className="flex items-center gap-3 rounded-lg border border-danger/30 p-3"><Mic size={18} className="animate-pulse text-danger"/><span className="flex-1 text-sm">Gravando {Math.floor(recordSeconds/60)}:{String(recordSeconds%60).padStart(2,'0')} · máximo 2 min</span><button className={buttonClass} onClick={()=>{cancelRecording.current=true;recorder.current?.stop()}}>Cancelar</button><button className={buttonClass} onClick={()=>recorder.current?.stop()}><Square size={14}/>Concluir</button></div>:<div className="flex items-end gap-2">
+            {recording?<div className="flex flex-wrap items-center gap-2 rounded-lg border border-danger/30 p-3"><Mic size={18} className="shrink-0 animate-pulse text-danger"/><span className="min-w-0 flex-1 basis-36 text-sm">Gravando {Math.floor(recordSeconds/60)}:{String(recordSeconds%60).padStart(2,'0')} · máximo 2 min</span><button type="button" className={buttonClass} aria-label="Cancelar gravação" onClick={()=>{cancelRecording.current=true;recorder.current?.stop()}}>Cancelar</button><button type="button" className={buttonClass} aria-label="Parar gravação e ouvir áudio" onClick={()=>recorder.current?.stop()}><Square size={14}/>Concluir</button></div>:<div className="flex items-end gap-2">
               <input ref={fileInput} type="file" className="hidden" accept={CHAT_ATTACHMENT_ACCEPT} onChange={e=>{takeFiles(Array.from(e.target.files||[]));e.target.value=''}}/>
               <div className="relative" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setAttachmentMenu(false)}} onKeyDown={e=>{if(e.key==='Escape')setAttachmentMenu(false)}}>
                 <button type="button" className={buttonClass} title="Fotos, vídeos, áudios e documentos até 20 MB" aria-label="Anexar arquivo" aria-expanded={attachmentMenu} aria-controls="chat-attachment-options" disabled={composerDisabled} onClick={()=>setAttachmentMenu(!attachmentMenu)}><Paperclip size={18}/></button>
@@ -289,12 +302,12 @@ export function AtendimentoWhatsApp() {
               </div>
               <textarea ref={messageInput} aria-label="Mensagem ao cliente" className={cn(inputClass,'min-w-0 flex-1 resize-none min-h-[44px] max-h-32')} rows={2} maxLength={4000} placeholder={chat.ownsLease?'Escreva ou cole uma foto…':'Prepare o texto. Assuma para enviar.'} disabled={draftDisabled} value={draft} onChange={e=>editDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(!chat.ownsLease){toast.info('Assuma o atendimento para enviar sua resposta.');return}void send()}}}/>
               {chat.profile?.id&&<ChatQuickReplies key={chat.profile.id} userId={chat.profile.id} isAdmin={isAdmin} disabled={draftDisabled||recording} onSelect={body=>{const next=draft?`${draft}\n${body}`:body;if(next.length>4000){toast.error('A mensagem pode ter até 4.000 caracteres.');messageInput.current?.focus();return}editDraft(next);messageInput.current?.focus()}}/>}
-              <button className={buttonClass} aria-label={preparingRecording?'Preparando microfone':'Gravar áudio'} disabled={composerDisabled} onClick={startRecording}>{preparingRecording?<Loader2 size={18} className="animate-spin"/>:<Mic size={18}/>}</button>
+              <button type="button" className={cn(buttonClass,'shrink-0 border-accent/30 bg-accent/10 text-accent hover:bg-accent/20')} title="Gravar áudio · ouça antes de enviar" aria-label={preparingRecording?'Preparando microfone':'Gravar áudio'} disabled={!recordingAllowed||preparingRecording} onClick={startRecording}>{preparingRecording?<Loader2 size={18} className="animate-spin"/>:<Mic size={18}/>}<span className="hidden lg:inline">Áudio</span></button>
               <button className={cn(buttonClass,'bg-accent text-white border-transparent hover:bg-accent/90')} aria-label={uncertain?'Confirmar envio':'Enviar mensagem'} disabled={!chat.ownsLease||sending||preparingRecording||(!draft.trim()&&!attachment&&!recoveredAttachment&&!uncertain)||blocked} onClick={send}>{sending?<Loader2 size={18} className="animate-spin"/>:<Send size={18}/>}<span className="hidden lg:inline">{uncertain?'Confirmar envio':'Enviar'}</span></button>
             </div>}
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[10px] text-ink-faint">{draftSaveError?'Rascunho não salvo neste navegador':!uncertain&&draft?'Rascunho salvo neste navegador':chat.ownsLease?'Cole ou arraste um arquivo · até 20 MB':'Assuma para responder'}</span>
-              <p className="text-[10px] text-ink-faint">{chat.ownsLease?'Você está atendendo · número final 1144 · Enter envia, Shift+Enter quebra linha':'O rascunho fica neste navegador · anexos e microfone disponíveis após assumir'}</p>
+              <span className="text-[10px] text-ink-faint">{draftSaveError?'Rascunho não salvo neste navegador':!uncertain&&draft?'Rascunho salvo neste navegador':chat.ownsLease?'Cole ou arraste um arquivo · até 20 MB':'Assuma para enviar'}</span>
+              <p className="text-[10px] text-ink-faint">{chat.ownsLease?'Você está atendendo · número final 1144 · Enter envia, Shift+Enter quebra linha':c?.status==='resolved'?'Reabra o atendimento para gravar ou enviar':'Grave e ouça antes de assumir · áudio não salvo ao trocar de conversa'}</p>
             </div>
           </div>
         </>}

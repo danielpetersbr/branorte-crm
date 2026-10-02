@@ -11,3 +11,29 @@ export async function createChatRecorder(stream:MediaStream,runtime:RecorderRunt
     throw error
   }
 }
+
+export function disposeChatRecorder(recorder:MediaRecorder):void {
+  try {(recorder as MediaRecorder&{dispose?:()=>void}).dispose?.()} catch {}
+}
+
+export async function prepareChatRecorder({isCurrent,onStream,getStream=()=>navigator.mediaDevices.getUserMedia({audio:true}),createRecorder=createChatRecorder}:{
+  isCurrent:()=>boolean;
+  onStream?:(stream:MediaStream)=>void;
+  getStream?:()=>Promise<MediaStream>;
+  createRecorder?:(stream:MediaStream)=>Promise<MediaRecorder>;
+}):Promise<{stream:MediaStream;recorder:MediaRecorder}|null> {
+  let stream:MediaStream|null=null
+  let recorder:MediaRecorder|null=null
+  try {
+    stream=await getStream()
+    if(!isCurrent()){stream.getTracks().forEach(track=>track.stop());return null}
+    onStream?.(stream)
+    recorder=await createRecorder(stream)
+    if(!isCurrent()){disposeChatRecorder(recorder);stream.getTracks().forEach(track=>track.stop());return null}
+    return {stream,recorder}
+  } catch(error) {
+    if(recorder)disposeChatRecorder(recorder)
+    stream?.getTracks().forEach(track=>track.stop())
+    throw error
+  }
+}
