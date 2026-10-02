@@ -33,7 +33,8 @@ begin
   perform public.crm_chat('create_tag','{"name":"TESTE ROLLBACK"}');
   perform public.crm_chat('tags',jsonb_build_object('id',cid,'tags',jsonb_build_array('TESTE ROLLBACK')));
   perform public.crm_chat('note',jsonb_build_object('id',cid,'body','Nota interna teste'));
-  perform public.crm_chat('resolve',jsonb_build_object('id',cid,'session',sess));
+  perform public.crm_chat('resolve',jsonb_build_object('id',cid,'session',sess,'reason_id',
+    (select etiqueta_id_wascript::text from public.wascript_etiquetas where vendedor_nome='ANA' and public.wa_status_da_etiqueta(etiqueta_nome)='FECHADO' order by etiqueta_id_wascript limit 1)));
   perform public.crm_chat('reopen',jsonb_build_object('id',cid,'session',sess));
   perform set_config('request.jwt.claim.sub',adm::text,true);
   perform public.crm_chat('assign',jsonb_build_object('id',cid,'vendor',other.vendor_id));

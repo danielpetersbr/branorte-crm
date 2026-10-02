@@ -177,11 +177,11 @@ begin
  perform public.crm_chat('send',jsonb_build_object('id',cid,'session',sess,'request',request2,'body','Already answered'));
  execute 'reset role';
  update public.wa_scheduled_messages set status='failed',sent_at=now(),wa_msg_id='FAILHASH' where crm_request_id=request2;
- if (select count(*) from private.crm_chat_response_events)<>1 then raise exception 'Failed send measured response'; end if;
+ if (select count(*) from private.crm_chat_response_events where conversation_id=cid)<>1 then raise exception 'Failed send measured response'; end if;
  update public.wa_scheduled_messages set status='sent',sent_at=now(),wa_msg_id=null where crm_request_id=request2;
- if (select count(*) from private.crm_chat_response_events)<>1 then raise exception 'Unconfirmed send measured response'; end if;
+ if (select count(*) from private.crm_chat_response_events where conversation_id=cid)<>1 then raise exception 'Unconfirmed send measured response'; end if;
  update public.wa_scheduled_messages set wa_msg_id='NOWAITHASH' where crm_request_id=request2;
- if (select count(*) from private.crm_chat_response_events)<>1 then raise exception 'Already answered conversation measured response'; end if;
+ if (select count(*) from private.crm_chat_response_events where conversation_id=cid)<>1 then raise exception 'Already answered conversation measured response'; end if;
  -- A different confirmed answer before our ACK disqualifies a first-response sample.
  insert into public.wa_chat_messages(vendedor_nome,chat_id,msg_id,from_me,tipo,body,data_msg)
   values('ANA',token||'@c.us',token||'-new-question',false,'chat','Question',now()-interval '20 seconds');
@@ -192,7 +192,7 @@ begin
  insert into public.wa_chat_messages(vendedor_nome,chat_id,msg_id,from_me,tipo,body,data_msg)
   values('ANA',token||'@c.us','EXTERNAL'||replace(gen_random_uuid()::text,'-',''),true,'chat','Other answer',now()-interval '10 seconds');
  update public.wa_scheduled_messages set status='sent',sent_at=now(),wa_msg_id='LATE'||replace(gen_random_uuid()::text,'-','') where crm_request_id=request2;
- if (select count(*) from private.crm_chat_response_events)<>1 then raise exception 'Prior confirmed response ignored'; end if;
+ if (select count(*) from private.crm_chat_response_events where conversation_id=cid)<>1 then raise exception 'Prior confirmed response ignored'; end if;
  -- Legacy seed also snapshots confirmed waiting without modifying unread stamps.
  select id into queue_id from public.crm_chat_conversations where name=token||'-seed-1';
  execute 'set local role authenticated';
@@ -204,7 +204,8 @@ begin
  update public.wa_scheduled_messages set status='cancelled' where crm_request_id=request2;
  execute 'set local role authenticated';
  -- Resolve records a real event time; old resolved rows are not invented.
- perform public.crm_chat('resolve',jsonb_build_object('id',cid,'session',sess));
+ perform public.crm_chat('resolve',jsonb_build_object('id',cid,'session',sess,'reason_id',
+  (select etiqueta_id_wascript::text from public.wascript_etiquetas where vendedor_nome='ANA' and public.wa_status_da_etiqueta(etiqueta_nome)='FECHADO' order by etiqueta_id_wascript limit 1)));
  result:=public.crm_chat('summary','{}');
  if (result->>'resolved_today')::int<1 then raise exception 'New resolution not counted'; end if;
  perform public.crm_chat('reopen',jsonb_build_object('id',cid,'session',sess));

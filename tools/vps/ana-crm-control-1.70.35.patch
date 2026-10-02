@@ -1,0 +1,114 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.34'
++const BG_VERSAO = '1.70.35'
+@@ -2024,0 +2025,5 @@
++        const _crmGatePorta = await crmAnaAutomationGate(stoL.vendedor_nome, cand.cid)
++        if (!_crmGatePorta.allowed) {
++          _portaDiag.crm_gate = (_portaDiag.crm_gate || 0) + 1
++          continue // no seen marker: an unavailable gate or genuine new inbound must remain retryable
++        }
+@@ -3501,2 +3506,3 @@
+-      const res = await aplicarEtiquetaIa(a.chat_id, et)
+-      await concluirAcaoFluxo(a.id, !!(res && res.ok), res && res.erro)
++      const _crmClose = String(cfg.vendedor_nome).toUpperCase().trim() === 'ANA' && a.payload && a.payload.crm_close
++      const res = _crmClose ? await crmApplyCloseLabel(a) : await aplicarEtiquetaIa(a.chat_id, et)
++      await concluirAcaoFluxo(a.id, !!(res && res.ok) && !res.ignored, res && res.erro)
+@@ -5157,0 +5164,2 @@
++      const _crmGateIa = await crmAnaAutomationGate(cfg.vendedor_nome, chatId)
++      if (!_crmGateIa.allowed) { delete _iaTsVisto[chatId]; delete _iaEspera[chatId]; delete _iaPronta[chatId]; continue }
+@@ -5164,0 +5173,4 @@
++      if (String(cfg.vendedor_nome).toUpperCase() === 'ANA' && !c.orientacao_nova && crmAnaRepeatedNoncommercial(msgs)) {
++        if (_rapida) _iaSaida(chatId, 'saudacao_repetida_sem_assunto')
++        continue // read-only, reversible suppression; a different/new commercial message is processed normally
++      }
+@@ -5552,0 +5565,6 @@
++        const _crmGateEnvio = await crmAnaAutomationGate(cfg.vendedor_nome, chatId)
++        if (!_crmGateEnvio.allowed) {
++          delete _iaTsVisto[chatId]; delete _iaPronta[chatId]
++          if (_compondoDesde) digitandoIa(chatId, 'paused')
++          continue // closure/takeover while generation was running cannot publish a stale automatic response
++        }
+@@ -6149,0 +6168,66 @@
++// >>> CRM ANA CONTROL 35
++// ANA only: shared-auth bridge to service-only RPCs. No client text is uploaded by this gate.
++const _crmAnaGateRetryUntil = new Map()
++function crmAnaGateUnavailable(key) {
++  _crmAnaGateRetryUntil.set(key, Date.now() + 5000)
++  if (_crmAnaGateRetryUntil.size > 500) _crmAnaGateRetryUntil.delete(_crmAnaGateRetryUntil.keys().next().value)
++  return { allowed: false, reason: 'gate_unavailable', retry: true }
++}
++async function crmAnaAutomationGate(vendedor, chatId, close = null) {
++  if (String(vendedor || '').toUpperCase().trim() !== 'ANA') return { allowed: true, reason: 'legacy_seller' }
++  const key = String(chatId || '') + '|' + (close ? JSON.stringify(close) : '')
++  if (Date.now() < Number(_crmAnaGateRetryUntil.get(key) || 0)) return { allowed: false, reason: 'gate_unavailable', retry: true }
++  const controller = new AbortController()
++  const timer = setTimeout(() => controller.abort(), 5000)
++  try {
++    const response = await fetch(HUB_ENDPOINT + '/ana-automation-gate', {
++      method: 'POST', signal: controller.signal,
++      headers: { Authorization: 'Bearer ' + SHARED_SECRET, 'Content-Type': 'application/json' },
++      body: JSON.stringify({ vendedor_nome: 'ANA', chat_id: String(chatId || ''), ...(close ? { close } : {}) }),
++    })
++    if (!response.ok) return crmAnaGateUnavailable(key)
++    const data = await response.json()
++    if (!data || typeof data.allowed !== 'boolean') return crmAnaGateUnavailable(key)
++    _crmAnaGateRetryUntil.delete(key)
++    return data
++  } catch (_) { return crmAnaGateUnavailable(key) }
++  finally { clearTimeout(timer) }
++}
++// Deliberately narrow: only >=3 distinct, identical bare greetings. Unknown content, media,
++// questions, links, advertisement evidence or any other client context retain normal handling.
++function crmAnaRepeatedNoncommercial(messages) {
++  if (!Array.isArray(messages) || messages.some(m => !m || typeof m.fromMe !== 'boolean')) return false
++  const clients = (Array.isArray(messages) ? messages : []).filter(m => m && !m.fromMe)
++  const seen = new Set(), greetings = []
++  for (const m of clients) {
++    if (m.ctwa || !['chat', 'text'].includes(String(m.type || ''))) return false
++    const text = String(m.body || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
++      .replace(/[!.,\s]+$/g, '').replace(/\s+/g, ' ')
++    if (!/^(?:oi|ola|bom dia|boa tarde|boa noite)$/.test(text) || !String(m.id || '').trim()) return false
++    if (!seen.has(String(m.id))) { seen.add(String(m.id)); greetings.push(text) }
++  }
++  return greetings.length >= 3 && greetings.every(text => text === greetings[0])
++}
++async function crmApplyCloseLabel(action) {
++  const close = action && action.payload && action.payload.crm_close
++  if (!close || !close.conversation_id || !close.marker || !close.label_id) return { ok: false, erro: 'crm_close_invalid' }
++  const labels = await listarLabelsWa()
++  if (!Array.isArray(labels)) return { ok: false, erro: 'wpp_sem_labels' }
++  // Validate after the local read, immediately before mutation. Only backend-confirmed generation/ID/name may apply.
++  const gate = await crmAnaAutomationGate('ANA', action.chat_id, close)
++  if (!gate.allowed) {
++    if (gate.retry) return { ok: false, erro: 'wpp_crm_gate_unavailable' }
++    if (gate.reason === 'stale_crm_close') return { ok: true, ignored: true, erro: 'superada: crm_close_stale' }
++    return { ok: false, erro: gate.reason === 'closure_label_unavailable' ? 'wpp_crm_close_label_unavailable' : 'crm_close_rejected' }
++  }
++  const selected = labels.find(l => String(l.id) === String(close.label_id))
++  if (!selected || String(gate.label_id) !== String(close.label_id) || String(selected.name) !== String(gate.label_name)
++      || String(action.payload.etiqueta) !== String(gate.label_name)) return { ok: false, erro: 'crm_close_label_mismatch' }
++  const norm = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
++    .replace(/º/g, 'O').replace(/ª/g, 'A').replace(/\s+/g, ' ').toUpperCase().trim()
++  const stages = new Set(IA_FUNIL_ETAPAS.map(norm))
++  const removeIds = labels.filter(l => String(l.id) !== String(selected.id) && stages.has(norm(l.name))).map(l => String(l.id))
++  return await aplicarLabelEmChat(action.chat_id, String(selected.id), false, removeIds)
++}
++// <<< CRM ANA CONTROL 35
++
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.34'
++  var AGENTE_V = '1.70.35'
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -2 +2 @@
+-// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.34'
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.35'
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.34",
++  "version": "1.70.35",
