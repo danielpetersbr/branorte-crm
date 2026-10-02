@@ -1,0 +1,44 @@
+[
+  {
+    "slug": "ia-atendente",
+    "expectedVersion": 255,
+    "files": [
+      {
+        "name": "index.ts",
+        "replacements": [
+          {
+            "before": "['DANIEL', 'RAMON', 'GUSTAVO'].includes(n)",
+            "after": "['DANIEL', 'RAMON', 'GUSTAVO', 'ALVARO', 'EDER', 'EDILSON JR', 'IGOR', 'JARDEL', 'LUCAS', 'PEDRO'].includes(n)",
+            "countExpected": 1
+          },
+          {
+            "before": "encaminha exclusivamente para Daniel, Ramon ou Gustavo pelo rodízio",
+            "after": "encaminha exclusivamente para os vendedores habilitados na configuração pelo rodízio",
+            "countExpected": 1
+          },
+          {
+            "before": "transfere o atendimento a Daniel, Ramon ou Gustavo e envia",
+            "after": "transfere o atendimento a um dos vendedores habilitados na configuração e envia",
+            "countExpected": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "dispatch-poll",
+    "expectedVersion": 30,
+    "files": [
+      {
+        "name": "index.ts",
+        "replacements": [
+          {
+            "before": "['DANIEL','RAMON','GUSTAVO'].includes(n)",
+            "after": "['DANIEL', 'RAMON', 'GUSTAVO', 'ALVARO', 'EDER', 'EDILSON JR', 'IGOR', 'JARDEL', 'LUCAS', 'PEDRO'].includes(n)",
+            "countExpected": 1
+          }
+        ]
+      }
+    ]
+  }
+]
