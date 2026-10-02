@@ -1,0 +1,68 @@
+[
+  {
+    "slug": "ia-atendente",
+    "expectedVersion": 256,
+    "files": [
+      {
+        "name": "index.ts",
+        "replacements": [
+          {
+            "before": "const PORTEIRA_EQUIP_QUALIFICA = false",
+            "after": "// Continuidade de avulso: somente familia do catalogo, aplicacao explicita e local conforme a chave atual.\nfunction equipamentoQualificadoAna(d: any, equipTxt: string, equipEhFabrica: boolean, conv: string, semCidade: boolean): boolean {\n  if (equipEhFabrica) return false\n  const app = _nEqAna(d?.aplicacao).trim()\n  if (app.length < 3 || /^(?:tri(?:fasico|fasica)?|mono(?:fasico|fasica)?|nao sei|nao tenho|equipamento|maquina|comprar|informacoes|preco)$/.test(app)) return false\n  if (!semCidade && !String(d?.cidade || '').trim() && !String(d?.uf || '').trim()) return false\n  return !!alvoEquipAna(equipTxt, conv, d, null, false)\n}\n// Declaracao curta somente em resposta a ultima pergunta de energia: nao interpreta duvida/negacao como fato.\nfunction energiaRespondidaAna(msgs: any[]): 'tri' | 'mono' | null {\n  const ord = [...(Array.isArray(msgs) ? msgs : [])].filter((m: any) => String(m.body || m.transcricao || '').trim()).sort((a: any, b: any) => (a.t ?? 0) - (b.t ?? 0))\n  const u = ord[ord.length - 1]\n  if (!u || u.fromMe !== false) return null\n  const pergunta = [...ord.slice(0, -1)].reverse().find((m: any) => m.fromMe === true)\n  const p = _nEqAna(pergunta?.body || '')\n  if (!/\\?/.test(p) || !/energia/.test(p) || !/trifasic|monofasic/.test(p)) return null\n  const fala = _nEqAna(u.body || u.transcricao || '').trim().replace(/[.!]+$/, '').trim()\n  const m = fala.match(/^(?:(?:aqui|a minha|minha|a nossa|nossa|a)\\s+)?(?:(?:energia|rede)\\s+)?(?:(?:e|temos|tenho|uso)\\s+)?(trifasic[ao]|monofasic[ao])(?:\\s+(?:aqui|sim))?$/)\n  return m ? (m[1].startsWith('tri') ? 'tri' : 'mono') : null\n}\nfunction continuarQualificacaoAna(proxima: string | null, energia: 'tri' | 'mono' | null): string | null {\n  if (!proxima) return null\n  return [energia ? 'Energia ' + (energia === 'tri' ? 'trifásica' : 'monofásica') + ' registrada.' : '', proxima].filter(Boolean).join(' ')\n}\nconst PORTEIRA_EQUIP_QUALIFICA = false",
+            "countExpected": 1
+          },
+          {
+            "before": "      const dadosMem: any = { ...(st.dados_coletados || {}), ...(dados || {}) }",
+            "after": "      // Energia so entra como declaracao do cliente; a extracao do modelo nao confirma a rede.\n      if (PORTEIRA && dados) delete dados.energia\n      const dadosMem: any = { ...(st.dados_coletados || {}), ...(dados || {}) }\n      const energiaTurnoAna = PORTEIRA ? energiaRespondidaAna(msgs) : null\n      if (energiaTurnoAna) {\n        dadosMem.energia = energiaTurnoAna\n        if (!dados) dados = {}\n        dados.energia = energiaTurnoAna\n      }",
+            "countExpected": 1
+          },
+          {
+            "before": "          || (PORTEIRA_EQUIP_QUALIFICA && _equipAvulso && temAplicacaoEquip && _local)",
+            "after": "          || (PORTEIRA_EQUIP_QUALIFICA && _equipAvulso && temAplicacaoEquip && _local)\n          || (CONTINGENCIA && _equipAvulso && equipamentoQualificadoAna(dadosMem, equipTxt, equipEhFabrica, convCliente, _semCidV24011))",
+            "countExpected": 1
+          },
+          {
+            "before": "criterio: { pos: true, braco: _posV240.braco",
+            "after": "criterio: { qualificado: _qualificado, pos: true, braco: _posV240.braco",
+            "countExpected": 1
+          },
+          {
+            "before": "['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', 'aplicacao']",
+            "after": "['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', 'aplicacao', 'energia']",
+            "countExpected": 2
+          },
+          {
+            "before": "...(PORTEIRA ? ['aplicacao'] : [])",
+            "after": "...(PORTEIRA ? ['aplicacao', 'energia'] : [])",
+            "countExpected": 1
+          },
+          {
+            "before": "    (d.resumo || d.equipamento) ? 'Quer: ' + (d.resumo || d.equipamento) : null,",
+            "after": "    (d.resumo || d.equipamento) ? 'Quer: ' + (d.resumo || d.equipamento) : null,\n    /^(tri|mono)$/.test(String(d.energia || '')) ? 'Energia: ' + (d.energia === 'tri' ? 'trifásica' : 'monofásica') : null,",
+            "countExpected": 1
+          },
+          {
+            "before": "            (dcT.resumo || dcT.equipamento) ? 'Quer: ' + (dcT.resumo || dcT.equipamento) : null,",
+            "after": "            (dcT.resumo || dcT.equipamento) ? 'Quer: ' + (dcT.resumo || dcT.equipamento) : null,\n            /^(tri|mono)$/.test(String(dcT.energia || '')) ? 'Energia: ' + (dcT.energia === 'tri' ? 'trifásica' : 'monofásica') : null,",
+            "countExpected": 1
+          },
+          {
+            "before": "            : ((porteiraTextoLlm && !numeroDeDinheiroPorteira(porteiraTextoLlm)",
+            "after": "            : (continuarQualificacaoAna(porteiraProxPergunta, energiaTurnoAna) || ((porteiraTextoLlm && !numeroDeDinheiroPorteira(porteiraTextoLlm)",
+            "countExpected": 1
+          },
+          {
+            "before": "? porteiraTextoLlm : 'Continuo seu atendimento por aqui. Qual dúvida você tem sobre esse equipamento?'), midias: [] }",
+            "after": "? porteiraTextoLlm : 'Continuo seu atendimento por aqui. Qual dúvida você tem sobre esse equipamento?')), midias: [] }",
+            "countExpected": 1
+          },
+          {
+            "before": "        }\n        if (CONSULTA_DANIEL && !encerrar && !contReconhecimento) {",
+            "after": "        } else if (!encerrar && energiaTurnoAna && porteiraProxPergunta && !contDuvidaDaniel && !consultaAberta && !orientConfirmadasDaniel.length && st.estado !== 'WAITING_INTERNAL_GUIDANCE') {\n          _contResposta = { texto: continuarQualificacaoAna(porteiraProxPergunta, energiaTurnoAna), midias: [] }\n        }\n        if (CONSULTA_DANIEL && !encerrar && !contReconhecimento) {",
+            "countExpected": 1
+          }
+        ]
+      }
+    ]
+  }
+]

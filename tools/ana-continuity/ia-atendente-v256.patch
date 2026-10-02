@@ -1,0 +1,124 @@
+diff --git a/index.ts b/index.ts
+index 795cf50..6d02993 100644
+--- a/index.ts
++++ b/index.ts
+@@ -3512,6 +3512,7 @@ function resumoRepasseAna(dc: any, ind: any, semInd: string | null): string {
+   return [d.animal ? 'Animal: ' + d.animal : null, porte ? 'Porte: ' + porte : null,
+     (cid || uf) ? 'Local: ' + [cid, uf].filter(Boolean).join('/') : null,
+     (d.resumo || d.equipamento) ? 'Quer: ' + (d.resumo || d.equipamento) : null,
++    /^(tri|mono)$/.test(String(d.energia || '')) ? 'Energia: ' + (d.energia === 'tri' ? 'trifásica' : 'monofásica') : null,
+     ind ? 'Modelo indicado: ' + ind.nome + ' (' + ind.slug + ', ~' + ind.kgh + ' kg/h, jornada ' + (ind.jornada === 'dita' ? 'dita'
+       : ind.jornada === 'nao_se_aplica' ? 'n/a' : 'padrão 16x4') + ')'
+       : (semInd ? 'Modelo: sem indicação (' + semInd + ')' : null)].filter(Boolean).join('\n')
+@@ -4623,6 +4624,30 @@ const _PERG_PORTE_PORTEIRA = /quantas?\s+(cabe[çc]a|ave|galinha|animai|bicho)|q
+ const REPASSE_FRASE_PORTEIRA = 'Vou passar o seu contato pro nosso consultor, e ele te chama pelo WhatsApp dele, que é outro número.'
+ // false = regra literal do Daniel (animal + porte + cidade/UF). true = equipamento avulso com a
+ // aplicacao + cidade/UF tambem conta como qualificado (DECISAO PENDENTE do Daniel).
++// Continuidade de avulso: somente familia do catalogo, aplicacao explicita e local conforme a chave atual.
++function equipamentoQualificadoAna(d: any, equipTxt: string, equipEhFabrica: boolean, conv: string, semCidade: boolean): boolean {
++  if (equipEhFabrica) return false
++  const app = _nEqAna(d?.aplicacao).trim()
++  if (app.length < 3 || /^(?:tri(?:fasico|fasica)?|mono(?:fasico|fasica)?|nao sei|nao tenho|equipamento|maquina|comprar|informacoes|preco)$/.test(app)) return false
++  if (!semCidade && !String(d?.cidade || '').trim() && !String(d?.uf || '').trim()) return false
++  return !!alvoEquipAna(equipTxt, conv, d, null, false)
++}
++// Declaracao curta somente em resposta a ultima pergunta de energia: nao interpreta duvida/negacao como fato.
++function energiaRespondidaAna(msgs: any[]): 'tri' | 'mono' | null {
++  const ord = [...(Array.isArray(msgs) ? msgs : [])].filter((m: any) => String(m.body || m.transcricao || '').trim()).sort((a: any, b: any) => (a.t ?? 0) - (b.t ?? 0))
++  const u = ord[ord.length - 1]
++  if (!u || u.fromMe !== false) return null
++  const pergunta = [...ord.slice(0, -1)].reverse().find((m: any) => m.fromMe === true)
++  const p = _nEqAna(pergunta?.body || '')
++  if (!/\?/.test(p) || !/energia/.test(p) || !/trifasic|monofasic/.test(p)) return null
++  const fala = _nEqAna(u.body || u.transcricao || '').trim().replace(/[.!]+$/, '').trim()
++  const m = fala.match(/^(?:(?:aqui|a minha|minha|a nossa|nossa|a)\s+)?(?:(?:energia|rede)\s+)?(?:(?:e|temos|tenho|uso)\s+)?(trifasic[ao]|monofasic[ao])(?:\s+(?:aqui|sim))?$/)
++  return m ? (m[1].startsWith('tri') ? 'tri' : 'mono') : null
++}
++function continuarQualificacaoAna(proxima: string | null, energia: 'tri' | 'mono' | null): string | null {
++  if (!proxima) return null
++  return [energia ? 'Energia ' + (energia === 'tri' ? 'trifásica' : 'monofásica') + ' registrada.' : '', proxima].filter(Boolean).join(' ')
++}
+ const PORTEIRA_EQUIP_QUALIFICA = false
+ // Texto do repasse. Sem "?", sem "já", sem emoji, sem nome de consultor nem hora — passa pelas travas
+ // finais (abertura repetida, promessa sem anexo, pergunta repetida) sem ser reescrito.
+@@ -11672,7 +11697,15 @@ Deno.serve(async (req: Request) => {
+       // MEMORIA DA IA: junta o que ela JA sabia (st.dados_coletados) com o que extraiu AGORA.
+       // As DECISOES usam a memoria acumulada -> nao "esquece" um dado se o modelo deixar de
+       // re-extrair num turno (evita loop mesmo com extracao inconsistente do LLM entre turnos).
++      // Energia so entra como declaracao do cliente; a extracao do modelo nao confirma a rede.
++      if (PORTEIRA && dados) delete dados.energia
+       const dadosMem: any = { ...(st.dados_coletados || {}), ...(dados || {}) }
++      const energiaTurnoAna = PORTEIRA ? energiaRespondidaAna(msgs) : null
++      if (energiaTurnoAna) {
++        dadosMem.energia = energiaTurnoAna
++        if (!dados) dados = {}
++        dados.energia = energiaTurnoAna
++      }
+       // (05/08) RE-PERGUNTA DO QUE JA FOI RESPONDIDO. A quantidade e o kg/h so chegavam pela
+       // extracao do LLM; quando ele falhava, o texto canned perguntava de novo o que o cliente
+       // JA tinha dito. Foi a queixa do EDILSON JR no grupo "IA Branorte Melhorias" ("cliente
+@@ -12574,6 +12607,7 @@ Deno.serve(async (req: Request) => {
+         const _porteQ = _revFabP ? _porteRevP : _porte
+         let _qualificado = (!!dadosMem.animal && _porteQ && _local && !_semCidV24011)   // (v240.11) com a chave: o roteiro todo (abaixo)
+           || (PORTEIRA_EQUIP_QUALIFICA && _equipAvulso && temAplicacaoEquip && _local)
++          || (CONTINGENCIA && _equipAvulso && equipamentoQualificadoAna(dadosMem, equipTxt, equipEhFabrica, convCliente, _semCidV24011))
+         let _etqP = normNome(etiquetaModelo || '')
+         // NAO FABRICAMOS PARCIAL aqui mesmo (o resgate generico, mais abaixo, vem depois deste bloco): item
+         // da casa no pedido OU especie que a casa atende ("fabrica pra peixe e pro gado") = nao e terminal.
+@@ -12678,7 +12712,7 @@ Deno.serve(async (req: Request) => {
+           if (_passaV) {
+             const _repV: any = (_posV240.rep && typeof _posV240.rep === 'object') ? _posV240.rep : {}
+             const _dcP: any = { ...(st.dados_coletados || {}) }
+-            if (dados) for (const k of ['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', 'aplicacao']) {
++            if (dados) for (const k of ['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', 'aplicacao', 'energia']) {
+               if (dados[k] !== undefined && dados[k] !== null && dados[k] !== '') _dcP[k] = dados[k]
+             }
+             // (ADENDO A3) "nao atende": o modelo recusado NAO vai pro vendedor. Refaz a indicacao com o dado novo (a mesma conta da
+@@ -12718,7 +12752,7 @@ Deno.serve(async (req: Request) => {
+             vendedorAssumir = true
+             etiquetaModelo = 'NOVO LEAD'
+             repassePorteira = { motivo: _passaV, texto_do_modelo: _posV240.braco === 'B',
+-              criterio: { pos: true, braco: _posV240.braco, fase: _posV240.fase, resp: _dec.resp, resposta_n: nResp + 1 },
++              criterio: { qualificado: _qualificado, pos: true, braco: _posV240.braco, fase: _posV240.fase, resp: _dec.resp, resposta_n: nResp + 1 },
+               modelo_indicado: _indV, modelo_sem_indicacao: _semV }
+             _v240St = { _pos: { ..._posV240, fase: 'passou', resp: _dec.resp, pediu: _dec.pediu, passou: { em: _agP, motivo: _passaV, dispatch_id: null } } }
+             // (rodada 2) o equipamento do pacote da bifurcacao (_pos.rep), nao o desta rodada: um "moinho" que o modelo extraiu agora
+@@ -12879,7 +12913,7 @@ Deno.serve(async (req: Request) => {
+                 const _abAnt: any = (_dc0V240._ab && typeof _dc0V240._ab === 'object' && _dc0V240._ab.v === 1) ? _dc0V240._ab : null
+                 // o dados_coletados que o repasse leria (st + o que o modelo extraiu agora, com o mesmo filtro da gravacao)
+                 const _dcX: any = { ...(st.dados_coletados || {}) }
+-                if (dados) for (const k of ['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', 'aplicacao']) {
++                if (dados) for (const k of ['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', 'aplicacao', 'energia']) {
+                   if (dados[k] !== undefined && dados[k] !== null && dados[k] !== '') _dcX[k] = dados[k]
+                 }
+                 const _indX: any = repassePorteira.modelo_indicado || null, _semX: any = repassePorteira.modelo_sem_indicacao || null
+@@ -13144,8 +13178,10 @@ Deno.serve(async (req: Request) => {
+         } else if (!encerrar && (vendedorAssumir || repassePorteira)) {
+           _contResposta = { texto: repassePorteira?.motivo === 'pediu_humano'
+             ? 'A equipe comercial está indisponível neste canal agora. Posso continuar te ajudando por aqui.'
+-            : ((porteiraTextoLlm && !numeroDeDinheiroPorteira(porteiraTextoLlm) && !/consultor|vendedor|R\$|te chama|passar pra|passar pro|desconto|pagamento|parcel|frete/i.test(porteiraTextoLlm))
+-              ? porteiraTextoLlm : 'Continuo seu atendimento por aqui. Qual dúvida você tem sobre esse equipamento?'), midias: [] }
++            : (continuarQualificacaoAna(porteiraProxPergunta, energiaTurnoAna) || ((porteiraTextoLlm && !numeroDeDinheiroPorteira(porteiraTextoLlm) && !/consultor|vendedor|R\$|te chama|passar pra|passar pro|desconto|pagamento|parcel|frete/i.test(porteiraTextoLlm))
++              ? porteiraTextoLlm : 'Continuo seu atendimento por aqui. Qual dúvida você tem sobre esse equipamento?')), midias: [] }
++        } else if (!encerrar && energiaTurnoAna && porteiraProxPergunta && !contDuvidaDaniel && !consultaAberta && !orientConfirmadasDaniel.length && st.estado !== 'WAITING_INTERNAL_GUIDANCE') {
++          _contResposta = { texto: continuarQualificacaoAna(porteiraProxPergunta, energiaTurnoAna), midias: [] }
+         }
+         if (CONSULTA_DANIEL && !encerrar && !contReconhecimento) {
+           if (contDuvidaFallback && _contResposta?.confirmado === true) contDuvidaDaniel = null
+@@ -13460,7 +13496,7 @@ Deno.serve(async (req: Request) => {
+         const limpo: any = {}
+         // (24/09, rev.) Na porteira a 'aplicacao' do equipamento avulso tambem fica (o contrato dela pede
+         // e o modelo so manda o que e novo: sem gravar, no turno seguinte ela perguntava de novo).
+-        for (const k of ['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', ...(PORTEIRA ? ['aplicacao'] : [])]) {
++        for (const k of ['nome_cliente', 'animal', 'quantidade', 'uso', 'producao_kgh', 'equipamento', 'finalidade', 'cidade', 'uf', 'resumo', ...(PORTEIRA ? ['aplicacao', 'energia'] : [])]) {
+           if (dados[k] !== undefined && dados[k] !== null && dados[k] !== '') limpo[k] = dados[k]
+         }
+         if (Object.keys(limpo).length) upd.dados_coletados = { ...(st.dados_coletados || {}), ...limpo }
+@@ -14028,6 +14064,7 @@ Deno.serve(async (req: Request) => {
+           const resumoT = [dcT.animal ? 'Animal: ' + dcT.animal : null, porteT ? 'Porte: ' + porteT : null,
+             (cidT || ufT) ? 'Local: ' + [cidT, ufT].filter(Boolean).join('/') : null,
+             (dcT.resumo || dcT.equipamento) ? 'Quer: ' + (dcT.resumo || dcT.equipamento) : null,
++            /^(tri|mono)$/.test(String(dcT.energia || '')) ? 'Energia: ' + (dcT.energia === 'tri' ? 'trifásica' : 'monofásica') : null,
+             // (v221) o modelo que a conta da casa deu — vai pro pacote do vendedor (foto, video e preco dele)
+             repassePorteira.modelo_indicado ? 'Modelo indicado: ' + repassePorteira.modelo_indicado.nome + ' (' + repassePorteira.modelo_indicado.slug
+               + ', ~' + repassePorteira.modelo_indicado.kgh + ' kg/h, jornada ' + (repassePorteira.modelo_indicado.jornada === 'dita' ? 'dita'
