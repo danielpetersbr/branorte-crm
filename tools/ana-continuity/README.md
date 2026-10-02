@@ -34,7 +34,7 @@ $env:ANA_ROUTING_IA_SOURCE = $env:CRM_ANA_EDGE_SOURCE
 node --test tools/ana-routing/repasse-allowlist.test.cjs tools/vps/cloud-ana-gate.test.cjs
 ```
 
-Evidência inicial: baseline RED por bloqueio de qualificação, energia ausente, persistência ausente e fallback genérico. Candidato: 20/20 testes de continuidade e 13/13 proteções passaram; parser TypeScript sem diagnósticos, reconstrução exata e `crm-gate.ts` idêntico. A suíte do CRM passou com 1.430/1.430 testes. Logs `outputs/ana-continuity-red.log`, `ana-continuity-green.log`, `ana-continuity-protections.log` e `ana-continuity-independent-full-suite.log`.
+Evidência inicial: baseline RED por bloqueio de qualificação, energia ausente, persistência ausente e fallback genérico. Candidato: 20/20 testes de continuidade e 13/13 proteções passaram; parser TypeScript sem diagnósticos, reconstrução exata e `crm-gate.ts` idêntico. A suíte do CRM passou inicialmente com 1.430/1.430 testes; após integrar a versão atual de `main`, a nova execução passou com 1.488/1.488 testes e as 33 verificações direcionadas permaneceram verdes. Logs `outputs/ana-continuity-red.log`, `ana-continuity-green.log`, `ana-continuity-protections.log`, `ana-continuity-independent-full-suite.log`, `ana-continuity-final-targeted.log` e `ana-continuity-final-merged-suite.log`.
 
 ## Publicação e acompanhamento
 
