@@ -7,6 +7,8 @@ export interface Pedido {
   cliente: string;
   vendedor: string;
   vendedor_2?: string | null;
+  valor_split_v1?: number | null;
+  valor_split_v2?: number | null;
   data_venda: string;
   valor_total: number;
   status: PedidoStatus;
@@ -24,6 +26,9 @@ export interface Pedido {
     total?: number;
     parcelas?: any[];
   };
+  _displayId?: string;
+  _valorOverride?: number;
+  _isAjuste?: boolean;
 }
 
 export const getValorPedido = (pedido: Pedido): number => {
@@ -51,7 +56,10 @@ export const getValorPedido = (pedido: Pedido): number => {
   return valor + ajuste;
 };
 
-// Expande pedidos com vendedor_2 (split V1/V2) e gera linhas de ajuste quando aplicável
+// Valores explícitos de split representam o total final no ranking original.
+// Um ajuste datado pertence ao seu próprio período e é dividido 50/50, como
+// nas comissões: subtrai essa parte da venda e a lança em ajuste_data. Sem data,
+// o ajuste acompanha a venda. Não divide unidades físicas nem os itens do pedido.
 export const expandirPedidos = (
   raw: Pedido[],
   periodoStart: string,
@@ -59,60 +67,35 @@ export const expandirPedidos = (
   filtroVendedor: string
 ): Pedido[] => {
   const expanded: Pedido[] = [];
-  const filtroAtivo = filtroVendedor?.toUpperCase();
+  const filtroAtivo = filtroVendedor?.trim().toUpperCase();
+  const dentro = (data: string) => !!data && (!periodoStart || !periodoEnd || (data >= periodoStart && data <= periodoEnd));
   for (const p of raw) {
     const dataVendaStr = p.data_venda?.split('T')[0] || '';
-    const dataVendaInPeriodo = periodoStart && periodoEnd
-      ? (dataVendaStr >= periodoStart && dataVendaStr <= periodoEnd)
-      : true;
     const ajusteDataStr = p.ajuste_data?.split('T')[0] || '';
-    const ajusteInPeriodo = ajusteDataStr && periodoStart && periodoEnd
-      ? (ajusteDataStr >= periodoStart && ajusteDataStr <= periodoEnd)
-      : false;
-    const temAjuste = p.ajuste_valor && Number(p.ajuste_valor) !== 0;
-
-    if (p.vendedor_2 && p.vendedor_2.trim()) {
-      const valorOriginal = getValorPedido(p);
-      const splitV1 = (p as any).valor_split_v1;
-      const splitV2 = (p as any).valor_split_v2;
-      const valorV1 = splitV1 != null ? Number(splitV1) : valorOriginal / 2;
-      const valorV2 = splitV2 != null ? Number(splitV2) : valorOriginal / 2;
-      const v2Name = p.vendedor_2.trim().toUpperCase();
-      const v1Name = p.vendedor.toUpperCase();
-      if (filtroAtivo && filtroAtivo !== 'TODOS') {
-        if (filtroAtivo === v1Name) {
-          expanded.push({ ...p, _displayId: `${p.id}_v1`, _valorOverride: valorV1 } as any);
-        } else if (filtroAtivo === v2Name) {
-          expanded.push({ ...p, _displayId: `${p.id}_v2`, vendedor: v2Name, _valorOverride: valorV2 } as any);
-        }
-      } else {
-        expanded.push({ ...p, _displayId: `${p.id}_v1`, _valorOverride: valorV1 } as any);
-        expanded.push({ ...p, _displayId: `${p.id}_v2`, vendedor: v2Name, _valorOverride: valorV2 } as any);
+    const ajuste = Number(p.ajuste_valor) || 0;
+    const ajusteDatado = ajuste !== 0 && !!ajusteDataStr;
+    const totalFinal = getValorPedido(p);
+    const vendedor = p.vendedor.trim().toUpperCase();
+    const vendedor2 = p.vendedor_2?.trim().toUpperCase();
+    const split1 = p.valor_split_v1;
+    const split2 = p.valor_split_v2;
+    const partes = vendedor2
+      ? [{ vendedor, sufixo: '_v1', valor: split1 != null ? Number(split1) : split2 != null ? totalFinal - Number(split2) : totalFinal / 2 },
+         { vendedor: vendedor2, sufixo: '_v2', valor: split2 != null ? Number(split2) : split1 != null ? totalFinal - Number(split1) : totalFinal / 2 }]
+      : [{ vendedor, sufixo: '', valor: totalFinal }];
+    for (const parte of partes) {
+      if (filtroAtivo && filtroAtivo !== 'TODOS' && filtroAtivo !== parte.vendedor) continue;
+      const ajusteParte = vendedor2 ? ajuste / 2 : ajuste;
+      if (dentro(dataVendaStr)) {
+        expanded.push({ ...p, vendedor: parte.vendedor,
+          _displayId: `${p.id}${parte.sufixo}${ajusteDatado ? '_base' : ''}`,
+          _valorOverride: parte.valor - (ajusteDatado ? ajusteParte : 0), _isAjuste: false });
       }
-    } else if (temAjuste && ajusteInPeriodo && !dataVendaInPeriodo) {
-      const ajusteVal = Number(p.ajuste_valor);
-      expanded.push({
-        ...p,
-        _displayId: `${p.id}_ajuste`,
-        _valorOverride: ajusteVal,
-        _isAjuste: true,
-        pedido_numero: `Acréscimo ${p.pedido_numero || p.numero_orcamento}`,
-        data_venda: p.ajuste_data!,
-      } as any);
-    } else if (temAjuste && ajusteInPeriodo && dataVendaInPeriodo) {
-      const ajusteVal = Number(p.ajuste_valor);
-      const baseVal = getValorPedido({ ...p, ajuste_valor: 0 } as Pedido);
-      expanded.push({ ...p, _displayId: `${p.id}_base`, _valorOverride: baseVal } as any);
-      expanded.push({
-        ...p,
-        _displayId: `${p.id}_ajuste`,
-        _valorOverride: ajusteVal,
-        _isAjuste: true,
-        pedido_numero: `Acréscimo ${p.pedido_numero || p.numero_orcamento}`,
-        data_venda: p.ajuste_data!,
-      } as any);
-    } else {
-      expanded.push(p);
+      if (ajusteDatado && dentro(ajusteDataStr)) {
+        expanded.push({ ...p, vendedor: parte.vendedor,
+          _displayId: `${p.id}${parte.sufixo}_ajuste`, _valorOverride: ajusteParte, _isAjuste: true,
+          pedido_numero: `Acréscimo ${p.pedido_numero || p.numero_orcamento}`, data_venda: p.ajuste_data! });
+      }
     }
   }
   expanded.sort((a, b) => {

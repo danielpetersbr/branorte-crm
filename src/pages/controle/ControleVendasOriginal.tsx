@@ -1,6 +1,9 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { buscarVendasControle, analisarVendasControle } from "@/lib/controle-vendas-api";
 import { expandirPedidos, getValorPedido, consultaPertenceAoContexto, percentualComissaoControle, exportacaoPertenceAoContexto, type Pedido } from "@/components/controle/vendas-original/calculos";
+import { pedidosFisicos, valorVendaFisica, agruparFabricasVendidas, agruparEquipamentosVendidos, agruparVendasPorEstado, normalizarOrigem } from "@/components/controle/vendas-original/graficos-dados";
+import { evolucaoAnualPDFPronta, exigirEvolucaoAnualPDF, escalaBarrasPDF, segmentoBarraPDF, dadosConversaoOrigemPDF, capturaMapaPDF } from "@/components/controle/vendas-original/pdf-graficos";
+import { periodoMesAnterior } from "@/components/controle/vendas-original/periodos";
 import "@/components/controle/vendas-original/theme.css";
 import { Button } from "@/components/pedido-ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/pedido-ui/card";
@@ -9,7 +12,7 @@ import { SelectContent } from "@/components/controle/vendas-original/SelectConte
 import { useNavigate } from "react-router-dom";
 import { BarChart3, TrendingUp, DollarSign, FileText, Home, LogOut, Trophy, Medal, Target, Download, Package, MapPin, Clock, Users, Wrench, Zap, Sparkles, Loader2, RefreshCw, Crown, Filter, X } from "lucide-react";
 import { Input } from "@/components/pedido-ui/input";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, LabelList, PieChart, Pie } from "recharts";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, LabelList, PieChart, Pie, ReferenceLine } from "recharts";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,17 +46,6 @@ const formatarData = (data: string | null | undefined): string => {
   } catch {
     return '-';
   }
-};
-
-const normalizarOrigem = (origem: string | null | undefined): string => {
-  if (!origem) return '-';
-  const lower = origem.toLowerCase().trim();
-  if (lower === 'facebook' || lower === 'instagram' || lower === 'nao_informado' || lower === 'não informado') {
-    return 'Meta ADS';
-  }
-  if (lower === 'ja_era_cliente') return 'Cliente';
-  if (lower === 'site') return 'Site';
-  return origem.replace(/_/g, ' ');
 };
 
 export default function ControleVendasOriginal() {
@@ -126,6 +118,8 @@ export default function ControleVendasOriginal() {
   const erroPedidos = acessoNegado ? bloqueioConsulta.mensagem : falhaPedidos.contexto === contextoPedidos ? falhaPedidos.mensagem : null;
   const erroAnoCompleto = falhaAno.contexto === contextoAno ? falhaAno.mensagem : null;
   const loading = !acessoNegado && (carregandoPedidos || !authContexto || (consultaPedidos.contexto !== contextoPedidos && !erroPedidos));
+  const estadoEvolucaoAnual = { carregando: loadingAnoCompleto, erro: erroAnoCompleto, contexto: contextoAno, contextoConsulta: consultaAno.contexto };
+  const evolucaoAnualPronta = !!authContexto && !acessoNegado && evolucaoAnualPDFPronta(estadoEvolucaoAnual);
   const contextoAnalise = [contextoPedidos, valorMinimoFiltro].join('|');
   const analiseAtual = useRef(contextoAnalise);
   analiseAtual.current = contextoAnalise;
@@ -212,10 +206,9 @@ export default function ControleVendasOriginal() {
           dataFim = endOfMonth(hoje);
           break;
         case "mes-passado":
-          const mesPassado = new Date(hoje);
-          mesPassado.setMonth(hoje.getMonth() - 1);
-          dataInicio = startOfMonth(mesPassado);
-          dataFim = endOfMonth(mesPassado);
+          const anterior = periodoMesAnterior(hoje);
+          dataInicio = new Date(anterior.inicio + 'T00:00:00');
+          dataFim = new Date(anterior.fim + 'T00:00:00');
           break;
         case "mes-especifico":
           dataInicio = new Date(anoSelecionado, mesSelecionado, 1);
@@ -430,6 +423,7 @@ export default function ControleVendasOriginal() {
   const pedidosFiltrados = pedidos.filter(passaFiltroValorMinimo);
   // Métricas principais - excluir cancelados dos cálculos de valor
   const pedidosAtivos = pedidosFiltrados.filter(p => p.status !== 'CANCELADO');
+  const vendasFisicas = pedidosFisicos(pedidosAtivos);
   const valorTotal = pedidosAtivos.reduce((acc, p) => acc + getValorPedido(p), 0);
   const totalVendas = pedidosAtivos.length;
   const ticketMedio = totalVendas > 0 ? valorTotal / totalVendas : 0;
@@ -440,13 +434,10 @@ export default function ControleVendasOriginal() {
   const excluidosPorValor = filtroValorMinimo
     ? pedidos.filter(p => !passaFiltroValorMinimo(p)).length
     : 0;
-  const comDataContato = pedidosAtivos.filter(p => p.data_primeiro_contato && p.data_venda).length;
+  const comDataContato = vendasFisicas.filter(p => p.data_primeiro_contato && p.data_venda).length;
   const comEstado = pedidosAtivos.filter(p => p.estado && p.estado !== 'N/D').length;
-  const comOrigem = pedidosAtivos.filter(p => {
-    const o = (p.fonte_origem || '').toLowerCase().trim();
-    return o && o !== 'n/d';
-  }).length;
-  const conversoesMesmoMes = pedidosAtivos.filter(p => {
+  const comOrigem = pedidosAtivos.filter(p => normalizarOrigem(p.fonte_origem) !== 'Não informado').length;
+  const conversoesMesmoMes = vendasFisicas.filter(p => {
     if (!p.data_primeiro_contato || !p.data_venda) return false;
     return p.data_primeiro_contato.split('T')[0].substring(0, 7) ===
            p.data_venda.split('T')[0].substring(0, 7);
@@ -507,130 +498,10 @@ export default function ControleVendasOriginal() {
     return dadosVenda || mesBase;
   });
 
-  // Fábricas vendidas - busca em descricao_equipamento
-  const fabricasVendidas = pedidosAtivos.reduce((acc, pedido) => {
-    const descricao = (pedido.descricao_equipamento || '').toUpperCase();
-    
-    // Detecta fábricas pelo descricao_equipamento
-    if (descricao.includes('COMPACTA') || descricao.includes('MINI FÁBRICA') || descricao.includes('MINI FABRICA') || descricao.includes('FABRICA DE RAÇÃO') || descricao.includes('FABRICA DE RACAO')) {
-      // Extrai o nome da fábrica (ex: "Compacta 01", "Compacta 02 Master", "Mini Fábrica")
-      let nomeNormalizado = 'OUTROS';
-      
-      if (descricao.includes('MINI')) {
-        nomeNormalizado = 'Mini Fábrica de Ração';
-      } else if (descricao.includes('COMPACTA 01 MASTER') || descricao.includes('COMPACTA 1 MASTER')) {
-        nomeNormalizado = 'Compacta 1 Master';
-      } else if (descricao.includes('COMPACTA 02 MASTER') || descricao.includes('COMPACTA 2 MASTER')) {
-        nomeNormalizado = 'Compacta 2 Master';
-      } else if (descricao.includes('COMPACTA 03 MASTER') || descricao.includes('COMPACTA 3 MASTER')) {
-        nomeNormalizado = 'Compacta 3 Master';
-      } else if (descricao.includes('COMPACTA 01') || descricao.includes('COMPACTA 1 ')) {
-        nomeNormalizado = 'Compacta 1';
-      } else if (descricao.includes('COMPACTA 02') || descricao.includes('COMPACTA 2 ')) {
-        nomeNormalizado = 'Compacta 2';
-      } else if (descricao.includes('COMPACTA 03') || descricao.includes('COMPACTA 3 ')) {
-        nomeNormalizado = 'Compacta 3';
-      } else if (descricao.includes('MASTER')) {
-        nomeNormalizado = 'Fábrica Master';
-      } else if (descricao.includes('FABRICA')) {
-        nomeNormalizado = 'Fábrica de Ração';
-      }
-      
-      if (!acc[nomeNormalizado]) {
-        acc[nomeNormalizado] = { fabrica: nomeNormalizado, quantidade: 0 };
-      }
-      acc[nomeNormalizado].quantidade += 1;
-    }
-    return acc;
-  }, {} as Record<string, { fabrica: string; quantidade: number }>);
+  // Unidades físicas: um pedido compartilhado conta uma vez; acréscimos não vendem novas unidades.
+  const dadosFabricas = agruparFabricasVendidas(pedidosAtivos);
+  const dadosEquipamentos = agruparEquipamentosVendidos(pedidosAtivos);
 
-  const dadosFabricas = Object.values(fabricasVendidas).sort((a, b) => b.quantidade - a.quantidade);
-
-  // Equipamentos separados vendidos — usa equipamentos_detalhados (valor real por item)
-  // Fallback para descricao_equipamento quando o pedido não tem itens detalhados
-  const CATEGORIAS_EQUIP = [
-    { pattern: /MOINHO\s*MARTELO|MOINHO\s*\d+\s*CV|TRITURADOR\s+DE\s+GR/i, nome: 'Moinhos' },
-    { pattern: /MISTURADOR/i, nome: 'Misturadores' },
-    { pattern: /SILO(?!\s*DE\s*FILTRO)/i, nome: 'Silos' },
-    { pattern: /ELEVADOR/i, nome: 'Elevadores' },
-    { pattern: /TRANSPORTADOR|HELICOIDAL|HELICOIDE|ESTEIRA\s*TRANSPORT|CHUPIM|CHUPINS|ROSCA\s/i, nome: 'Transportadores/Chupins' },
-    { pattern: /ENSACADEIR/i, nome: 'Ensacadeiras' },
-    { pattern: /MOEGA|CAIXA\s+ENTRADA\s+MOEGA/i, nome: 'Moegas' },
-    { pattern: /PR[ÉE]\s*-?\s*LIMPEZA/i, nome: 'Pré-Limpeza' },
-    { pattern: /SUPORTE.*BAG|BAG.*SUPORTE/i, nome: 'Suportes de Bag' },
-    { pattern: /CA[ÇC]AMBA|PESAGEM|C[ÉE]LULA\s+DE\s+CARGA/i, nome: 'Caçambas/Pesagem' },
-    { pattern: /PAINEL/i, nome: 'Painéis Elétricos' },
-    { pattern: /MOTOR(ES)?\s+(MONO|TRI)F[ÁA]SIC/i, nome: 'Motores' },
-  ];
-
-  const isFabricaPedido = (descricao: string, valor: number) =>
-    (descricao.includes('COMPACTA') && !descricao.includes('PENEIRA') && !descricao.includes('MARTELO')) ||
-    descricao.includes('MINI FÁBRICA') ||
-    descricao.includes('MINI FABRICA') ||
-    (descricao.includes('FABRICA') && (descricao.includes('RAÇÃO') || descricao.includes('RACAO'))) ||
-    (descricao.includes('MASTER') && valor > 100000);
-
-  const equipamentosVendidos = pedidosAtivos.reduce((acc, pedido) => {
-    const descricaoPedido = (pedido.descricao_equipamento || '').toUpperCase();
-    const valorPedido = getValorPedido(pedido);
-    const ehFabrica = isFabricaPedido(descricaoPedido, valorPedido);
-    const itens = Array.isArray(pedido.equipamentos_detalhados) ? pedido.equipamentos_detalhados : [];
-
-    // Caso 1: pedido tem itens detalhados → conta cada item com seu valor real
-    if (itens.length > 0) {
-      for (const item of itens) {
-        const desc = (item.descricao || '').toUpperCase().trim();
-        if (!desc) continue;
-        const qtd = Number(item.quantidade) || 1;
-        const valorItem = (Number(item.valor) || 0) * qtd;
-
-        // Acessórios e itens irrelevantes
-        if (/^ACESS[ÓO]RIO|^FRETE|^DESCONTO|^INSTALA[ÇC][ÃA]O|^TREINAMENTO|^GARANTIA/i.test(desc)) {
-          if (valorItem > 0) {
-            if (!acc['Acessórios']) acc['Acessórios'] = { equipamento: 'Acessórios', quantidade: 0, valor: 0 };
-            acc['Acessórios'].quantidade += qtd;
-            acc['Acessórios'].valor += valorItem;
-          }
-          continue;
-        }
-
-        // Categoriza pelo primeiro padrão que casar
-        let achou = false;
-        for (const cat of CATEGORIAS_EQUIP) {
-          if (cat.pattern.test(desc)) {
-            if (!acc[cat.nome]) acc[cat.nome] = { equipamento: cat.nome, quantidade: 0, valor: 0 };
-            acc[cat.nome].quantidade += qtd;
-            acc[cat.nome].valor += valorItem;
-            achou = true;
-            break;
-          }
-        }
-        if (!achou && valorItem >= 1000 && !ehFabrica) {
-          if (!acc['Outros Equipamentos']) acc['Outros Equipamentos'] = { equipamento: 'Outros Equipamentos', quantidade: 0, valor: 0 };
-          acc['Outros Equipamentos'].quantidade += qtd;
-          acc['Outros Equipamentos'].valor += valorItem;
-        }
-      }
-      return acc;
-    }
-
-    // Caso 2: fallback — pedido só tem texto livre, e NÃO é fábrica
-    if (ehFabrica || !descricaoPedido) return acc;
-    for (const cat of CATEGORIAS_EQUIP) {
-      if (cat.pattern.test(descricaoPedido)) {
-        if (!acc[cat.nome]) acc[cat.nome] = { equipamento: cat.nome, quantidade: 0, valor: 0 };
-        acc[cat.nome].quantidade += 1;
-        acc[cat.nome].valor += valorPedido; // sem itens detalhados, usa total do pedido
-        break; // só a primeira categoria, evita inflar
-      }
-    }
-    return acc;
-  }, {} as Record<string, { equipamento: string; quantidade: number; valor: number }>);
-
-  const dadosEquipamentos = Object.values(equipamentosVendidos).sort((a, b) => b.valor - a.valor);
-
-
-  // Função auxiliar para parsear data de forma segura
   const parseDateSafe = (dateStr: string | null | undefined): Date | null => {
     if (!dateStr) return null;
     try {
@@ -645,8 +516,7 @@ export default function ControleVendasOriginal() {
 
   // Tempo médio de fechamento por vendedor
   const tempoMedioPorVendedor = nomesVendedores.map(vendedor => {
-    const vendas = pedidosAtivos.filter(p => {
-      if (normalizarVendedor(p.vendedor) !== vendedor) return false;
+    const vendas = pedidosFisicos(pedidosAtivos.filter(p => normalizarVendedor(p.vendedor) === vendedor)).filter(p => {
       const inicio = parseDateSafe(p.data_primeiro_contato);
       const fim = parseDateSafe(p.data_venda);
       return inicio !== null && fim !== null;
@@ -669,41 +539,12 @@ export default function ControleVendasOriginal() {
     };
   }).filter(v => v.quantidade > 0).sort((a, b) => a.dias - b.dias);
 
-  // Vendas por estado
-  const vendasPorEstado = pedidosAtivos.reduce((acc, pedido) => {
-    const estado = pedido.estado || 'N/D';
-    if (!acc[estado]) {
-      acc[estado] = { estado, valor: 0, quantidade: 0 };
-    }
-    acc[estado].valor += getValorPedido(pedido);
-    acc[estado].quantidade += 1;
-    return acc;
-  }, {} as Record<string, { estado: string; valor: number; quantidade: number }>);
-
-  const dadosEstados = Object.values(vendasPorEstado)
-    .sort((a, b) => b.valor - a.valor)
-    .slice(0, 10);
+  // O mapa recebe todos os estados; somente os rankings exibem os dez primeiros.
+  const dadosEstados = agruparVendasPorEstado(pedidosAtivos);
 
   // Origem dos clientes
   const vendasPorOrigem = pedidosAtivos.reduce((acc, pedido) => {
-    let origem = pedido.fonte_origem || 'N/D';
-    const lower = origem.toLowerCase().trim();
-    
-    // Normaliza origens
-    if (lower === 'facebook' || lower === 'instagram' || lower === 'nao_informado' || lower === 'não informado') {
-      origem = 'Meta ADS';
-    } else if (lower === 'ja_era_cliente') {
-      origem = 'Já era cliente';
-    } else if (lower === 'google') {
-      origem = 'Google';
-    } else if (lower === 'indicacao') {
-      origem = 'Indicação';
-    } else if (lower === 'site') {
-      origem = 'Site';
-    } else {
-      origem = origem.replace(/_/g, ' ');
-    }
-    
+    const origem = normalizarOrigem(pedido.fonte_origem);
     if (!acc[origem]) {
       acc[origem] = { origem, valor: 0, quantidade: 0 };
     }
@@ -713,12 +554,11 @@ export default function ControleVendasOriginal() {
   }, {} as Record<string, { origem: string; valor: number; quantidade: number }>);
 
   const dadosOrigem = Object.values(vendasPorOrigem)
-    .filter(item => item.origem !== 'N/D') // Remove N/D do gráfico
     .sort((a, b) => b.valor - a.valor)
     .slice(0, 8);
 
   // Conversões Rápidas - vendas que começaram e fecharam no mesmo mês por origem
-  const conversoesRapidas = pedidosAtivos.reduce((acc, pedido) => {
+  const conversoesRapidas = vendasFisicas.reduce((acc, pedido) => {
     const dataContato = pedido.data_primeiro_contato;
     const dataVenda = pedido.data_venda;
     
@@ -730,29 +570,12 @@ export default function ControleVendasOriginal() {
     
     // Só conta se começou e fechou no mesmo mês
     if (contatoMesAno === vendaMesAno) {
-      let origem = pedido.fonte_origem || 'N/D';
-      const lower = origem.toLowerCase().trim();
-      
-      // Normaliza origens
-      if (lower === 'facebook' || lower === 'instagram' || lower === 'nao_informado' || lower === 'não informado') {
-        origem = 'Meta ADS';
-      } else if (lower === 'ja_era_cliente') {
-        origem = 'Já era cliente';
-      } else if (lower === 'google') {
-        origem = 'Google';
-      } else if (lower === 'indicacao') {
-        origem = 'Indicação';
-      } else if (lower === 'site') {
-        origem = 'Site';
-      } else {
-        origem = origem.replace(/_/g, ' ');
-      }
-      
+      const origem = normalizarOrigem(pedido.fonte_origem);
       if (!acc[origem]) {
         acc[origem] = { origem, quantidade: 0, valor: 0 };
       }
       acc[origem].quantidade += 1;
-      acc[origem].valor += getValorPedido(pedido);
+      acc[origem].valor += valorVendaFisica(pedido);
     }
     
     return acc;
@@ -763,7 +586,7 @@ export default function ControleVendasOriginal() {
     .sort((a, b) => b.quantidade - a.quantidade);
 
   // Tempo médio de conversão por origem
-  const tempoConversaoPorOrigem = pedidosAtivos.reduce((acc, pedido) => {
+  const tempoConversaoPorOrigem = vendasFisicas.reduce((acc, pedido) => {
     const dataContato = parseDateSafe(pedido.data_primeiro_contato);
     const dataVenda = parseDateSafe(pedido.data_venda);
     
@@ -772,30 +595,13 @@ export default function ControleVendasOriginal() {
     const diffMs = dataVenda.getTime() - dataContato.getTime();
     const dias = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
     
-    let origem = pedido.fonte_origem || 'N/D';
-    const lower = origem.toLowerCase().trim();
-    
-    // Normaliza origens
-    if (lower === 'facebook' || lower === 'instagram' || lower === 'nao_informado' || lower === 'não informado') {
-      origem = 'Meta ADS';
-    } else if (lower === 'ja_era_cliente') {
-      origem = 'Já era cliente';
-    } else if (lower === 'google') {
-      origem = 'Google';
-    } else if (lower === 'indicacao') {
-      origem = 'Indicação';
-    } else if (lower === 'site') {
-      origem = 'Site';
-    } else {
-      origem = origem.replace(/_/g, ' ');
-    }
-    
+    const origem = normalizarOrigem(pedido.fonte_origem);
     if (!acc[origem]) {
       acc[origem] = { origem, totalDias: 0, quantidade: 0, valor: 0 };
     }
     acc[origem].totalDias += dias;
     acc[origem].quantidade += 1;
-    acc[origem].valor += getValorPedido(pedido);
+    acc[origem].valor += valorVendaFisica(pedido);
     
     return acc;
   }, {} as Record<string, { origem: string; totalDias: number; quantidade: number; valor: number }>);
@@ -831,6 +637,7 @@ export default function ControleVendasOriginal() {
     pdfToast.current = toastDestaExportacao;
     
     try {
+      exigirEvolucaoAnualPDF(estadoEvolucaoAnual);
       const doc = new jsPDF();
       
       // Tenta carregar fonte Unicode para suporte completo a acentos
@@ -969,7 +776,7 @@ export default function ControleVendasOriginal() {
       doc.setTextColor(100, 100, 100);
       doc.setFontSize(9);
       doc.setFont(fontName, "normal");
-      doc.text("PEDIDOS", card2X + cardW / 2, yPos + 11, { align: 'center' });
+      doc.text("REGISTROS DE VENDA", card2X + cardW / 2, yPos + 11, { align: 'center' });
       doc.setTextColor(...BRANORTE_COLORS.destaque);
       doc.setFontSize(20);
       doc.setFont(fontName, "bold");
@@ -1000,7 +807,7 @@ export default function ControleVendasOriginal() {
       
       // Dados do ranking SEM emojis
       const rankingData = vendasPorVendedor
-        .filter(v => v.valor > 0)
+        .filter(v => v.valor !== 0)
         .map((v, i) => [
           `${i + 1}o`,
           sanitizePdfText(v.vendedor),
@@ -1074,8 +881,8 @@ export default function ControleVendasOriginal() {
       };
 
       const formatarValorCurto = (v: number) => {
-        if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-        if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(0)}k`;
+        if (Math.abs(v) >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+        if (Math.abs(v) >= 1_000) return `R$ ${(v / 1_000).toFixed(0)}k`;
         return `R$ ${v.toFixed(0)}`;
       };
 
@@ -1092,13 +899,14 @@ export default function ControleVendasOriginal() {
         const innerY = y + padT;
         const innerW = w - padL - padR;
         const innerH = h - padT - padB;
-        const maxValor = Math.max(...data.map(d => d.valor), 1);
+        const escala = escalaBarrasPDF(data.map(d => d.valor));
 
         // Eixos
         doc.setDrawColor(200, 200, 200);
         doc.setLineWidth(0.2);
         doc.line(innerX, innerY, innerX, innerY + innerH);
-        doc.line(innerX, innerY + innerH, innerX + innerW, innerY + innerH);
+        const zeroY = innerY + (1 - escala.zero) * innerH;
+        doc.line(innerX, zeroY, innerX + innerW, zeroY);
 
         // Grid e labels Y (4 níveis)
         doc.setFontSize(6);
@@ -1107,7 +915,7 @@ export default function ControleVendasOriginal() {
           const gy = innerY + innerH - (innerH * i) / 4;
           doc.setDrawColor(235, 235, 235);
           doc.line(innerX, gy, innerX + innerW, gy);
-          const v = (maxValor * i) / 4;
+          const v = escala.minimo + (escala.maximo - escala.minimo) * i / 4;
           doc.text(formatarValorCurto(v), innerX - 1, gy + 1.2, { align: 'right' });
         }
 
@@ -1117,10 +925,11 @@ export default function ControleVendasOriginal() {
 
         data.forEach((d, i) => {
           const cx = innerX + slot * i + slot / 2;
-          const bh = (d.valor / maxValor) * innerH;
-          const by = innerY + innerH - bh;
+          const segmento = segmentoBarraPDF(d.valor, escala);
+          const bh = segmento.comprimento * innerH;
+          const by = innerY + (1 - segmento.inicio - segmento.comprimento) * innerH;
           doc.setFillColor(...color);
-          doc.rect(cx - barW / 2, by, barW, bh, 'F');
+          if (bh > 0) doc.rect(cx - barW / 2, by, barW, bh, 'F');
 
           // Label X (mês)
           doc.setFontSize(6);
@@ -1131,7 +940,9 @@ export default function ControleVendasOriginal() {
           if (bh > 6) {
             doc.setFontSize(5.5);
             doc.setTextColor(60, 60, 60);
-            doc.text(formatValor(d.valor), cx, by - 1, { align: 'center' });
+            const valorY = d.valor < 0 ? by + bh - 2 : by - 1;
+            if (d.valor < 0) doc.setTextColor(255, 255, 255);
+            doc.text(formatValor(d.valor), cx, valorY, { align: 'center' });
           }
         });
       };
@@ -1150,33 +961,60 @@ export default function ControleVendasOriginal() {
         const valueW = 26;
         const barAreaX = x + labelW + 2;
         const barAreaW = w - labelW - valueW - 4;
-        const maxValor = Math.max(...data.map(d => d.valor), 1);
+        const escala = escalaBarrasPDF(data.map(d => d.valor));
+        let ry = y;
+        if (escala.minimo < 0) {
+          doc.setFont(fontName, 'normal');
+          doc.setFontSize(6);
+          doc.setTextColor(100, 100, 100);
+          doc.text('0', barAreaX + escala.zero * barAreaW, y - 1, { align: 'center' });
+        }
 
-        data.forEach((d, i) => {
-          const ry = y + i * rowH;
+        data.forEach(d => {
           // Label
           doc.setFontSize(7.5);
           doc.setFont(fontName, 'normal');
+          const linhas = doc.splitTextToSize(sanitizePdfText(d.label), labelW - 2) as string[];
+          const altura = Math.max(rowH, linhas.length * 3.2 + 2);
+          if (ry + altura > 272) {
+            doc.addPage();
+            addPageHeader('Graficos de Performance - continuacao');
+            ry = 28;
+            doc.setFontSize(7.5);
+            doc.setFont(fontName, 'normal');
+          }
           doc.setTextColor(60, 60, 60);
-          doc.text(truncarTexto(d.label, 18), x, ry + rowH / 2 + 1.4);
+          const centroY = ry + altura / 2;
+          doc.text(linhas, x, centroY - (linhas.length - 1) * 1.6 + 1.4);
 
           // Trilho
           const trackH = rowH * 0.55;
-          const trackY = ry + (rowH - trackH) / 2;
+          const trackY = centroY - trackH / 2;
           doc.setFillColor(238, 240, 245);
           doc.roundedRect(barAreaX, trackY, barAreaW, trackH, 0.8, 0.8, 'F');
 
           // Barra
-          const bw = (d.valor / maxValor) * barAreaW;
+          const segmento = segmentoBarraPDF(d.valor, escala);
+          const bw = segmento.comprimento * barAreaW;
           doc.setFillColor(...color);
-          doc.roundedRect(barAreaX, trackY, Math.max(bw, 0.2), trackH, 0.8, 0.8, 'F');
+          if (bw > 0) doc.roundedRect(barAreaX + segmento.inicio * barAreaW, trackY, bw, trackH, Math.min(0.8, bw / 2), 0.8, 'F');
+          if (escala.minimo < 0) {
+            const zeroX = barAreaX + escala.zero * barAreaW;
+            doc.setDrawColor(160, 160, 160);
+            doc.line(zeroX, trackY, zeroX, trackY + trackH);
+          }
 
           // Valor à direita
           doc.setFontSize(7.5);
           doc.setFont(fontName, 'bold');
           doc.setTextColor(40, 40, 40);
-          doc.text(formatValor(d.valor) + (d.sufixo || ''), x + w, ry + rowH / 2 + 1.4, { align: 'right' });
+          const valorTexto = formatValor(d.valor) + (d.sufixo || '');
+          const larguraValor = doc.getTextWidth(valorTexto);
+          if (larguraValor > valueW) doc.setFontSize(7.5 * valueW / larguraValor);
+          doc.text(valorTexto, x + w, centroY + 1.4, { align: 'right' });
+          ry += altura;
         });
+        return ry;
       };
 
       // ============ PÁGINA 2: Gráficos Nativos ============
@@ -1187,7 +1025,7 @@ export default function ControleVendasOriginal() {
       doc.setTextColor(...BRANORTE_COLORS.azul);
       doc.setFontSize(12);
       doc.setFont(fontName, "bold");
-      doc.text("EVOLUCAO DE VENDAS (12 MESES)", 15, yPos);
+      doc.text(`EVOLUCAO DE VENDAS - ANO ${anoAtual}`, 15, yPos);
 
       const evolucaoDados = (dadosVendasPorMes || [])
         .slice(-12)
@@ -1208,7 +1046,7 @@ export default function ControleVendasOriginal() {
       doc.text("VENDAS POR VENDEDOR (TOP 10)", 15, yPos);
 
       const vendedoresChart = vendasPorVendedor
-        .filter(v => v.valor > 0)
+        .filter(v => v.valor !== 0)
         .slice(0, 10)
         .map(v => ({ label: v.vendedor, valor: v.valor }));
 
@@ -1232,14 +1070,14 @@ export default function ControleVendasOriginal() {
       doc.setFontSize(8);
       doc.setFont(fontName, "normal");
       doc.setTextColor(100, 100, 100);
-      doc.text("Distribuicao de pedidos por canal de origem", 15, yPos + 5);
+      doc.text("Valor de vendas por canal de origem (top 8)", 15, yPos + 5);
 
       const origemChart = (dadosOrigem || [])
         .filter(o => o.origem !== 'N/D')
         .slice(0, 8)
         .map(o => ({ label: o.origem, valor: o.valor }));
 
-      drawHorizontalBarChart({
+      yPos = drawHorizontalBarChart({
         x: 15, y: yPos + 9, w: 180,
         data: origemChart,
         color: BRANORTE_COLORS.azul,
@@ -1247,13 +1085,14 @@ export default function ControleVendasOriginal() {
         rowH: 7.5,
       });
 
-      yPos = yPos + 9 + Math.max(origemChart.length, 1) * 7.5 + 8;
+      yPos += 8;
+      ensureSpace(30, 'Conversoes Rapidas');
 
       // Conversões Rápidas
       doc.setTextColor(...BRANORTE_COLORS.azul);
       doc.setFontSize(12);
       doc.setFont(fontName, "bold");
-      doc.text("CONVERSOES RAPIDAS", 15, yPos);
+      doc.text("CONVERSOES RAPIDAS (TOP 8)", 15, yPos);
       doc.setFontSize(8);
       doc.setFont(fontName, "normal");
       doc.setTextColor(100, 100, 100);
@@ -1264,7 +1103,7 @@ export default function ControleVendasOriginal() {
         .slice(0, 8)
         .map(c => ({ label: c.origem, valor: c.quantidade }));
 
-      drawHorizontalBarChart({
+      yPos = drawHorizontalBarChart({
         x: 15, y: yPos + 9, w: 180,
         data: conversoesChart,
         color: BRANORTE_COLORS.verde,
@@ -1272,10 +1111,11 @@ export default function ControleVendasOriginal() {
         rowH: 7.5,
       });
 
-      yPos = yPos + 9 + Math.max(conversoesChart.length, 1) * 7.5 + 8;
+      yPos += 8;
+      ensureSpace(30, 'Tempo Medio de Conversao');
 
       // Tempo Médio de Conversão
-      if (yPos < 240) {
+      {
         doc.setTextColor(...BRANORTE_COLORS.azul);
         doc.setFontSize(12);
         doc.setFont(fontName, "bold");
@@ -1283,12 +1123,9 @@ export default function ControleVendasOriginal() {
         doc.setFontSize(8);
         doc.setFont(fontName, "normal");
         doc.setTextColor(100, 100, 100);
-        doc.text("Dias entre primeiro contato e fechamento", 15, yPos + 5);
+        doc.text("Dias entre primeiro contato e fechamento, por origem", 15, yPos + 5);
 
-        const tempoChart = tempoMedioPorVendedor
-          .filter(v => v.quantidade > 0)
-          .slice(0, 8)
-          .map(v => ({ label: v.vendedor, valor: v.dias, sufixo: ' dias' }));
+        const tempoChart = dadosConversaoOrigemPDF(dadosTempoConversao);
 
         drawHorizontalBarChart({
           x: 15, y: yPos + 9, w: 180,
@@ -1317,12 +1154,13 @@ export default function ControleVendasOriginal() {
       
       yPos += 8;
       
-      if (mapaRef.current) {
-        try {
+      if (!mapaRef.current) throw new Error('O mapa ainda não está disponível. Gere o relatório novamente.');
+      {
           // O relatorio e impresso em preto e branco, entao o mapa vai SEMPRE claro,
           // independente do tema da tela. `onclone` mexe so na copia que o html2canvas
           // renderiza — a tela nao pisca e o tema do usuario nao muda.
-          const canvas = await html2canvas(mapaRef.current, {
+          const { canvas, imgData } = await capturaMapaPDF(async () => {
+          const canvas = await html2canvas(mapaRef.current!, {
             backgroundColor: '#ffffff',
             scale: 3,
             useCORS: true,
@@ -1355,7 +1193,9 @@ export default function ControleVendasOriginal() {
               }
             }
           });
-          const imgData = canvas.toDataURL('image/png');
+          if (!canvas.width || !canvas.height) throw new Error('Mapa sem dimensões');
+          return { canvas, imgData: canvas.toDataURL('image/png') };
+          });
           
           // Largura disponível na página (A4: 210mm) com margens de 15mm
           const pageWidth = 210;
@@ -1404,9 +1244,6 @@ export default function ControleVendasOriginal() {
             legendY,
             { align: 'center' }
           );
-        } catch (e) {
-          console.log('Erro ao capturar mapa:', e);
-        }
       }
       
       // ============ PÁGINA 4: Estados + Origens (Tabelas) ============
@@ -1787,7 +1624,7 @@ export default function ControleVendasOriginal() {
               </div>
             </div>
             <div className="vendas-header-actions flex flex-wrap items-center gap-2">
-              <Button onClick={exportarPDF} disabled={exportingPDF || loading || !pedidos.length} className="vendas-export text-xs sm:text-sm" size="sm">
+              <Button onClick={exportarPDF} disabled={exportingPDF || loading || !pedidos.length || !evolucaoAnualPronta} className="vendas-export text-xs sm:text-sm" size="sm">
                 {exportingPDF ? (
                   <>
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -1966,7 +1803,7 @@ export default function ControleVendasOriginal() {
                   <Filter className="h-4 w-4 text-primary" />
                   <span className="text-sm font-semibold">Auditoria do filtro</span>
                   <span className="text-xs text-muted-foreground">
-                    {pedidosAtivos.length} de {totalCarregados} pedidos ativos
+                    {pedidosAtivos.length} de {totalCarregados} registros ativos
                     {filtroValorMinimo && ` • ${excluidosPorValor} excluídos por valor mínimo`}
                   </span>
                   <span className="ml-auto text-xs text-muted-foreground group-open:hidden">▼ expandir</span>
@@ -1996,15 +1833,16 @@ export default function ControleVendasOriginal() {
                   <div className="rounded-md border border-border/40 bg-card p-3 space-y-1 md:col-span-2">
                     <p className="font-semibold text-sm mb-1">📈 Quantos passam por dashboard</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                      <div className="flex justify-between"><span className="text-muted-foreground">KPIs / Vendedores / Equipamentos / Fábricas</span><span className="font-mono">{pedidosAtivos.length}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Valores / Vendedores (registros)</span><span className="font-mono">{pedidosAtivos.length}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Equipamentos / Fábricas (pedidos únicos)</span><span className="font-mono">{vendasFisicas.length}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Distribuição por Estado</span><span className="font-mono">{comEstado} <span className="text-muted-foreground">/ {pedidosAtivos.length}</span></span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Origem dos Clientes</span><span className="font-mono">{comOrigem} <span className="text-muted-foreground">/ {pedidosAtivos.length}</span></span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Tempo Médio de Fechamento</span><span className="font-mono">{comDataContato} <span className="text-muted-foreground">/ {pedidosAtivos.length}</span></span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Tempo Médio de Conversão</span><span className="font-mono">{comDataContato} <span className="text-muted-foreground">/ {pedidosAtivos.length}</span></span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Conversões Rápidas (mesmo mês)</span><span className="font-mono">{conversoesMesmoMes} <span className="text-muted-foreground">/ {pedidosAtivos.length}</span></span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Tempo Médio de Fechamento</span><span className="font-mono">{comDataContato} <span className="text-muted-foreground">/ {vendasFisicas.length}</span></span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Tempo Médio de Conversão</span><span className="font-mono">{comDataContato} <span className="text-muted-foreground">/ {vendasFisicas.length}</span></span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Conversões Rápidas (mesmo mês)</span><span className="font-mono">{conversoesMesmoMes} <span className="text-muted-foreground">/ {vendasFisicas.length}</span></span></div>
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-2 italic">
-                      Diferenças = pedidos sem data de 1º contato, sem estado ou sem origem cadastrada. Eles passam no filtro de valor, mas não entram no respectivo gráfico por falta do dado.
+                      Tempos e conversões contam cada pedido uma vez e ignoram acréscimos. Vendas por vendedor, estado e origem usam as parcelas monetárias. Origens ausentes aparecem como Não informado.
                     </p>
                   </div>
                 </div>
@@ -2083,7 +1921,7 @@ export default function ControleVendasOriginal() {
                 <CardContent className="vendas-panel-content py-6">
                   <div className="vendas-kpi-body flex items-start justify-between gap-3">
                     <div className="vendas-kpi-text min-w-0">
-                      <p className="vendas-kpi-label text-sm font-medium text-muted-foreground mb-3">Pedidos</p>
+                      <p className="vendas-kpi-label text-sm font-medium text-muted-foreground mb-3">Registros de venda</p>
                       <p className="vendas-kpi-value text-3xl font-bold tracking-tight">{totalVendas}</p>
                     </div>
                     <div className="vendas-kpi-icon p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0"><FileText className="h-5 w-5" /></div>
@@ -2182,7 +2020,7 @@ export default function ControleVendasOriginal() {
                       </div>
                       <p className="vendas-ranking-value text-2xl font-bold tracking-tight mb-3">{formatarValor(v.valor)}</p>
                       <div className="vendas-ranking-meta flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        <span>{v.quantidade} vendas</span>
+                        <span>{v.quantidade} registros</span>
                         <span>Ticket médio <strong className="font-medium text-foreground">{formatarValor(v.ticketMedio)}</strong></span>
                       </div>
                     </div>
@@ -2194,169 +2032,171 @@ export default function ControleVendasOriginal() {
             {/* Gráficos */}
             <div className="vendas-charts grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Evolução de Vendas */}
-              <Card className="vendas-panel">
+              <Card className="vendas-panel vendas-chart-card">
                 <CardHeader className="vendas-panel-header">
                   <CardTitle className="vendas-panel-title">Evolução de Vendas</CardTitle>
+                  <p className="vendas-chart-description text-sm text-muted-foreground">Ano de {anoAtual} · valores mensais</p>
                 </CardHeader>
                 <CardContent className="vendas-panel-content">
-                  <div ref={evolucaoChartRef} className="vendas-chart-surface rounded-xl p-3 sm:p-4 bg-card">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={dadosVendasPorMes} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>
-                        <defs>
-                          <linearGradient id="lineGradientEvolucao" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <div ref={evolucaoChartRef} className="vendas-chart-surface rounded-xl p-3 sm:p-4 bg-card" role="group" aria-label={`Evolução do valor mensal das vendas no ano de ${anoAtual}`}>
+                    {!evolucaoAnualPronta ? (
+                      <div className="h-[300px] flex items-center justify-center text-sm text-muted-foreground" role="status">
+                        {erroAnoCompleto ? 'Evolução anual indisponível. Recarregue os dados.' : 'Carregando evolução anual…'}
+                      </div>
+                    ) : <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={dadosVendasPorMes} margin={{ top: 16, right: 12, left: 0, bottom: 8 }} accessibilityLayer>
+                        <CartesianGrid strokeDasharray="4 4" stroke="var(--vendas-chart-grid, hsl(var(--border)))" vertical={false} />
                         <XAxis 
                           dataKey="mes" 
-                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }} 
-                          axisLine={{ stroke: '#cbd5e1' }}
+                          tick={{ fill: 'var(--vendas-chart-axis, hsl(var(--muted-foreground)))', fontSize: 12, fontWeight: 500 }}
+                          axisLine={false}
                           tickLine={false}
+                          tickMargin={12}
                         />
                         <YAxis 
-                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }} 
+                          tick={{ fill: 'var(--vendas-chart-axis, hsl(var(--muted-foreground)))', fontSize: 11, fontWeight: 500 }}
                           axisLine={false}
                           tickLine={false}
                           tickFormatter={(value) => {
-                            if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-                            if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+                            if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                            if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(0)}K`;
                             return value.toString();
                           }}
                           width={60}
                         />
                         <Tooltip
+                          cursor={{ stroke: 'var(--vendas-chart-series, hsl(var(--primary)))', strokeOpacity: 0.18, strokeWidth: 1 }}
                           contentStyle={{ 
-                            backgroundColor: '#fff', 
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+                            backgroundColor: 'var(--vendas-chart-tooltip-bg, hsl(var(--popover)))',
+                            border: '1px solid var(--vendas-chart-tooltip-border, hsl(var(--border)))',
+                            borderRadius: '12px',
+                            color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))',
+                            boxShadow: '0 8px 24px hsl(var(--foreground) / 0.1)'
                           }}
                           formatter={(value: any) => [formatarValor(Number(value)), "Valor"]}
-                          labelStyle={{ fontWeight: 600, color: '#1e293b' }}
+                          labelStyle={{ fontWeight: 600, marginBottom: 4, color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))' }}
+                          itemStyle={{ color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))' }}
                         />
-                        <Legend wrapperStyle={{ paddingTop: 10 }} />
                         <Line 
                           type="monotone" 
                           dataKey="valor" 
-                          stroke="#3b82f6" 
+                          stroke="var(--vendas-chart-series, hsl(var(--primary)))"
                           strokeWidth={3} 
                           name="Valor" 
-                          dot={{ fill: '#3b82f6', strokeWidth: 2, r: 5, stroke: '#fff' }}
-                          activeDot={{ r: 7, stroke: '#3b82f6', strokeWidth: 2, fill: '#fff' }}
+                          dot={{ fill: 'var(--vendas-chart-series, hsl(var(--primary)))', strokeWidth: 2, r: 4, stroke: 'hsl(var(--card))' }}
+                          activeDot={{ r: 6, stroke: 'var(--vendas-chart-series, hsl(var(--primary)))', strokeWidth: 2, fill: 'hsl(var(--card))' }}
                         />
                       </LineChart>
-                    </ResponsiveContainer>
+                    </ResponsiveContainer>}
                   </div>
                 </CardContent>
               </Card>
 
               {/* Vendas por Vendedor */}
-              <Card className="vendas-panel">
+              <Card className="vendas-panel vendas-chart-card">
                 <CardHeader className="vendas-panel-header">
                   <CardTitle className="vendas-panel-title">Vendas por Vendedor</CardTitle>
+                  <p className="vendas-chart-description text-sm text-muted-foreground">Valor de vendas no período selecionado</p>
                 </CardHeader>
                 <CardContent className="vendas-panel-content">
-                  <div ref={vendedorChartRef} className="vendas-chart-surface rounded-xl p-3 sm:p-4 bg-card">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={vendasPorVendedor.filter(v => v.valor > 0)} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>
-                        <defs>
-                          {CORES_GRAFICOS.map((cor, i) => (
-                            <linearGradient key={`barGrad${i}`} id={`barGradient${i}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor={cor} stopOpacity={1}/>
-                              <stop offset="100%" stopColor={cor} stopOpacity={0.7}/>
-                            </linearGradient>
-                          ))}
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <div className="vendas-chart-scroll max-h-[380px] overflow-auto">
+                  <div ref={vendedorChartRef} className="vendas-chart-surface vendas-chart-seller min-w-0 rounded-xl p-3 sm:p-4 bg-card" role="group" aria-label="Valor das vendas por vendedor no período selecionado, em barras horizontais">
+                    <ResponsiveContainer width="100%" height={Math.max(300, vendasPorVendedor.filter(v => v.valor !== 0).length * 44 + 48)}>
+                      <BarChart data={vendasPorVendedor.filter(v => v.valor !== 0)} layout="vertical" margin={{ top: 12, right: 52, left: 0, bottom: 8 }} accessibilityLayer>
+                        <CartesianGrid strokeDasharray="4 4" stroke="var(--vendas-chart-grid, hsl(var(--border)))" horizontal={false} />
                         <XAxis 
-                          dataKey="vendedor" 
-                          tick={{ fill: '#64748b', fontSize: 10, fontWeight: 500 }}
-                          axisLine={{ stroke: '#cbd5e1' }}
-                          tickLine={false}
-                          interval={0}
-                        />
-                        <YAxis 
-                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 500 }}
+                          type="number"
+                          domain={[(minimo: number) => Math.min(0, minimo), (maximo: number) => Math.max(0, maximo)]}
+                          tick={{ fill: 'var(--vendas-chart-axis, hsl(var(--muted-foreground)))', fontSize: 11, fontWeight: 500 }}
                           axisLine={false}
                           tickLine={false}
                           tickFormatter={(value) => {
-                            if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-                            if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+                            if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                            if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(0)}K`;
                             return value.toString();
                           }}
-                          width={55}
+                          tickMargin={10}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="vendedor"
+                          tick={({ x, y, payload }: any) => (
+                            <text x={x} y={y} dy={4} textAnchor="end" fill="var(--vendas-chart-axis, hsl(var(--muted-foreground)))" fontSize={11} fontWeight={600}>
+                              <title>{payload.value}</title>
+                              {payload.value.length > 18 ? payload.value.slice(0, 17) + '…' : payload.value}
+                            </text>
+                          )}
+                          axisLine={false}
+                          tickLine={false}
+                          interval={0}
+                          width={120}
+                          tickMargin={12}
                         />
                         <Tooltip
+                          cursor={{ fill: 'hsl(var(--primary) / 0.06)' }}
                           contentStyle={{ 
-                            backgroundColor: '#fff', 
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+                            backgroundColor: 'var(--vendas-chart-tooltip-bg, hsl(var(--popover)))',
+                            border: '1px solid var(--vendas-chart-tooltip-border, hsl(var(--border)))',
+                            borderRadius: '12px',
+                            color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))',
+                            boxShadow: '0 8px 24px hsl(var(--foreground) / 0.1)'
                           }}
                           formatter={(value: any) => [formatarValor(Number(value)), "Valor"]}
-                          labelStyle={{ fontWeight: 600, color: '#1e293b' }}
+                          labelStyle={{ fontWeight: 600, marginBottom: 4, color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))' }}
+                          itemStyle={{ color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))' }}
                         />
-                        <Legend wrapperStyle={{ paddingTop: 10 }} />
-                        <Bar dataKey="valor" name="Valor Total" radius={[6, 6, 0, 0]}>
-                          {vendasPorVendedor.filter(v => v.valor > 0).map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={`url(#barGradient${index % CORES_GRAFICOS.length})`} />
-                          ))}
+                        <Bar dataKey="valor" name="Valor Total" radius={[0, 5, 5, 0]} maxBarSize={24} fill="var(--vendas-chart-series, hsl(var(--primary)))">
+                          <LabelList dataKey="valor" position="right" fill="var(--vendas-chart-axis, hsl(var(--muted-foreground)))" fontSize={11} fontWeight={600} formatter={(value: any) => Number(value).toLocaleString('pt-BR', { notation: 'compact', maximumFractionDigits: 1 })} />
                         </Bar>
+                        <ReferenceLine x={0} stroke="var(--vendas-chart-axis, hsl(var(--muted-foreground)))" strokeOpacity={0.4} />
                       </BarChart>
                     </ResponsiveContainer>
+                  </div>
                   </div>
                 </CardContent>
               </Card>
 
               {/* Fábricas Vendidas - Design Moderno */}
               {dadosFabricas.length > 0 && (
-                <Card className="vendas-panel lg:col-span-1 overflow-hidden">
-                  <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-primary/5 to-transparent">
-                    <div className="flex items-center justify-between">
+                <Card className="vendas-panel vendas-chart-card lg:col-span-1 overflow-hidden">
+                  <CardHeader className="vendas-panel-header pb-2">
+                    <div className="vendas-chart-heading flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg">
-                          <Package className="h-5 w-5 text-primary-foreground" />
+                        <div className="vendas-chart-card-icon p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
+                          <Package className="h-5 w-5" />
                         </div>
                         <div>
                           <CardTitle className="vendas-panel-title text-lg font-bold">Fábricas de Ração</CardTitle>
-                          <p className="text-xs text-muted-foreground mt-0.5">Quantidade vendida por modelo</p>
+                          <p className="vendas-chart-description text-sm text-muted-foreground mt-1">Unidades por modelo · pedidos sem duplicação</p>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="vendas-chart-total text-right shrink-0">
                         <span className="text-2xl font-bold text-primary">{dadosFabricas.reduce((acc, f) => acc + f.quantidade, 0)}</span>
                         <p className="text-xs text-muted-foreground">total vendidas</p>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="vendas-panel-content pt-4">
-                    <div className="space-y-3">
+                    <div className="vendas-chart-list space-y-4" role="group" aria-label="Quantidade de fábricas vendidas por modelo no período selecionado">
                       {dadosFabricas.map((fabrica, index) => {
                         const maxQtd = Math.max(...dadosFabricas.map(f => f.quantidade));
                         const porcentagem = (fabrica.quantidade / maxQtd) * 100;
-                        const cor = CORES_GRAFICOS[index % CORES_GRAFICOS.length];
+                        const cor = 'var(--vendas-chart-series, hsl(var(--primary)))';
                         return (
-                          <div key={fabrica.fabrica} className="group">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center gap-2">
-                                <div 
-                                  className="w-3 h-3 rounded-full shadow-sm" 
-                                  style={{ background: `linear-gradient(135deg, ${cor}, ${cor}80)` }} 
-                                />
-                                <span className="text-sm font-medium">{fabrica.fabrica}</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold" style={{ color: cor }}>{fabrica.quantidade}</span>
+                          <div key={fabrica.fabrica} className="vendas-chart-row group">
+                            <div className="vendas-chart-row-heading flex items-center justify-between gap-3 mb-2">
+                              <span className="vendas-chart-row-label text-sm font-medium min-w-0 break-words">{fabrica.fabrica}</span>
+                              <div className="vendas-chart-row-metrics flex items-baseline gap-1.5 shrink-0">
+                                <span className="vendas-chart-row-quantity text-base font-semibold">{fabrica.quantidade}</span>
                                 <span className="text-xs text-muted-foreground">un.</span>
                               </div>
                             </div>
-                            <div className="h-2.5 bg-muted/50 rounded-full overflow-hidden">
+                            <div className="vendas-chart-row-track h-2 bg-muted rounded-full overflow-hidden" aria-hidden="true">
                               <div 
-                                className="h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
+                                className="vendas-chart-row-fill h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
                                 style={{ 
                                   width: `${porcentagem}%`,
-                                  background: `linear-gradient(90deg, ${cor}, ${cor}90)`
+                                  background: cor
                                 }} 
                               />
                             </div>
@@ -2370,54 +2210,47 @@ export default function ControleVendasOriginal() {
 
               {/* Equipamentos Separados Vendidos */}
               {dadosEquipamentos.length > 0 && (
-                <Card className="vendas-panel lg:col-span-1 overflow-hidden">
-                  <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-blue-500/5 to-transparent">
-                    <div className="flex items-center justify-between">
+                <Card className="vendas-panel vendas-chart-card lg:col-span-1 overflow-hidden">
+                  <CardHeader className="vendas-panel-header pb-2">
+                    <div className="vendas-chart-heading flex items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
-                          <Wrench className="h-5 w-5 text-white" />
+                        <div className="vendas-chart-card-icon p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
+                          <Wrench className="h-5 w-5" />
                         </div>
                         <div>
                           <CardTitle className="vendas-panel-title text-lg font-bold">Equipamentos Separados</CardTitle>
-                          <p className="text-xs text-muted-foreground mt-0.5">Vendas de equipamentos avulsos</p>
+                          <p className="vendas-chart-description text-sm text-muted-foreground mt-1">Barras por quantidade · valor integral dos itens associados</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-2xl font-bold text-blue-500">{dadosEquipamentos.reduce((acc, e) => acc + e.quantidade, 0)}</span>
+                      <div className="vendas-chart-total text-right shrink-0">
+                        <span className="text-2xl font-bold text-primary">{dadosEquipamentos.reduce((acc, e) => acc + e.quantidade, 0)}</span>
                         <p className="text-xs text-muted-foreground">total vendidos</p>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="vendas-panel-content pt-4">
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    <div className="vendas-chart-list vendas-chart-scroll space-y-4 max-h-[300px] overflow-y-auto pr-1" role="group" aria-label="Quantidade e valor de vendas de equipamentos avulsos no período selecionado, ordenados por valor">
                       {dadosEquipamentos.map((equip, index) => {
                         const maxQtd = Math.max(...dadosEquipamentos.map(e => e.quantidade));
                         const porcentagem = (equip.quantidade / maxQtd) * 100;
-                        const cores = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#6366F1', '#14B8A6'];
-                        const cor = cores[index % cores.length];
+                        const cor = 'var(--vendas-chart-series, hsl(var(--primary)))';
                         return (
-                          <div key={equip.equipamento} className="group">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <div className="flex items-center gap-2">
-                                <div 
-                                  className="w-3 h-3 rounded-full shadow-sm" 
-                                  style={{ background: `linear-gradient(135deg, ${cor}, ${cor}80)` }} 
-                                />
-                                <span className="text-sm font-medium">{equip.equipamento}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-xs text-muted-foreground">
-                                  {equip.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' })}
+                          <div key={equip.equipamento} className="vendas-chart-row group">
+                            <div className="vendas-chart-row-heading flex items-center justify-between gap-3 mb-2">
+                              <span className="vendas-chart-row-label text-sm font-medium min-w-0 break-words">{equip.equipamento}</span>
+                              <div className="vendas-chart-row-metrics flex flex-wrap items-baseline justify-end gap-x-3 gap-y-1 shrink-0">
+                                <span className="vendas-chart-row-value text-sm text-muted-foreground">
+                                  {formatarValor(equip.valor)}
                                 </span>
-                                <span className="text-sm font-bold" style={{ color: cor }}>{equip.quantidade}</span>
+                                <span className="vendas-chart-row-quantity text-base font-semibold">{equip.quantidade} <span className="text-xs font-normal text-muted-foreground">un.</span></span>
                               </div>
                             </div>
-                            <div className="h-2.5 bg-muted/50 rounded-full overflow-hidden">
+                            <div className="vendas-chart-row-track h-2 bg-muted rounded-full overflow-hidden" aria-hidden="true">
                               <div 
-                                className="h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
+                                className="vendas-chart-row-fill h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
                                 style={{ 
                                   width: `${porcentagem}%`,
-                                  background: `linear-gradient(90deg, ${cor}, ${cor}90)`
+                                  background: cor
                                 }} 
                               />
                             </div>
@@ -2431,54 +2264,55 @@ export default function ControleVendasOriginal() {
 
               {/* Tempo Médio de Fechamento */}
               {tempoMedioPorVendedor.length > 0 && (
-                <Card className="vendas-panel">
+                <Card className="vendas-panel vendas-chart-card">
                   <CardHeader className="vendas-panel-header">
                     <CardTitle className="vendas-panel-title flex items-center gap-2">
                       <Clock className="h-5 w-5 text-primary" />
                       Tempo Médio de Fechamento
                     </CardTitle>
-                    <p className="text-sm text-muted-foreground">Dias entre primeiro contato e venda</p>
+                    <p className="vendas-chart-description text-sm text-muted-foreground">Média de dias entre primeiro contato e venda, por vendedor</p>
                   </CardHeader>
                   <CardContent className="vendas-panel-content">
+                    <div className="vendas-chart-surface" role="group" aria-label="Média de dias entre primeiro contato e venda por vendedor no período selecionado">
                     <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={tempoMedioPorVendedor} margin={{ top: 25, right: 10, left: 0, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                        <XAxis dataKey="vendedor" tick={{ fill: 'hsl(var(--foreground))', fontSize: 11 }} />
-                        <YAxis tick={{ fill: 'hsl(var(--foreground))', fontSize: 11 }} />
+                      <BarChart data={tempoMedioPorVendedor} margin={{ top: 25, right: 10, left: 0, bottom: 12 }} accessibilityLayer>
+                        <CartesianGrid strokeDasharray="4 4" stroke="var(--vendas-chart-grid, hsl(var(--border)))" vertical={false} />
+                        <XAxis dataKey="vendedor" tick={{ fill: 'var(--vendas-chart-axis, hsl(var(--muted-foreground)))', fontSize: 11, fontWeight: 500 }} axisLine={false} tickLine={false} tickMargin={10} />
+                        <YAxis tick={{ fill: 'var(--vendas-chart-axis, hsl(var(--muted-foreground)))', fontSize: 11 }} axisLine={false} tickLine={false} />
                         <Tooltip
+                          cursor={{ fill: 'hsl(var(--primary) / 0.06)' }}
                           contentStyle={{ 
-                            backgroundColor: 'hsl(var(--card))', 
-                            border: '1px solid hsl(var(--border))',
-                            borderRadius: '8px',
-                            color: 'hsl(var(--foreground))'
+                            backgroundColor: 'var(--vendas-chart-tooltip-bg, hsl(var(--popover)))',
+                            border: '1px solid var(--vendas-chart-tooltip-border, hsl(var(--border)))',
+                            borderRadius: '12px',
+                            color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))',
+                            boxShadow: '0 8px 24px hsl(var(--foreground) / 0.1)'
                           }}
-                          labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600 }}
-                          itemStyle={{ color: 'hsl(var(--foreground))' }}
+                          labelStyle={{ color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))', fontWeight: 600, marginBottom: 4 }}
+                          itemStyle={{ color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))' }}
                           formatter={(value: any, name: any, props: any) => [
                             `${value} dias (${props.payload.quantidade} vendas)`,
                             "Média"
                           ]}
                         />
-                        <Bar dataKey="dias" name="Dias" radius={[4, 4, 0, 0]}>
-                          {tempoMedioPorVendedor.map((_, index) => (
-                            <Cell key={`cell-tempo-${index}`} fill={CORES_GRAFICOS[index % CORES_GRAFICOS.length]} />
-                          ))}
+                        <Bar dataKey="dias" name="Dias" radius={[5, 5, 0, 0]} maxBarSize={40} fill="var(--vendas-chart-series, hsl(var(--primary)))">
                           <LabelList 
                             dataKey="dias" 
                             position="top" 
                             formatter={(value: any) => `${value}d`}
-                            fill="hsl(var(--foreground))"
+                            fill="var(--vendas-chart-axis, hsl(var(--muted-foreground)))"
                             fontSize={11}
                             fontWeight={600}
                           />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
+                    </div>
                     {/* Detalhes por vendedor */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-4 pt-4 border-t border-border">
                       {tempoMedioPorVendedor.map((v, index) => (
                         <div key={v.vendedor} className="flex items-center gap-2 text-xs">
-                          <div className="w-3 h-3 rounded-full" style={{ background: CORES_GRAFICOS[index % CORES_GRAFICOS.length] }} />
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--vendas-chart-series, hsl(var(--primary)))' }} />
                           <div>
                             <span className="font-medium">{v.vendedor}</span>
                             <span className="text-muted-foreground ml-1">({v.quantidade} vendas)</span>
@@ -2491,15 +2325,16 @@ export default function ControleVendasOriginal() {
               )}
 
               {/* Vendas por Estado - Mapa */}
-              <Card className="vendas-panel">
+              <Card className="vendas-panel vendas-chart-card">
                 <CardHeader className="vendas-panel-header">
                   <CardTitle className="vendas-panel-title flex items-center gap-2">
                     <MapPin className="h-5 w-5 text-primary" />
                     Distribuição por Estado
                   </CardTitle>
+                  <p className="vendas-chart-description text-sm text-muted-foreground">Valor de vendas por estado no período selecionado</p>
                 </CardHeader>
                 <CardContent className="vendas-panel-content">
-                  <div ref={mapaRef} data-pdf-mapa className="vendas-chart-surface bg-card rounded-lg p-2">
+                  <div ref={mapaRef} data-pdf-mapa className="vendas-chart-surface bg-card rounded-lg p-2" role="group" aria-label="Valor de vendas por estado no período selecionado">
                     <BrazilMap dados={dadosEstados} formatarValor={formatarValor} />
                   </div>
                 </CardContent>
@@ -2507,30 +2342,23 @@ export default function ControleVendasOriginal() {
 
               {/* Origem dos Clientes */}
               {dadosOrigem.length > 0 && (
-                <Card className="vendas-panel lg:col-span-2">
+                <Card className="vendas-panel vendas-chart-card lg:col-span-2">
                   <CardHeader className="vendas-panel-header">
                     <CardTitle className="vendas-panel-title flex items-center gap-2">
                       <Users className="h-5 w-5 text-primary" />
                       Origem dos Clientes
                     </CardTitle>
+                    <p className="vendas-chart-description text-sm text-muted-foreground">Valor de vendas no período selecionado · top 8 origens</p>
                   </CardHeader>
                   <CardContent className="vendas-panel-content">
-                    <div ref={origemChartRef} className="vendas-chart-surface bg-card rounded-xl p-3 sm:p-4">
+                    <div ref={origemChartRef} className="vendas-chart-surface bg-card rounded-xl p-3 sm:p-4" role="group" aria-label="Valor das vendas por origem do cliente no período selecionado">
                       <ResponsiveContainer width="100%" height={340}>
-                        <BarChart data={dadosOrigem} margin={{ top: 30, right: 20, left: 10, bottom: 30 }}>
-                          <defs>
-                            {CORES_GRAFICOS.map((cor, i) => (
-                              <linearGradient key={`origemGrad${i}`} id={`origemGradient${i}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={cor} stopOpacity={1}/>
-                                <stop offset="100%" stopColor={cor} stopOpacity={0.7}/>
-                              </linearGradient>
-                            ))}
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                        <BarChart data={dadosOrigem} margin={{ top: 30, right: 20, left: 10, bottom: 30 }} accessibilityLayer>
+                          <CartesianGrid strokeDasharray="4 4" stroke="var(--vendas-chart-grid, hsl(var(--border)))" vertical={false} />
                           <XAxis 
                             dataKey="origem" 
-                            tick={{ fill: 'hsl(var(--foreground))', fontSize: 11, fontWeight: 500 }} 
-                            axisLine={{ stroke: 'hsl(var(--border))' }}
+                            tick={{ fill: 'var(--vendas-chart-axis, hsl(var(--muted-foreground)))', fontSize: 12, fontWeight: 500 }}
+                            axisLine={false}
                             tickLine={false}
                             interval={0}
                             angle={-20}
@@ -2538,46 +2366,44 @@ export default function ControleVendasOriginal() {
                             height={60}
                           />
                           <YAxis 
-                            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11, fontWeight: 500 }} 
+                            domain={[(minimo: number) => Math.min(0, minimo), (maximo: number) => Math.max(0, maximo)]}
+                            tick={{ fill: 'var(--vendas-chart-axis, hsl(var(--muted-foreground)))', fontSize: 11, fontWeight: 500 }}
                             axisLine={false}
                             tickLine={false}
                             tickFormatter={(value) => {
-                              if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-                              if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+                              if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                              if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(0)}K`;
                               return value.toString();
                             }}
                             width={55}
                           />
                           <Tooltip
-                            cursor={{ fill: 'hsl(var(--muted) / 0.4)' }}
+                            cursor={{ fill: 'hsl(var(--primary) / 0.06)' }}
                             contentStyle={{ 
-                              backgroundColor: 'hsl(var(--card))', 
-                              border: '1px solid hsl(var(--border))',
-                              borderRadius: '8px',
-                              color: 'hsl(var(--foreground))',
-                              boxShadow: '0 4px 12px hsl(var(--background) / 0.4)'
+                              backgroundColor: 'var(--vendas-chart-tooltip-bg, hsl(var(--popover)))',
+                              border: '1px solid var(--vendas-chart-tooltip-border, hsl(var(--border)))',
+                              borderRadius: '12px',
+                              color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))',
+                              boxShadow: '0 8px 24px hsl(var(--foreground) / 0.1)'
                             }}
-                            itemStyle={{ color: 'hsl(var(--foreground))' }}
-                            labelStyle={{ fontWeight: 600, color: 'hsl(var(--foreground))' }}
+                            itemStyle={{ color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))' }}
+                            labelStyle={{ fontWeight: 600, marginBottom: 4, color: 'var(--vendas-chart-tooltip-text, hsl(var(--popover-foreground)))' }}
                             formatter={(value: any, name: any, props: any) => [
                               `${formatarValor(Number(value))} (${props.payload.quantidade} vendas)`,
                               "Valor"
                             ]}
                           />
-                          <Bar dataKey="valor" name="Valor" radius={[6, 6, 0, 0]} maxBarSize={70}>
-                            {dadosOrigem.map((_, index) => (
-                              <Cell key={`cell-origem-${index}`} fill={`url(#origemGradient${index % CORES_GRAFICOS.length})`} />
-                            ))}
+                          <Bar dataKey="valor" name="Valor" radius={[5, 5, 0, 0]} maxBarSize={60} fill="var(--vendas-chart-series, hsl(var(--primary)))">
                             <LabelList 
                               dataKey="valor" 
                               position="top" 
                               formatter={(value: any) => {
                                 const num = Number(value) || 0;
-                                if (num >= 1000000) return `R$ ${(num / 1000000).toFixed(1)}M`;
-                                if (num >= 1000) return `R$ ${(num / 1000).toFixed(0)}K`;
+                                if (Math.abs(num) >= 1000000) return `R$ ${(num / 1000000).toFixed(1)}M`;
+                                if (Math.abs(num) >= 1000) return `R$ ${(num / 1000).toFixed(0)}K`;
                                 return `R$ ${num.toFixed(0)}`;
                               }}
-                              fill="hsl(var(--foreground))"
+                              fill="var(--vendas-chart-axis, hsl(var(--muted-foreground)))"
                               fontSize={11}
                               fontWeight={700}
                             />
@@ -2591,55 +2417,48 @@ export default function ControleVendasOriginal() {
 
               {/* Conversões Rápidas - Vendas iniciadas e fechadas no mesmo mês */}
               {dadosConversoesRapidas.length > 0 && (
-                <Card className="vendas-panel lg:col-span-2 overflow-hidden">
+                <Card className="vendas-panel vendas-chart-card lg:col-span-2 overflow-hidden">
                   <div ref={conversoesRapidasRef} className="vendas-chart-surface bg-card">
-                    <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-emerald-500/10 to-transparent">
-                      <div className="flex items-center justify-between">
+                    <CardHeader className="vendas-panel-header pb-2">
+                      <div className="vendas-chart-heading flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg">
-                            <Zap className="h-5 w-5 text-white" />
+                          <div className="vendas-chart-card-icon p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
+                            <Zap className="h-5 w-5" />
                           </div>
                           <div>
                             <CardTitle className="vendas-panel-title text-lg font-bold">Conversões Rápidas</CardTitle>
-                            <p className="text-xs text-muted-foreground mt-0.5">Vendas iniciadas e fechadas no mesmo mês, por origem</p>
+                            <p className="vendas-chart-description text-sm text-muted-foreground mt-1">Pedidos iniciados e fechados no mesmo mês · valor integral da venda</p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-2xl font-bold text-emerald-500">{dadosConversoesRapidas.reduce((acc, c) => acc + c.quantidade, 0)}</span>
+                        <div className="vendas-chart-total text-right shrink-0">
+                          <span className="text-2xl font-bold text-primary">{dadosConversoesRapidas.reduce((acc, c) => acc + c.quantidade, 0)}</span>
                           <p className="text-xs text-muted-foreground">total no período</p>
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="vendas-panel-content pt-4">
-                      <div className="space-y-3">
+                      <div className="vendas-chart-list space-y-4" role="group" aria-label="Quantidade e valor de vendas iniciadas e fechadas no mesmo mês, por origem, no período selecionado">
                         {dadosConversoesRapidas.map((item, index) => {
                           const maxQtd = Math.max(...dadosConversoesRapidas.map(c => c.quantidade));
                           const porcentagem = (item.quantidade / maxQtd) * 100;
-                          const cores = ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'];
-                          const cor = cores[index % cores.length];
+                          const cor = 'var(--vendas-chart-series, hsl(var(--primary)))';
                           return (
-                            <div key={item.origem} className="group">
-                              <div className="flex items-center justify-between mb-1.5">
-                                <div className="flex items-center gap-2">
-                                  <div 
-                                    className="w-3 h-3 rounded-full shadow-sm" 
-                                    style={{ background: `linear-gradient(135deg, ${cor}, ${cor}80)` }} 
-                                  />
-                                  <span className="text-sm font-medium">{item.origem}</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-xs text-muted-foreground">
-                                    {item.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' })}
+                            <div key={item.origem} className="vendas-chart-row group">
+                              <div className="vendas-chart-row-heading flex items-center justify-between gap-3 mb-2">
+                                <span className="vendas-chart-row-label text-sm font-medium min-w-0 break-words">{item.origem}</span>
+                                <div className="vendas-chart-row-metrics flex flex-wrap items-baseline justify-end gap-x-3 gap-y-1 shrink-0">
+                                  <span className="vendas-chart-row-value text-sm text-muted-foreground">
+                                    {formatarValor(item.valor)}
                                   </span>
-                                  <span className="text-sm font-bold" style={{ color: cor }}>{item.quantidade}</span>
+                                  <span className="vendas-chart-row-quantity text-base font-semibold">{item.quantidade} <span className="text-xs font-normal text-muted-foreground">vendas</span></span>
                                 </div>
                               </div>
-                              <div className="h-2.5 bg-muted/50 rounded-full overflow-hidden">
+                              <div className="vendas-chart-row-track h-2 bg-muted rounded-full overflow-hidden" aria-hidden="true">
                                 <div 
-                                  className="h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
+                                  className="vendas-chart-row-fill h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
                                   style={{ 
                                     width: `${porcentagem}%`,
-                                    background: `linear-gradient(90deg, ${cor}, ${cor}90)`
+                                    background: cor
                                   }} 
                                 />
                               </div>
@@ -2654,23 +2473,23 @@ export default function ControleVendasOriginal() {
 
               {/* Tempo Médio de Conversão por Origem */}
               {dadosTempoConversao.length > 0 && (
-                <Card className="vendas-panel lg:col-span-2 overflow-hidden">
+                <Card className="vendas-panel vendas-chart-card lg:col-span-2 overflow-hidden">
                   <div ref={tempoConversaoRef} className="vendas-chart-surface bg-card">
-                    <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-amber-500/10 to-transparent">
-                      <div className="flex items-center justify-between">
+                    <CardHeader className="vendas-panel-header pb-2">
+                      <div className="vendas-chart-heading flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg">
-                            <Clock className="h-5 w-5 text-white" />
+                          <div className="vendas-chart-card-icon p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
+                            <Clock className="h-5 w-5" />
                           </div>
                           <div>
                             <CardTitle className="vendas-panel-title text-lg font-bold">Tempo Médio de Conversão</CardTitle>
-                            <p className="text-xs text-muted-foreground mt-0.5">Dias entre primeiro contato e fechamento da venda</p>
+                            <p className="vendas-chart-description text-sm text-muted-foreground mt-1">Média de dias entre primeiro contato e venda, por origem</p>
                           </div>
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="vendas-panel-content pt-4">
-                      <div className="space-y-3">
+                      <div className="vendas-chart-list space-y-4" role="group" aria-label="Média de dias entre primeiro contato e venda por origem no período selecionado">
                         {dadosTempoConversao.map((item, index) => {
                           const maxDias = Math.max(...dadosTempoConversao.map(c => c.mediaDias));
                           const porcentagem = maxDias > 0 ? (item.mediaDias / maxDias) * 100 : 0;
@@ -2679,27 +2498,27 @@ export default function ControleVendasOriginal() {
                                               item.mediaDias <= 15 ? '#3B82F6' : 
                                               item.mediaDias <= 30 ? '#F59E0B' : '#EF4444';
                           return (
-                            <div key={item.origem} className="group">
-                              <div className="flex items-center justify-between mb-1.5">
-                                <div className="flex items-center gap-2">
+                            <div key={item.origem} className="vendas-chart-row group">
+                              <div className="vendas-chart-row-heading flex items-center justify-between gap-3 mb-2">
+                                <div className="flex flex-wrap items-baseline gap-2 min-w-0">
                                   <div 
                                     className="w-3 h-3 rounded-full shadow-sm" 
                                     style={{ background: `linear-gradient(135deg, ${corGradiente}, ${corGradiente}80)` }} 
                                   />
-                                  <span className="text-sm font-medium">{item.origem}</span>
+                                  <span className="vendas-chart-row-label text-sm font-medium min-w-0 break-words">{item.origem}</span>
                                   <span className="text-xs text-muted-foreground">({item.quantidade} vendas)</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold" style={{ color: corGradiente }}>
+                                <div className="vendas-chart-row-metrics flex items-center gap-2 shrink-0">
+                                  <span className="vendas-chart-row-quantity text-base font-semibold" style={{ color: corGradiente }}>
                                     {item.mediaDias} {item.mediaDias === 1 ? 'dia' : 'dias'}
                                   </span>
                                 </div>
                               </div>
-                              <div className="h-2.5 bg-muted/50 rounded-full overflow-hidden">
+                              <div className="vendas-chart-row-track h-2 bg-muted rounded-full overflow-hidden" aria-hidden="true">
                                 <div 
-                                  className="h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
+                                  className="vendas-chart-row-fill h-full rounded-full transition-all duration-500 ease-out group-hover:opacity-80"
                                   style={{ 
-                                    width: `${Math.max(5, porcentagem)}%`,
+                                    width: `${porcentagem}%`,
                                     background: `linear-gradient(90deg, ${corGradiente}, ${corGradiente}90)`
                                   }} 
                                 />

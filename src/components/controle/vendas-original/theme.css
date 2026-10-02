@@ -280,6 +280,73 @@
 .controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-table td.text-right { white-space: nowrap; font-weight: 600; }
 .controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-table-footer { padding-top: 16px; }
 
+/* Gráficos: a mesma escala de cores e contraste nos dois temas. */
+.controle-vendas-original:not(.controle-vendas-original-pdf) {
+  --vendas-chart-grid: hsl(var(--border));
+  --vendas-chart-axis: hsl(var(--muted-foreground));
+  --vendas-chart-series: hsl(var(--primary));
+  --vendas-chart-tooltip-bg: hsl(var(--popover));
+  --vendas-chart-tooltip-border: hsl(var(--border));
+  --vendas-chart-tooltip-text: hsl(var(--foreground));
+}
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-card { overflow: hidden; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-description {
+  margin-top: 6px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-scroll { max-height: 380px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .4) transparent; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-surface .recharts-tooltip-wrapper { outline: none; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-surface .recharts-default-tooltip {
+  padding: 12px 16px !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 24px hsl(220 30% 4% / .15) !important;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-list { display: grid; gap: 18px; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row { min-width: 0; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-label {
+  min-width: 0;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-metrics { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 6px 14px; flex-shrink: 0; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-value { color: hsl(var(--muted-foreground)); font-size: 12px; white-space: nowrap; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-quantity { color: hsl(var(--foreground)); font-size: 14px; font-weight: 650; white-space: nowrap; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-track { height: 7px; border-radius: 999px; background: hsl(var(--muted)); overflow: hidden; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-fill { height: 100%; border-radius: inherit; background: hsl(var(--primary)); }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-card-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 9px;
+  border-radius: 11px;
+  background: hsl(var(--primary) / .1);
+  color: hsl(var(--primary));
+  box-shadow: none;
+}
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-total { color: hsl(var(--foreground)); font-size: 26px; letter-spacing: -.03em; line-height: 1.2; }
+.controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row > .vendas-chart-row-track { margin-top: 8px; }
+@media (max-width: 640px) {
+  .controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-heading { flex-wrap: wrap; gap: 4px 12px; }
+  .controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-label { font-size: 13px; }
+  .controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-chart-row-metrics { flex-shrink: 1; }
+}
+
 @media (max-width: 1400px) {
   .controle-vendas-original:not(.controle-vendas-original-pdf) .vendas-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
