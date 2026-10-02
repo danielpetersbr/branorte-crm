@@ -49,7 +49,7 @@ function Cartao({card,hoje,onOpen}:{card:CardEspelho;hoje:Date;onOpen:(button:HT
     <span className="pq-cliente">{card.cliente}</span>
     <span className="pq-vendedor">{card.vendedor||'Sem vendedor'}</span>
     {equipamento&&<span className="pq-equipamento" title={equipamento}>{equipamento}</span>}
-    {nota&&<span className={`pq-nota${parado?' pq-nota-parado':''}`} title={nota}>{nota}</span>}
+    {nota&&<span className="pq-nota-parado" title={nota}><span className="pq-nota">{nota}</span></span>}
     {motor&&<span className="pq-motor" title={motor}>{motor}</span>}
     <span className={`pq-prazo${prazo&&prazo.dias<0&&!entregue?' pq-prazo-atrasado':''}${!prazo?' pq-prazo-vazio':''}`} title={prazo?`Entrega: ${prazo.data.toLocaleDateString('pt-BR')}${entregue?'':` · ${prazo.descricao}`}`:undefined}>
       <CalendarDays size={13} aria-hidden="true"/>{prazo?<><strong><span className="sr-only">Entrega: </span>{prazo.label}</strong>{!entregue&&<span>{prazo.descricao}</span>}</>:<span>Sem data de entrega</span>}
