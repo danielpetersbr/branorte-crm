@@ -30,8 +30,8 @@ export function ChatCloseDialog({conversationId,conversationName,userIdentity,op
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[])
   useEffect(()=>{
     const changed=previous.current.conversationId!==conversationId||previous.current.userIdentity!==userIdentity
-    previous.current={conversationId,userIdentity};pendingToken.current=null
-    setSelection(null);setAutomation(null);setFailureState(null);setPending(false)
+    previous.current={conversationId,userIdentity}
+    if(changed||!open){pendingToken.current=null;setSelection(null);setAutomation(null);setFailureState(null);setPending(false)}
     if(changed&&open)changeOpen.current(false)
   },[conversationId,userIdentity,open])
   function close(next:boolean){if(!next&&pendingToken.current===token)return;onOpenChange(next)}
