@@ -10,7 +10,8 @@ interface ConsultaEspelho {
 }
 export interface FonteEspelho { from(table: string): { select(columns: string, options: { count: 'exact' }): ConsultaEspelho } }
 type Linha = Record<string, unknown>;
-type DadosCard = Linha & { checklist_compras: string | null; vinculo: 'confirmado' | 'nao_verificado'; historico: Linha[]; logistica: Linha | null; setores: Array<Linha & { checklists: Linha[] }> };
+export type ProjetoEspelho = { id: string; card_id: string; responsavel_projeto_id: string | null; status_projeto: string | null; andamento: number | null; previsao_termino: string | null; prazo_prometido: string | null; prazo_interno: string | null; responsavel_nome: string | null };
+type DadosCard = Linha & { checklist_compras: string | null; vinculo: 'confirmado' | 'nao_verificado'; historico: Linha[]; logistica: Linha | null; setores: Array<Linha & { checklists: Linha[] }>; projeto?: ProjetoEspelho | null };
 export type CardEspelho = { id: string; pedidoId: string | null; numeroOrcamento: string | null; cliente: string; vendedor: string | null; etapa: string; atualizadoEm: string; dadosOriginais: DadosCard };
 export type EnvelopeEspelho = {
   origem: 'app2'; fonte: 'controle-producao-live'; consultadoEm: string; atualizadoEm: null; sincronizadoEm: null;
@@ -36,6 +37,7 @@ const key = (v: unknown): string => { if (!uuid(v)) return fail(); return (v as 
 const string = (v: unknown) => typeof v === 'string';
 const int4 = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= -2147483648 && v <= 2147483647;
 const bool = (v: unknown) => typeof v === 'boolean';
+const professionalName = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
 const numericText = (v: unknown) => typeof v === 'string' && /^(?:NaN|-?Infinity|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$/.test(v);
 type Field = { name: string; test: (v: unknown) => boolean; nullable: boolean };
 const required = (names: string, test: (v: unknown) => boolean = string): Field[] => names.split(',').map(name => ({ name, test, nullable: false }));
@@ -46,7 +48,9 @@ const LOGISTICS = [...required('card_id', uuid), ...required('updated_at'), ...n
 const SECTOR = [...required('id,card_id', uuid), ...required('setor'), ...nullable('responsavel_id', uuid), ...nullable('previsao_termino,status,motivo_bloqueio,iniciado_em,concluido_em,created_at,updated_at'), ...nullable('andamento', int4)];
 const CHECKLIST = [...required('id,setor_producao_id', uuid), ...required('titulo'), ...nullable('descricao,concluido_em,created_at'), ...nullable('ordem', int4), ...nullable('concluido', bool), ...nullable('concluido_por', uuid)];
 const PARENT = [...required('id', uuid), ...nullable('vendedor,vendedor_2')];
-const schemas = { producao_cards: CARD, producao_status_log: HISTORY, producao_logistica: LOGISTICS, setor_producao: SECTOR, setor_checklist: CHECKLIST, pedidos_venda: PARENT };
+const PROJECT = [...required('id,card_id', uuid), ...nullable('responsavel_projeto_id', uuid), ...nullable('status_projeto'), ...nullable('andamento', int4), ...nullable('previsao_termino,prazo_prometido,prazo_interno')];
+const PROFESSIONAL = [...required('id', uuid), ...required('nome', professionalName)];
+const schemas = { producao_cards: CARD, producao_status_log: HISTORY, producao_logistica: LOGISTICS, setor_producao: SECTOR, setor_checklist: CHECKLIST, pedidos_venda: PARENT, projeto_detalhes: PROJECT, projetistas: PROFESSIONAL };
 type Table = keyof typeof schemas;
 
 /** No role/name from source can widen this CRM-authorized scope. */
@@ -106,6 +110,12 @@ function physical(value: unknown, table: Table, check: () => void): Linha {
   for (const f of schema) { check(); const v = row[f.name]; if (!(f.nullable && v === null) && !f.test(v)) return fail(); entries.push([f.name, v]); }
   if (table === 'producao_cards') { fields(row, ['checklist_compras']); entries.push(['checklist_compras', json(row.checklist_compras, check).value]); } return Object.fromEntries(entries);
 }
+function projectPhysical(value: unknown, cardId: unknown, check: () => void): ProjetoEspelho {
+  check(); const input = record(value), row = physical(input, 'projeto_detalhes', check); fields(input, ['responsavel_nome']);
+  const nome = input.responsavel_nome;
+  if (key(row.card_id) !== key(cardId) || (row.responsavel_projeto_id === null ? nome !== null : !professionalName(nome))) return fail();
+  return { ...row, responsavel_nome: nome } as ProjetoEspelho;
+}
 function dense(value: unknown): unknown[] { if (!Array.isArray(value) || value.length > MAX_ROWS) return fail(); for (let i = 0; i < value.length; i++) if (!own(value, i)) return fail(); return value; }
 function unique(rows: Linha[], column = 'id') { const ids = new Set<string>(); for (const row of rows) { const id = key(row[column]); if (ids.has(id)) return fail(); ids.add(id); } return ids; }
 function countBy(values: string[]) { const counts = new Map<string, number>(); for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1); return Object.fromEntries(counts); }
@@ -129,7 +139,7 @@ export function projetarEspelhoProducao(input: unknown, scopeInput: Escopo, chec
     for (const field of totalFields) { check(); const count = totals[field]; if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return fail(); }
     const data = record(dto.dados); fields(data, ['cards', 'kpis', 'porEtapa', 'porSetor']);
     record(data.kpis); record(data.porEtapa); record(data.porSetor);
-    const cards: CardEspelho[] = [], historyIds = new Set<string>(), sectorIds = new Set<string>(), checkIds = new Set<string>(); let total = 0, jsonBytes = 0;
+    const cards: CardEspelho[] = [], historyIds = new Set<string>(), sectorIds = new Set<string>(), checkIds = new Set<string>(), projectIds = new Set<string>(); let total = 0, jsonBytes = 0;
     const reserve = (count: number) => { check(); total += count; if (total > MAX_ROWS) fail(); };
     const dedup = (row: Linha, ids: Set<string>) => { check(); const id = key(row.id); if (ids.has(id)) fail(); ids.add(id); };
     for (const candidate of dense(data.cards)) {
@@ -143,7 +153,13 @@ export function projetarEspelhoProducao(input: unknown, scopeInput: Escopo, chec
       let logistica: Linha | null = null; if (raw.logistica !== null) { reserve(1); logistica = physical(raw.logistica, 'producao_logistica', check); if (key(logistica.card_id) !== key(row.id)) return fail(); }
       const setores = dense(raw.setores).map(v => { reserve(1); const inputSector = record(v), s = physical(inputSector, 'setor_producao', check); fields(inputSector, ['checklists']); if (key(s.card_id) !== key(row.id)) return fail(); dedup(s, sectorIds);
         const checklists = dense(inputSector.checklists).map(v => { reserve(1); const ch = physical(v, 'setor_checklist', check); if (key(ch.setor_producao_id) !== key(s.id)) return fail(); dedup(ch, checkIds); return ch; }); return { ...s, checklists }; });
-      cards.push({ id: row.id as string, pedidoId: c.pedidoId as string | null, numeroOrcamento: row.numero_orcamento as string | null, cliente: row.cliente_nome as string, vendedor: row.vendedor_nome as string, etapa: row.status as string, atualizadoEm: row.updated_at as string, dadosOriginais: { ...row, checklist_compras: row.checklist_compras as string | null, vinculo: scope.vendedores === null ? 'nao_verificado' : 'confirmado', historico, logistica, setores } });
+      // Legacy DTOs omit projeto. New readers always supply null or a closed object.
+      const extraProject: { projeto?: ProjetoEspelho | null } = {};
+      if (own(raw, 'projeto')) {
+        if (raw.projeto === null) extraProject.projeto = null;
+        else { reserve(1); const p = projectPhysical(raw.projeto, row.id, check); dedup(p, projectIds); extraProject.projeto = p; }
+      }
+      cards.push({ id: row.id as string, pedidoId: c.pedidoId as string | null, numeroOrcamento: row.numero_orcamento as string | null, cliente: row.cliente_nome as string, vendedor: row.vendedor_nome as string, etapa: row.status as string, atualizadoEm: row.updated_at as string, dadosOriginais: { ...row, checklist_compras: row.checklist_compras as string | null, vinculo: scope.vendedores === null ? 'nao_verificado' : 'confirmado', historico, logistica, setores, ...extraProject } });
     }
     unique(cards as unknown as Linha[]); check(); const out = assemble(cards, dto.consultadoEm); check();
     for (const field of totalFields) { check(); if (totals[field] !== out.totals[field]) return fail(); }
@@ -152,7 +168,7 @@ export function projetarEspelhoProducao(input: unknown, scopeInput: Escopo, chec
   } catch { return fail(); }
 }
 
-/** Five independent SELECT collections; completeness does not promise a snapshot. */
+/** Five original collections plus scoped project/name lookups; independent SELECTs do not promise a snapshot. */
 export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho = {}): Promise<EnvelopeEspelho> {
   const scope = validarEscopoEspelho(scopeInput), duration = deps.deadlineMs ?? 30000;
   if (!Number.isFinite(duration) || duration <= 0 || duration > 30000) return fail();
@@ -207,11 +223,20 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
       const logistics = await batches(source, 'producao_logistica', 'card_id', cardIds); check();
       const sectors = await batches(source, 'setor_producao', 'card_id', cardIds); check();
       const checklists = await batches(source, 'setor_checklist', 'setor_producao_id', sectors.map(s => key(s.id))); check();
+      // Project ownership comes from projetistas, never source Auth/profiles or card display names.
+      const projects = await batches(source, 'projeto_detalhes', 'card_id', cardIds); check(); unique(projects, 'card_id');
+      const professionals = await batches(source, 'projetistas', 'id', projects.flatMap(p => p.responsavel_projeto_id === null ? [] : [key(p.responsavel_projeto_id)])); check();
+      const professionalMap = new Map(professionals.map(p => [key(p.id), p.nome]));
+      const projectMap = new Map(projects.map(p => {
+        check(); const nome = p.responsavel_projeto_id === null ? null : professionalMap.get(key(p.responsavel_projeto_id));
+        const projected = projectPhysical({ ...p, responsavel_nome: nome }, p.card_id, check);
+        return [key(p.card_id), projected] as const;
+      }));
       const group = (rows: Linha[], column: string) => { const map = new Map<string, Linha[]>(); for (const row of rows) { check(); const k = key(row[column]), list = map.get(k) ?? []; list.push(row); map.set(k, list); } return map; };
       const hs = group(histories, 'card_id'), ls = new Map(logistics.map(l => [key(l.card_id), l])), ss = group(sectors, 'card_id'), cs = group(checklists, 'setor_producao_id');
       const projected: CardEspelho[] = cards.map(c => { check(); const parent = scope.vendedores !== null ? parentMap.get(key(c.pedido_id)) : undefined;
         return { id: c.id as string, pedidoId: parent ? parent.id as string : null, numeroOrcamento: c.numero_orcamento as string | null, cliente: c.cliente_nome as string, vendedor: c.vendedor_nome as string, etapa: c.status as string, atualizadoEm: c.updated_at as string,
-          dadosOriginais: { ...c, checklist_compras: c.checklist_compras as string | null, vinculo: parent ? 'confirmado' : 'nao_verificado', historico: hs.get(key(c.id)) ?? [], logistica: ls.get(key(c.id)) ?? null, setores: (ss.get(key(c.id)) ?? []).map(s => ({ ...s, checklists: cs.get(key(s.id)) ?? [] })) } }; });
+          dadosOriginais: { ...c, checklist_compras: c.checklist_compras as string | null, vinculo: parent ? 'confirmado' : 'nao_verificado', historico: hs.get(key(c.id)) ?? [], logistica: ls.get(key(c.id)) ?? null, setores: (ss.get(key(c.id)) ?? []).map(s => ({ ...s, checklists: cs.get(key(s.id)) ?? [] })), projeto: projectMap.get(key(c.id)) ?? null } }; });
       check(); const instant = (deps.instante ?? (() => new Date().toISOString()))(); check(); return projetarEspelhoProducao(assemble(projected, instant), scope, check);
     };
     return await Promise.race([work(), stopped]);

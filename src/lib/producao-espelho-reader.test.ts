@@ -43,3 +43,110 @@ test('defensive envelope requires aggregate containers and textual notice before
 test('JSONtext cast preserves numeric lexemes, SQLNULL versus JSONnull and exact PostgreSQL bytes',async()=>{for(const value of ['9007199254740993','1234567890.123456789012345678901','1e999','null','{"n": 9007199254740993, "decimal": 0.1234567890123456789}','"text"',null]){const s=source({producao_cards:[card(1,{checklist_compras:value})]});const out=await lerProducaoEspelho(global,{fonte:()=>s.fonte,instante:()=>instant});assert.equal(out.dados.cards[0].dadosOriginais.checklist_compras,value);assert.match(s.calls[0].columns,/checklist_compras:checklist_compras::text/);}});
 test('JSONtext rejects object/numeric wire values and malformed syntax without restoring text from objects',async()=>{for(const value of [{n:1},[1],1,true,NaN,Infinity,'NaN','Infinity','{"n":Infinity}','{"bad":}','undefined','plain text',''])await assert.rejects(read({producao_cards:[card(1,{checklist_compras:value})]}),unavailable);});
 test('declared completeness totals require five own safe counts and must match cards and every related collection',async()=>{const out=await read(),empty=await read({});assert.throws(()=>projetarEspelhoProducao({...empty,totals:{...empty.totals,cards:573}},global),unavailable);const keys=['cards','historico','logistica','setores','checklists'] as const;for(const kind of keys){const missing={...out.totals} as Partial<typeof out.totals>;delete missing[kind];for(const totals of [missing,{...out.totals,[kind]:out.totals[kind]+1},{...out.totals,[kind]:0}])assert.throws(()=>projetarEspelhoProducao({...out,totals},global),unavailable);}for(const value of [-1,0.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1,'1',null,undefined])assert.throws(()=>projetarEspelhoProducao({...out,totals:{...out.totals,cards:value}},global),unavailable);assert.throws(()=>projetarEspelhoProducao({...out,totals:Object.create(out.totals)},global),unavailable);assert.deepEqual(projetarEspelhoProducao(empty,global),empty);});
+
+const project=(n=1,cardId=id(1),extra:Record<string,unknown>={})=>({
+  id:id(6000+n),card_id:cardId,responsavel_projeto_id:id(7001),
+  status_projeto:'bloqueado',andamento:40,previsao_termino:'2026-10-02',
+  prazo_prometido:null,prazo_interno:'2026-10-01',...extra,
+});
+const projectFixture=():Tables=>({...fixture(),projeto_detalhes:[project()],projetistas:[{id:id(7001),nome:'Betuel'}]});
+
+test('project lookup reads only cards already authorized and names only referenced professionals',async()=>{
+  const tables=projectFixture();tables.producao_cards.push(card(2));
+  tables.projeto_detalhes.push(project(2,id(2),{responsavel_projeto_id:id(7002)}));
+  tables.projetistas=[{id:id(7001),nome:'<img onerror="inert">',email:'PRIVATE',role:'admin'},{id:id(7002),nome:'Outside wallet'}];
+  const s=source(tables);
+  const out=await lerProducaoEspelho(restricted,{fonte:()=>s.fonte,instante:()=>instant,pais:async()=>({complete:true,rows:[{id:id(2001),vendedor:'ANA',vendedor_2:null}]})});
+  assert.equal(out.dados.cards.length,1);
+  assert.deepEqual(out.dados.cards[0].dadosOriginais.projeto,{...project(),responsavel_nome:'<img onerror="inert">'});
+  const projects=s.calls.filter(c=>c.table==='projeto_detalhes'),names=s.calls.filter(c=>c.table==='projetistas');
+  assert.equal(projects.length,1);assert.equal(names.length,1);
+  assert.deepEqual(projects[0].ids,[id(1)]);assert.equal(projects[0].field,'card_id');
+  assert.deepEqual(names[0].ids,[id(7001)]);assert.equal(names[0].columns,'id,nome');
+  assert.equal(names[0].field,'id');assert.equal(names[0].signal,projects[0].signal);
+  assert.equal(Object.prototype.hasOwnProperty.call(out.dados.cards[0].dadosOriginais.projeto, 'email'),false);
+  assert.equal(Object.prototype.hasOwnProperty.call(out.dados.cards[0].dadosOriginais.projeto, 'role'),false);
+  assert.ok(!JSON.stringify(out).includes('Outside wallet'));assert.ok(!JSON.stringify(out).includes('PRIVATE'));
+});
+
+test('new reader emits explicit project null while defensive projection preserves legacy absence',async()=>{
+  const out=await read();assert.equal(Object.prototype.hasOwnProperty.call(out.dados.cards[0].dadosOriginais,'projeto'),true);
+  assert.equal(out.dados.cards[0].dadosOriginais.projeto,null);
+  const legacy=structuredClone(out);delete legacy.dados.cards[0].dadosOriginais.projeto;
+  const projected=projetarEspelhoProducao(legacy,global);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected.dados.cards[0].dadosOriginais,'projeto'),false);
+  assert.deepEqual(projected,legacy);
+});
+
+test('unassigned project stays unassigned and unknown project status is literal source data',async()=>{
+  const tables=projectFixture();tables.projeto_detalhes=[project(1,id(1),{responsavel_projeto_id:null,status_projeto:'<literal new status>',andamento:0})];
+  const s=source(tables);const out=await lerProducaoEspelho(global,{fonte:()=>s.fonte,instante:()=>instant});
+  assert.deepEqual(out.dados.cards[0].dadosOriginais.projeto,{...tables.projeto_detalhes[0],responsavel_nome:null});
+  assert.equal(s.calls.filter(c=>c.table==='projetistas').length,0);
+});
+
+test('project output strips extras and never treats professional name or role as scope authorization',async()=>{
+  const tables=projectFixture();tables.projeto_detalhes[0].email='PRIVATE';tables.projeto_detalhes[0].role='admin';
+  const out=await read(tables);const c=out.dados.cards[0];
+  const injected={...out,dados:{...out.dados,cards:[{...c,dadosOriginais:{...c.dadosOriginais,projeto:{...project(),responsavel_nome:'Betuel',email:'PRIVATE',role:'admin',token:'PRIVATE'}}}]}};
+  assert.deepEqual(projetarEspelhoProducao(injected,global).dados.cards[0].dadosOriginais.projeto,{...project(),responsavel_nome:'Betuel'});
+  assert.ok(!JSON.stringify(out).includes('PRIVATE'));
+});
+
+test('duplicate project rows for one card fail even when each physical id differs',async()=>{
+  const tables=projectFixture();tables.projeto_detalhes.push(project(2));await assert.rejects(read(tables),unavailable);
+});
+
+test('project and professional lookup receipts cannot escape their requested ids',async()=>{
+  for(const table of ['projeto_detalhes','projetistas']) {
+    const s=source(projectFixture(),(r,c)=>c.table===table?{...r,data:table==='projeto_detalhes'?[project(1,id(2))]:[{id:id(7002),nome:'Not requested'}]}:r);
+    await assert.rejects(lerProducaoEspelho(global,{fonte:()=>s.fonte,instante:()=>instant}),unavailable);
+  }
+});
+
+test('referenced professional must exist with a nonempty literal name, without active filtering',async()=>{
+  for(const rows of [[],[{id:id(7001),nome:null}],[{id:id(7001),nome:'   '}],[{id:id(7001)}]]) {
+    const tables=projectFixture();tables.projetistas=rows;await assert.rejects(read(tables),unavailable);
+  }
+  const tables=projectFixture();tables.projetistas=[{id:id(7001),nome:'  Giuslei  ',ativo:false}];
+  assert.equal((await read(tables)).dados.cards[0].dadosOriginais.projeto?.responsavel_nome,'  Giuslei  ');
+});
+
+test('project injection validates own fields, physical types, UUID relation and name pairing',async()=>{
+  const out=await read();const c=out.dados.cards[0];
+  const valid={...project(),responsavel_nome:'Betuel'};
+  const missing={...valid} as Record<string,unknown>;delete missing.prazo_interno;
+  for(const bad of [undefined,missing,Object.create(valid),{...valid,id:'not-uuid'},{...valid,card_id:id(2)},
+    {...valid,responsavel_projeto_id:'not-uuid'},{...valid,andamento:1.5},{...valid,andamento:2147483648},
+    {...valid,status_projeto:5},{...valid,previsao_termino:5},{...valid,responsavel_nome:null},
+    {...valid,responsavel_nome:5},{...valid,responsavel_nome:''},{...valid,responsavel_projeto_id:null},
+    {...valid,responsavel_projeto_id:null,responsavel_nome:'Someone'}]) {
+    const injected={...out,dados:{...out.dados,cards:[{...c,dadosOriginais:{...c.dadosOriginais,projeto:bad}}]}};
+    assert.throws(()=>projetarEspelhoProducao(injected,global),unavailable);
+  }
+});
+
+test('same project physical id cannot be rebound to multiple cards during defensive projection',async()=>{
+  const out=await read({producao_cards:[card(1),card(2)]});
+  const cards=out.dados.cards.map((c,i)=>({...c,dadosOriginais:{...c.dadosOriginais,projeto:{...project(1,id(i+1)),responsavel_nome:'Betuel'}}}));
+  assert.throws(()=>projetarEspelhoProducao({...out,dados:{...out.dados,cards}},global),unavailable);
+});
+
+for(const table of ['projeto_detalhes','projetistas']) {
+  test(`new ${table} receipt errors or truncation fail wholly with no private error forwarding`,async()=>{
+    for(const bad of ['error','partial']) {
+      const s=source(projectFixture(),(r,c)=>c.table===table?bad==='error'?{...r,error:Error('PRIVATE SQL TOKEN')}:{...r,count:2}:r);
+      await assert.rejects(lerProducaoEspelho(global,{fonte:()=>s.fonte,instante:()=>instant}),unavailable);
+    }
+  });
+  test(`deadline also covers awaiting ${table}`,async()=>{
+    let now=0;const s=source(projectFixture(),(r,c)=>{if(c.table===table)now=30;return r;});
+    await assert.rejects(lerProducaoEspelho(global,{fonte:()=>s.fonte,agora:()=>now,deadlineMs:30,instante:()=>instant}),unavailable);
+    assert.ok(s.calls.filter(c=>c.table===table).every(c=>c.signal?.aborted));
+  });
+}
+
+test('new project and professional rows share the existing total source row budget',async()=>{
+  const s=source(projectFixture(),(r,c)=>c.table==='projetistas'?{...r,count:100000}:r);
+  await assert.rejects(lerProducaoEspelho(global,{fonte:()=>s.fonte,instante:()=>instant}),unavailable);
+});

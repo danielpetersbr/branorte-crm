@@ -1,7 +1,8 @@
 // Browser-owned physical contract; never imports a server reader/client.
 const utf8=(text:string)=>new TextEncoder().encode(text).byteLength;
 type Linha = Record<string, unknown>;
-type DadosCard = Linha & { checklist_compras: string | null; vinculo: 'confirmado' | 'nao_verificado'; historico: Linha[]; logistica: Linha | null; setores: Array<Linha & { checklists: Linha[] }> };
+export type ProjetoEspelho = {id:string;card_id:string;responsavel_projeto_id:string|null;responsavel_nome:string|null;status_projeto:string|null;andamento:number|null;previsao_termino:string|null;prazo_prometido:string|null;prazo_interno:string|null};
+type DadosCard = Linha & { checklist_compras: string | null; vinculo: 'confirmado' | 'nao_verificado'; historico: Linha[]; logistica: Linha | null; setores: Array<Linha & { checklists: Linha[] }>; projeto?:ProjetoEspelho|null };
 export type CardEspelho = { id: string; pedidoId: string | null; numeroOrcamento: string | null; cliente: string; vendedor: string | null; etapa: string; atualizadoEm: string; dadosOriginais: DadosCard };
 export type ConsultaEspelho = {
   origem: 'app2'; fonte: 'controle-producao-live'; consultadoEm: string; atualizadoEm: null; sincronizadoEm: null;
@@ -32,6 +33,7 @@ const LOGISTICS = [...required('card_id', uuid), ...required('updated_at'), ...n
 const SECTOR = [...required('id,card_id', uuid), ...required('setor'), ...nullable('responsavel_id', uuid), ...nullable('previsao_termino,status,motivo_bloqueio,iniciado_em,concluido_em,created_at,updated_at'), ...nullable('andamento', int4)];
 const CHECKLIST = [...required('id,setor_producao_id', uuid), ...required('titulo'), ...nullable('descricao,concluido_em,created_at'), ...nullable('ordem', int4), ...nullable('concluido', bool), ...nullable('concluido_por', uuid)];
 const schemas = { producao_cards: CARD, producao_status_log: HISTORY, producao_logistica: LOGISTICS, setor_producao: SECTOR, setor_checklist: CHECKLIST };
+const PROJECT = [...required('id,card_id',uuid),...nullable('responsavel_projeto_id',uuid),...nullable('status_projeto,previsao_termino,prazo_prometido,prazo_interno,responsavel_nome'),...nullable('andamento',int4)];
 type Table = keyof typeof schemas;
 
 /** PostgreSQL JSONB text survives number parsing unchanged; parsed values are temporary. */
@@ -58,6 +60,13 @@ function physical(value: unknown, table: Table, check: () => void): Linha {
   for (const f of schema) { check(); const v = row[f.name]; if (!(f.nullable && v === null) && !f.test(v)) return fail(); entries.push([f.name, v]); }
   if (table === 'producao_cards') { fields(row, ['checklist_compras']); entries.push(['checklist_compras', json(row.checklist_compras, check).value]); } return Object.fromEntries(entries);
 }
+function projetoFisico(value:unknown,cardId:string):ProjetoEspelho|null {
+  if(value===null)return null;
+  const row=record(value);fields(row,PROJECT.map(f=>f.name));
+  for(const f of PROJECT)if(!(f.nullable&&row[f.name]===null)&&!f.test(row[f.name]))return fail();
+  if(key(row.card_id)!==key(cardId)||(row.responsavel_projeto_id===null)!==(row.responsavel_nome===null)||(typeof row.responsavel_nome==='string'&&!row.responsavel_nome.trim()))return fail();
+  return Object.fromEntries(PROJECT.map(f=>[f.name,row[f.name]])) as ProjetoEspelho;
+}
 function dense(value: unknown): unknown[] { if (!Array.isArray(value) || value.length > MAX_ROWS) return fail(); for (let i = 0; i < value.length; i++) if (!own(value, i)) return fail(); return value; }
 function unique(rows: Linha[], column = 'id') { const ids = new Set<string>(); for (const row of rows) { const id = key(row[column]); if (ids.has(id)) return fail(); ids.add(id); } return ids; }
 function countBy(values: string[]) { const counts = new Map<string, number>(); for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1); return Object.fromEntries(counts); }
@@ -81,7 +90,7 @@ export function decodificarConsultaEspelho(input: unknown): ConsultaEspelho {
     for (const field of totalFields) { check(); const count = totals[field]; if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return fail(); }
     const data = record(dto.dados); fields(data, ['cards', 'kpis', 'porEtapa', 'porSetor']);
     record(data.kpis); record(data.porEtapa); record(data.porSetor);
-    const cards: CardEspelho[] = [], historyIds = new Set<string>(), sectorIds = new Set<string>(), checkIds = new Set<string>(); let total = 0, jsonBytes = 0;
+    const cards: CardEspelho[] = [], historyIds = new Set<string>(), sectorIds = new Set<string>(), checkIds = new Set<string>(), projectIds = new Set<string>(); let total = 0, jsonBytes = 0;
     const reserve = (count: number) => { check(); total += count; if (total > MAX_ROWS) fail(); };
     const dedup = (row: Linha, ids: Set<string>) => { check(); const id = key(row.id); if (ids.has(id)) fail(); ids.add(id); };
     for (const candidate of dense(data.cards)) {
@@ -91,11 +100,13 @@ export function decodificarConsultaEspelho(input: unknown): ConsultaEspelho {
       if (raw.vinculo === 'nao_verificado') { if (c.pedidoId !== null) return fail(); }
       else if (raw.vinculo !== 'confirmado' || !uuid(c.pedidoId) || key(c.pedidoId) !== key(row.pedido_id)) return fail();
       jsonBytes += json(row.checklist_compras, check).bytes; if (jsonBytes > 8388608) return fail();
+      const projeto=own(raw,'projeto')?projetoFisico(raw.projeto,row.id as string):undefined;
+      if(projeto){reserve(1);dedup(projeto,projectIds);}
       const historico = dense(raw.historico).map(v => { reserve(1); const h = physical(v, 'producao_status_log', check); if (key(h.card_id) !== key(row.id)) return fail(); dedup(h, historyIds); return h; });
       let logistica: Linha | null = null; if (raw.logistica !== null) { reserve(1); logistica = physical(raw.logistica, 'producao_logistica', check); if (key(logistica.card_id) !== key(row.id)) return fail(); }
       const setores = dense(raw.setores).map(v => { reserve(1); const inputSector = record(v), s = physical(inputSector, 'setor_producao', check); fields(inputSector, ['checklists']); if (key(s.card_id) !== key(row.id)) return fail(); dedup(s, sectorIds);
         const checklists = dense(inputSector.checklists).map(v => { reserve(1); const ch = physical(v, 'setor_checklist', check); if (key(ch.setor_producao_id) !== key(s.id)) return fail(); dedup(ch, checkIds); return ch; }); return { ...s, checklists }; });
-      cards.push({ id: row.id as string, pedidoId: c.pedidoId as string | null, numeroOrcamento: row.numero_orcamento as string | null, cliente: row.cliente_nome as string, vendedor: row.vendedor_nome as string, etapa: row.status as string, atualizadoEm: row.updated_at as string, dadosOriginais: { ...row, checklist_compras: row.checklist_compras as string | null, vinculo: raw.vinculo as 'confirmado' | 'nao_verificado', historico, logistica, setores } });
+      cards.push({ id: row.id as string, pedidoId: c.pedidoId as string | null, numeroOrcamento: row.numero_orcamento as string | null, cliente: row.cliente_nome as string, vendedor: row.vendedor_nome as string, etapa: row.status as string, atualizadoEm: row.updated_at as string, dadosOriginais: { ...row, checklist_compras: row.checklist_compras as string | null, vinculo: raw.vinculo as 'confirmado' | 'nao_verificado', historico, logistica, setores,...(own(raw,'projeto')?{projeto}: {}) } });
     }
     unique(cards as unknown as Linha[]); check(); const out = assemble(cards, dto.consultadoEm); check();
     for (const field of totalFields) { if (totals[field] !== out.totals[field]) return fail(); }

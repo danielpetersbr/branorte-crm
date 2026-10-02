@@ -32,9 +32,9 @@ export interface RelatorioVendasPDFInput {
 }
 
 const cores = {
-  verde: [0, 132, 94], navy: [17, 36, 55], texto: [34, 48, 61],
-  secundario: [94, 111, 127], linha: [217, 226, 231], fundo: [246, 249, 250],
-  verdeClaro: [233, 246, 239], negativo: [177, 60, 64], branco: [255, 255, 255],
+  verde: [1, 169, 91], navy: [1, 1, 1], texto: [1, 1, 1],
+  secundario: [90, 90, 90], linha: [225, 225, 225], fundo: [248, 248, 248],
+  verdeClaro: [242, 250, 246], negativo: [90, 90, 90], branco: [255, 255, 255],
 } satisfies Record<string, [number, number, number]>;
 const moeda = (valor: number) => new Intl.NumberFormat('pt-BR', {style:'currency',currency:'BRL'}).format(valor).replace(/\u00a0/g,' ');
 const numero = (valor: number) => new Intl.NumberFormat('pt-BR', {maximumFractionDigits:2}).format(valor);
@@ -44,9 +44,30 @@ const dataVenda = (valor: string) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(data || '') ? data.split('-').reverse().join('/') : '-';
 };
 
+const base64 = (bytes: Uint8Array): string => {
+  let binario='';
+  for(let i=0;i<bytes.length;i+=8192)binario+=String.fromCharCode(...bytes.subarray(i,i+8192));
+  return btoa(binario);
+};
+
+/** Assets locais e completos; cada documento incorpora as duas fontes uma única vez. */
+export async function carregarIdentidadePDF(): Promise<{regular:string;bold:string;logo:Uint8Array}> {
+  try {
+    const caminhos=['Poppins-Regular.ttf','Poppins-Bold.ttf','logo-principal-verde-preto.png'];
+    const [regular,bold,logo]=await Promise.all(caminhos.map(async nome=>{
+      const resposta=await fetch(`/branding-branorte/${nome}`);
+      if(!resposta.ok)throw Error('Asset indisponível');
+      return new Uint8Array(await resposta.arrayBuffer());
+    }));
+    const ttf=(bytes:Uint8Array)=>bytes.length>10000&&bytes[0]===0&&bytes[1]===1&&bytes[2]===0&&bytes[3]===0;
+    if(!ttf(regular)||!ttf(bold)||logo[0]!==137||logo[1]!==80||logo[2]!==78||logo[3]!==71)throw Error('Asset inválido');
+    return {regular:base64(regular),bold:base64(bold),logo};
+  }catch {throw Error('Não foi possível carregar a identidade visual Branorte. Atualize a página e exporte novamente.');}
+}
+
 /** Usa as parcelas já expandidas pelo dashboard, sem refazer rateios ou filtros. */
 export const prepararRegistrosPDF = (registros: readonly Pedido[]): string[][] => registros.map(p => [
-  dataVenda(p.data_venda), [p.pedido_numero ? texto(p._isAjuste ? p.pedido_numero.replace(/^(?:Acréscimo|Acrescimo)\s*/i,'') : p.pedido_numero) : '',p.numero_orcamento ? `Orç.: ${texto(p.numero_orcamento)}` : ''].filter(Boolean).join('\n') || '-',
+  dataVenda(p.data_venda), [p.pedido_numero ? texto(p._isAjuste ? p.pedido_numero.replace(/^(?:Acréscimo|Acrescimo)\s*/i,'') : p.pedido_numero) : '',p.numero_orcamento ? texto(p.numero_orcamento) : ''].filter(Boolean).join('\n') || '-',
   texto(p.cliente), texto(p.vendedor), p.estado?.trim().toUpperCase() || 'N/D',
   p.status === 'CANCELADO' ? `CANCELADO${p._isAjuste?'\nAJUSTE':''}` : p._isAjuste ? 'AJUSTE' : p.vendedor_2?.trim() ? `${p.status}\nCompartilhado` : p.status,
   moeda(getValorPedido(p)),
@@ -71,9 +92,13 @@ function validarDados(input: RelatorioVendasPDFInput): void {
 export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, validar: () => void): Promise<jsPDF> {
   validar();
   validarDados(input);
-  const doc = new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
-  // Helvetica nativa suporta os caracteres portugueses e dispensa rede externa.
-  const fonte = 'helvetica';
+  const identidade=await carregarIdentidadePDF();
+  validar();
+  const doc = new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true,putOnlyUsedFonts:true});
+  doc.addFileToVFS('Poppins-Regular.ttf',identidade.regular);doc.addFileToVFS('Poppins-Bold.ttf',identidade.bold);
+  doc.addFont('Poppins-Regular.ttf','Poppins','normal');doc.addFont('Poppins-Bold.ttf','Poppins','bold');
+  const fonte = 'Poppins';
+  const logo = (x:number,yy:number,w:number) => doc.addImage(identidade.logo,'PNG',x,yy,w,w*427/2715,'branorte-logo-oficial','FAST');
   const W = 210, margem = 14, largura = W - margem * 2, limite = 276;
   let y = 27;
   let secaoAtual = 'Resumo executivo';
@@ -121,10 +146,9 @@ export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, va
   };
 
   // Compacta capa e resumo no mesmo fluxo das seções seguintes.
-  doc.setFillColor(...cores.navy);doc.rect(0,0,W,45,'F');
-  escrever('BRANORTE',margem,16,17,true,cores.branco);
-  escrever('Relatório de vendas',margem,30,22,true,cores.branco);
-  escrever('Visão executiva e demonstrativo completo',margem,39,9,false,[207,222,231]);
+  logo(margem,8,67);
+  escrever('Relatório de vendas',margem,31,22,true,cores.texto);
+  escrever('Visão executiva e demonstrativo completo',margem,40,9,false,cores.secundario);
   doc.setFillColor(...cores.verde);doc.rect(0,45,W,1.5,'F');
   y=56;
   paragrafo(`Período: ${texto(input.periodo)}  |  Vendedor: ${texto(input.vendedor)}`,cores.texto,9.5);
@@ -138,7 +162,7 @@ export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, va
     escrever(label,x+3,cardY+8,8,false,cores.secundario);
     doc.setFont(fonte,'bold');let tamanho=13;
     while(tamanho>9.5&&doc.getTextWidth(value)*(tamanho/doc.getFontSize())>cardW-6)tamanho-=0.5;
-    escrever(value,x+3,cardY+19,tamanho,true,i===0?cores.verde:cores.navy);
+    escrever(value,x+3,cardY+19,tamanho,true,cores.texto);
   });
   y+=35;
   if(input.meta>0) {
@@ -235,9 +259,9 @@ export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, va
   });
 
   secao('Demonstrativo completo de registros',`${numero(input.registros.length)} registros do período, incluindo cancelados. AJUSTE identifica lançamento na data do acréscimo ou desconto. Valores compartilhados correspondem à parcela atribuída ao vendedor.`,42);
-  tabela(['Data','Referência','Cliente','Vendedor','UF','Status','Valor do registro'],prepararRegistrosPDF(input.registros),{
-    styles:{font:fonte,fontSize:7.8,textColor:cores.texto,cellPadding:{top:2.3,bottom:2.3,left:1.8,right:1.8},overflow:'linebreak',lineColor:cores.linha,lineWidth:{bottom:0.15},valign:'middle'},
-    columnStyles:{0:{cellWidth:19},1:{cellWidth:23},2:{cellWidth:52},3:{cellWidth:22},4:{cellWidth:10,halign:'center'},5:{cellWidth:24},6:{cellWidth:32,halign:'right'}},
+  tabela(['Data','Pedido / orçamento','Cliente','Vendedor','UF','Status','Valor do registro'],prepararRegistrosPDF(input.registros),{
+    styles:{font:fonte,fontSize:7.8,textColor:cores.texto,cellPadding:{top:1.8,bottom:1.8,left:1.8,right:1.8},overflow:'linebreak',lineColor:cores.linha,lineWidth:{bottom:0.15},valign:'middle'},
+    columnStyles:{0:{cellWidth:20},1:{cellWidth:23},2:{cellWidth:50},3:{cellWidth:22},4:{cellWidth:10,halign:'center'},5:{cellWidth:25},6:{cellWidth:32,halign:'right'}},
     foot:[[{content:`TOTAL ATIVO - ${numero(input.totalRegistros)} registros`,colSpan:6,styles:{halign:'left'}},{content:moeda(input.valorTotal),styles:{halign:'right'}}]],
     showFoot:'lastPage',footStyles:{fillColor:cores.verdeClaro,textColor:cores.navy,fontStyle:'bold',fontSize:8.5},
     didParseCell:(hook)=>{
@@ -261,7 +285,7 @@ export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, va
   for(let pagina=1;pagina<=totalPaginas;pagina++) {
     doc.setPage(pagina);
     if(pagina>1) {
-      escrever('BRANORTE',margem,13,11,true,cores.navy);
+      logo(margem,7,38);
       escrever('CONTROLE DE VENDAS',W-margem,13,7,false,cores.secundario,'right');
       doc.setDrawColor(...cores.linha);doc.setLineWidth(0.3);doc.line(margem,18,W-margem,18);
       escrever(secoesPaginas.get(pagina)||'Relatório de vendas',margem,23,8,false,cores.secundario);
