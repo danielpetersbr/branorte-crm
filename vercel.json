@@ -13,6 +13,12 @@
     "api/controle-producao.ts": {
       "maxDuration": 60
     },
+    "api/controle-producao-ficha.ts": {
+      "maxDuration": 60
+    },
+    "api/controle-producao-arquivo.ts": {
+      "maxDuration": 60
+    },
     "api/l.ts": {
       "regions": ["gru1"]
     },
