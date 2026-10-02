@@ -1,0 +1,160 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.30'
++const BG_VERSAO = '1.70.31'
+@@ -2440,0 +2441 @@
++                ...(String(cfg.vendedor_nome).toUpperCase() === 'ANA' && _crmAvatarDiag ? { avatar: _crmAvatarDiag } : {}),
+@@ -3106,0 +3108 @@
++                ...(String(cfg.vendedor_nome).toUpperCase() === 'ANA' && _crmAvatarDiag ? { avatar: _crmAvatarDiag } : {}),
+@@ -4501,0 +4504 @@
++let _crmAvatarDiag = null
+@@ -10269,0 +10273,7 @@
++  const strict = String(vendedor).toUpperCase() === 'ANA'
++  const diag = strict ? { started_at: new Date().toISOString(), phase: 'lookup', asked: 0,
++    full_url: 0, undefined: 0, null: 0, exceptions: 0, timeouts: 0, other: 0,
++    thumb_samples: 0, thumb_url: 0, thumb_unknown: 0, thumb_errors: 0,
++    pn_samples: 0, pn_url: 0, pn_unknown: 0, pn_errors: 0,
++    error_classes: {}, lookup_http: null, upload_http: null, checked: 0, saved: 0 } : null
++  if (strict) _crmAvatarDiag = diag
+@@ -10271 +10280,0 @@
+-    const strict = String(vendedor).toUpperCase() === 'ANA'
+@@ -10274 +10282,0 @@
+-    // 1. lote de pendentes
+@@ -10281 +10289,2 @@
+-    if (!r1.ok) return
++    if (strict) diag.lookup_http = Number(r1.status) || null
++    if (!r1.ok) { if (strict) diag.phase = 'lookup_http_error'; return }
+@@ -10284,0 +10294 @@
++      diag.asked = pend.length
+@@ -10289,3 +10299,2 @@
+-    if (!pend.length) return
+-
+-    // 2. captura as URLs de foto via WPP (uma passada, com respiro anti-flood)
++    if (!pend.length) { if (strict) diag.phase = 'empty'; return }
++    if (strict) diag.phase = 'wpp'
+@@ -10293,2 +10302 @@
+-      target: { tabId },
+-      world: 'MAIN',
++      target: { tabId }, world: 'MAIN',
+@@ -10296 +10304,41 @@
+-        const out = []
++        const out = [], counters = { full_url: 0, undefined: 0, null: 0, exceptions: 0, timeouts: 0, other: 0,
++          thumb_samples: 0, thumb_url: 0, thumb_unknown: 0, thumb_errors: 0,
++          pn_samples: 0, pn_url: 0, pn_unknown: 0, pn_errors: 0, error_classes: {} }
++        const errorClass = e => {
++          const name = ['Error','TypeError','ReferenceError','RangeError','DOMException','AbortError','TimeoutError'].includes(e?.name) ? e.name : 'OtherError'
++          const code = ['ERR_LOOKUP','ERR_TIMEOUT','ERR_NOT_FOUND','MODULE_NOT_FOUND','NOT_FOUND','TIMEOUT'].includes(e?.code) ? ':' + e.code : ''
++          const key = name + code
++          counters.error_classes[key] = (counters.error_classes[key] || 0) + 1
++        }
++        const bounded = async (fn, ms) => {
++          let timer
++          try { return await Promise.race([Promise.resolve().then(fn), new Promise((_, reject) => {
++            timer = setTimeout(() => { const e = new Error(); e.code = 'ERR_TIMEOUT'; reject(e) }, ms)
++          })]) } finally { clearTimeout(timer) }
++        }
++        let sampleStarted = 0
++        const probe = async item => {
++          if (!strict || counters.thumb_samples >= 3 || !window.WPP?.contact?.getProfilePictureUrl) return
++          if (!sampleStarted) sampleStarted = Date.now()
++          if (Date.now() - sampleStarted >= 6000) return
++          counters.thumb_samples++
++          try {
++            const thumb = await bounded(() => window.WPP.contact.getProfilePictureUrl(item.chat_id, false), 750)
++            counters[typeof thumb === 'string' && thumb ? 'thumb_url' : 'thumb_unknown']++
++          } catch (e) { counters.thumb_errors++; errorClass(e) }
++          // Observe only an existing official LID-to-PN mapping; never publish probe URLs.
++          if (!window.WPP.contact.getPnLidEntry || Date.now() - sampleStarted >= 6000) return
++          try {
++            const entry = await bounded(() => window.WPP.contact.getPnLidEntry(item.chat_id), 750)
++            const pn = entry?.phoneNumber?._serialized
++            if (typeof pn !== 'string' || !pn.endsWith('@c.us') || pn === item.chat_id) return
++            counters.pn_samples++
++            let found = false
++            for (const full of [true, false]) {
++              if (Date.now() - sampleStarted >= 6000) break
++              const pic = await bounded(() => window.WPP.contact.getProfilePictureUrl(pn, full), 750)
++              if (typeof pic === 'string' && pic) { found = true; break }
++            }
++            counters[found ? 'pn_url' : 'pn_unknown']++
++          } catch (e) { counters.pn_errors++; errorClass(e) }
++        }
+@@ -10301,12 +10349,17 @@
+-              if (strict) {
+-                let timer
+-                try {
+-                  url = await Promise.race([
+-                    window.WPP.contact.getProfilePictureUrl(item.chat_id),
+-                    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('avatar_lookup_timeout')), 3500) }),
+-                  ])
+-                } finally { clearTimeout(timer) }
+-              } else url = await window.WPP.contact.getProfilePictureUrl(item.chat_id)
+-            } else if (strict) continue
+-          } catch { if (strict) continue }
+-          if (strict && url !== null && typeof url !== 'string') continue
++              url = strict ? await bounded(() => window.WPP.contact.getProfilePictureUrl(item.chat_id), 3500)
++                : await window.WPP.contact.getProfilePictureUrl(item.chat_id)
++            } else if (strict) { counters.undefined++; continue }
++          } catch (e) {
++            if (strict) {
++              counters[e?.code === 'ERR_TIMEOUT' ? 'timeouts' : 'exceptions']++
++              errorClass(e); await probe(item); continue
++            }
++          }
++          if (strict) {
++            if (url === undefined) counters.undefined++
++            else if (url === null) counters.null++
++            else if (typeof url === 'string' && url) counters.full_url++
++            else counters.other++
++            if (!(typeof url === 'string' && url)) await probe(item)
++            if (url !== null && typeof url !== 'string') continue
++          }
+@@ -10316 +10369 @@
+-        return out
++        return strict ? { fotos: out, diag: counters } : out
+@@ -10318 +10371 @@
+-      args: [pend, String(vendedor).toUpperCase() === 'ANA'],
++      args: [pend, strict],
+@@ -10320,5 +10373,5 @@
+-    const fotos = Array.isArray(result) ? result : []
+-    if (!fotos.length) return
+-
+-    // 3. envia — o server baixa a imagem e guarda no Storage
+-    await fetch(AVATAR_ENDPOINT, {
++    if (strict && result?.diag) Object.assign(diag, result.diag)
++    const fotos = strict ? (Array.isArray(result?.fotos) ? result.fotos : []) : (Array.isArray(result) ? result : [])
++    if (!fotos.length) { if (strict) diag.phase = 'no_photos'; return }
++    if (strict) diag.phase = 'upload'
++    const r2 = await fetch(AVATAR_ENDPOINT, {
+@@ -10329,0 +10383,7 @@
++    if (strict) {
++      diag.upload_http = Number(r2.status) || null
++      const j2 = r2.ok ? await r2.json().catch(() => null) : null
++      diag.checked = Number.isFinite(j2?.checked) ? Math.max(0, j2.checked) : 0
++      diag.saved = Number.isFinite(j2?.saved) ? Math.max(0, j2.saved) : 0
++      diag.phase = r2.ok ? 'done' : 'upload_http_error'
++    }
+@@ -10331,2 +10391,5 @@
+-    console.info('[Branorte SW] avatar sync:', e?.message || e)
+-  }
++    if (strict) {
++      diag.phase = 'error'
++      diag.network_error = ['AbortError','TimeoutError','TypeError'].includes(e?.name) ? e.name : 'OtherError'
++    } else console.info('[Branorte SW] avatar sync:', e?.message || e)
++  } finally { if (strict) diag.finished_at = new Date().toISOString() }
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.30'
++  var AGENTE_V = '1.70.31'
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -2 +2 @@
+-// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.30'
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.31'
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.30",
++  "version": "1.70.31",

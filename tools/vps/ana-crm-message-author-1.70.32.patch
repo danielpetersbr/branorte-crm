@@ -1,0 +1,9 @@
+--- a/background.js
++++ b/background.js
+@@ -6350 +6350,5 @@
+-      if (isCrm && result?.ok) { patch.wa_msg_id = result.wa_msg_id || null; patch.error = null }
++      if (isCrm && result?.ok) {
++        const confirmedId = [result.wa_msg_id, result.id].find(id => typeof id === 'string' && id.trim())
++        patch.wa_msg_id = confirmedId ? confirmedId.trim() : null
++        patch.error = null
++      }

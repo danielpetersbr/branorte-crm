@@ -1,0 +1,108 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.31'
++const BG_VERSAO = '1.70.32'
+@@ -6350 +6350,5 @@
+-      if (isCrm && result?.ok) { patch.wa_msg_id = result.wa_msg_id || null; patch.error = null }
++      if (isCrm && result?.ok) {
++        const confirmedId = [result.wa_msg_id, result.id].find(id => typeof id === 'string' && id.trim())
++        patch.wa_msg_id = confirmedId ? confirmedId.trim() : null
++        patch.error = null
++      }
+@@ -10318,0 +10323,69 @@
++        Object.assign(counters, { model_present: 0, model_img: 0, model_eurl: 0, model_preview: 0,
++          raw_eurl: 0, raw_preview: 0, fallback_full: 0, fallback_img: 0, pn_fallback_url: 0,
++          hydrate_attempts: 0, hydrate_urls: 0, hydrate_errors: 0, hydrate_timeouts: 0,
++          store_find: false, store_query: false })
++        const cdnUrl = value => {
++          if (typeof value !== 'string' || !value) return null
++          try {
++            const u = new URL(value)
++            const host = u.hostname.toLowerCase()
++            return u.protocol === 'https:' && !u.username && !u.password &&
++              (host === 'whatsapp.net' || host.endsWith('.whatsapp.net') || host === 'fbcdn.net' || host.endsWith('.fbcdn.net')) ? value : null
++          } catch { return null }
++        }
++        const modelUrl = model => {
++          if (!model) return null
++          counters.model_present++
++          if (model.img || model.imgFull) counters.model_img++
++          if (model.eurl) counters.model_eurl++
++          if (model.previewEurl) counters.model_preview++
++          for (const [field, count] of [['imgFull','fallback_full'], ['img','fallback_img'], ['eurl','raw_eurl'], ['previewEurl','raw_preview']]) {
++            const url = cdnUrl(model[field])
++            if (url) { counters[count]++; return url }
++          }
++          return null
++        }
++        const recoverPhoto = async item => {
++          const api = window.WPP?.whatsapp, store = api?.ProfilePicThumbStore
++          counters.store_find = typeof store?.find === 'function'
++          counters.store_query = typeof store?.findQuery === 'function'
++          if (!counters.store_find || typeof api?.WidFactory?.createWid !== 'function') return null
++          const read = async id => {
++            const wid = api.WidFactory.createWid(id)
++            let model, url
++            try { model = await bounded(() => store.find(wid), 750); url = modelUrl(model) }
++            catch (e) { errorClass(e) }
++            if (url) return url
++            if (!counters.store_query || counters.hydrate_attempts >= 3) return null
++            counters.hydrate_attempts++
++            try {
++              model = await bounded(() => store.findQuery(wid, { set: true, logOnSend: false }), 3500)
++              url = modelUrl(model)
++              // Some implementations update the collection without returning its model.
++              if (!url) url = modelUrl(await bounded(() => store.find(wid), 750))
++              if (!url) {
++                for (const full of [true, false]) {
++                  url = cdnUrl(await bounded(() => window.WPP.contact.getProfilePictureUrl(id, full), 750))
++                  if (url) { counters[full ? 'fallback_full' : 'fallback_img']++; break }
++                }
++              }
++              if (url) counters.hydrate_urls++
++              return url
++            } catch (e) {
++              counters[e?.code === 'ERR_TIMEOUT' ? 'hydrate_timeouts' : 'hydrate_errors']++
++              errorClass(e); return null
++            }
++          }
++          try {
++            const url = await read(item.chat_id)
++            if (url) return url
++            // A backend phone is not proof of a WhatsApp Wid. Use only the official local mapping.
++            if (typeof window.WPP.contact.getPnLidEntry !== 'function') return null
++            const entry = await bounded(() => window.WPP.contact.getPnLidEntry(item.chat_id), 750)
++            const pn = entry?.phoneNumber?._serialized
++            if (typeof pn !== 'string' || !pn.endsWith('@c.us') || pn === item.chat_id) return null
++            const mapped = await read(pn)
++            if (mapped) counters.pn_fallback_url++
++            return mapped
++          } catch (e) { errorClass(e); return null }
++        }
+@@ -10355 +10428,3 @@
+-              errorClass(e); await probe(item); continue
++              errorClass(e); await probe(item)
++              url = await recoverPhoto(item)
++              if (!url) continue
+@@ -10364 +10439,4 @@
+-            if (url !== null && typeof url !== 'string') continue
++            if (url !== null && (typeof url !== 'string' || !url)) {
++              url = await recoverPhoto(item)
++              if (!url) continue
++            }
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.31'
++  var AGENTE_V = '1.70.32'
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -2 +2 @@
+-// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.31'
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.32'
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.31",
++  "version": "1.70.32",
