@@ -13,6 +13,7 @@ import { RoadmapFAB } from '@/components/RoadmapFAB'
 import { GenerationOverlay } from '@/components/GenerationOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LembretesNotifier } from '@/components/LembretesNotifier'
+import { isNavigationItemActive } from './navigation-active'
 
 /**
  * Papéis de ACESSO RESTRITO: contas externas sem a sidebar do CRM. Não passam
@@ -87,72 +88,81 @@ interface NavGroup {
   id: string
   label: string
   icon: typeof LayoutDashboard
+  section: 'comercial' | 'operacao' | 'gestao'
   items: NavItem[]
 }
+
+const NAV_SECTIONS = [
+  { id: 'comercial', label: 'Comercial' },
+  { id: 'operacao', label: 'Operação' },
+  { id: 'gestao', label: 'Gestão e apoio' },
+] as const
 
 // ============================================================================
 // Navegacao agrupada por CATEGORIAS colapsaveis (accordion). Clica no cabecalho
 // do grupo -> abre/fecha as opcoes. Permissoes preservadas item a item (permKey);
 // um grupo so aparece se tiver >= 1 item visivel pro usuario.
+// As permissões seguem o item ao mudar de categoria. Não adicionar uma segunda
+// trava por papel onde só a permKey define o acesso (contatos, ligações e área
+// do vendedor, por exemplo).
 // ============================================================================
 const NAV_GROUPS: NavGroup[] = [
   {
-    // "Comercial" (era "Operacao"): a ordem e os rotulos abaixo sao os que o dono
-    // ditou — nomes do que a pessoa VAI FAZER, nao do nome tecnico da tela.
-    // As ROTAS nao mudaram: /atendimentos, /funil, /ligacoes, /agenda, /contatos
-    // e /consulta continuam iguais, entao link salvo e favorito de ninguem quebra.
-    id: 'operacao', label: 'Comercial', icon: LayoutDashboard,
+    id: 'visao-geral', label: 'Visão geral', icon: LayoutDashboard, section: 'comercial',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
-      { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
-      { to: '/whatsapp', label: 'Atendimento WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
-      { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
+      { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true, permKey: 'menu.controle' },
+      { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2, permKey: 'menu.financeiro' },
       { to: '/campanhas', label: 'Análise de Campanhas', icon: Megaphone, permKey: 'menu.campanhas' },
-      // Cada vendedor abre a DELE: a tela deriva o nome de user_profiles.vendor_id e
-      // so o admin tem seletor. Por isso saiu de adminOnly e virou permissao — que e
-      // o que /admin/permissoes edita. SEM `roles` junto: permKey + roles sao duas
-      // fontes de verdade pro mesmo acesso, e foi isso que escondeu /contatos.
-      { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, permKey: 'menu.area_vendedor' },
-      // SEM `roles`: a permissão manda sozinha. Item com permKey E roles cria duas fontes
-      // de verdade pro mesmo acesso — foi o que escondeu /contatos dos vendedores.
-      { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
-      { to: '/agenda', label: 'Agenda e Tarefas', icon: CalendarDays },
-      // Relatorio do lider da semana. SEM permKey de proposito, igual a Agenda:
-      // item com permKey E roles cria duas fontes de verdade pro mesmo acesso —
-      // foi o que escondeu /contatos dos 9 vendedores mesmo com a permissao ligada.
-      // Todo vendedor enxerga; quem preenche e quem recebeu o link do time na semana.
-      { to: '/relatorio-lider', label: 'Painel do Time', icon: ClipboardList },
-      // Reuniao que o Daniel conduz com cada time durante a semana.
-      { to: '/reuniao-time', label: 'Reunião do Time', icon: ClipboardList },
-      // SEM `roles` de proposito: quem manda aqui e `menu.contatos`, a permissao
-      // que a tela de admin edita. A lista fixa ['admin','marketing'] existia
-      // porque /contatos nao estava em VENDOR_PREFIXES e o vendedor era chutado
-      // de volta pro /atendimentos ao clicar — o guard foi corrigido em 05a19f4
-      // e a trava ficou orfa, escondendo o item dos 9 vendedores mesmo com a
-      // permissao ligada no banco. Duas fontes de verdade pro mesmo acesso e
-      // armadilha: dar a permissao no admin nao surtia efeito nenhum.
-      { to: '/contatos', label: 'Carteira de Contatos', icon: Users, permKey: 'menu.contatos' },
-      { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
-      // Era "Projeto 3D" no grupo Producao (que so tinha ele). Mesma rota e mesma
-      // permKey — o vendedor que ja abria continua abrindo.
-      { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
-      // Mesma rota que estava em ADM — o item MUDOU DE GRUPO, nao foi duplicado.
-      // Duas entradas pra mesma tela com permKeys diferentes ja e armadilha aqui
-      // (ver 'Funcoes Chupim'): apagar uma tira o acesso de quem so tem a chave dela.
-      { to: '/orcamentos/precos', label: 'Tabela de Preço', icon: BookOpen, permKey: 'precos.consultar' },
+      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
     ],
   },
   {
-    id: 'orcamentos', label: 'Orçamentos', icon: FileText,
+    id: 'operacao', label: 'Atendimento', icon: MessageSquare, section: 'comercial',
+    items: [
+      { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
+      { to: '/whatsapp', label: 'Atendimento WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
+      { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
+      { to: '/contatos', label: 'Carteira de Contatos', icon: Users, permKey: 'menu.contatos' },
+    ],
+  },
+  {
+    id: 'vendas', label: 'Vendas e pedidos', icon: ShoppingBag, section: 'comercial',
+    items: [
+      { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
+      { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, permKey: 'menu.area_vendedor' },
+      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.controle' },
+      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
+      { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
+    ],
+  },
+  {
+    id: 'orcamentos', label: 'Orçamentos e contratos', icon: FileText, section: 'comercial',
     items: [
       { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/salvos', label: 'Salvos (Editar)', icon: List, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/contrato', label: 'Montar Contrato', icon: FileSignature, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/contratos', label: 'Contratos Feitos', icon: BookCheck, permKey: 'menu.orcamentos' },
+      { to: '/orcamentos/precos', label: 'Tabela de Preço', icon: BookOpen, permKey: 'precos.consultar' },
+      { to: '/orcamentos', label: 'Painel de Orçamentos', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/lista', label: 'Lista de Orçamentos', icon: List, permKey: 'menu.orcamentos_avancado' },
     ],
   },
   {
-    id: 'frete', label: 'Frete', icon: Truck,
+    id: 'financeiro', label: 'Financeiro', icon: Wallet, section: 'operacao',
+    items: [
+      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
+      { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
+    ],
+  },
+  {
+    id: 'producao', label: 'Produção', icon: Package, section: 'operacao',
+    items: [
+      { to: '/controle/producao/fabrica', label: 'Produção da fábrica', icon: Package, permKey: 'menu.producao_fabrica' },
+    ],
+  },
+  {
+    id: 'frete', label: 'Fretes e logística', icon: Truck, section: 'operacao',
     items: [
       { to: '/frete/solicitar', label: 'Pedir Frete', icon: Truck, permKey: 'frete.solicitar' },
       { to: '/frete/cotacoes', label: 'Cotações', icon: CheckCircle, permKey: 'frete.solicitar' },
@@ -164,49 +174,28 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: 'vendas', label: 'Vendas', icon: BarChart2,
+    id: 'representante', label: 'Representantes', icon: Compass, section: 'operacao',
     items: [
-      { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true, permKey: 'menu.controle' },
-      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.controle' },
-      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
-      { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2, permKey: 'menu.financeiro' },
-      { to: '/controle/producao/fabrica', label: 'Produção da fábrica', icon: Package, permKey: 'menu.producao_fabrica' },
-      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
-      { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
-    ],
-  },
-  {
-    // "Area do Representante": os 7 itens abaixo estavam soltos no fim do grupo
-    // Vendas, misturados com Painel/Pedidos/Financeiro/Vendidos, que sao outra
-    // conversa. Aqui e o trabalho de CAMPO — visita, viagem, rede de reps.
-    // As travas de acesso vieram junto item a item (roles / adminOnly): quem via
-    // continua vendo, quem nao via continua sem ver. Rotas inalteradas.
-    id: 'representante', label: 'Área do Representante', icon: Compass,
-    items: [
-      // roles: quem o guard do App.tsx deixa entrar. 'visualizador' cai em
-      // VIEWER_PATHS e era devolvido pro inicio ao clicar aqui.
       { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin, roles: ['admin', 'vendor', 'marketing'] },
-      // O roteiro do dia com check-in e relatório. Serve pro vendedor interno
-      // igual serve pro representante externo — a RPC resolve de quem é a visita
-      // pelo nome de campo, não pelo papel.
       { to: '/minhas-visitas', label: 'Minhas Visitas', icon: ClipboardList, roles: ['admin', 'vendor', 'marketing'] },
-      // Página própria porque não é trabalho de MAPA: é o vaivém com o vendedor
-      // (confirmar data, receber a localização), que dura dias. Dentro do mapa
-      // virava rodapé que ninguém abre.
       { to: '/organizacao-viagem', label: 'Organização de Viagem', icon: Compass, roles: ['admin', 'vendor', 'marketing'] },
-      // Visão de gestão: mostra a carteira de TODOS os reps e o quanto cada um está
-      // acima/abaixo da média. Só admin — o guard em App.tsx trava a URL direta.
       { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
-      // Prospecção outbound: onde estão os candidatos a representante EXTERNO.
       { to: '/mapa-potenciais', label: 'Possíveis Representantes', icon: UserPlus, adminOnly: true },
       { to: '/representantes', label: 'Rede em Campo', icon: Target, adminOnly: true },
-      // Prévia da ficha que o candidato preenche em /seja-representante (pública).
-      // Aqui o envio é travado — é pra conferir o que se pede, não pra testar.
       { to: '/ficha-representante', label: 'Ficha do Representante', icon: ClipboardList, adminOnly: true },
     ],
   },
   {
-    id: 'estudo', label: 'Estudo', icon: Calculator,
+    id: 'equipe', label: 'Equipe e agenda', icon: CalendarDays, section: 'gestao',
+    items: [
+      { to: '/agenda', label: 'Agenda e Tarefas', icon: CalendarDays },
+      { to: '/relatorio-lider', label: 'Painel do Time', icon: ClipboardList },
+      { to: '/reuniao-time', label: 'Reunião do Time', icon: ClipboardList },
+      { to: '/reunioes', label: 'Adm de Reunião', icon: ClipboardList, permKey: 'menu.reunioes' },
+    ],
+  },
+  {
+    id: 'estudo', label: 'Estudos e guias', icon: BookOpen, section: 'gestao',
     items: [
       { to: '/producao-propria', label: 'Produção Própria', icon: Calculator, permKey: 'menu.venda_racao' },
       { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag, permKey: 'menu.venda_racao' },
@@ -214,44 +203,34 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/guia?modo=animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
       { to: '/guia?modo=materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
       { to: '/guia/admin', label: 'Revisão do Guia', icon: BookCheck, permKey: 'guia.editar' },
-      // Sem `roles`: tendo permKey, a lista de papéis é fonte de verdade duplicada
-      // e já escondeu item em silêncio antes (custou três deploys pra achar).
+    ],
+  },
+  {
+    id: 'adm', label: 'Catálogo e projetos', icon: Boxes, section: 'gestao',
+    items: [
+      { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
+      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
+      // As duas entradas de Funções Chupim preservam permissões diferentes.
+      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },
+    ],
+  },
+  {
+    id: 'automacao', label: 'Automação e IA', icon: Workflow, section: 'gestao',
+    items: [
+      { to: '/disparos', label: 'Roteamento', icon: GitBranch, end: true, permKey: 'menu.disparos' },
+      { to: '/disparos/links', label: 'Links de anúncio', icon: Link2, permKey: 'menu.disparos' },
+      { to: '/ia-atendente', label: 'IA Atendente', icon: Bot, permKey: 'menu.ia_atendente' },
+      { to: '/fluxos', label: 'Fluxos do Funil', icon: Workflow, permKey: 'menu.fluxos_funil' },
       { to: '/ia-teste', label: 'Testar a IA', icon: Bot, permKey: 'menu.ia_teste' },
     ],
   },
   {
-    // ADM = o que e administracao, nao operacao do dia. Os 7 itens de baixo
-    // saiam do grupo Orcamentos (todos com permKey menu.orcamentos_avancado) e
-    // 'Adm de Reuniao' saia de Operacao — as permKeys foram preservadas item a
-    // item, entao quem via continua vendo e quem nao via continua sem ver.
-    // ⚠️ 'Funcoes Chupim' aparece TAMBEM no grupo Sistema, com OUTRA permKey
-    // (menu.admin_transportador_funcoes). Isso ja era assim antes; as duas
-    // entradas apontam pra mesma rota mas liberam por chaves diferentes, entao
-    // apagar uma tira o acesso de quem so tem a chave dela.
-    id: 'adm', label: 'ADM', icon: Shield,
+    id: 'sistema', label: 'Administração', icon: Shield, section: 'gestao',
     items: [
-      { to: '/reunioes', label: 'Adm de Reunião', icon: ClipboardList, permKey: 'menu.reunioes' },
-      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
-      { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos', label: 'Painel', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
-      { to: '/orcamentos/lista', label: 'Lista', icon: List, permKey: 'menu.orcamentos_avancado' },
-    ],
-  },
-  {
-    id: 'sistema', label: 'Sistema', icon: Settings,
-    items: [
-      { to: '/disparos', label: 'Roteamento', icon: GitBranch, permKey: 'menu.disparos' },
-      { to: '/disparos/links', label: 'Links de anúncio', icon: Link2, permKey: 'menu.disparos' },
-      { to: '/ia-atendente', label: 'IA Atendente', icon: Bot, permKey: 'menu.ia_atendente' },
-      { to: '/fluxos', label: 'Fluxos do Funil', icon: Workflow, permKey: 'menu.fluxos_funil' },
-      // A rota e gateada por role === 'admin' no App.tsx; esta chave so controla
-      // se o item APARECE. Precisa estar ligada na linha 'admin' de role_permissions.
       { to: '/supervisao', label: 'Supervisao', icon: ScanEye, permKey: 'menu.supervisao' },
       { to: '/admin/usuarios', label: 'Usuários', icon: Shield, permKey: 'menu.admin_usuarios' },
       { to: '/admin/permissoes', label: 'Permissões', icon: Settings, permKey: 'menu.admin_permissoes' },
-      // Sem `roles`: tendo permKey, a lista de papéis seria fonte de verdade duplicada.
       { to: '/admin/acessos', label: 'Acessos', icon: Activity, permKey: 'menu.admin_acessos' },
       { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: Settings, permKey: 'menu.admin_transportador_funcoes' },
       { to: '/roadmap', label: 'Roadmap & Feedback', icon: MessageSquarePlus, permKey: 'menu.roadmap' },
@@ -405,14 +384,14 @@ export function Layout() {
   }
 
   const isItemActive = (it: NavItem) =>
-    it.end ? loc.pathname === it.to : (loc.pathname === it.to || loc.pathname.startsWith(it.to + '/'))
+    isNavigationItemActive(it.to, loc.pathname, loc.search, it.end)
+  const activeGroupId = groups.find(g => g.items.some(isItemActive))?.id
 
-  // Auto-abre o grupo que contem a rota atual (sem fechar os outros).
+  // A rota atual abre sua categoria; os demais tópicos ficam recolhidos.
   useEffect(() => {
-    const active = groups.find(g => g.items.some(isItemActive))
-    if (active) ensureGroupOpen(active.id)
+    if (activeGroupId) ensureGroupOpen(activeGroupId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loc.pathname])
+  }, [loc.pathname, loc.search, activeGroupId])
 
   const mobileBase = profile?.role === 'visualizador'
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
@@ -423,18 +402,19 @@ export function Layout() {
   const mobileNav = mobileBase.filter(visible)
 
   // Item dentro de um grupo aberto (modo expandido)
-  const renderItem = (it: NavItem) => (
+  const renderItem = (it: NavItem) => {
+    const isActive = isItemActive(it)
+    return (
     <NavLink
       key={it.to}
       to={it.to}
       end={it.end}
-      className={({ isActive }) => cn(
-        'group relative flex items-center gap-2 rounded-md pl-9 pr-3 py-1.5 text-[12.5px] font-medium transition-all duration-150',
+      aria-current={isActive ? 'page' : false}
+      className={() => cn(
+        'group relative flex items-center gap-2 rounded-md pl-3 pr-2 py-1.5 text-[12.5px] font-medium transition-all duration-150',
         isActive ? 'text-accent bg-accent-bg' : 'text-ink-muted hover:text-ink hover:bg-surface-2',
       )}
     >
-      {({ isActive }: { isActive: boolean }) => (
-        <>
           {isActive && <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-r bg-accent" />}
           <it.icon className={cn('h-[14px] w-[14px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
           <span className="flex-1 truncate">{it.label}</span>
@@ -446,10 +426,9 @@ export function Layout() {
               {fmtCount(counts[it.countKey] as number)}
             </span>
           )}
-        </>
-      )}
     </NavLink>
-  )
+    )
+  }
 
   // Grupo colapsavel (modo expandido)
   const renderGroup = (g: NavGroup) => {
@@ -461,10 +440,13 @@ export function Layout() {
     return (
       <div key={g.id} className="mb-0.5">
         <button
+          type="button"
           onClick={() => toggleGroup(g.id)}
+          aria-expanded={open}
+          aria-controls={`nav-group-${g.id}`}
           className={cn(
             'w-full group flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-semibold transition-all duration-150',
-            groupActive ? 'text-accent' : 'text-ink hover:bg-surface-2',
+            groupActive ? 'text-accent bg-accent-bg/50' : 'text-ink hover:bg-surface-2',
           )}
         >
           <g.icon className={cn('h-[15px] w-[15px] shrink-0', groupActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
@@ -477,7 +459,7 @@ export function Layout() {
           <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform duration-200', open ? 'rotate-0' : '-rotate-90')} />
         </button>
         {open && (
-          <div className="mt-0.5 mb-1 flex flex-col gap-0.5">
+          <div id={`nav-group-${g.id}`} className="mt-1 mb-2 ml-[19px] border-l border-border pl-1 flex flex-col gap-0.5">
             {g.items.map(renderItem)}
           </div>
         )}
@@ -491,6 +473,8 @@ export function Layout() {
     return (
       <button
         key={g.id}
+        type="button"
+        aria-label={g.label}
         onClick={() => { toggleCollapsed(); ensureGroupOpen(g.id) }}
         onMouseEnter={e => mostrarTip(g.label, e.currentTarget)}
         onMouseLeave={() => setTip(null)}
@@ -698,8 +682,21 @@ export function Layout() {
           </NavLink>
         )}
 
-        <nav className={cn('flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5', collapsed ? 'p-2 items-center' : 'p-3')}>
-          {collapsed ? groups.map(renderGroupCollapsed) : groups.map(renderGroup)}
+        <nav aria-label="Menu principal" className={cn('flex-1 min-h-0 overflow-y-auto flex flex-col', collapsed ? 'p-2 items-center gap-0.5' : 'p-3 gap-4')}>
+          {NAV_SECTIONS.map(section => {
+            const sectionGroups = groups.filter(g => g.section === section.id)
+            if (sectionGroups.length === 0) return null
+            return (
+              <section key={section.id} aria-label={section.label} className={cn('w-full', collapsed && 'flex flex-col items-center gap-0.5')}>
+                {collapsed ? (
+                  section.id !== groups[0].section && <div className="w-5 border-t border-border my-1.5" />
+                ) : (
+                  <h2 className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{section.label}</h2>
+                )}
+                {sectionGroups.map(collapsed ? renderGroupCollapsed : renderGroup)}
+              </section>
+            )
+          })}
         </nav>
 
         {/* Toolbar inferior — logo após items (sem gap) */}
