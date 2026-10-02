@@ -74,6 +74,7 @@ interface NavItem {
   label: string
   icon: typeof LayoutDashboard
   countKey?: 'atendimentos'
+  hidden?: boolean  // retirado do menu no organizador; a tela e seu acesso continuam cadastrados
   end?: boolean      // ativa SO na rota exata (pra paths que sao prefixo de irmaos)
   permKey?: string   // so mostra quando can(permKey) === true
   adminOnly?: boolean // so mostra pro role 'admin' (o guard de rota em App.tsx trava o resto)
@@ -111,29 +112,19 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'visao-geral', label: 'Visão geral', icon: LayoutDashboard, section: 'comercial',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
+      { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
       { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true, permKey: 'menu.controle' },
+      { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
       { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2, permKey: 'menu.financeiro' },
-      { to: '/campanhas', label: 'Análise de Campanhas', icon: Megaphone, permKey: 'menu.campanhas' },
-      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado', hidden: true },
     ],
   },
   {
     id: 'operacao', label: 'Atendimento', icon: MessageSquare, section: 'comercial',
     items: [
       { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
-      { to: '/whatsapp', label: 'Atendimento WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
-      { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
       { to: '/contatos', label: 'Carteira de Contatos', icon: Users, permKey: 'menu.contatos' },
-    ],
-  },
-  {
-    id: 'vendas', label: 'Vendas e pedidos', icon: ShoppingBag, section: 'comercial',
-    items: [
-      { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
-      { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, permKey: 'menu.area_vendedor' },
-      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.novo_pedido' },
-      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.novo_pedido' },
-      { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
+      { to: '/whatsapp', label: 'Atendimento WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
     ],
   },
   {
@@ -144,25 +135,12 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/orcamentos/contrato', label: 'Montar Contrato', icon: FileSignature, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/contratos', label: 'Contratos Feitos', icon: BookCheck, permKey: 'menu.orcamentos' },
       { to: '/orcamentos/precos', label: 'Tabela de Preço', icon: BookOpen, permKey: 'precos.consultar' },
-      { to: '/orcamentos', label: 'Painel de Orçamentos', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
       { to: '/orcamentos/lista', label: 'Lista de Orçamentos', icon: List, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos', label: 'Painel de Orçamentos', icon: BarChart2, end: true, permKey: 'menu.orcamentos_avancado' },
     ],
   },
   {
-    id: 'financeiro', label: 'Financeiro', icon: Wallet, section: 'operacao',
-    items: [
-      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
-      { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
-    ],
-  },
-  {
-    id: 'producao', label: 'Produção', icon: Package, section: 'operacao',
-    items: [
-      { to: '/controle/producao/fabrica', label: 'Produção da fábrica', icon: Package, permKey: 'menu.producao_fabrica' },
-    ],
-  },
-  {
-    id: 'frete', label: 'Fretes e logística', icon: Truck, section: 'operacao',
+    id: 'frete', label: 'Fretes e logística', icon: Truck, section: 'comercial',
     items: [
       { to: '/frete/solicitar', label: 'Pedir Frete', icon: Truck, permKey: 'frete.solicitar' },
       { to: '/frete/cotacoes', label: 'Cotações', icon: CheckCircle, permKey: 'frete.solicitar' },
@@ -171,6 +149,29 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/frete', label: 'Calculadora', icon: Truck, end: true },
       { to: '/frete/transportadoras', label: 'Transportadoras', icon: Package },
       { to: '/frete/historico', label: 'Histórico', icon: History },
+    ],
+  },
+  {
+    id: 'vendas', label: 'Vendas e pedidos', icon: ShoppingBag, section: 'comercial',
+    items: [
+      { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, permKey: 'menu.area_vendedor', hidden: true },
+      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.novo_pedido' },
+      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.novo_pedido' },
+      { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
+    ],
+  },
+  {
+    id: 'financeiro', label: 'Financeiro', icon: Wallet, section: 'operacao',
+    items: [
+      { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
+      { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
+      { to: '/campanhas', label: 'Análise de Campanhas', icon: Megaphone, permKey: 'menu.campanhas' },
+    ],
+  },
+  {
+    id: 'producao', label: 'Produção', icon: Package, section: 'operacao',
+    items: [
+      { to: '/controle/producao/fabrica', label: 'Produção da fábrica', icon: Package, permKey: 'menu.producao_fabrica' },
     ],
   },
   {
@@ -376,7 +377,7 @@ export function Layout() {
     && (!item.roles || (!!profile?.role && item.roles.includes(profile.role)))
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
   const groups = NAV_GROUPS
-    .map(g => ({ ...g, items: g.items.filter(visible) }))
+    .map(g => ({ ...g, items: g.items.filter(item => !item.hidden && visible(item)) }))
     .filter(g => g.items.length > 0)
 
   const counts: Partial<Record<NonNullable<NavItem['countKey']>, number>> = {
