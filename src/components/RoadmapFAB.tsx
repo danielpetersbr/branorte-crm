@@ -10,13 +10,12 @@ const TIPOS: Array<{ id: RoadmapTipo; label: string; icon: typeof Bug; cor: stri
   { id: 'melhoria', label: 'Melhoria', icon: Sparkles, cor: 'text-emerald-400 border-emerald-400/40 bg-emerald-500/10' },
 ]
 
-// Botao flutuante de feedback (bug/sugestao/melhoria). Aparece em todas as paginas
+// Formulário global de feedback (bug/sugestao/melhoria). Aparece nas paginas
 // loggadas. Vendedor descreve + cola screenshot (Ctrl+V) ou anexa arquivo.
 // Auto-detecta URL atual + user pra dar contexto ao admin.
-export function RoadmapFAB() {
+export function RoadmapFAB({ open, onOpenChange: setOpen }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { profile } = useAuth()
   const loc = useLocation()
-  const [open, setOpen] = useState(false)
   const [tipo, setTipo] = useState<RoadmapTipo>('bug')
   const [titulo, setTitulo] = useState('')
   const [descricao, setDescricao] = useState('')
@@ -147,20 +146,6 @@ export function RoadmapFAB() {
 
   return (
     <>
-      {/* FAB — camada --z-fab (40), ABAIXO de modal (100).
-          Era z-[9997]: ficava por cima de qualquer modal e do banner de
-          instalacao, escondendo conteudo e controle. Um botao de feedback nao
-          tem prioridade sobre o que o usuario esta lendo. */}
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-[var(--z-fab)] group flex items-center gap-2 bg-accent hover:bg-accent-700 text-white rounded-full shadow-lg p-3 transition-all hover:scale-105"
-        title="Reportar bug, sugestão ou melhoria"
-        aria-label="Abrir feedback"
-      >
-        <MessageSquarePlus className="w-5 h-5" />
-        <span className="hidden md:inline group-hover:inline text-[12px] font-semibold pr-1">Feedback</span>
-      </button>
-
       {/* Modal — z-[var(--z-blocking)] pra ficar acima de outros modais do app (FinalizarMontarModal etc).
           Sem isso, feedback do FAB abria embaixo do modal de orcamento. */}
       {open && (
@@ -181,7 +166,7 @@ export function RoadmapFAB() {
                   Achou bug? Tem sugestão? Manda aqui que vou ver. Cola um print com Ctrl+V se ajudar.
                 </div>
               </div>
-              <button onClick={() => setOpen(false)} className="text-ink-faint hover:text-ink p-1 -m-1">
+              <button onClick={() => setOpen(false)} aria-label="Fechar feedback" className="text-ink-faint hover:text-ink p-1 -m-1">
                 <X className="h-4 w-4" />
               </button>
             </div>

@@ -2,7 +2,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useRef, useState, Suspense, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 import { useAtendimentosTotalMenu } from '@/hooks/useAtendimentos'
@@ -336,6 +336,19 @@ export function Layout() {
   const aiDrawerOpen = useAiDrawerOpen()
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
   const [confirmSair, setConfirmSair] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const feedbackTrigger = useRef<HTMLButtonElement | null>(null)
+  const feedbackWasOpen = useRef(false)
+  const abrirFeedback = (event: MouseEvent<HTMLButtonElement>) => {
+    feedbackTrigger.current = event.currentTarget
+    setFeedbackOpen(true)
+  }
+  useEffect(() => {
+    if (feedbackWasOpen.current && !feedbackOpen && feedbackTrigger.current?.getClientRects().length) {
+      feedbackTrigger.current.focus()
+    }
+    feedbackWasOpen.current = feedbackOpen
+  }, [feedbackOpen])
 
   // Papel restrito? Então o chrome do CRM não monta — vale o menu próprio.
   const menuRestrito = profile?.role ? MENUS_RESTRITOS[profile.role] : undefined
@@ -707,6 +720,16 @@ export function Layout() {
           >
             {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </button>
+          {profile?.approved_at && (
+            <button
+              onClick={abrirFeedback}
+              title="Reportar bug, sugestão ou melhoria"
+              aria-label="Abrir feedback"
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+            </button>
+          )}
           {profile && (
             <button
               onClick={signOut}
@@ -729,8 +752,8 @@ export function Layout() {
         </ErrorBoundary>
       </main>
 
-      {/* FAB global de feedback */}
-      <RoadmapFAB />
+      {/* Formulário único, fora da barra lateral para preservar a camada global. */}
+      <RoadmapFAB open={feedbackOpen} onOpenChange={setFeedbackOpen} />
 
       {/* Overlay global de geração de orçamento */}
       <GenerationOverlay />
@@ -743,7 +766,7 @@ export function Layout() {
       </ErrorBoundary>
 
       <nav className={cn(
-        'md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-around px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50',
+        'md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-between gap-1 overflow-x-auto px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50',
         aiDrawerOpen && 'hidden',
       )}>
         {mobileNav.map(l => (
@@ -752,7 +775,7 @@ export function Layout() {
             to={l.to}
             end={l.to === '/'}
             className={({ isActive }) => cn(
-              'flex flex-col items-center gap-0.5 px-2 py-1.5 text-micro font-medium rounded-xl min-w-[62px] transition-all',
+              'shrink-0 flex flex-col items-center gap-0.5 px-2 py-1.5 text-micro font-medium rounded-xl min-w-[62px] transition-all',
               isActive
                 ? 'text-accent bg-accent-bg/60'
                 : 'text-ink-faint hover:text-ink-muted active:bg-surface-2',
@@ -766,6 +789,16 @@ export function Layout() {
             )}
           </NavLink>
         ))}
+        {profile?.approved_at && (
+          <button
+            onClick={abrirFeedback}
+            title="Reportar bug, sugestão ou melhoria"
+            aria-label="Abrir feedback"
+            className="shrink-0 h-11 w-11 inline-flex items-center justify-center rounded-xl text-ink-faint hover:text-ink hover:bg-surface-2 transition-colors"
+          >
+            <MessageSquarePlus className="h-[18px] w-[18px]" />
+          </button>
+        )}
       </nav>
     </div>
   )
