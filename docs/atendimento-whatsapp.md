@@ -2,6 +2,8 @@
 
 Acesse **Comercial → Atendimento WhatsApp** (`/whatsapp`). A interface usa o login existente do CRM: administrador aprovado vê toda a equipe; vendedor aprovado e vinculado a um vendedor ativo vê apenas sua carteira. Cadastros e aprovação continuam em **ADM → Usuários**.
 
+Os filtros da lista ficam recolhidos por padrão no botão ao lado de **Conversas**, mantendo a busca sempre disponível. O botão mostra a situação/fila selecionada e indica filtros adicionais; clique no ícone de filtros para alterar situação, fila ou etiquetas e, para administradores, vendedor. Fechar o painel preserva as seleções.
+
 1. Filtre conversas abertas/finalizadas, etiquetas ou nome/telefone. Administrador também filtra e define o responsável.
 2. Abra uma conversa ou use **+ Nova conversa** para selecionar um contato da carteira.
 3. Clique **Assumir** antes de responder. A sessão fica exclusiva e a IA da Ana pausa para aquele cliente. Outra sessão não pode enviar simultaneamente.

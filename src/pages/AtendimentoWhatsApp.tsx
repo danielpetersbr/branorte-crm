@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
-import { ArrowLeft, BarChart3, Check, CheckCircle2, ChevronDown, FileText, Image as ImageIcon, Info, Loader2, Lock, MessageSquare, Mic, Music, Paperclip, Plus, Reply, Search, Send, Square, Tag, Upload, Users, Video, X } from 'lucide-react'
+import { ArrowLeft, BarChart3, Check, CheckCircle2, ChevronDown, FileText, Image as ImageIcon, Info, Loader2, Lock, MessageSquare, Mic, Music, Paperclip, Plus, Reply, Search, Send, SlidersHorizontal, Square, Tag, Upload, Users, Video, X } from 'lucide-react'
+import * as Popover from '@radix-ui/react-popover'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
@@ -201,6 +202,8 @@ export function AtendimentoWhatsApp() {
   const composerDisabled=!chat.ownsLease||sending||uncertain||blocked||preparingRecording
   const activeLease=!!c?.lock_until&&Date.parse(c.lock_until)>now
   const otherLease=activeLease&&(c?.lock_user_id!==chat.profile?.id||c?.lock_session_id!==chat.session)
+  const filtersSummary=[queue==='waiting'?'Aguardando resposta':queue==='overdue'?'Retornos atrasados':null,status==='open'?'Abertas':status==='resolved'?'Finalizadas':null,tag&&`CRM: ${tag}`,anaTag&&`Ana: ${anaTag}`,isAdmin&&vendor&&(vendor==='unassigned'?'Sem responsável':vendors.find(v=>v.id===vendor)?.name||'Vendedor selecionado')].filter(Boolean)
+  const filterLabel=queue==='waiting'?'Aguardando':queue==='overdue'?'Atrasados':status==='open'?'Abertas':status==='resolved'?'Finalizadas':'Todas'
   return <div className="flex h-[calc(100dvh-4.25rem)] md:h-dvh min-h-[500px] flex-col bg-background text-ink">
     <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3 md:px-4">
       <div className="flex min-w-0 items-center gap-2"><MessageSquare size={18} className="shrink-0 text-accent"/><h1 className="text-sm font-semibold"><span className="sr-only">Atendimento </span>WhatsApp</h1><span className="sr-only text-[11px] text-ink-muted sm:not-sr-only">Ana · 1144</span></div>
@@ -212,13 +215,24 @@ export function AtendimentoWhatsApp() {
     <div id="chat-team-summary" hidden={!showSummary} className="shrink-0"><ChatTeamSummary vendor={vendor} isAdmin={isAdmin} onSelectQueue={selectQueue} onSelectUnassigned={()=>{setVendor('unassigned');selectQueue('all');setStatus('open')}}/></div>
     <div className="flex min-h-0 flex-1">
       <aside className={cn('w-full shrink-0 border-r border-border bg-surface md:w-[290px] xl:w-[320px] flex-col',selected?'hidden md:flex':'flex')}>
-        <div className="space-y-3 border-b border-border p-4">
-          <div className="flex items-center justify-between"><h2 className="font-semibold">Conversas <span className="ml-1 text-xs font-normal text-ink-muted">{chat.conversations.length}{chat.list.hasNextPage?'+':''}</span></h2><button className="p-2 text-accent hover:bg-accent/10 rounded-lg" aria-label="Nova conversa" onClick={()=>setShowNew(true)}><Plus size={18}/></button></div>
+        <div className="shrink-0 space-y-2 border-b border-border p-3">
+          <div className="flex items-center gap-2"><h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Conversas <span className="ml-1 text-xs font-normal text-ink-muted">{chat.conversations.length}{chat.list.hasNextPage?'+':''}</span></h2>
+            <Popover.Root>
+              <Popover.Trigger asChild><button type="button" aria-label="Filtros de conversas" title={filtersSummary.length?`Filtros: ${filtersSummary.join(' · ')}`:'Todas as conversas, sem filtros'} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2 text-xs text-ink-muted hover:bg-surface-2 data-[state=open]:bg-accent/10 data-[state=open]:text-accent"><SlidersHorizontal size={14}/><span>{filterLabel}</span>{(filtersSummary.length>1||!!(tag||anaTag||(isAdmin&&vendor)))&&<span aria-label={`${filtersSummary.length} filtros ativos`} className="rounded-full bg-accent/10 px-1.5 text-[10px] font-semibold text-accent">{filtersSummary.length}</span>}</button></Popover.Trigger>
+              <Popover.Portal><Popover.Content side="bottom" align="start" sideOffset={8} collisionPadding={12} aria-label="Filtros de conversas" className="relative z-50 w-[320px] max-w-[calc(100vw-24px)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto rounded-xl border border-border bg-surface p-4 text-ink shadow-xl">
+                <div className="mb-4 flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Filtrar conversas</h3><Popover.Close asChild><button type="button" aria-label="Fechar filtros" className="rounded-lg p-1.5 text-ink-muted hover:bg-surface-2"><X size={16}/></button></Popover.Close></div>
+                <div className="space-y-3">
+                  <div><label htmlFor="chat-filter-queue" className="mb-1 block text-xs text-ink-muted">Fila de atendimento</label><select id="chat-filter-queue" aria-label="Filtrar fila de atendimento" className={inputClass} value={queue} onChange={e=>selectQueue(e.target.value as ChatQueue)}><option value="all">Todas as conversas</option><option value="waiting">Aguardando resposta · mais antigas primeiro</option><option value="overdue">Retornos atrasados · prazo mais antigo</option></select></div>
+                  <div><label htmlFor="chat-filter-status" className="mb-1 block text-xs text-ink-muted">Situação</label><select id="chat-filter-status" aria-label="Filtrar situação" className={inputClass} value={status} onChange={e=>selectStatus(e.target.value)}><option value="open">Abertas</option><option value="resolved">Finalizadas</option><option value="">Todas</option></select></div>
+                  <div><label htmlFor="chat-filter-crm-tag" className="mb-1 block text-xs text-ink-muted">Etiqueta do CRM</label><select id="chat-filter-crm-tag" aria-label="Filtrar etiqueta do CRM" className={inputClass} value={tag} onChange={e=>setTag(e.target.value)}><option value="">Etiquetas do CRM</option>{tags.map(t=><option key={t} value={t}>CRM · {t}</option>)}</select></div>
+                  <div><label htmlFor="chat-filter-ana-tag" className="mb-1 block text-xs text-ink-muted">Etiqueta da Ana</label><select id="chat-filter-ana-tag" aria-label="Filtrar etiqueta da Ana" className={cn(inputClass,'border-amber-500/20')} value={anaTag} onChange={e=>setAnaTag(e.target.value)}><option value="">Etiquetas da Ana · todas</option>{anaTags.map(t=><option key={t} value={t}>Ana · {t}</option>)}</select></div>
+                  {isAdmin&&<div><label htmlFor="chat-filter-vendor" className="mb-1 block text-xs text-ink-muted">Vendedor</label><select id="chat-filter-vendor" aria-label="Filtrar vendedor" className={inputClass} value={vendor} onChange={e=>setVendor(e.target.value)}><option value="">Todos os vendedores</option><option value="unassigned">Sem responsável</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select></div>}
+                </div>
+              </Popover.Content></Popover.Portal>
+            </Popover.Root>
+            <button className="shrink-0 rounded-lg p-2 text-accent hover:bg-accent/10" aria-label="Nova conversa" onClick={()=>setShowNew(true)}><Plus size={18}/></button>
+          </div>
           <div className="relative"><Search size={16} className="absolute left-3 top-3 text-ink-faint"/><input aria-label="Buscar conversa" className={cn(inputClass,'pl-9')} placeholder="Buscar nome ou telefone" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-          <select aria-label="Filtrar fila de atendimento" className={inputClass} value={queue} onChange={e=>selectQueue(e.target.value as ChatQueue)}><option value="all">Todas as conversas</option><option value="waiting">Aguardando resposta · mais antigas primeiro</option><option value="overdue">Retornos atrasados · prazo mais antigo</option></select>
-          <div className="flex gap-2"><select aria-label="Filtrar situação" className={cn(inputClass,'min-w-0')} value={status} onChange={e=>selectStatus(e.target.value)}><option value="open">Abertas</option><option value="resolved">Finalizadas</option><option value="">Todas</option></select><select aria-label="Filtrar etiqueta do CRM" className={cn(inputClass,'min-w-0')} value={tag} onChange={e=>setTag(e.target.value)}><option value="">Etiquetas do CRM</option>{tags.map(t=><option key={t} value={t}>CRM · {t}</option>)}</select></div>
-          <select aria-label="Filtrar etiqueta da Ana" className={cn(inputClass,'border-amber-500/20')} value={anaTag} onChange={e=>setAnaTag(e.target.value)}><option value="">Etiquetas da Ana · todas</option>{anaTags.map(t=><option key={t} value={t}>Ana · {t}</option>)}</select>
-          {isAdmin&&<select aria-label="Filtrar vendedor" className={inputClass} value={vendor} onChange={e=>setVendor(e.target.value)}><option value="">Todos os vendedores</option><option value="unassigned">Sem responsável</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto" aria-label="Lista de conversas">
           {chat.list.isPending&&<p className="p-6 text-sm text-ink-muted">Carregando conversas…</p>}
