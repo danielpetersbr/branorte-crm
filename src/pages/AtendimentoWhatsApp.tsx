@@ -119,12 +119,12 @@ export function AtendimentoWhatsApp() {
     try {await chat.action.mutateAsync({name,...args});return true} catch(e){toast.error((e as Error).message);return false}
   }
   async function assume(){const generation=chatGeneration.current;focusAfterClaim.current=generation;if(!await act('claim')&&generation===chatGeneration.current)focusAfterClaim.current=null}
-  function closeDialog(){setClosing(null);closeButton.current?.focus()}
+  function closeDialog(){setClosing(null)}
   async function confirmClose(reasonId:string,blockAutomation:boolean){
     const context=closing
     if(!context||context.id!==selected||context.id!==c?.id||context.identity!==recordContext.current||context.generation!==chatGeneration.current||blocked||sending||recording||preparingRecording||uncertain)return false
     const ok=await act('resolve',{id:context.id,reason_id:reasonId,block_automation:blockAutomation})
-    if(ok&&context.generation===chatGeneration.current&&context.identity===recordContext.current){toast.success(blockAutomation?'Atendimento finalizado e Ana silenciada neste contato.':'Atendimento finalizado. A Ana aguarda uma nova mensagem relevante.');setClosing(null);closeButton.current?.focus()}
+    if(ok&&context.generation===chatGeneration.current&&context.identity===recordContext.current){toast.success(blockAutomation?'Atendimento finalizado e Ana silenciada neste contato.':'Atendimento finalizado. A Ana aguarda uma nova mensagem relevante.');setClosing(null)}
     return ok
   }
   function selectQueue(next:ChatQueue){const filters=selectChatQueue(next,status);setQueue(filters.queue);setStatus(filters.status)}
@@ -338,7 +338,7 @@ export function AtendimentoWhatsApp() {
         </div>
       </aside>}
     </div>
-    {c&&closing?.id===c.id&&closing.identity===recordContext.current&&closing.generation===chatGeneration.current&&<ChatCloseDialog conversationId={c.id} conversationName={name} userIdentity={closing.identity} open onOpenChange={open=>{if(!open)closeDialog()}} onConfirm={confirmClose}/>}
+    {c&&closing?.id===c.id&&closing.identity===recordContext.current&&closing.generation===chatGeneration.current&&<ChatCloseDialog conversationId={c.id} conversationName={name} userIdentity={closing.identity} open onOpenChange={open=>{if(!open)closeDialog()}} onCloseAutoFocus={()=>{if(closing.identity===recordContext.current&&closing.generation===chatGeneration.current)closeButton.current?.focus()}} onConfirm={confirmClose}/>}
     {showNew&&<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Nova conversa"><div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Nova conversa</h2><button aria-label="Fechar nova conversa" onClick={()=>setShowNew(false)}><X size={20}/></button></div><p className="mb-3 text-xs text-ink-muted">Selecione um contato {isAdmin?'do CRM':'da sua carteira'}. O envio começa somente após assumir o atendimento.</p><input autoFocus className={inputClass} aria-label="Buscar contato para nova conversa" value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Nome ou telefone"/><div className="mt-3 max-h-72 overflow-y-auto">{contacts.isPending&&<p className="p-4 text-sm">Buscando contatos…</p>}{contacts.isError&&<p role="alert" className="p-4 text-sm text-danger">{contacts.error.message}</p>}{contacts.data?.map(ct=><button className="w-full border-b border-border p-3 text-left hover:bg-surface-2" key={ct.id} disabled={chat.action.isPending} onClick={async()=>{try{const r=await chatRpc<{id:string}>('start',{contact:ct.id});setSelected(r.id);setQueue('all');setStatus('');setShowNew(false);await chat.invalidate()}catch(e){toast.error((e as Error).message)}}}><p className="text-sm font-medium">{ct.name}</p><p className="text-xs text-ink-muted">{ct.phone}</p></button>)}{contacts.data?.length===0&&<p className="p-4 text-sm text-ink-muted">Nenhum contato encontrado.</p>}</div></div></div>}
   </div>
 }

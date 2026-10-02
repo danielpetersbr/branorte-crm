@@ -11,10 +11,11 @@ export interface ChatCloseDialogProps {
   userIdentity:string;
   open:boolean;
   onOpenChange:(open:boolean)=>void;
+  onCloseAutoFocus?:()=>void;
   onConfirm:(reasonId:string,blockAutomation:boolean)=>Promise<boolean>;
 }
 
-export function ChatCloseDialog({conversationId,conversationName,userIdentity,open,onOpenChange,onConfirm}:ChatCloseDialogProps) {
+export function ChatCloseDialog({conversationId,conversationName,userIdentity,open,onOpenChange,onCloseAutoFocus,onConfirm}:ChatCloseDialogProps) {
   const options=useQuery({queryKey:['crm-chat-close-options',userIdentity,conversationId],enabled:open,
     queryFn:()=>chatRpc<{reasons:ChatCloseReason[]}>('close_options',{id:conversationId}),retry:1})
   const [selection,setSelection]=useState<{token:number;id:string}|null>(null),[automation,setAutomation]=useState<{token:number;blocked:boolean}|null>(null),[pending,setPending]=useState(false),[failureState,setFailureState]=useState<{token:number;message:string}|null>(null)
@@ -51,7 +52,7 @@ export function ChatCloseDialog({conversationId,conversationName,userIdentity,op
   }
   return <Dialog.Root open={open} onOpenChange={close}>
     <Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-[1000] bg-black/60"/>
-      <Dialog.Content onEscapeKeyDown={event=>{if(busy)event.preventDefault()}} onPointerDownOutside={event=>{if(busy)event.preventDefault()}} className="fixed left-1/2 top-1/2 z-[1001] w-[400px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-surface p-4 text-ink shadow-xl focus:outline-none">
+      <Dialog.Content onCloseAutoFocus={event=>{event.preventDefault();onCloseAutoFocus?.()}} onEscapeKeyDown={event=>{if(busy)event.preventDefault()}} onPointerDownOutside={event=>{if(busy)event.preventDefault()}} className="fixed left-1/2 top-1/2 z-[1001] w-[400px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-surface p-4 text-ink shadow-xl focus:outline-none">
         <Dialog.Title className="pr-8 text-base font-semibold">Finalizar atendimento</Dialog.Title>
         <Dialog.Description className="mt-2 text-xs leading-relaxed text-ink-muted">Escolha o motivo para {conversationName}. {blockAutomation?'A Ana permanecerá pausada até você liberar a automação.':'A Ana ficará pausada até uma nova mensagem relevante do cliente.'}</Dialog.Description>
         <Dialog.Close asChild><button type="button" aria-label="Fechar finalização" disabled={busy} className="absolute right-2 top-2 rounded-lg p-2 text-ink-muted hover:bg-surface-2 disabled:opacity-40"><X size={16}/></button></Dialog.Close>
