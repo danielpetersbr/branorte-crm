@@ -112,11 +112,16 @@ test('copying the printed tracking code has its own button outside the button th
   }
   assert.equal(depth,0);
 });
-test('general and seller observations stay out of the compact card while its equipment summary remains visible',()=>{
-  const annotated=card(1);Object.assign(annotated.dadosOriginais,{observacoes:'Observação geral só na ficha',observacao_vendedor:'Observação do vendedor só na ficha',titulo_equipamento:null,resumo_equipamentos:'[PEDIDO DE GARANTIA] Equipamento sintético'});
+test('general and seller observations and untitled equipment summaries stay out of the compact card',()=>{
+  const annotated=card(1);Object.assign(annotated.dadosOriginais,{observacoes:'Observação geral só na ficha',observacao_vendedor:'Observação do vendedor só na ficha',titulo_equipamento:null,resumo_equipamentos:'CAIXA 1690 Resumo somente na ficha'});
   const html=render([annotated]);
   assert.ok(!html.includes('Observação geral só na ficha'));assert.ok(!html.includes('Observação do vendedor só na ficha'));
-  assert.match(html,/\[PEDIDO DE GARANTIA\] Equipamento sintético/);
+  assert.ok(!html.includes('CAIXA 1690 Resumo somente na ficha'));
+});
+test('a guarantee equipment title remains visible when the source also has the same equipment summary',()=>{
+  const guarantee=card(1),title='[PEDIDO DE GARANTIA] Equipamento sintético';
+  Object.assign(guarantee.dadosOriginais,{titulo_equipamento:title,resumo_equipamentos:title,observacoes:null,observacao_vendedor:null});
+  assert.match(render([guarantee]),/>\[PEDIDO DE GARANTIA\] Equipamento sintético<\/span>/);
 });
 test('motor labels receive one Motor prefix while the literal source details stay intact',()=>{
   const missing=card(1),present=card(2);

@@ -27,7 +27,7 @@ function Cartao({card,hoje,onOpen}:{card:CardEspelho;hoje:Date;onOpen:(button:HT
   const [copia,setCopia]=useState<'pronto'|'copiando'|'copiado'|'erro'>('pronto');
   const raw=card.dadosOriginais,parado=cardParado(card),prazo=prazoCard(card,hoje),entregue=card.etapa==='ENTREGUE';
   const nota=parado?textoCard(raw.parado_motivo):'';
-  const equipamento=textoCard(raw.titulo_equipamento)||textoCard(raw.resumo_equipamentos);
+  const equipamento=textoCard(raw.titulo_equipamento);
   const tensao=textoCard(raw.motor_tensao_vendedor)||textoCard(raw.motor_tensao);
   const motor=[tensao?(/^motor\b/i.test(tensao)?tensao:`Motor ${tensao}`):'',textoCard(raw.motor_marca)].filter(Boolean).join(' · ');
   const entrada=new Date(textoCard(raw.created_at)),dataEntrada=Number.isFinite(entrada.getTime())?entrada.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace(' de ',' ').replace('.',''):'';
