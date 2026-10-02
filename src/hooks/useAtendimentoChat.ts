@@ -12,7 +12,7 @@ export async function chatRpc<T>(action:string,args:Record<string,unknown>={}):P
   if(error) throw new ChatRpcError(error)
   return data as T
 }
-interface ChatList {items:ChatConversation[];tags:string[];connection:{last_sync:string;version:string;number_final:string}|null}
+interface ChatList {items:ChatConversation[];tags:string[];ana_tags?:string[];connection:{last_sync:string;version:string;number_final:string}|null}
 export interface ChatDetail {conversation:ChatConversation;contact:{city:string|null;state:string|null;empresa:string|null;email:string|null;status:string|null}|null;notes:ChatNote[];outbox:ChatOutbox[]}
 export interface ChatSales {
   orders:{id:string;number:string;status:string|null;total:number|null;date:string|null;href:string|null}[];
@@ -21,7 +21,7 @@ export interface ChatSales {
 // Supabase reuses a same-topic channel until asynchronous removal completes.
 let chatRealtimeCleanup:Promise<unknown>=Promise.resolve()
 
-export function useAtendimentoChat(filters:{search:string;status:string;vendor:string;tag:string;queue:ChatQueue},selected:string|null,historySearch='') {
+export function useAtendimentoChat(filters:{search:string;status:string;vendor:string;tag:string;ana_tag:string;queue:ChatQueue},selected:string|null,historySearch='') {
   const {profile}=useAuth()
   const qc=useQueryClient()
   const identity=[profile?.id,profile?.role,profile?.vendor_id]
