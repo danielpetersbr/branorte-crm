@@ -53,7 +53,7 @@ export function Login() {
             <span className="text-white font-bold text-lg">B</span>
           </div>
           <div>
-            <h1 className="font-bold text-ink">Branorte CRM</h1>
+            <h1 className="font-bold text-ink">Branorte</h1>
             <p className="text-xs text-ink-faint">Entre com sua conta</p>
           </div>
         </div>

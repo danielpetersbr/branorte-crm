@@ -1444,9 +1444,9 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
 
   // ─── MONTA DOCUMENTO ────────────────────────────────────────────────
   const doc = new Document({
-    creator: opts.vendedorNome || 'Branorte CRM',
+    creator: opts.vendedorNome || 'Branorte',
     title: `Orçamento ${opts.numero}`,
-    description: `Orçamento personalizado gerado pelo CRM Branorte`,
+    description: `Orçamento personalizado gerado pelo sistema Branorte`,
     styles: {
       default: {
         document: {

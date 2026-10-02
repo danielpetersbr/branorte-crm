@@ -89,7 +89,7 @@ export function Perfil() {
     <div className="p-4 lg:p-8 space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Meu perfil</h1>
-        <p className="text-sm text-text-secondary mt-1">Sua conta no Branorte CRM</p>
+        <p className="text-sm text-text-secondary mt-1">Sua conta na Branorte</p>
       </div>
 
       {/* Info card */}

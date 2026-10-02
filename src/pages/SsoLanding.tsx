@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 // Recebe o token_hash do magic link no fragment (#th=...) e troca por
 // sessão via verifyOtp — sem redirect do Supabase, sem allowlist de URL.
 export function SsoLanding() {
-  const [msg, setMsg] = useState('Entrando no CRM…')
+  const [msg, setMsg] = useState('Acessando Branorte…')
 
   useEffect(() => {
     const th = new URLSearchParams(window.location.hash.slice(1)).get('th')
@@ -29,7 +29,7 @@ export function SsoLanding() {
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center space-y-2">
         <div className="text-lg font-medium">{msg}</div>
-        <div className="text-sm text-gray-500">Branorte CRM</div>
+        <div className="text-sm text-gray-500">Branorte</div>
       </div>
     </div>
   )

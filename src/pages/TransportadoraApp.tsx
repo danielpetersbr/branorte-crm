@@ -348,7 +348,7 @@ function LogadoSemConta({ email, onLogout, onCompletar }: { email: string | null
         <div className="h-14 w-14 rounded-full bg-amber-500/15 mx-auto flex items-center justify-center mb-4"><AlertTriangle className="h-7 w-7 text-amber-500" /></div>
         <h1 className="text-lg font-bold text-ink mb-1">Esse acesso não é de transportadora</h1>
         <p className="text-sm text-ink-muted mb-2">Você está logado como <b className="text-ink">{email || '—'}</b>, mas essa conta não está cadastrada como transportadora.</p>
-        <p className="text-sm text-ink-muted mb-6">Se você é da Branorte, use o CRM normal. Se você é transportadora, <b>saia</b> e entre/cadastre com o email da transportadora.</p>
+        <p className="text-sm text-ink-muted mb-6">Se você é da Branorte, use o sistema interno. Se você é transportadora, <b>saia</b> e entre/cadastre com o email da transportadora.</p>
         <div className="flex items-center justify-center gap-2">
           <button onClick={onLogout} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5"><LogOut className="h-4 w-4" /> Sair / trocar de conta</button>
           <button onClick={onCompletar} className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Sou transportadora</button>

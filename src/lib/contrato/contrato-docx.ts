@@ -111,9 +111,9 @@ export async function gerarContratoDocx(d: ContratoDados): Promise<Blob> {
   const children = montarBlocosContrato(d).flatMap(renderBloco)
 
   const doc = new Document({
-    creator: d.vendedorNome || 'Branorte CRM',
+    creator: d.vendedorNome || 'Branorte',
     title: `Contrato – ${d.comprador.nome || 'cliente'} – Orçamento ${d.orcamentoNumero}`,
-    description: 'Contrato de compra e venda com reserva de domínio gerado pelo CRM Branorte',
+    description: 'Contrato de compra e venda com reserva de domínio gerado pelo sistema Branorte',
     styles: { default: { document: { run: { font: FONTE, size: 22 } } } },
     sections: [{
       properties: { page: { margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 } } },

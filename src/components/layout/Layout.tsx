@@ -622,12 +622,12 @@ export function Layout() {
         {/* Brand (wordmark BRANORTE, adaptável ao tema) + avatar + collapse */}
         <div className={cn('flex items-center h-14 border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2 px-4')}>
           {collapsed ? (
-            <NavLink to="/" title="Branorte CRM" className="flex items-center justify-center h-8 w-8 select-none">
+            <NavLink to="/" title="Branorte" aria-label="Branorte" className="flex items-center justify-center h-8 w-8 select-none">
               <span className="font-extrabold text-[20px] leading-none tracking-[-0.05em] text-accent">B</span>
             </NavLink>
           ) : (
             <>
-              <NavLink to="/" title="Branorte CRM" className="flex items-center gap-1.5 min-w-0 flex-1 select-none">
+              <NavLink to="/" title="Branorte" aria-label="Branorte" className="flex items-center gap-1.5 min-w-0 flex-1 select-none">
                 {/* Logo de verdade, não o nome imitado com duas <span>. São dois
                     arquivos porque a marca tem duas versões oficiais: verde+preto
                     no claro, verde+branco no escuro. Um arquivo só com filtro CSS
@@ -645,7 +645,6 @@ export function Layout() {
                   aria-hidden="true"
                   className="h-[17px] w-auto shrink-0 hidden dark:block"
                 />
-                <span className="text-[8.5px] font-semibold uppercase tracking-[0.18em] text-ink-faint self-end pb-[2px]">CRM</span>
               </NavLink>
               {profile && (
                 <NavLink

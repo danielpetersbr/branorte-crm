@@ -254,7 +254,7 @@ export async function gerarDocxDoPreview(
     }))
 
     const doc = new Document({
-      creator: 'Branorte CRM',
+      creator: 'Branorte',
       title: 'Orçamento',
       sections,
     })

@@ -1,7 +1,7 @@
 {
   "name": "branorte-crm",
   "version": "1.0.0",
-  "description": "Branorte CRM - Sistema de Controle de Contatos",
+  "description": "Branorte - Sistema Integrado de Gestão",
   "type": "module",
   "scripts": {
     "dev": "vite",

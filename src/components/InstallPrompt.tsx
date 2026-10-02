@@ -97,10 +97,10 @@ export function InstallPrompt() {
         <Download className="h-5 w-5 text-accent" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-bold text-ink">Instalar Branorte CRM</div>
+        <div className="text-[13px] font-bold text-ink">Instalar Branorte</div>
         {evt ? (
           <p className="text-[11px] text-ink-muted mt-0.5 leading-snug">
-            Tenha o CRM como app no celular — abre direto do menu, funciona offline básico.
+            Tenha a Branorte como app no celular — abre direto do menu, funciona offline básico.
           </p>
         ) : (
           <p className="text-[11px] text-ink-muted mt-0.5 leading-snug">

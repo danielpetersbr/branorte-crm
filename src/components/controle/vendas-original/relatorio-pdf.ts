@@ -107,7 +107,7 @@ export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, va
   const totalFabricas = input.fabricas.reduce((s,v)=>s+v.quantidade,0);
   const totalEquipamentos = input.equipamentos.reduce((s,v)=>s+v.quantidade,0);
 
-  doc.setProperties({title:'Branorte - Relatório de vendas',subject:input.periodo,author:'Branorte CRM',creator:'Branorte CRM'});
+  doc.setProperties({title:'Branorte - Relatório de vendas',subject:input.periodo,author:'Branorte',creator:'Branorte'});
   const escrever = (conteudo: string | string[], x: number, yy: number, tamanho=9, negrito=false, cor=cores.texto, alinhamento?: 'left' | 'center' | 'right') => {
     doc.setFont(fonte,negrito?'bold':'normal');doc.setFontSize(tamanho);doc.setTextColor(...cor);
     doc.text(conteudo,x,yy,{align:alinhamento || 'left'});
@@ -291,7 +291,7 @@ export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, va
       escrever(secoesPaginas.get(pagina)||'Relatório de vendas',margem,23,8,false,cores.secundario);
     }
     doc.setDrawColor(...cores.linha);doc.setLineWidth(0.2);doc.line(margem,281,W-margem,281);
-    escrever('BRANORTE CRM',margem,287,7,true,cores.navy);
+    escrever('BRANORTE',margem,287,7,true,cores.navy);
     escrever(`TOTAL ATIVO ${moeda(input.valorTotal)} | ${numero(input.totalRegistros)} registros`,W/2,287,7,false,cores.secundario,'center');
     escrever(`${pagina} / ${totalPaginas}`,W-margem,287,7,false,cores.secundario,'right');
     escrever(`${texto(input.periodo)} | ${geradoEm}`,margem,292,6.5,false,cores.secundario);

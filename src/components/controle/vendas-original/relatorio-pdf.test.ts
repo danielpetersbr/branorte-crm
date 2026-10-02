@@ -138,7 +138,7 @@ test('A4 completo mantém todas as categorias e registros na paginação e rodap
   assert.ok(doc.getNumberOfPages() >= 5);
   const pdf = textoDocumento(doc);
   for (const texto of ['Vendedor integral 11','UF 11','Origem integral 9','Cliente integral numero 74']) assert.ok(pdf.includes(texto),texto);
-  assert.equal((pdf.match(/BRANORTE CRM/g)||[]).length,doc.getNumberOfPages());
+  assert.equal((pdf.match(/BRANORTE/g)||[]).length,doc.getNumberOfPages());
   assert.equal((pdf.match(/TOTAL ATIVO/g)||[]).length,doc.getNumberOfPages()+1);
   assert.equal((doc.output().match(/\/FontFile2/g)||[]).length,2,'duas fontes embutidas uma única vez');
   assert.equal((doc.output().match(/\/Subtype \/Image/g)||[]).length,3,'logo reutilizado, transparência e mapa');

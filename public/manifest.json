@@ -1,7 +1,7 @@
 {
-  "name": "Branorte CRM",
+  "name": "Branorte",
   "short_name": "Branorte",
-  "description": "CRM Branorte — atendimento, orçamentos, funil de vendas",
+  "description": "Branorte — sistema integrado de gestão, vendas, financeiro e produção",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
