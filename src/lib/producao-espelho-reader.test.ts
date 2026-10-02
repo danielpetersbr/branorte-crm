@@ -150,3 +150,99 @@ test('new project and professional rows share the existing total source row budg
   const s=source(projectFixture(),(r,c)=>c.table==='projetistas'?{...r,count:100000}:r);
   await assert.rejects(lerProducaoEspelho(global,{fonte:()=>s.fonte,instante:()=>instant}),unavailable);
 });
+
+// Hold only the external SDK receipts: the real reader still owns scheduling,
+// pagination, validation, cancellation and the complete physical envelope.
+function controlledSource(tables:Tables,onStart?:(call:Capture)=>void) {
+  type Pending={call:Capture;receipt:ReciboEspelho;release:(receipt?:ReciboEspelho)=>void};
+  const pending:Pending[]=[];let active=0,peak=0;
+  const s=source(tables,(receipt,call)=>{
+    if(call.table==='producao_cards')return receipt;
+    onStart?.(call);
+    active++;peak=Math.max(peak,active);
+    return new Promise<ReciboEspelho>(resolve=>pending.push({call,receipt,release(value=receipt){active--;resolve(value);}}));
+  });
+  const release=()=>{for(const entry of pending.splice(0).reverse())entry.release();};
+  return {...s,pending,release,get active(){return active;},get peak(){return peak;}};
+}
+const settleReader=()=>new Promise<void>(resolve=>setImmediate(resolve));
+
+test('independent authorized collections start together before any SDK receipt resolves',async()=>{
+  const s=controlledSource(projectFixture()),controller=new AbortController();
+  const reading=lerProducaoEspelho(global,{fonte:()=>s.fonte,signal:controller.signal,instante:()=>instant});
+  const settled=reading.catch(()=>undefined);
+  try {
+    await settleReader();
+    assert.deepEqual(s.pending.map(p=>p.call.table).sort(),['producao_logistica','producao_status_log','projeto_detalhes','setor_producao']);
+    assert.equal(s.active,4);
+  } finally {controller.abort();s.release();await settled;}
+});
+
+test('all batches share one four-query limit while out-of-order receipts preserve every row and page order',async()=>{
+  const tables:Tables={
+    producao_cards:Array.from({length:250},(_,i)=>card(i+1)),
+    producao_status_log:Array.from({length:1201},(_,i)=>history(i+1)),
+    producao_logistica:Array.from({length:250},(_,i)=>logistics(id(i+1))),
+    setor_producao:Array.from({length:750},(_,i)=>sector(i+1,id(Math.floor(i/3)+1))),
+    setor_checklist:Array.from({length:750},(_,i)=>checklist(i+1,id(i+4001))),
+    projeto_detalhes:Array.from({length:250},(_,i)=>project(i+1,id(i+1))),
+    projetistas:[{id:id(7001),nome:'Betuel'}],
+  };
+  const s=controlledSource(tables),controller=new AbortController();let done=false;
+  const reading=lerProducaoEspelho(global,{fonte:()=>s.fonte,signal:controller.signal,instante:()=>instant});
+  const settled=reading.then(out=>{done=true;return out;},error=>{done=true;throw error;});
+  void settled.catch(()=>{});
+  try {
+    await settleReader();assert.equal(s.active,4);
+    for(let turn=0;!done&&turn<100;turn++){assert.ok(s.active<=4);s.release();await settleReader();}
+    assert.ok(done,'all queued receipts must finish');
+    const out=await settled;
+    assert.equal(s.peak,4);assert.deepEqual(out.totals,{cards:250,historico:1201,logistica:250,setores:750,checklists:750});
+    assert.deepEqual(out.dados.cards.map(c=>c.id),tables.producao_cards.map(c=>c.id));
+    assert.deepEqual(out.dados.cards[0].dadosOriginais.historico,tables.producao_status_log);
+    for(let i=0;i<250;i++) {
+      const raw=out.dados.cards[i].dadosOriginais;
+      assert.deepEqual(raw.logistica,tables.producao_logistica[i]);
+      assert.deepEqual(raw.projeto,{...tables.projeto_detalhes[i],responsavel_nome:'Betuel'});
+      assert.deepEqual(raw.setores,tables.setor_producao.slice(i*3,i*3+3).map((s,j)=>({...s,checklists:[tables.setor_checklist[i*3+j]]})));
+    }
+    assert.deepEqual(s.calls.filter(c=>c.table==='producao_status_log'&&c.ids?.includes(id(1))).map(c=>c.from),[0,1000]);
+    assert.ok(s.calls.every(c=>!c.ids||c.ids.length<=100));
+  } finally {controller.abort();s.release();await settled.catch(()=>{});}
+});
+
+test('concurrent readers each have their own four-query capacity',async()=>{
+  const s=controlledSource(projectFixture()),controller=new AbortController();
+  const reading=Promise.all([1,2].map(()=>lerProducaoEspelho(global,{fonte:()=>s.fonte,signal:controller.signal,instante:()=>instant})));
+  const settled=reading.catch(()=>undefined);
+  try {await settleReader();assert.equal(s.active,8);}
+  finally {controller.abort();s.release();await settled;}
+});
+
+for(const mode of ['source-error','invalid-receipt','abort'] as const)test(`${mode} stops queued batches before they can issue any new SQL`,async()=>{
+  const tables:Tables={producao_cards:Array.from({length:450},(_,i)=>card(i+1))};
+  const s=controlledSource(tables),controller=new AbortController();
+  const reading=lerProducaoEspelho(global,{fonte:()=>s.fonte,signal:controller.signal,instante:()=>instant});
+  const rejected=assert.rejects(reading,unavailable);
+  try {
+    await settleReader();assert.equal(s.active,4);const before=s.calls.length;
+    if(mode==='abort')controller.abort();
+    else {
+      const entry=s.pending.shift()!;
+      entry.release(mode==='source-error'?{...entry.receipt,error:Error('PRIVATE SDK FAILURE')}:{...entry.receipt,count:1});
+    }
+    await settleReader();
+    assert.ok(s.calls.every(c=>c.signal?.aborted));
+    s.release();await rejected;await settleReader();
+    assert.equal(s.calls.length,before);
+  } finally {controller.abort();s.release();await rejected;}
+});
+
+test('deadline during batch scheduling observes every already-started receipt rejection',async()=>{
+  let now=0;
+  const s=controlledSource({producao_cards:Array.from({length:250},(_,i)=>card(i+1))},()=>{now=30;});
+  const reading=lerProducaoEspelho(global,{fonte:()=>s.fonte,agora:()=>now,deadlineMs:30,instante:()=>instant});
+  await assert.rejects(reading,unavailable);
+  const before=s.calls.length;s.release();await settleReader();
+  assert.equal(s.calls.length,before);assert.ok(s.calls.every(c=>c.signal?.aborted));
+});

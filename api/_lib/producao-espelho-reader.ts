@@ -175,12 +175,30 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
   const controller = new AbortController(), now = deps.agora ?? (() => performance.now());
   const start = now(), expires = start + duration; let last = start, used = 0;
   const check = () => { const t = now(); if (!Number.isFinite(t) || !Number.isFinite(start) || t < last || t >= expires || controller.signal.aborted) return fail(); last = t; };
+  let active = 0;
+  const queued: Array<{ start: () => void; reject: (error: Error) => void }> = [];
   let timer: ReturnType<typeof setTimeout> | undefined, rejectStop: (e: Error) => void = () => {};
   const stopped = new Promise<never>((_, reject) => { rejectStop = reject; });
-  const stop = () => { controller.abort(); rejectStop(Error('producao_indisponivel')); };
+  const stop = () => { controller.abort(); const error = Error('producao_indisponivel'); for (const job of queued.splice(0)) job.reject(error); rejectStop(error); };
   deps.signal?.addEventListener('abort', stop, { once: true }); timer = setTimeout(stop, duration);
+  const drain = () => { while (!controller.signal.aborted && active < 4 && queued.length) queued.shift()!.start(); };
+  // One limit for this invocation, shared by every table and UUID batch. Keep
+  // the slot through receipt validation so failure aborts before queued SQL.
+  const limited = <T>(read: () => Promise<T>): Promise<T> => new Promise((resolve, reject) => {
+    if (controller.signal.aborted) { reject(Error('producao_indisponivel')); return; }
+    const begin = () => {
+      try { check(); } catch { stop(); reject(Error('producao_indisponivel')); return; }
+      active++;
+      void (async () => {
+        try { const value = await read(); check(); resolve(value); }
+        catch { stop(); reject(Error('producao_indisponivel')); }
+        finally { active--; drain(); }
+      })();
+    };
+    queued.push({ start: begin, reject }); drain();
+  });
   const reserve = (n: number) => { check(); used += n; if (used > MAX_ROWS) return fail(); };
-  const collection = async (source: FonteEspelho, table: Table, filter?: { field: string; ids: string[] }): Promise<Linha[]> => {
+  const collection = (source: FonteEspelho, table: Table, filter?: { field: string; ids: string[] }): Promise<Linha[]> => limited(async () => {
     const rows: Linha[] = []; let total: number | undefined, previousId: string | undefined; const allowed = filter ? new Set(filter.ids) : undefined;
     const columns = schemas[table].map(f => f.name === 'peso_kg' ? 'peso_kg:peso_kg::text' : f.name).concat(table === 'producao_cards' ? ['checklist_compras:checklist_compras::text'] : []).join(',');
     for (let offset = 0; ; offset += PAGE_SIZE) {
@@ -195,10 +213,13 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
       if (offset + PAGE_SIZE >= total) break;
     }
     unique(rows, table === 'producao_logistica' ? 'card_id' : 'id'); check(); return rows;
-  };
+  });
   const batches = async (source: FonteEspelho, table: Table, field: string, ids: string[]) => {
-    const rows: Linha[] = [], requested = [...new Set(ids.map(key))];
-    for (let offset = 0; offset < requested.length; offset += BATCH_SIZE) { rows.push(...await collection(source, table, { field, ids: requested.slice(offset, offset + BATCH_SIZE) })); check(); }
+    const requested = [...new Set(ids.map(key))];
+    const rows = (await Promise.all(Array.from({ length: Math.ceil(requested.length / BATCH_SIZE) }, async (_, batch) => {
+      check(); const offset = batch * BATCH_SIZE;
+      return collection(source, table, { field, ids: requested.slice(offset, offset + BATCH_SIZE) });
+    }))).flat(); check();
     unique(rows, table === 'producao_logistica' ? 'card_id' : 'id'); return rows;
   };
   try {
@@ -219,13 +240,21 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
       const parentMap = new Map(parents.map(p => [key(p.id), p]));
       const cards = allCards.filter(c => { check(); if (scope.vendedores === null) return true; const parent = uuid(c.pedido_id) ? parentMap.get(key(c.pedido_id)) : undefined; return !!parent && pedidoNoEscopo({ vendedor: parent.vendedor as string | null, vendedor_2: parent.vendedor_2 as string | null }, scope); });
       const cardIds = cards.map(c => key(c.id));
-      const histories = await batches(source, 'producao_status_log', 'card_id', cardIds); check();
-      const logistics = await batches(source, 'producao_logistica', 'card_id', cardIds); check();
-      const sectors = await batches(source, 'setor_producao', 'card_id', cardIds); check();
-      const checklists = await batches(source, 'setor_checklist', 'setor_producao_id', sectors.map(s => key(s.id))); check();
-      // Project ownership comes from projetistas, never source Auth/profiles or card display names.
-      const projects = await batches(source, 'projeto_detalhes', 'card_id', cardIds); check(); unique(projects, 'card_id');
-      const professionals = await batches(source, 'projetistas', 'id', projects.flatMap(p => p.responsavel_projeto_id === null ? [] : [key(p.responsavel_projeto_id)])); check();
+      const [histories, logistics, { sectors, checklists }, { projects, professionals }] = await Promise.all([
+        batches(source, 'producao_status_log', 'card_id', cardIds),
+        batches(source, 'producao_logistica', 'card_id', cardIds),
+        (async () => {
+          const sectors = await batches(source, 'setor_producao', 'card_id', cardIds); check();
+          const checklists = await batches(source, 'setor_checklist', 'setor_producao_id', sectors.map(s => key(s.id))); check();
+          return { sectors, checklists };
+        })(),
+        (async () => {
+          // Project ownership comes from projetistas, never source Auth/profiles or card display names.
+          const projects = await batches(source, 'projeto_detalhes', 'card_id', cardIds); check(); unique(projects, 'card_id');
+          const professionals = await batches(source, 'projetistas', 'id', projects.flatMap(p => p.responsavel_projeto_id === null ? [] : [key(p.responsavel_projeto_id)])); check();
+          return { projects, professionals };
+        })(),
+      ]); check();
       const professionalMap = new Map(professionals.map(p => [key(p.id), p.nome]));
       const projectMap = new Map(projects.map(p => {
         check(); const nome = p.responsavel_projeto_id === null ? null : professionalMap.get(key(p.responsavel_projeto_id));
@@ -240,6 +269,6 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
       check(); const instant = (deps.instante ?? (() => new Date().toISOString()))(); check(); return projetarEspelhoProducao(assemble(projected, instant), scope, check);
     };
     return await Promise.race([work(), stopped]);
-  } catch { controller.abort(); return fail(); }
+  } catch { stop(); return fail(); }
   finally { if (timer !== undefined) clearTimeout(timer); deps.signal?.removeEventListener('abort', stop); }
 }
