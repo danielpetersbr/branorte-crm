@@ -16,6 +16,10 @@ function context(options = {}) {
     fetch: async (url, init) => { calls.push(JSON.parse(init.body)); if (options.throws) throw new TypeError('network'); return { ok: options.httpOk !== false, json: async () => options.response || { allowed: true, reason: 'available', label_id: '22', label_name: 'RESOLVIDOS' } } },
     listarLabelsWa: async () => options.labels || labels,
     aplicarLabelEmChat: async (...args) => { applies.push(args); return options.applyResult || { ok: true } },
+    _arqAnaRodando: false, ARQ_ANA_TIPOS_AVISO: ['notification'],
+    getWaTabPronta: async () => 7, arqAnaPaginaArquivar: async () => {},
+    arqAnaNaPagina: async () => ({ ok: true, t: 1 }),
+    chrome: { storage: { local: { get: async () => ({ arq_ana_base: {} }), set: async () => {} } } },
   })
   vm.runInContext(helper, ctx)
   return { ctx, calls, applies, labels }
@@ -169,7 +173,7 @@ test('other seller actual IA cycle retains message reads without calling ANA gat
 })
 test('actual queue takes the exact SQL crm_close payload through the validated branch without origin dependency', async () => {
   const h = flow(); await h.ctx.cicloFluxoAcoes()
-  assert.equal(h.legacy.length, 0); assert.equal(h.applies.length, 1); assert.equal(h.calls.length, 1); assert.equal(h.acknowledgements[0][1], true); assert.equal(h.warnings.length, 0)
+  assert.equal(h.legacy.length, 0); assert.equal(h.applies.length, 1); assert.equal(h.calls.length, 3); assert.equal(h.acknowledgements[0][1], true); assert.equal(h.warnings.length, 0)
 })
 test('actual queue cannot apply stale closures and does not acknowledge network failures as execution', async () => {
   for (const options of [{ response: { allowed: false, reason: 'stale_crm_close' } }, { throws: true }]) {
