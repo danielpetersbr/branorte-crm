@@ -542,7 +542,7 @@ export function Atendimentos() {
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] md:h-screen overflow-visible md:overflow-hidden px-6 py-4 gap-3 max-w-[1800px] mx-auto">
+    <div className="flex flex-col min-h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] md:h-screen overflow-visible md:overflow-hidden px-6 py-4 gap-3 w-full min-w-0">
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>

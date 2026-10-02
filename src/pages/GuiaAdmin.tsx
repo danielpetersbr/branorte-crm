@@ -474,7 +474,7 @@ export function GuiaAdmin() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-4">
+    <div className="w-full min-w-0 space-y-4 px-3 py-4 sm:px-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-ink">Revisão do Guia</h1>

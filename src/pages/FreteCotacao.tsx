@@ -460,7 +460,7 @@ export default function FreteCotacao() {
         <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)', backgroundSize: '30px 30px' }} />
       </div>
 
-      <div className="container mx-auto py-8 px-4 max-w-[1400px] relative">
+      <div className="w-full min-w-0 py-8 px-4 relative">
         {/* Header — hero treatment */}
         <div className="mb-8 flex items-end justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">

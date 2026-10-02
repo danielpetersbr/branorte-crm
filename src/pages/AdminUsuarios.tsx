@@ -109,7 +109,7 @@ export function AdminUsuarios() {
   const rejected = users.filter(u => u.role === 'rejected')
 
   return (
-    <div className="p-4 lg:p-8 space-y-6 max-w-5xl">
+    <div className="w-full min-w-0 p-4 lg:p-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Usuários</h1>
         <p className="text-sm text-text-secondary mt-1">

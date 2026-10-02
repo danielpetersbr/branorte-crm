@@ -153,7 +153,7 @@ export function ReuniaoTime() {
   const faltaVenda = Math.max(0, META_VENDA - (vendas?.vendido ?? 0))
 
   return (
-    <div className="max-w-[1200px] mx-auto px-3 sm:px-5 py-4 sm:py-6 space-y-4 pb-24">
+    <div className="w-full min-w-0 px-3 sm:px-5 py-4 sm:py-6 space-y-4 pb-24">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <button onClick={() => setSlug(null)}
@@ -292,9 +292,9 @@ export function ReuniaoTime() {
         </>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-surface/95 backdrop-blur px-3 py-2.5 z-20">
-        <div className="max-w-[1200px] mx-auto flex items-center gap-3">
-          <div className="flex-1 text-[11px] text-ink-muted">
+      <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-0 right-0 md:bottom-0 md:left-[var(--branorte-sidebar-width)] border-t border-border bg-surface/95 backdrop-blur px-3 py-2.5 z-20">
+        <div className="w-full min-w-0 flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-0 text-[11px] text-ink-muted">
             {salvar.isSuccess ? '✅ Reunião registrada.'
               : perdas.some(p => p.cliente && !p.motivo) ? 'Falta o motivo de alguma perda.'
               : 'O motivo de perda é o dado que mais vale aqui.'}
@@ -305,7 +305,7 @@ export function ReuniaoTime() {
               time_slug: time.slug, conduzida_por: 'DANIEL',
               funcionando, melhorar, proximos_passos: proximos, perdas,
             })}
-            className={cn('px-5 py-2.5 rounded-md text-[14px] font-semibold inline-flex items-center gap-2 transition-colors',
+            className={cn('shrink-0 px-5 py-2.5 rounded-md text-[14px] font-semibold inline-flex items-center gap-2 transition-colors',
               salvar.isPending ? 'bg-surface-2 text-ink-muted' : 'bg-accent text-accent-fg hover:opacity-90')}>
             {salvar.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             {jaFeita ? 'Corrigir' : 'Registrar reunião'}

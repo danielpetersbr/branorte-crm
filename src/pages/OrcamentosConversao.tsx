@@ -29,7 +29,7 @@ export function OrcamentosConversao() {
   const { summary, ranking } = data
 
   return (
-    <div className="p-4 space-y-4 max-w-7xl mx-auto">
+    <div className="p-4 space-y-4 w-full min-w-0">
       <header className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-ink flex items-center gap-2">

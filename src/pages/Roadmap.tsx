@@ -82,7 +82,7 @@ export function Roadmap() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
         {/* Header */}
         <div className="mb-4 flex items-start gap-3">
           <MessageSquarePlus className="w-5 h-5 text-accent mt-1" />

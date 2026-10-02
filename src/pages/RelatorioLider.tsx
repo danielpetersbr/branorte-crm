@@ -394,7 +394,7 @@ export function RelatorioLider() {
   const membros = time.membros as unknown as string[]
 
   return (
-    <div className="max-w-[1700px] mx-auto px-3 sm:px-5 py-4 sm:py-6">
+    <div className="w-full min-w-0 px-3 sm:px-5 py-4 sm:py-6">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">

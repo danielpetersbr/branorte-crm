@@ -140,7 +140,7 @@ export function Representantes() {
   }), { planejadas: 0, realizadas: 0, receita: 0, pipeline: 0 })
 
   return (
-    <div className="p-3 lg:p-6 max-w-[1600px] mx-auto">
+    <div className="p-3 lg:p-6 w-full min-w-0">
       <div className="mb-4">
         <h1 className="text-2xl lg:text-3xl font-semibold text-ink tracking-tight flex items-center gap-2">
           <Users className="h-6 w-6 text-accent" /> Rede de Representantes

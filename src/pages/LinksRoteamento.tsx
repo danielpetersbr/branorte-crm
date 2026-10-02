@@ -267,7 +267,7 @@ export function LinksRoteamento() {
   }
 
   return (
-    <div className="p-4 space-y-4 max-w-[1400px] mx-auto">
+    <div className="w-full min-w-0 p-4 space-y-4">
       {/* ---------- Cabeçalho ---------- */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="min-w-0">

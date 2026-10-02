@@ -709,13 +709,13 @@ export function Agenda() {
 
   // ── Estados de carregamento / vazio ──
   if (nomeLoading || (nome && isLoading)) {
-    return <div className="min-h-screen bg-bg"><div className="max-w-6xl mx-auto px-4 sm:px-6 py-6"><PageLoading /></div></div>
+    return <div className="min-h-screen bg-bg"><div className="w-full min-w-0 px-4 sm:px-6 py-6"><PageLoading /></div></div>
   }
 
   if (!nome) {
     return (
       <div className="min-h-screen bg-bg">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        <div className="w-full min-w-0 px-4 sm:px-6 py-6">
           <div className="bg-surface border border-border rounded-lg p-6 text-center">
             <CalendarDays className="h-8 w-8 text-ink-faint mx-auto mb-2" />
             <h1 className="text-[16px] font-semibold text-ink mb-1">Agenda</h1>
@@ -730,7 +730,7 @@ export function Agenda() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
         {/* Header */}
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

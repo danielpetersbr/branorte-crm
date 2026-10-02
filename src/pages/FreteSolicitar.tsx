@@ -351,7 +351,7 @@ export function FreteSolicitar() {
   const reqRing = (empty: boolean) => empty ? 'border-red-400 ring-1 ring-red-400/30' : 'border-border'
 
   return (
-    <div className="max-w-[1760px] mx-auto px-5 lg:px-8 py-5 pb-24">
+    <div className="w-full min-w-0 px-5 lg:px-8 py-5 pb-24">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <Link to="/frete" className="text-ink-faint hover:text-ink"><ArrowLeft className="h-5 w-5" /></Link>

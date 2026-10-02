@@ -253,7 +253,7 @@ export function CatalogoAdmin() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>

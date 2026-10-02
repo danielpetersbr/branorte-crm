@@ -2,7 +2,7 @@
 // Vendedor entra com CNPJ/CPF e dispara consulta SPC + Datajud + IA.
 //
 // Layout otimizado:
-// - Full width até 1600px (max-w-[1600px] mx-auto) com paddings responsivos
+// - Largura disponível com paddings responsivos
 // - Form inline horizontal em desktop (tipo + doc + pacote + botão numa linha)
 // - Recentes vira drawer lateral (botão no header) — sem sidebar fixa
 // - LGPD vira ícone <Info /> com popover/tooltip no header
@@ -107,7 +107,7 @@ export function Consulta() {
     <div className="min-h-screen bg-bg tabular-nums slashed-zero">
       {/* Header denso, full width — escondido na impressão (#30) */}
       <header className="dd-no-print border-b border-border bg-surface-2/30 sticky top-0 z-20 backdrop-blur-sm">
-        <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-3 flex items-center gap-3">
+        <div className="w-full min-w-0 px-4 md:px-6 py-3 flex items-center gap-3">
           <div className="h-8 w-8 rounded-md bg-accent-bg flex items-center justify-center shrink-0">
             <Search className="h-4 w-4 text-accent" />
           </div>
@@ -175,7 +175,7 @@ export function Consulta() {
       </header>
 
       {/* Conteúdo full-width */}
-      <main className="max-w-[1600px] mx-auto px-4 md:px-6 py-4 min-w-0">
+      <main className="w-full min-w-0 px-4 md:px-6 py-4">
         {/* Indicador de "modo visualizar historico" — clareza sobre como sair */}
         {consultaSelecionada && (
           <div className="dd-no-print mb-3 flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-accent/40 bg-accent-bg/30">

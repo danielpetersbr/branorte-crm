@@ -2,7 +2,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
 } from 'lucide-react'
-import { useEffect, useRef, useState, Suspense, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, Suspense, type CSSProperties, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
 import { useAtendimentosTotalMenu } from '@/hooks/useAtendimentos'
@@ -600,7 +600,10 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-bg">
+    <div
+      className="min-h-screen flex flex-col md:flex-row bg-bg"
+      style={{ '--branorte-sidebar-width': collapsed ? '3.5rem' : '20rem' } as CSSProperties}
+    >
       {/* Tooltip do menu colapsado — fixo no viewport (não é cortado pelo overflow do aside) */}
       {collapsed && tip && (
         <div
@@ -745,7 +748,7 @@ export function Layout() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+      <main className="flex-1 min-w-0 min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0">
         {/* ErrorBoundary impede TELA PRETA: captura crash de render e falha de
             import() de chunk lazy. resetKey troca na rota pra limpar o erro. */}
         <ErrorBoundary resetKey={loc.pathname}>

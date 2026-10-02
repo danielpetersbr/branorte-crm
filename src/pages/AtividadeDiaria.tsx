@@ -176,7 +176,7 @@ export function AtividadeDiaria() {
     metrica === 'atendimentos' ? `${formatNumber(r.chats)} chats` : `${formatNumber(r.atend)} atend`
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-6">
+    <div className="w-full min-w-0 p-6 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-3 mb-1">

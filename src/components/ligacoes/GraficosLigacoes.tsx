@@ -54,7 +54,7 @@ function Painel({ titulo, icone: Icone, direita, children, nota }: {
   titulo: string; icone: typeof PhoneCall; direita?: React.ReactNode; children: React.ReactNode; nota?: string
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-surface p-4 lg:p-5 h-full flex flex-col">
+    <section className="min-w-0 rounded-2xl border border-border bg-surface p-4 lg:p-5 h-full flex flex-col">
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <h2 className="text-[14px] font-semibold text-ink flex items-center gap-2">
           <Icone className="h-4 w-4 text-accent shrink-0" /> {titulo}
@@ -63,7 +63,7 @@ function Painel({ titulo, icone: Icone, direita, children, nota }: {
       </div>
       {/* flex-1 + centro: quando o card vizinho da grade e mais alto, o conteudo ocupa a
           sobra em vez de deixar um buraco branco embaixo (era o vazio do donut). */}
-      <div className="flex-1 flex flex-col justify-center min-h-0">{children}</div>
+      <div className="flex-1 flex flex-col justify-center min-h-0 min-w-0">{children}</div>
       {nota && <p className="text-[10.5px] text-ink-faint mt-3 leading-relaxed">{nota}</p>}
     </section>
   )
@@ -249,7 +249,7 @@ export function ResultadoLigacoes({ atendidas, perdidas, outras, video, atendida
         ? 'Só as que você discou — o que você recebeu não entra nesta rosca. Atendidas inclui quem atendeu no celular. Desistiu antes = você desligou antes de o cliente atender.'
         : 'Só as que o vendedor discou — o que ele recebeu não entra nesta rosca. Atendidas inclui quem atendeu no celular. Desistiu antes = o vendedor desligou antes de o cliente atender.'}>
       {total === 0 ? <Vazio msg="Nenhuma ligação feita no período selecionado." /> : (
-        <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-4 flex-wrap">
           <div className="relative w-[168px] h-[168px] shrink-0 mx-auto sm:mx-0">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
