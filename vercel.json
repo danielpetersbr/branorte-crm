@@ -4,6 +4,9 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
+    "api/controle-producao.ts": {
+      "maxDuration": 60
+    },
     "api/l.ts": {
       "regions": ["gru1"]
     },

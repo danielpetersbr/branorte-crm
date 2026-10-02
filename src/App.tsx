@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase'
 import { Layout } from '@/components/layout/Layout'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
-import { useCan } from '@/hooks/usePermissions'
+import { useCan,useProducaoEspelhoPermissions } from '@/hooks/usePermissions'
+import {decidirRotaProducaoFabrica} from '@/lib/producao-espelho-permissoes'
 import { useTrilhaAcesso } from '@/hooks/useAcesso'
 import { AcessoBloqueado } from '@/components/AcessoBloqueado'
 import { useLocalizacaoObrigatoria } from '@/hooks/useLocalizacaoObrigatoria'
@@ -47,6 +48,7 @@ const OrcamentoMontar = lazy(() => import('@/pages/OrcamentoMontar').then(m => (
 const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ default: m.CatalogoAdmin })))
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
+const ProducaoFabrica=lazy(()=>import('@/pages/controle/ProducaoFabrica'))
 const ProducaoPropria = lazy(() => import('@/pages/ProducaoPropria').then(m => ({ default: m.ProducaoPropria })))
 const VendaRacao = lazy(() => import('@/pages/VendaRacao').then(m => ({ default: m.VendaRacao })))
 const Guia = lazy(() => import('@/pages/Guia').then(m => ({ default: m.Guia })))
@@ -224,6 +226,7 @@ function PendenteOuTransportadora() {
 function AppRoutes() {
   const { session, profile, loading, profileError } = useAuth()
   const can = useCan()
+  const fabrica=useProducaoEspelhoPermissions()
   const loc = useLocation()
   // ⚠️ Tem que ficar AQUI, no topo: este componente tem dezenas de `return`
   // antecipados (rotas públicas, portal, pendente) e hook depois de return
@@ -323,6 +326,12 @@ function AppRoutes() {
     return <PendenteOuTransportadora />
   }
 
+  const factoryRoute=decidirRotaProducaoFabrica(loc.pathname,fabrica)
+  if(factoryRoute==='loading')return <PageLoading />
+  if(factoryRoute==='error')return <div role="alert" className="p-6 text-ink">Não foi possível validar o acesso à fábrica. Atualize a página.</div>
+  if(factoryRoute==='deny')return <div role="alert" className="p-6 text-ink">Sem permissão para a produção da fábrica.</div>
+  const fabricaPermitida=factoryRoute==='allow'
+
   // Mapa de Representantes: visão de gestão (carteira de todos os reps + comparação
   // com a média). Só ADMIN e as contas de papel 'mapa' (Patrick) — vendedor/visualizador
   // caem no início mesmo digitando a URL. O menu já esconde pra quem não pode.
@@ -355,7 +364,7 @@ function AppRoutes() {
   }
   // Frete liberado pra TODOS os roles (exceto a fila de aprovação /frete/aprovar, gateada).
   const freteLiberado = loc.pathname.startsWith('/frete') && !loc.pathname.startsWith('/frete/aprovar')
-  if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !freteLiberado) {
+  if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !freteLiberado && !fabricaPermitida) {
     return <Navigate to="/" replace />
   }
 
@@ -446,7 +455,7 @@ function AppRoutes() {
      */
     const funilOk = p === '/funil' && can('menu.funil')
     const whatsappOk = p === '/whatsapp' && can('menu.whatsapp')
-    const allowed = whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const allowed = fabricaPermitida || whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -502,7 +511,7 @@ function AppRoutes() {
     ],
   }
   const rotasDoPapel = ROTAS_RESTRITAS[profile.role]
-  if (rotasDoPapel && !rotasDoPapel.includes(loc.pathname)) {
+  if (rotasDoPapel && !rotasDoPapel.includes(loc.pathname) && !fabricaPermitida) {
     return <Navigate to={rotasDoPapel[0]} replace />
   }
 
@@ -570,6 +579,7 @@ function AppRoutes() {
             A pública é /seja-representante e roda antes do login. */}
         <Route path="/ficha-representante" element={<SejaRepresentante previa />} />
         <Route path="/controle" element={<ControleDashboard />} />
+        <Route path="/controle/producao/fabrica" element={<ProducaoFabrica />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
         {/* Pedido de Venda completo (portado do controle.branorte.com):

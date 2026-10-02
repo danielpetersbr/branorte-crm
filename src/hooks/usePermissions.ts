@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import {CHAVE_PRODUCAO_FABRICA,canComExcecaoFabrica,type EstadoPermissoesFabrica} from '@/lib/producao-espelho-permissoes'
 
 // 'mapa' e 'financeiro' entraram em 06/08/2026 junto com o Financeiro por parcelas.
 // 'mapa' porque o Patrick tem esse papel e vende (12 pedidos, R$ 5,95 mi) — sem uma
@@ -36,6 +37,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },
   { key: 'menu.frete', label: 'Frete', group: 'Menu' },
   { key: 'menu.controle', label: 'Controle (Vendas)', group: 'Menu' },
+  { key: CHAVE_PRODUCAO_FABRICA, label: 'Produção da fábrica (somente leitura)', group: 'Menu' },
   // Chave própria, separada de menu.controle: o Financeiro é a única tela do
   // grupo Controle que o vendedor precisa ver (e só os pedidos dele — o recorte
   // é feito no servidor, em /api/financeiro). Ligar menu.controle pra ele abriria
@@ -195,17 +197,37 @@ export function useRolePermissions() {
   })
 }
 
+// Factory only: legacy features retain their published fallback behavior.
+export function useProducaoEspelhoPermissions():EstadoPermissoesFabrica {
+  const {session,profile,loading:authLoading,profileError}=useAuth(),roles=useRolePermissions();
+  const userId=session?.user.id??null,profileId=profile?.id??null;
+  const approved=!!userId&&profileId===userId&&!!profile?.approved_at&&['admin','financeiro','vendor','mapa','marketing','visualizador'].includes(profile?.role??'');
+  const overrides=useQuery({queryKey:['producao-espelho-permissoes',userId],enabled:approved&&!authLoading&&!profileError,
+    queryFn:async()=>{
+      const {data,error}=await supabase.from('controle_permissoes_usuario').select('permitido').eq('user_id',userId!).eq('feature_key',CHAVE_PRODUCAO_FABRICA).maybeSingle();
+      if(error)throw Error('permissions_lookup_failed');
+      if(data!==null&&(!data||!Object.prototype.hasOwnProperty.call(data,'permitido')||typeof data.permitido!=='boolean'))throw Error('permissions_lookup_failed');
+      return {userId,override:data===null?undefined:data.permitido as boolean};
+    },staleTime:60000,refetchOnWindowFocus:true,refetchInterval:5*60000});
+  const permissions=roles.data?.find(r=>r.role===profile?.role)?.permissions;
+  const papel=permissions&&Object.prototype.hasOwnProperty.call(permissions,CHAVE_PRODUCAO_FABRICA)?permissions[CHAVE_PRODUCAO_FABRICA]:undefined;
+  return {userId,profileId,role:profile?.role??null,approvedAt:profile?.approved_at??null,authLoading,profileError,permissionsUserId:overrides.data?.userId??null,loading:roles.isPending||overrides.isPending,error:roles.isError||overrides.isError,papel,override:overrides.data?.override};
+}
+
 // API principal: `can('menu.disparos')` retorna boolean pro user logado.
 export function useCan(): (featureKey: string) => boolean {
   const { profile } = useAuth()
   const { data } = useRolePermissions()
+  const fabrica=useProducaoEspelhoPermissions()
 
   return (featureKey: string) => {
     if (!profile) return false
     const role = profile.role
     if (role === 'pending' || role === 'rejected') return false
-    const row = data?.find(r => r.role === role)
-    const perms = row?.permissions ?? FALLBACK[role as AssignableRole] ?? {}
-    return perms[featureKey] === true
+    return canComExcecaoFabrica(featureKey,fabrica,()=>{
+      const row = data?.find(r => r.role === role)
+      const perms = row?.permissions ?? FALLBACK[role as AssignableRole] ?? {}
+      return perms[featureKey] === true
+    })
   }
 }

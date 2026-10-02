@@ -3,3 +3,21 @@
 node_modules
 dist
 .git
+
+# Exclude operational/private artifacts from CLI uploads.
+.superpowers/
+.controle-private/
+.codex/
+.vercel/
+work/
+scripts/
+tools/
+docs/
+supabase/
+**/fixtures/
+**/*fixture*
+**/*.test.ts
+**/*.test.tsx
+**/*.log
+**/*.dump
+**/*.sqlite*
