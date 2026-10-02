@@ -124,7 +124,7 @@ export function AtendimentoWhatsApp() {
     const context=closing
     if(!context||context.id!==selected||context.id!==c?.id||context.identity!==recordContext.current||context.generation!==chatGeneration.current||blocked||sending||recording||preparingRecording||uncertain)return false
     const ok=await act('resolve',{id:context.id,reason_id:reasonId,block_automation:blockAutomation})
-    if(ok&&context.generation===chatGeneration.current&&context.identity===recordContext.current){toast.success(blockAutomation?'Atendimento finalizado e Ana silenciada neste contato.':'Atendimento finalizado. A Ana aguarda uma nova mensagem relevante.');setClosing(null)}
+    if(ok&&context.generation===chatGeneration.current&&context.identity===recordContext.current){toast.success(blockAutomation?'Atendimento finalizado e Ana silenciada neste contato.':'Atendimento finalizado. A Ana aguarda uma nova mensagem relevante.');setClosing(null);setSelected(null)}
     return ok
   }
   function selectQueue(next:ChatQueue){const filters=selectChatQueue(next,status);setQueue(filters.queue);setStatus(filters.status)}

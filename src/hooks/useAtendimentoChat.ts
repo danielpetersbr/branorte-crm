@@ -92,7 +92,7 @@ export function useAtendimentoChat(filters:{search:string;status:string;vendor:s
   const conversation=detail.data?.conversation
   const ownsLease=!!conversation&&conversation.lock_user_id===profile?.id&&conversation.lock_session_id===session&&!!conversation.lock_until&&Date.parse(conversation.lock_until)>Date.now()&&!leaseError
   const action=useMutation({mutationFn:({name,id=selected,...args}:{name:string;id?:string|null;[key:string]:unknown})=>chatRpc(name,{id,session,...args}),
-    onSuccess:()=>{setLeaseError(null);qc.invalidateQueries({queryKey:base})}})
+    onSuccess:()=>{setLeaseError(null);return qc.invalidateQueries({queryKey:base})}})
   useEffect(()=>{setLeaseError(null)},[selected])
   useEffect(()=>{
     if(!selected||!ownsLease) return

@@ -1,0 +1,195 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.35'
++const BG_VERSAO = '1.70.36'
+@@ -3457,0 +3458 @@
++    if (String(cfg.vendedor_nome).toUpperCase() === 'ANA') await crmDrainArchiveUndo()
+@@ -3562 +3563 @@
+-async function arqAnaPaginaArquivar(chatId, tCliOk, tiposAviso) {
++async function arqAnaPaginaArquivar(chatId, tCliOk, tiposAviso, crm = false) {
+@@ -3570,0 +3572 @@
++    if (crm && (!chat.id || String(chat.id._serialized || chat.id) !== id)) return { ok: false, erro: 'wpp_chat_id_inconclusivo' }
+@@ -3575,0 +3578,2 @@
++    const seenCli = []
++    if (crm && !msgs.length) return { ok: false, erro: 'wpp_sem_mensagens' }
+@@ -3580,0 +3585,8 @@
++      if (crm && !aviso(m)) {
++        if (!m.id || typeof m.id.fromMe !== 'boolean') return { ok: false, erro: 'wpp_direcao_inconclusiva' }
++        if (doCliente) {
++          const mid = String(m.id._serialized || m.id.id || '')
++          if (!mid) return { ok: false, erro: 'wpp_msg_id_inconclusivo' }
++          seenCli.push(mid)
++        }
++      }
+@@ -3585 +3597 @@
+-    if (chat.archive) return { ok: true, ja: true, t: tUlt }
++    if (chat.archive) return { ok: true, ja: true, t: tUlt, ...(crm ? { seen_cli: seenCli } : {}) }
+@@ -3587 +3599 @@
+-    return { ok: true, t: tUlt }
++    return { ok: true, t: tUlt, ...(crm ? { seen_cli: seenCli } : {}) }
+@@ -6220 +6232 @@
+-    if (gate.reason === 'stale_crm_close') return { ok: true, ignored: true, erro: 'superada: crm_close_stale' }
++    if (gate.reason === 'stale_crm_close') return await crmRetryArchiveUndo(action) || { ok: true, ignored: true, erro: 'superada: crm_close_stale' }
+@@ -6230 +6242,145 @@
+-  return await aplicarLabelEmChat(action.chat_id, String(selected.id), false, removeIds)
++  const label = await aplicarLabelEmChat(action.chat_id, String(selected.id), false, removeIds)
++  if (!label || !label.ok) return label || { ok: false, erro: 'wpp_label_sem_retorno' }
++  return await crmArchiveClose(action)
++}
++// CRM archive verification: WA-JS may return before Cmd.archiveChat changes the model.
++async function crmAnaPaginaVerifyArchive(chatId, cutoff, types, seenCli) {
++  try {
++    const W = window.WPP
++    if (!W || !W.isReady) return { ok: false, erro: 'wpp_archive_not_ready' }
++    const seen = new Set(Array.isArray(seenCli) ? seenCli : [])
++    const deadline = Date.now() + 2500
++    while (Date.now() <= deadline) {
++      const chat = await W.chat.get(chatId)
++      if (!chat || !chat.id || String(chat.id._serialized || chat.id) !== String(chatId)) return { ok: false, erro: 'wpp_archive_chat_inconclusivo' }
++      const msgs = await W.chat.getMessages(chatId, { count: 30 })
++      if (!Array.isArray(msgs) || !msgs.length) return { ok: false, erro: 'wpp_archive_leitura_inconclusiva' }
++      let conflict = false
++      for (const m of msgs) {
++        const type = String((m && m.type) || '')
++        if (types.includes(type) || /notification|^automated_/i.test(type)) continue
++        if (!m || !m.id || typeof m.id.fromMe !== 'boolean') { conflict = true; break }
++        if (m.id.fromMe) continue
++        const mid = String(m.id._serialized || m.id.id || '')
++        if (!mid || !seen.has(mid) || Number(m.t || 0) > Number(cutoff)) { conflict = true; break }
++      }
++      if (conflict) {
++        // A customer arrived after the pre-archive read, even within the same WhatsApp second.
++        // Undo only archival; CRM inbound processing owns status/pause changes.
++        if (chat.archive === true) {
++          if (W.chat.unarchive) await W.chat.unarchive(chatId)
++          else await W.chat.archive(chatId, false)
++          const undoDeadline = Date.now() + 2500
++          while ((await W.chat.get(chatId)).archive === true && Date.now() <= undoDeadline) await new Promise(resolve => setTimeout(resolve, 100))
++          if ((await W.chat.get(chatId)).archive === true) return { ok: false, erro: 'wpp_archive_desarquivar_nao_confirmado' }
++        }
++        return { ok: false, erro: 'wpp_cliente_falou_durante_archive' }
++      }
++      if (chat.archive === true) return { ok: true }
++      await new Promise(resolve => setTimeout(resolve, 100))
++    }
++    return { ok: false, erro: 'wpp_archive_nao_confirmado' }
++  } catch (_) { return { ok: false, erro: 'wpp_archive_verificacao_falhou' } }
++}
++async function crmAnaPaginaUndoArchive(chatId) {
++  try {
++    const W = window.WPP, chat = W && W.isReady && await W.chat.get(chatId)
++    if (!chat || !chat.id || String(chat.id._serialized || chat.id) !== String(chatId)) return { ok: false, erro: 'wpp_crm_archive_undo_chat_inconclusivo' }
++    if (chat.archive === true) {
++      if (W.chat.unarchive) await W.chat.unarchive(chatId)
++      else await W.chat.archive(chatId, false)
++    }
++    const deadline = Date.now() + 2500
++    while (Date.now() <= deadline) {
++      const current = await W.chat.get(chatId)
++      if (!current || !current.id || String(current.id._serialized || current.id) !== String(chatId)) break
++      if (current.archive === false) return { ok: true }
++      await new Promise(resolve => setTimeout(resolve, 100))
++    }
++    return { ok: false, erro: 'wpp_crm_archive_undo_nao_confirmado' }
++  } catch (_) { return { ok: false, erro: 'wpp_crm_archive_undo_falhou' } }
++}
++async function crmClearArchiveUndo(action) {
++  const stored = await chrome.storage.local.get('crm_archive_undo')
++  const pending = { ...(stored.crm_archive_undo || {}) }, key = String(action.id), close = action.payload.crm_close
++  const proof = pending[key]
++  if (proof && proof.chat_id === action.chat_id && proof.marker === close.marker && proof.conversation_id === close.conversation_id && proof.label_id === close.label_id) {
++    delete pending[key]
++    await chrome.storage.local.set({ crm_archive_undo: pending })
++  }
++}
++async function crmCompleteArchiveUndo(action, tab) {
++  try {
++    const close = action.payload.crm_close, key = String(action.id || '')
++    if (!/^\d+$/.test(key)) return { ok: false, erro: 'wpp_crm_archive_undo_action_invalid' }
++    const stored = await chrome.storage.local.get('crm_archive_undo')
++    const pending = { ...(stored.crm_archive_undo || {}) }
++    pending[key] = { action_id: key, chat_id: action.chat_id, marker: close.marker, conversation_id: close.conversation_id, label_id: close.label_id }
++    await chrome.storage.local.set({ crm_archive_undo: pending })
++    const current = await crmAnaAutomationGate('ANA', action.chat_id)
++    if (!current.allowed && ['crm_closed_until_inbound', 'crm_ana_blocked', 'legacy_ia_blocked'].includes(current.reason)) {
++      await crmClearArchiveUndo(action)
++      return { ok: true, ignored: true, erro: 'superada: crm_close_stale' }
++    }
++    if (!current.allowed && current.reason !== 'crm_human_hold') return { ok: false, erro: 'wpp_crm_archive_undo_current_unavailable' }
++    const undo = await arqAnaNaPagina(tab, crmAnaPaginaUndoArchive, [action.chat_id])
++    if (!undo || !undo.ok) return undo || { ok: false, erro: 'wpp_crm_archive_undo_sem_retorno' }
++    await crmClearArchiveUndo(action)
++    return { ok: true, ignored: true, erro: 'superada: crm_close_stale' }
++  } catch (_) { return { ok: false, erro: 'wpp_crm_archive_undo_persistencia_falhou' } }
++}
++async function crmRetryArchiveUndo(action) {
++  const stored = await chrome.storage.local.get('crm_archive_undo')
++  const proof = stored.crm_archive_undo && stored.crm_archive_undo[String(action.id)]
++  const close = action.payload.crm_close
++  if (!proof || proof.chat_id !== action.chat_id || proof.marker !== close.marker || proof.conversation_id !== close.conversation_id || proof.label_id !== close.label_id) return null
++  if (_arqAnaRodando) return { ok: false, erro: 'wpp_crm_archive_busy' }
++  _arqAnaRodando = true
++  try {
++    const tab = await getWaTabPronta()
++    if (!tab) return { ok: false, erro: 'wpp_crm_archive_undo_sem_aba' }
++    return await crmCompleteArchiveUndo(action, tab)
++  } finally { _arqAnaRodando = false }
++}
++async function crmDrainArchiveUndo() {
++  try {
++    const stored = await chrome.storage.local.get('crm_archive_undo')
++    for (const proof of Object.values(stored.crm_archive_undo || {}).slice(0, 3)) {
++      if (!proof || !/^\d+$/.test(String(proof.action_id || '')) || !/^\d+@(lid|c\.us)$/.test(String(proof.chat_id || ''))) continue
++      const close = { marker: proof.marker, conversation_id: proof.conversation_id, label_id: proof.label_id }
++      const gate = await crmAnaAutomationGate('ANA', proof.chat_id, close)
++      if (!gate.allowed && gate.reason === 'stale_crm_close') await crmRetryArchiveUndo({ id: proof.action_id, chat_id: proof.chat_id, payload: { crm_close: close } })
++    }
++  } catch (_) { /* Keep durable proof for the next natural action cycle. */ }
++}
++async function crmArchiveClose(action) {
++  if (_arqAnaRodando) return { ok: false, erro: 'wpp_crm_archive_busy' }
++  _arqAnaRodando = true
++  try {
++    const close = action.payload.crm_close, cutoff = Date.parse(String(close.marker)) / 1000
++    if (!Number.isFinite(cutoff) || cutoff <= 0) return { ok: false, erro: 'crm_close_marker_invalid' }
++    const tab = await getWaTabPronta()
++    if (!tab) return { ok: false, erro: 'wpp_crm_archive_sem_aba' }
++    const gate = await crmAnaAutomationGate('ANA', action.chat_id, close)
++    if (!gate.allowed) {
++      if (gate.reason === 'stale_crm_close') return { ok: true, ignored: true, erro: 'superada: crm_close_stale' }
++      return { ok: false, erro: 'wpp_crm_archive_gate_unavailable' }
++    }
++    const archived = await arqAnaNaPagina(tab, arqAnaPaginaArquivar, [action.chat_id, cutoff, ARQ_ANA_TIPOS_AVISO, true])
++    if (!archived || !archived.ok) return { ok: false, erro: 'wpp_crm_archive: ' + String(archived && archived.erro || 'sem_retorno').slice(0, 160) }
++    const verified = await arqAnaNaPagina(tab, crmAnaPaginaVerifyArchive, [action.chat_id, cutoff, ARQ_ANA_TIPOS_AVISO, archived.seen_cli])
++    if (!verified || !verified.ok) return verified || { ok: false, erro: 'wpp_crm_archive_sem_confirmacao' }
++    const finalGate = await crmAnaAutomationGate('ANA', action.chat_id, close)
++    if (!finalGate.allowed) {
++      if (finalGate.reason === 'stale_crm_close') {
++        return await crmCompleteArchiveUndo(action, tab)
++      }
++      return { ok: false, erro: 'wpp_crm_archive_gate_final_unavailable' }
++    }
++    const stored = await chrome.storage.local.get('arq_ana_base')
++    const base = stored.arq_ana_base && typeof stored.arq_ana_base === 'object' ? { ...stored.arq_ana_base } : {}
++    base[action.chat_id] = Math.max(Number(base[action.chat_id] || 0), Number(archived.t || 0), cutoff, 1)
++    await chrome.storage.local.set({ arq_ana_base: base })
++    return { ok: true, archived: true }
++  } catch (_) { return { ok: false, erro: 'wpp_crm_archive_persistencia_falhou' } }
++  finally { _arqAnaRodando = false }
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.35'
++  var AGENTE_V = '1.70.36'
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -2 +2 @@
+-// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.35'
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.36'
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.35",
++  "version": "1.70.36",
