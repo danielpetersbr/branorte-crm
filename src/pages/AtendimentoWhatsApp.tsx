@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
-import { ArrowLeft, Check, CheckCircle2, FileText, Image as ImageIcon, Info, Loader2, Lock, MessageSquare, Mic, Music, Paperclip, Plus, Reply, Search, Send, Square, Tag, Upload, Users, Video, X } from 'lucide-react'
+import { ArrowLeft, BarChart3, Check, CheckCircle2, ChevronDown, FileText, Image as ImageIcon, Info, Loader2, Lock, MessageSquare, Mic, Music, Paperclip, Plus, Reply, Search, Send, Square, Tag, Upload, Users, Video, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
@@ -56,6 +56,7 @@ export function AtendimentoWhatsApp() {
   const [search,setSearch]=useState(''),[debounced,setDebounced]=useState('')
   const [status,setStatus]=useState('open'),[vendor,setVendor]=useState(''),[tag,setTag]=useState('')
   const [anaTag,setAnaTag]=useState('')
+  const [showSummary,setShowSummary]=useState(false)
   const [queue,setQueue]=useState<ChatQueue>('all'),[now,setNow]=useState(Date.now)
   const [historySearch,setHistorySearch]=useState(''),[historyDebounced,setHistoryDebounced]=useState('')
   const [reply,setReply]=useState<ChatCitation|null>(null)
@@ -200,6 +201,7 @@ export function AtendimentoWhatsApp() {
   }
   const connection=chat.list.data?.pages[0]?.connection
   const fresh=connection&&connection.number_final==='1144'&&Date.now()-Date.parse(connection.last_sync)<180000
+  const connectionLabel=!fresh?'Verificar VPS':chat.realtimeConnected?'Tempo real conectado':'Reconectando chat'
   const tags=chat.list.data?.pages[0]?.tags||[]
   const anaTags=anaTagNames(chat.list.data?.pages[0]?.ana_tags)
   const selectedList=chat.conversations.find(x=>x.id===selected)
@@ -211,11 +213,14 @@ export function AtendimentoWhatsApp() {
   const activeLease=!!c?.lock_until&&Date.parse(c.lock_until)>now
   const otherLease=activeLease&&(c?.lock_user_id!==chat.profile?.id||c?.lock_session_id!==chat.session)
   return <div className="flex h-[calc(100dvh-4.25rem)] md:h-dvh min-h-[500px] flex-col bg-background text-ink">
-    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 md:px-6">
-      <div className="flex items-center gap-3"><div className="rounded-xl bg-accent/10 p-2 text-accent"><MessageSquare size={22}/></div><div><h1 className="text-lg font-semibold">Atendimento WhatsApp</h1><p className="text-xs text-ink-muted">Ana · número final 1144 · {isAdmin?'Visão da equipe':'Minha carteira'}</p></div></div>
-      <span data-realtime-event={chat.lastEventAt??''} title={connection?`Última sincronização da VPS: ${new Date(connection.last_sync).toLocaleString('pt-BR')}`:'Sem informação da VPS'} className={cn('flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs',fresh&&chat.realtimeConnected?'border-accent/20 bg-accent/5 text-accent':'border-amber-500/30 text-amber-500')}><span className={cn('h-1.5 w-1.5 rounded-full',fresh&&chat.realtimeConnected?'bg-accent':'bg-amber-500')}/><span>{!fresh?'Verificar VPS':chat.realtimeConnected?'Tempo real conectado':'Reconectando chat'}</span></span>
+    <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3 md:px-4">
+      <div className="flex min-w-0 items-center gap-2"><MessageSquare size={18} className="shrink-0 text-accent"/><h1 className="text-sm font-semibold"><span className="sr-only">Atendimento </span>WhatsApp</h1><span className="sr-only text-[11px] text-ink-muted sm:not-sr-only">Ana · 1144</span></div>
+      <div className="flex shrink-0 items-center gap-3">
+        <span aria-label={connectionLabel} data-realtime-event={chat.lastEventAt??''} title={connection?`Última sincronização da VPS: ${new Date(connection.last_sync).toLocaleString('pt-BR')}`:'Sem informação da VPS'} className={cn('flex items-center gap-1.5 text-[11px]',fresh&&chat.realtimeConnected?'text-accent':'text-amber-500')}><span className={cn('h-1.5 w-1.5 shrink-0 rounded-full',fresh&&chat.realtimeConnected?'bg-accent':'bg-amber-500')}/><span className="hidden sm:inline">{connectionLabel}</span><span className="sm:hidden">{!fresh?'Verificar VPS':chat.realtimeConnected?'Conectado':'Reconectando'}</span></span>
+        <button type="button" aria-label="Indicadores do atendimento" aria-expanded={showSummary} aria-controls="chat-team-summary" title={showSummary?'Ocultar indicadores':'Mostrar indicadores'} onClick={()=>setShowSummary(value=>!value)} className={cn('inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs text-ink-muted hover:bg-surface-2',showSummary&&'bg-surface-2 text-ink')}><BarChart3 size={15}/><span className="sr-only sm:not-sr-only">Indicadores</span><ChevronDown size={12} className={cn('transition-transform',showSummary&&'rotate-180')}/></button>
+      </div>
     </header>
-    <ChatTeamSummary vendor={vendor} isAdmin={isAdmin} onSelectQueue={selectQueue} onSelectUnassigned={()=>{setVendor('unassigned');selectQueue('all');setStatus('open')}}/>
+    <div id="chat-team-summary" hidden={!showSummary} className="shrink-0"><ChatTeamSummary vendor={vendor} isAdmin={isAdmin} onSelectQueue={selectQueue} onSelectUnassigned={()=>{setVendor('unassigned');selectQueue('all');setStatus('open')}}/></div>
     <div className="flex min-h-0 flex-1">
       <aside className={cn('w-full shrink-0 border-r border-border bg-surface md:w-[290px] xl:w-[320px] flex-col',selected?'hidden md:flex':'flex')}>
         <div className="space-y-3 border-b border-border p-4">
