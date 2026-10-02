@@ -80,8 +80,10 @@ export interface ChatMessage {
   sender_id?:string|null; sender_name?:string|null;
   reply_msg_id?:string|null; reply_preview?:string|null; reply_sender_name?:string|null; reply_from_me?:boolean|null;
 }
-export function chatMessageSenderName(message:Pick<ChatMessage,'from_me'|'sender_name'>):string|null {
-  return message.from_me ? message.sender_name?.trim() || null : null
+export function chatMessageSenderName(message:Pick<ChatMessage,'from_me'|'sender_name'|'sender_id'>):string|null {
+  if (!message.from_me) return null
+  // The WhatsApp account identifies the channel, not the unrecorded person/device.
+  return message.sender_name?.trim() || (message.sender_id ? 'Vendedor · CRM' : 'Ana · WhatsApp')
 }
 export interface ChatOutbox {
   id:string; body:string; tipo:string; media_path:string|null; created_at:string;

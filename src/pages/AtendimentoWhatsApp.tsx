@@ -29,7 +29,7 @@ function MessageBubble({message,url,onReply,replyDisabled}:{message:ChatMessage;
   const senderName=chatMessageSenderName(message)
   return <div className={cn('flex',message.from_me?'justify-end':'justify-start')}>
     <div className={cn('max-w-[88%] sm:max-w-[78%] rounded-xl border px-3 py-2 shadow-sm',message.from_me?'bg-accent/10 border-accent/20 rounded-tr-sm':'bg-surface border-border rounded-tl-sm')}>
-      {senderName&&<p className="mb-1 break-words text-xs font-semibold text-accent">{senderName}</p>}
+      {senderName&&<p className="mb-1 break-words text-xs font-semibold text-accent" title={message.sender_name?.trim()?undefined:message.sender_id?'Enviado por um usuário do CRM cujo nome não foi registrado.':'Conta WhatsApp da Ana, final 1144. O autor individual desta mensagem não foi registrado.'}>{senderName}</p>}
       {message.reply_msg_id&&<ChatReplyPreview preview={message.reply_preview} author={message.reply_sender_name}/>}
       {hasMedia&&<Media type={message.tipo} url={url} filename={message.filename}/>}
       {body&&<p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{body}</p>}
