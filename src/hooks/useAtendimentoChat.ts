@@ -3,7 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { chatChange, chatRefresh } from '@/lib/chat-realtime'
-import { CHAT_MEDIA_BUCKET, type ChatConversation, type ChatMessage, type ChatNote, type ChatOutbox } from '@/lib/atendimento-chat'
+import { CHAT_MEDIA_BUCKET, privateChatMediaPath, type ChatConversation, type ChatMessage, type ChatNote, type ChatOutbox } from '@/lib/atendimento-chat'
 
 export async function chatRpc<T>(action:string,args:Record<string,unknown>={}):Promise<T> {
   const {data,error}=await supabase.rpc('crm_chat',{p_action:action,p_args:args})
@@ -99,4 +99,17 @@ export function useChatMedia(path:string|null) {
   return useQuery({queryKey:['crm-chat-media',profile?.id,profile?.vendor_id,path],enabled:!!path,
     queryFn:async()=>{const {data,error}=await supabase.storage.from(CHAT_MEDIA_BUCKET).createSignedUrl(path!,300);if(error)throw error;return data.signedUrl},
     staleTime:120000,refetchInterval:240000,retry:1})
+}
+
+// One signing request for the visible history; every path still passes Storage's portfolio RLS.
+export function useChatHistoryMedia(messages:ChatMessage[]) {
+  const {profile}=useAuth()
+  const paths=useMemo(()=>[...new Set(messages.map(m=>privateChatMediaPath(m.media_url)).filter((path):path is string=>!!path))].sort(),[messages])
+  return useQuery({queryKey:['crm-chat-history-media',profile?.id,profile?.vendor_id,paths],
+    enabled:!!profile?.approved_at&&paths.length>0,
+    queryFn:async()=>{
+      const {data,error}=await supabase.storage.from(CHAT_MEDIA_BUCKET).createSignedUrls(paths,300)
+      if(error)throw error
+      return Object.fromEntries((data??[]).filter(item=>item.path&&!item.error&&item.signedUrl).map(item=>[item.path!,item.signedUrl])) as Record<string,string>
+    },staleTime:120000,refetchInterval:240000,retry:1})
 }

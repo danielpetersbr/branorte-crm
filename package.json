@@ -49,6 +49,7 @@
     "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^0.321.0",
     "mammoth": "^1.11.0",
+    "opus-media-recorder": "0.8.0",
     "pdfjs-dist": "^4.4.168",
     "pg": "^8.20.0",
     "pizzip": "^3.2.0",

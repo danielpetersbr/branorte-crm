@@ -1,0 +1,27 @@
+<!doctype html><html lang="pt-BR"><meta charset="UTF-8"><title>QA do gravador de voz</title>
+<style>body{font:16px system-ui;background:#111815;color:#e4f5ec;max-width:720px;margin:64px auto;padding:24px}button{padding:12px;background:#20a56c;color:white;border:0;border-radius:8px}pre{white-space:pre-wrap}audio{display:block;margin:24px 0}</style>
+<h1>Teste do codificador de voz</h1><p>Gera um tom sintético de dois segundos. Não usa microfone, WhatsApp ou envio de arquivos.</p>
+<button id="test">Testar gravação Ogg</button><pre id="result">Aguardando teste.</pre><audio id="audio" controls></audio><a id="download" hidden>Baixar arquivo de teste</a>
+<script type="module">
+import {createChatRecorder} from '/src/lib/chat-recorder.ts'
+const button=document.querySelector('#test'),result=document.querySelector('#result'),audio=document.querySelector('#audio'),download=document.querySelector('#download')
+let url
+button.onclick=async()=>{
+  button.disabled=true;result.textContent='Codificando tom sintético...'
+  const context=new AudioContext(),oscillator=context.createOscillator(),destination=context.createMediaStreamDestination()
+  oscillator.frequency.value=440;oscillator.connect(destination);await context.resume()
+  try {
+    const recorder=await createChatRecorder(destination.stream),chunks=[]
+    recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)}
+    recorder.onerror=e=>{result.textContent='FALHA: '+(e.error?.message||e.type);button.disabled=false;oscillator.stop();context.close()}
+    recorder.onstop=async()=>{
+      const blob=new Blob(chunks,{type:recorder.mimeType.split(';')[0]}),bytes=new Uint8Array(await blob.arrayBuffer())
+      const signature=String.fromCharCode(...bytes.slice(0,4));const opus=bytes.some((_,i)=>String.fromCharCode(...bytes.slice(i,i+8))==='OpusHead')
+      result.textContent=JSON.stringify({mime:blob.type,bytes:blob.size,signature,opus,pass:blob.type==='audio/ogg'&&signature==='OggS'&&opus},null,2)
+      if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);audio.src=url;download.href=url;download.download='voz-sintetica.ogg';download.hidden=false;button.disabled=false
+      oscillator.stop();destination.stream.getTracks().forEach(track=>track.stop());await context.close()
+    }
+    recorder.start(1000);oscillator.start();setTimeout(()=>recorder.stop(),2100)
+  } catch(error){result.textContent='FALHA: '+error.message;button.disabled=false;destination.stream.getTracks().forEach(track=>track.stop());await context.close()}
+}
+</script></html>
