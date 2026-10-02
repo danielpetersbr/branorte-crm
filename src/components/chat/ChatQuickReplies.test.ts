@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readQuickReplies, saveQuickReplies } from './ChatQuickReplies'
+import { readQuickReplies, saveQuickReplies } from '../../lib/chat-quick-replies'
 
 test('respostas rápidas persistem somente no escopo do usuário', () => {
   const values=new Map<string,string>()
