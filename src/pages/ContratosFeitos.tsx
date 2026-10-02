@@ -194,7 +194,7 @@ export function ContratosFeitos() {
   if (isLoading) return <PageLoading />
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto">
+    <div className="p-4 md:p-6 w-full min-w-0">
       <header className="mb-5">
         <h1 className="text-xl font-bold flex items-center gap-2">
           <FileSignature className="h-5 w-5 text-accent" />

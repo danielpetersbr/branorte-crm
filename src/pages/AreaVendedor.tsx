@@ -69,7 +69,7 @@ export default function AreaVendedor() {
   ].filter(Boolean)
 
   return (
-    <main className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-5">
+    <main className="w-full min-w-0 space-y-3 p-3 md:p-5">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Área do vendedor</h1>

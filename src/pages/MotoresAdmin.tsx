@@ -101,6 +101,7 @@ function TabelaMotores({
           {filtrados.length} motores · soma {formatBRL(total)}
         </span>
       </div>
+      <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
         <thead className="bg-surface-2/50 text-ink-muted">
           <tr>
@@ -127,6 +128,7 @@ function TabelaMotores({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
@@ -155,6 +157,7 @@ function TabelaMotorRedutor() {
           Motor-Redutor (Q-sizes)
         </h3>
       </div>
+      <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
         <thead className="bg-surface-2/50 text-ink-muted">
           <tr>
@@ -211,6 +214,7 @@ function TabelaMotorRedutor() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
@@ -254,7 +258,7 @@ export function MotoresAdmin() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
         {/* Header */}
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">

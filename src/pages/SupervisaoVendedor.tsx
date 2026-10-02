@@ -215,7 +215,7 @@ export function SupervisaoVendedor() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
 
         {/* Cabeçalho da página */}
         <div className="mb-5">
@@ -927,7 +927,7 @@ function EscolherVendedor({ idProcurado }: { idProcurado: string | null }) {
 
   return (
     <div className="min-h-screen bg-bg">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
         <h1 className="text-[18px] font-semibold text-ink">Supervisão por vendedor</h1>
         <p className="text-[12px] text-ink-muted">
           {idProcurado

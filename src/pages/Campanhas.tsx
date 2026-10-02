@@ -210,7 +210,7 @@ export function Campanhas() {
   const erro = origens.error || criativos.error || campanhas.error || reais.error
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-8">
+    <div className="w-full min-w-0 p-6 space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link to="/" className="text-muted-foreground hover:text-foreground">

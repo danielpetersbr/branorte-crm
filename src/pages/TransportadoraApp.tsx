@@ -183,7 +183,7 @@ function Portal({ conta, onLogout }: { conta: TranspConta; onLogout: () => void 
   const lista = cot.data ?? []
   return (
     <Shell>
-      <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1700px] mx-auto">
+      <div className="w-full min-w-0 px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-end justify-between gap-3 mb-5 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold text-ink">Cotações abertas</h1>

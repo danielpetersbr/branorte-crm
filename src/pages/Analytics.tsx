@@ -71,7 +71,7 @@ export function Analytics() {
   }
 
   return (
-    <div className="p-4 lg:p-6 space-y-5 max-w-[1400px]">
+    <div className="w-full min-w-0 p-4 lg:p-6 space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Link to="/" className="text-[12px] text-ink-muted hover:text-ink inline-flex items-center gap-1 mb-2">
@@ -127,8 +127,8 @@ export function Analytics() {
       {/* Qualidade */}
       <Card>
         <CardHeader title="Qualidade dos leads" subtitle="% de leads que preencheram todos os campos do bot" />
-        <div className="flex items-center gap-8">
-          <div className="relative">
+        <div className="flex flex-col items-center gap-5 lg:flex-row lg:gap-8">
+          <div className="relative shrink-0">
             <svg width="160" height="160" viewBox="0 0 180 180">
               <circle cx="90" cy="90" r="72" stroke="hsl(var(--surface-2))" strokeWidth="14" fill="none" />
               <circle
@@ -148,7 +148,7 @@ export function Analytics() {
               <span className="text-[10px] text-ink-faint mt-1 uppercase tracking-widest">Completos</span>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-6 flex-1">
+          <div className="grid min-w-0 w-full grid-cols-3 gap-3 lg:gap-6 flex-1">
             <div>
               <p className="text-2xl font-semibold text-accent tabular-nums">{fmtN(data.qualidade.completos)}</p>
               <p className="text-[11px] text-ink-faint">Completos (5+ campos)</p>

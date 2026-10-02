@@ -1315,11 +1315,8 @@ export function PrecosBranorte() {
   return (
     <MotorCtx.Provider value={ctxMotor}>
     <div className="min-h-screen bg-bg">
-      {/* 1800px e nao `max-w-7xl` (1280): a matriz do transportador tem 7 colunas
-          e num monitor de 1920 sobrava ~45% de tela vazia enquanto as celulas de
-          preco se espremiam. `mx-auto` mantem centralizado, entao telas menores
-          nao mudam nada — so param de ser o teto pras grandes. */}
-      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-6">
+      {/* A matriz do transportador ocupa a largura disponível para as 7 colunas. */}
+      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
         <div className="mb-3 flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1">

@@ -240,7 +240,7 @@ export function Ligacoes() {
   const filtrando = vendedor !== null || periodo === 'custom'
 
   return (
-    <div className="p-3 lg:p-6 max-w-[1280px] mx-auto">
+    <div className="w-full min-w-0 p-3 lg:p-6">
       {/* ── Cabeçalho + filtros ─────────────────────────────────────────── */}
       <header className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div className="min-w-0">
@@ -260,7 +260,7 @@ export function Ligacoes() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <div className="grid grid-cols-4 flex-1 sm:flex-none sm:inline-flex rounded-lg border border-border overflow-hidden">
+          <div className="grid w-full grid-cols-4 sm:w-auto sm:inline-flex rounded-lg border border-border overflow-hidden">
             {PERIODOS.map(p => (
               <button key={p.id} onClick={() => setPeriodo(p.id)}
                 className={`px-3 py-2 sm:py-1.5 text-[12px] font-medium transition-colors ${
@@ -275,7 +275,7 @@ export function Ligacoes() {
             <select
               value={vendedor ?? ''}
               onChange={e => { setVendedor(e.target.value || null); setAberto(null) }}
-              className="h-9 px-2.5 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
+              className="h-9 w-full min-w-0 sm:w-auto max-w-full px-2.5 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
               aria-label="Filtrar por vendedor"
             >
               <option value="">Todos os vendedores</option>
@@ -299,14 +299,14 @@ export function Ligacoes() {
           <Filter className="h-3.5 w-3.5" /> Período personalizado
         </summary>
         <div className="mt-2 flex items-end gap-2 flex-wrap">
-          <label className="text-[11px] text-ink-faint">
+          <label className="flex-1 basis-[140px] min-w-0 sm:flex-none text-[11px] text-ink-faint">
             De
-            <input type="date" className="block mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
+            <input type="date" className="block w-full min-w-0 mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
               onChange={e => { if (e.target.value) { setCustom(c => ({ ...c, from: new Date(`${e.target.value}T00:00:00-03:00`).toISOString() })); setPeriodo('custom') } }} />
           </label>
-          <label className="text-[11px] text-ink-faint">
+          <label className="flex-1 basis-[140px] min-w-0 sm:flex-none text-[11px] text-ink-faint">
             Até
-            <input type="date" className="block mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
+            <input type="date" className="block w-full min-w-0 mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
               onChange={e => { if (e.target.value) { const d = new Date(`${e.target.value}T00:00:00-03:00`); d.setDate(d.getDate() + 1); setCustom(c => ({ ...c, to: d.toISOString() })); setPeriodo('custom') } }} />
           </label>
           <p className="text-[10.5px] text-ink-faint pb-2">A data final entra por inteiro.</p>
@@ -451,15 +451,15 @@ function Kpi({ icone: Icone, cor, rotulo, valor, nota, delta, rotuloDelta, inver
   const Seta = subiu ? ArrowUp : caiu ? ArrowDown : Minus
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-3.5 lg:p-4">
-      <div className="flex items-center gap-1.5 text-[11px] text-ink-faint mb-1.5">
-        <Icone className={`h-3.5 w-3.5 ${cor} shrink-0`} /> <span className="truncate">{rotulo}</span>
+    <div className="min-w-0 rounded-2xl border border-border bg-surface p-3.5 lg:p-4">
+      <div className="flex items-start gap-1.5 text-[11px] text-ink-faint mb-1.5">
+        <Icone className={`h-3.5 w-3.5 ${cor} shrink-0`} /> <span>{rotulo}</span>
       </div>
       <p className="text-[24px] lg:text-[26px] font-semibold text-ink tabular-nums leading-none">{valor}</p>
       {nota && <p className="text-[10.5px] text-ink-muted mt-1.5">{nota}</p>}
       {delta && rotuloDelta && (
-        <p className={`text-[10.5px] mt-1 inline-flex items-center gap-0.5 ${bom ? 'text-success' : ruim ? 'text-danger' : 'text-ink-faint'}`}>
-          <Seta className="h-3 w-3" />
+        <p className={`text-[10.5px] mt-1 inline-flex flex-wrap items-center gap-0.5 ${bom ? 'text-success' : ruim ? 'text-danger' : 'text-ink-faint'}`}>
+          <Seta className="h-3 w-3 shrink-0" />
           {delta.unidade === 'pp'
             ? `${Math.abs(delta.valor).toFixed(1).replace('.', ',')} p.p.`
             : `${Math.abs(delta.valor).toFixed(0)}%`}
@@ -592,7 +592,7 @@ function LinhaLigacao({ l, gravacao }: { l: Ligacao; gravacao?: Gravacao }) {
           ? <PhoneOutgoing className="h-3.5 w-3.5 text-accent shrink-0" />
           : <PhoneIncoming className="h-3.5 w-3.5 text-info shrink-0" />}
         {l.is_video && <Video className="h-3.5 w-3.5 text-info shrink-0" />}
-        <span className="text-ink font-medium">{quemE(l)}</span>
+        <span className="min-w-0 break-words text-ink font-medium">{quemE(l)}</span>
         {l.cliente_nome && l.cliente_fone && (
           <span className="hidden sm:inline text-ink-faint tabular-nums">{fmtFone(l.cliente_fone)}</span>
         )}
@@ -628,7 +628,7 @@ function LinhaLigacao({ l, gravacao }: { l: Ligacao; gravacao?: Gravacao }) {
               <p className="text-[10px] uppercase tracking-wide text-ink-faint mb-1">O que foi dito</p>
               {/* ⚠️ Não é ata: é transcrição automática, com os erros dela. O
                   rótulo abaixo existe pra ninguém tratar isso como prova. */}
-              <p className="text-[12px] text-ink-muted leading-relaxed whitespace-pre-wrap">
+              <p className="text-[12px] text-ink-muted leading-relaxed whitespace-pre-wrap break-words">
                 {gravacao!.transcricao}
               </p>
               <p className="text-[10px] text-ink-faint mt-1.5">
@@ -692,7 +692,7 @@ function TabelaVendedores({ linhas, janela, aberto, setAberto, pessoal }: {
           células: a última (Tempo) caía numa segunda linha, e o número aparecia solto
           embaixo do nome do vendedor parecendo lixo de layout. Mexeu aqui, conte lá
           embaixo na LinhaVendedor — são os mesmos slots, nas duas grades. */}
-      <div className="hidden lg:grid grid-cols-[1.3fr_repeat(9,minmax(0,1fr))] gap-2 px-5 py-2.5 border-y border-border bg-surface-2/40 text-[10.5px] font-medium text-ink-faint uppercase tracking-wide">
+      <div className="hidden xl:grid grid-cols-[1.3fr_repeat(9,minmax(0,1fr))] gap-2 px-5 py-2.5 border-y border-border bg-surface-2/40 text-[10.5px] font-medium text-ink-faint uppercase tracking-wide">
         <span>Vendedor</span>
         <span className="text-right">Feitas</span>
         <span className="text-right">Clientes</span>
@@ -739,7 +739,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
     <div className="border-b border-border/60 last:border-0">
       <button onClick={onToggle} className="w-full text-left px-3 lg:px-5 py-3 hover:bg-surface-2/40 transition-colors">
         {/* CELULAR: card. A grade de 2 colunas com rótulo miúdo não sobrevive a 8 métricas. */}
-        <div className="lg:hidden">
+        <div className="xl:hidden">
           <div className="flex items-center gap-1.5 mb-2">
             <ChevronDown className={`h-3.5 w-3.5 text-ink-faint shrink-0 transition-transform ${aberto ? '' : '-rotate-90'}`} />
             <span className="text-[14px] font-semibold text-ink truncate flex-1">{r.vendedor}</span>
@@ -759,7 +759,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
         </div>
 
         {/* DESKTOP */}
-        <div className="hidden lg:grid grid-cols-[1.3fr_repeat(9,minmax(0,1fr))] gap-2 items-center">
+        <div className="hidden xl:grid grid-cols-[1.3fr_repeat(9,minmax(0,1fr))] gap-2 items-center">
           <span className="flex items-center gap-1.5 min-w-0">
             <ChevronDown className={`h-3.5 w-3.5 text-ink-faint shrink-0 transition-transform ${aberto ? '' : '-rotate-90'}`} />
             <span className="text-[13px] font-semibold text-ink truncate">{r.vendedor}</span>

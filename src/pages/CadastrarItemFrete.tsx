@@ -88,7 +88,7 @@ export function CadastrarItemFrete() {
   const miniInputCls = 'w-full px-2 py-1.5 rounded-lg bg-bg border border-border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent'
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-[1400px]">
+    <div className="w-full min-w-0 py-6 px-4">
       <div className="flex items-center gap-3 mb-6">
         <Link to="/frete/solicitar" className="text-ink-faint hover:text-ink"><ArrowLeft className="h-5 w-5" /></Link>
         <Package className="h-6 w-6 text-accent" />

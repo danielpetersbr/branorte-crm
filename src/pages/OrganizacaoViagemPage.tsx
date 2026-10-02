@@ -17,7 +17,7 @@ export function OrganizacaoViagemPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 px-3 py-4 sm:px-4">
+    <div className="w-full min-w-0 space-y-4 px-3 py-4 sm:px-4">
       <header>
         <h1 className="text-lg font-bold text-ink">Organização de viagem</h1>
         <p className="text-[12.5px] text-ink-muted">

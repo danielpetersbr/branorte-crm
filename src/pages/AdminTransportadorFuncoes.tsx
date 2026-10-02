@@ -68,7 +68,7 @@ export default function AdminTransportadorFuncoes() {
   }
 
   return (
-    <div className="p-4 space-y-4 max-w-4xl mx-auto">
+    <div className="w-full min-w-0 p-4 space-y-4">
       <header>
         <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
           <Settings className="h-6 w-6 text-accent" /> Funções do Transportador

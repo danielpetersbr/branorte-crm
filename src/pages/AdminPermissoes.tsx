@@ -86,7 +86,7 @@ export function AdminPermissoes() {
   const groups = Array.from(new Set(FEATURE_CATALOG.map(f => f.group)))
 
   return (
-    <div className="p-4 lg:p-8 space-y-6 max-w-5xl">
+    <div className="w-full min-w-0 p-4 lg:p-8 space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Permissões por Função</h1>
