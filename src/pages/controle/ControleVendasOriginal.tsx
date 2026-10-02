@@ -1523,7 +1523,12 @@ export default function ControleVendasOriginal() {
       doc.setTextColor(...BRANORTE_COLORS.azul);
       doc.setFontSize(14);
       doc.setFont(fontName, "bold");
-      doc.text(`LISTAGEM DE VENDAS (${pedidosFiltrados.length} pedidos)`, 15, yPos);
+      doc.text(`LISTAGEM DE VENDAS (${pedidosFiltrados.length} registros)`, 15, yPos);
+      yPos += 5;
+      doc.setFontSize(7);
+      doc.setFont(fontName, "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Pedidos compartilhados aparecem por vendedor. Cancelados nao entram no total de vendas ativas.", 15, yPos);
       yPos += 5;
       
       const vendasData = pedidosFiltrados.map(p => [
@@ -1557,7 +1562,7 @@ export default function ControleVendasOriginal() {
           3: { cellWidth: 12, halign: 'center' },
           4: { cellWidth: 18, halign: 'center' },
           5: { halign: 'right', fontStyle: 'bold' },
-          6: { halign: 'center', cellWidth: 18 }
+          6: { halign: 'center', cellWidth: 22 }
         },
         margin: { left: 10, right: 10, top: 25, bottom: 20 },
         didDrawPage: (data) => {
@@ -1587,7 +1592,7 @@ export default function ControleVendasOriginal() {
         doc.setTextColor(...BRANORTE_COLORS.azul);
         doc.setFontSize(10);
         doc.setFont(fontName, "bold");
-        doc.text(`TOTAL: ${pedidosFiltrados.length} pedidos | ${formatarValor(valorTotal)}`, 105, finalY + 12, { align: 'center' });
+        doc.text(`VENDAS ATIVAS: ${totalVendas} | ${formatarValor(valorTotal)}`, 105, finalY + 12, { align: 'center' });
       }
       
       // ============ PÁGINA 5: Resumo (removido Fábricas e Equipamentos Separados) ============
@@ -1768,20 +1773,21 @@ export default function ControleVendasOriginal() {
   return (
     <div className="controle-vendas-original min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card shadow-sm sticky top-0 z-50">
-        <div className="w-full px-3 sm:px-6 lg:px-8 py-3 sm:py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+      <header className="vendas-header border-b border-border bg-card">
+        <div className="vendas-header-inner w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            <div className="vendas-heading flex items-center gap-3">
+              <div className="vendas-header-icon p-3 rounded-xl bg-primary/10 shrink-0">
                 <BarChart3 className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
               </div>
-              <div>
-                <h1 className="text-lg sm:text-2xl font-bold leading-tight">Controle de Vendas</h1>
-                <p className="text-xs sm:text-sm text-muted-foreground">Dashboard de performance</p>
+              <div className="min-w-0">
+                <p className="vendas-kicker text-xs font-semibold uppercase tracking-widest text-primary mb-1">Visão comercial</p>
+                <h1 className="vendas-title text-2xl sm:text-3xl font-bold leading-tight">Controle de Vendas</h1>
+                <p className="vendas-subtitle text-sm text-muted-foreground mt-1">Resultados, metas e desempenho da equipe</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 self-end sm:self-auto">
-              <Button onClick={exportarPDF} disabled={exportingPDF || loading || !pedidos.length} className="bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-700 shadow-lg text-xs sm:text-sm" size="sm">
+            <div className="vendas-header-actions flex flex-wrap items-center gap-2">
+              <Button onClick={exportarPDF} disabled={exportingPDF || loading || !pedidos.length} className="vendas-export text-xs sm:text-sm" size="sm">
                 {exportingPDF ? (
                   <>
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -1800,7 +1806,7 @@ export default function ControleVendasOriginal() {
                 <Home className="mr-1 sm:mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Menu
               </Button>
-              <Button onClick={async () => { await signOut(); navigate("/login"); }} variant="ghost" size="sm">
+              <Button onClick={async () => { await signOut(); navigate("/login"); }} variant="ghost" size="sm" aria-label="Sair">
                 <LogOut className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
             </div>
@@ -1808,15 +1814,15 @@ export default function ControleVendasOriginal() {
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="vendas-main w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Filtros */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-wrap gap-4 items-end">
-              <div className="min-w-[180px]">
-                <label className="text-sm font-medium mb-2 block">Período</label>
+        <Card className="vendas-panel vendas-filters">
+          <CardContent className="vendas-panel-content py-5">
+            <div className="vendas-filter-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-end">
+              <div className="vendas-filter-field min-w-0">
+                <label className="vendas-filter-label text-xs font-semibold mb-2 block">Período</label>
                 <Select value={periodoFiltro} onValueChange={setPeriodoFiltro}>
-                  <SelectTrigger>
+                  <SelectTrigger className="vendas-filter-control">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1831,10 +1837,10 @@ export default function ControleVendasOriginal() {
 
               {periodoFiltro === "mes-especifico" && (
                 <>
-                  <div className="min-w-[140px]">
-                    <label className="text-sm font-medium mb-2 block">Mês</label>
+                  <div className="vendas-filter-field min-w-0">
+                    <label className="vendas-filter-label text-xs font-semibold mb-2 block">Mês</label>
                     <Select value={String(mesSelecionado)} onValueChange={v => setMesSelecionado(Number(v))}>
-                      <SelectTrigger>
+                      <SelectTrigger className="vendas-filter-control">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1844,10 +1850,10 @@ export default function ControleVendasOriginal() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="min-w-[100px]">
-                    <label className="text-sm font-medium mb-2 block">Ano</label>
+                  <div className="vendas-filter-field min-w-0">
+                    <label className="vendas-filter-label text-xs font-semibold mb-2 block">Ano</label>
                     <Select value={String(anoSelecionado)} onValueChange={v => setAnoSelecionado(Number(v))}>
-                      <SelectTrigger>
+                      <SelectTrigger className="vendas-filter-control">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1862,10 +1868,10 @@ export default function ControleVendasOriginal() {
 
               {/* Vendedor - Somente para admins */}
               {isAdmin && (
-                <div className="min-w-[180px]">
-                  <label className="text-sm font-medium mb-2 block">Vendedor</label>
+                <div className="vendas-filter-field min-w-0">
+                  <label className="vendas-filter-label text-xs font-semibold mb-2 block">Vendedor</label>
                   <Select value={vendedorFiltro} onValueChange={setVendedorFiltro}>
-                    <SelectTrigger>
+                    <SelectTrigger className="vendas-filter-control">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1876,9 +1882,12 @@ export default function ControleVendasOriginal() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 ml-auto flex-wrap">
-                <Filter className={`h-4 w-4 ${filtroValorMinimo ? 'text-primary' : 'text-muted-foreground'}`} />
-                <label className="text-sm font-medium select-none whitespace-nowrap">Valor mínimo</label>
+              <div className="vendas-filter-field vendas-minimum-filter min-w-0">
+                <label className="vendas-filter-label text-xs font-semibold mb-2 flex items-center gap-1.5">
+                  <Filter className={`h-3.5 w-3.5 ${filtroValorMinimo ? 'text-primary' : 'text-muted-foreground'}`} />
+                  Valor mínimo
+                </label>
+                <div className="vendas-minimum-controls flex items-center gap-2 flex-wrap">
                 <Select
                   value={showCustomInput ? "custom" : String(valorMinimoFiltro)}
                   onValueChange={(v) => {
@@ -1893,7 +1902,7 @@ export default function ControleVendasOriginal() {
                     }
                   }}
                 >
-                  <SelectTrigger className="w-[180px] h-9">
+                  <SelectTrigger className="vendas-filter-control flex-1 min-w-[150px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1942,6 +1951,7 @@ export default function ControleVendasOriginal() {
                     <X className="h-3 w-3" />
                   </button>
                 )}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1949,8 +1959,8 @@ export default function ControleVendasOriginal() {
 
         {/* Auditoria do filtro */}
         {!loading && !erroPedidos && pedidos.length > 0 && (
-          <Card className="border-border/40 bg-muted/20">
-            <CardContent className="py-3">
+          <Card className="vendas-panel vendas-audit border-border/40 bg-muted/20">
+            <CardContent className="vendas-panel-content py-3">
               <details className="group">
                 <summary className="flex items-center gap-2 cursor-pointer list-none select-none">
                   <Filter className="h-4 w-4 text-primary" />
@@ -2009,8 +2019,8 @@ export default function ControleVendasOriginal() {
             <p className="text-sm text-muted-foreground">Carregando dados de vendas...</p>
           </div>
         ) : erroPedidos ? (
-          <Card className="border-destructive/40 bg-destructive/5">
-            <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+          <Card className="vendas-panel border-destructive/40 bg-destructive/5">
+            <CardContent className="vendas-panel-content py-10 flex flex-col items-center text-center gap-3">
               <div className="p-3 rounded-full bg-destructive/10">
                 <RefreshCw className="h-6 w-6 text-destructive" />
               </div>
@@ -2036,8 +2046,8 @@ export default function ControleVendasOriginal() {
         ) : (
           <>
             {erroAnoCompleto && (
-              <Card className="border-amber-500/40 bg-amber-500/5">
-                <CardContent className="py-3 flex items-center gap-3">
+              <Card className="vendas-panel border-amber-500/40 bg-amber-500/5">
+                <CardContent className="vendas-panel-content py-3 flex items-center gap-3">
                   <RefreshCw className="h-4 w-4 text-amber-600 shrink-0" />
                   <p className="text-sm text-amber-700 dark:text-amber-400 flex-1">
                     Falha ao carregar evolução anual: {erroAnoCompleto}
@@ -2056,79 +2066,80 @@ export default function ControleVendasOriginal() {
               </Card>
             )}
             {/* KPIs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total em Vendas</p>
-                      <p className="text-2xl font-bold text-primary">{formatarValor(valorTotal)}</p>
+            <div className="vendas-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="vendas-panel vendas-kpi vendas-kpi--primary border-primary/20">
+                <CardContent className="vendas-panel-content py-6">
+                  <div className="vendas-kpi-body flex items-start justify-between gap-3">
+                    <div className="vendas-kpi-text min-w-0">
+                      <p className="vendas-kpi-label text-sm font-medium text-muted-foreground mb-3">Total em Vendas</p>
+                      <p className="vendas-kpi-value text-3xl font-bold text-primary tracking-tight">{formatarValor(valorTotal)}</p>
                     </div>
-                    <DollarSign className="h-8 w-8 text-primary/50" />
+                    <div className="vendas-kpi-icon p-2.5 rounded-xl bg-primary/10 text-primary shrink-0"><DollarSign className="h-5 w-5" /></div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Pedidos</p>
-                      <p className="text-2xl font-bold">{totalVendas}</p>
+              <Card className="vendas-panel vendas-kpi">
+                <CardContent className="vendas-panel-content py-6">
+                  <div className="vendas-kpi-body flex items-start justify-between gap-3">
+                    <div className="vendas-kpi-text min-w-0">
+                      <p className="vendas-kpi-label text-sm font-medium text-muted-foreground mb-3">Pedidos</p>
+                      <p className="vendas-kpi-value text-3xl font-bold tracking-tight">{totalVendas}</p>
                     </div>
-                    <FileText className="h-8 w-8 text-muted-foreground/50" />
+                    <div className="vendas-kpi-icon p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0"><FileText className="h-5 w-5" /></div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Ticket Médio</p>
-                      <p className="text-2xl font-bold">{formatarValor(ticketMedio)}</p>
+              <Card className="vendas-panel vendas-kpi">
+                <CardContent className="vendas-panel-content py-6">
+                  <div className="vendas-kpi-body flex items-start justify-between gap-3">
+                    <div className="vendas-kpi-text min-w-0">
+                      <p className="vendas-kpi-label text-sm font-medium text-muted-foreground mb-3">Ticket Médio</p>
+                      <p className="vendas-kpi-value text-3xl font-bold tracking-tight">{formatarValor(ticketMedio)}</p>
                     </div>
-                    <TrendingUp className="h-8 w-8 text-muted-foreground/50" />
+                    <div className="vendas-kpi-icon p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0"><TrendingUp className="h-5 w-5" /></div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Fábricas Vendidas</p>
-                      <p className="text-2xl font-bold">{dadosFabricas.reduce((acc, f) => acc + f.quantidade, 0)}</p>
+              <Card className="vendas-panel vendas-kpi">
+                <CardContent className="vendas-panel-content py-6">
+                  <div className="vendas-kpi-body flex items-start justify-between gap-3">
+                    <div className="vendas-kpi-text min-w-0">
+                      <p className="vendas-kpi-label text-sm font-medium text-muted-foreground mb-3">Fábricas Vendidas</p>
+                      <p className="vendas-kpi-value text-3xl font-bold tracking-tight">{dadosFabricas.reduce((acc, f) => acc + f.quantidade, 0)}</p>
                     </div>
-                    <Package className="h-8 w-8 text-muted-foreground/50" />
+                    <div className="vendas-kpi-icon p-2.5 rounded-xl bg-muted text-muted-foreground shrink-0"><Package className="h-5 w-5" /></div>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
             {/* Meta Geral */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
+            <Card className="vendas-panel vendas-goal">
+              <CardHeader className="vendas-panel-header vendas-goal-header pb-3">
+                <CardTitle className="vendas-panel-title flex items-center gap-2 text-lg">
                   <Target className="h-5 w-5 text-primary" />
                   Meta do Período
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Meta:</span>
+              <CardContent className="vendas-panel-content vendas-goal-content">
+                <div className="vendas-goal-controls flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <label htmlFor="vendas-meta-periodo" className="text-sm text-muted-foreground">Meta:</label>
                     <input
+                      id="vendas-meta-periodo"
                       type="number"
                       value={metaGeral || ""}
                       onChange={e => setMetaGeral(Number(e.target.value))}
                       placeholder="R$ 0,00"
-                      className="w-36 px-3 py-1.5 border border-input rounded-md bg-background text-sm"
+                      className="vendas-goal-input w-36 px-3 py-2 border border-input rounded-lg bg-background text-sm"
                     />
                   </div>
                   {metaGeral > 0 && (
-                    <div className="flex items-center gap-6 flex-1">
-                      <div className="flex-1 max-w-md">
+                    <div className="vendas-goal-progress flex items-center gap-6 flex-1 min-w-[220px]">
+                      <div className="flex-1">
                         <div className="flex justify-between text-sm mb-1">
                           <span>{formatarValor(valorTotal)}</span>
                           <span className="text-muted-foreground">{formatarValor(metaGeral)}</span>
@@ -2150,35 +2161,30 @@ export default function ControleVendasOriginal() {
             </Card>
 
             {/* Ranking de Vendedores */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+            <Card className="vendas-panel vendas-ranking">
+              <CardHeader className="vendas-panel-header">
+                <CardTitle className="vendas-panel-title flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-yellow-500" />
                   Ranking de Vendedores
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              <CardContent className="vendas-panel-content">
+                <div className="vendas-ranking-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {vendasPorVendedor.map((v, index) => (
                     <div
                       key={v.vendedor}
-                      className={`p-4 rounded-lg border transition-all ${
-                        index === 0 ? 'bg-yellow-500/10 border-yellow-500/30' :
-                        index === 1 ? 'bg-slate-400/10 border-slate-400/30' :
-                        index === 2 ? 'bg-amber-600/10 border-amber-600/30' :
-                        'bg-muted/30 border-border'
-                      }`}
+                      className={`vendas-ranking-entry p-4 rounded-xl border transition-colors ${index === 0 ? 'vendas-ranking-entry--leader border-primary/25 bg-primary/5' : 'border-border bg-muted/20'}`}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          {getRankIcon(index)}
-                          <span className="font-semibold">{v.vendedor}</span>
-                        </div>
+                      <div className="vendas-ranking-identity flex items-center gap-3 mb-4">
+                        <span className="vendas-ranking-position inline-flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-sm font-semibold shrink-0">{index + 1}</span>
+                        <span className="vendas-ranking-name font-semibold min-w-0 break-words">{v.vendedor}</span>
+                        {index === 0 && <span className="vendas-ranking-award ml-auto shrink-0" aria-hidden="true">{getRankIcon(index)}</span>}
                       </div>
-                      <p className="text-xl font-bold">{formatarValor(v.valor)}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {v.quantidade} vendas • TM: {formatarValor(v.ticketMedio)}
-                      </p>
+                      <p className="vendas-ranking-value text-2xl font-bold tracking-tight mb-3">{formatarValor(v.valor)}</p>
+                      <div className="vendas-ranking-meta flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span>{v.quantidade} vendas</span>
+                        <span>Ticket médio <strong className="font-medium text-foreground">{formatarValor(v.ticketMedio)}</strong></span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2186,14 +2192,14 @@ export default function ControleVendasOriginal() {
             </Card>
 
             {/* Gráficos */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="vendas-charts grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Evolução de Vendas */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Evolução de Vendas</CardTitle>
+              <Card className="vendas-panel">
+                <CardHeader className="vendas-panel-header">
+                  <CardTitle className="vendas-panel-title">Evolução de Vendas</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div ref={evolucaoChartRef} className="bg-gradient-to-br from-white to-slate-50 dark:from-card dark:to-card/90 rounded-xl p-4 border border-slate-200 dark:border-border shadow-sm">
+                <CardContent className="vendas-panel-content">
+                  <div ref={evolucaoChartRef} className="vendas-chart-surface rounded-xl p-3 sm:p-4 bg-card">
                     <ResponsiveContainer width="100%" height={300}>
                       <LineChart data={dadosVendasPorMes} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>
                         <defs>
@@ -2247,12 +2253,12 @@ export default function ControleVendasOriginal() {
               </Card>
 
               {/* Vendas por Vendedor */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Vendas por Vendedor</CardTitle>
+              <Card className="vendas-panel">
+                <CardHeader className="vendas-panel-header">
+                  <CardTitle className="vendas-panel-title">Vendas por Vendedor</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div ref={vendedorChartRef} className="bg-gradient-to-br from-white to-slate-50 dark:from-card dark:to-card/90 rounded-xl p-4 border border-slate-200 dark:border-border shadow-sm">
+                <CardContent className="vendas-panel-content">
+                  <div ref={vendedorChartRef} className="vendas-chart-surface rounded-xl p-3 sm:p-4 bg-card">
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={vendasPorVendedor.filter(v => v.valor > 0)} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>
                         <defs>
@@ -2306,15 +2312,15 @@ export default function ControleVendasOriginal() {
 
               {/* Fábricas Vendidas - Design Moderno */}
               {dadosFabricas.length > 0 && (
-                <Card className="lg:col-span-1 overflow-hidden border-0 shadow-lg bg-gradient-to-br from-card to-card/80">
-                  <CardHeader className="pb-2 bg-gradient-to-r from-primary/5 to-transparent">
+                <Card className="vendas-panel lg:col-span-1 overflow-hidden">
+                  <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-primary/5 to-transparent">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg">
                           <Package className="h-5 w-5 text-primary-foreground" />
                         </div>
                         <div>
-                          <CardTitle className="text-lg font-bold">Fábricas de Ração</CardTitle>
+                          <CardTitle className="vendas-panel-title text-lg font-bold">Fábricas de Ração</CardTitle>
                           <p className="text-xs text-muted-foreground mt-0.5">Quantidade vendida por modelo</p>
                         </div>
                       </div>
@@ -2324,7 +2330,7 @@ export default function ControleVendasOriginal() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pt-4">
+                  <CardContent className="vendas-panel-content pt-4">
                     <div className="space-y-3">
                       {dadosFabricas.map((fabrica, index) => {
                         const maxQtd = Math.max(...dadosFabricas.map(f => f.quantidade));
@@ -2364,15 +2370,15 @@ export default function ControleVendasOriginal() {
 
               {/* Equipamentos Separados Vendidos */}
               {dadosEquipamentos.length > 0 && (
-                <Card className="lg:col-span-1 overflow-hidden border-0 shadow-lg bg-gradient-to-br from-card to-card/80">
-                  <CardHeader className="pb-2 bg-gradient-to-r from-blue-500/5 to-transparent">
+                <Card className="vendas-panel lg:col-span-1 overflow-hidden">
+                  <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-blue-500/5 to-transparent">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
                           <Wrench className="h-5 w-5 text-white" />
                         </div>
                         <div>
-                          <CardTitle className="text-lg font-bold">Equipamentos Separados</CardTitle>
+                          <CardTitle className="vendas-panel-title text-lg font-bold">Equipamentos Separados</CardTitle>
                           <p className="text-xs text-muted-foreground mt-0.5">Vendas de equipamentos avulsos</p>
                         </div>
                       </div>
@@ -2382,7 +2388,7 @@ export default function ControleVendasOriginal() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pt-4">
+                  <CardContent className="vendas-panel-content pt-4">
                     <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                       {dadosEquipamentos.map((equip, index) => {
                         const maxQtd = Math.max(...dadosEquipamentos.map(e => e.quantidade));
@@ -2425,15 +2431,15 @@ export default function ControleVendasOriginal() {
 
               {/* Tempo Médio de Fechamento */}
               {tempoMedioPorVendedor.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
+                <Card className="vendas-panel">
+                  <CardHeader className="vendas-panel-header">
+                    <CardTitle className="vendas-panel-title flex items-center gap-2">
                       <Clock className="h-5 w-5 text-primary" />
                       Tempo Médio de Fechamento
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">Dias entre primeiro contato e venda</p>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="vendas-panel-content">
                     <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={tempoMedioPorVendedor} margin={{ top: 25, right: 10, left: 0, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -2485,15 +2491,15 @@ export default function ControleVendasOriginal() {
               )}
 
               {/* Vendas por Estado - Mapa */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+              <Card className="vendas-panel">
+                <CardHeader className="vendas-panel-header">
+                  <CardTitle className="vendas-panel-title flex items-center gap-2">
                     <MapPin className="h-5 w-5 text-primary" />
                     Distribuição por Estado
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div ref={mapaRef} data-pdf-mapa className="bg-white dark:bg-card rounded-lg p-2">
+                <CardContent className="vendas-panel-content">
+                  <div ref={mapaRef} data-pdf-mapa className="vendas-chart-surface bg-card rounded-lg p-2">
                     <BrazilMap dados={dadosEstados} formatarValor={formatarValor} />
                   </div>
                 </CardContent>
@@ -2501,15 +2507,15 @@ export default function ControleVendasOriginal() {
 
               {/* Origem dos Clientes */}
               {dadosOrigem.length > 0 && (
-                <Card className="lg:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
+                <Card className="vendas-panel lg:col-span-2">
+                  <CardHeader className="vendas-panel-header">
+                    <CardTitle className="vendas-panel-title flex items-center gap-2">
                       <Users className="h-5 w-5 text-primary" />
                       Origem dos Clientes
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div ref={origemChartRef} className="bg-card rounded-xl p-4 border border-border shadow-sm">
+                  <CardContent className="vendas-panel-content">
+                    <div ref={origemChartRef} className="vendas-chart-surface bg-card rounded-xl p-3 sm:p-4">
                       <ResponsiveContainer width="100%" height={340}>
                         <BarChart data={dadosOrigem} margin={{ top: 30, right: 20, left: 10, bottom: 30 }}>
                           <defs>
@@ -2585,16 +2591,16 @@ export default function ControleVendasOriginal() {
 
               {/* Conversões Rápidas - Vendas iniciadas e fechadas no mesmo mês */}
               {dadosConversoesRapidas.length > 0 && (
-                <Card className="lg:col-span-2 overflow-hidden border-0 shadow-lg bg-gradient-to-br from-card to-card/80">
-                  <div ref={conversoesRapidasRef} className="bg-white dark:bg-card">
-                    <CardHeader className="pb-2 bg-gradient-to-r from-emerald-500/10 to-transparent">
+                <Card className="vendas-panel lg:col-span-2 overflow-hidden">
+                  <div ref={conversoesRapidasRef} className="vendas-chart-surface bg-card">
+                    <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-emerald-500/10 to-transparent">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg">
                             <Zap className="h-5 w-5 text-white" />
                           </div>
                           <div>
-                            <CardTitle className="text-lg font-bold">Conversões Rápidas</CardTitle>
+                            <CardTitle className="vendas-panel-title text-lg font-bold">Conversões Rápidas</CardTitle>
                             <p className="text-xs text-muted-foreground mt-0.5">Vendas iniciadas e fechadas no mesmo mês, por origem</p>
                           </div>
                         </div>
@@ -2604,7 +2610,7 @@ export default function ControleVendasOriginal() {
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="pt-4">
+                    <CardContent className="vendas-panel-content pt-4">
                       <div className="space-y-3">
                         {dadosConversoesRapidas.map((item, index) => {
                           const maxQtd = Math.max(...dadosConversoesRapidas.map(c => c.quantidade));
@@ -2648,22 +2654,22 @@ export default function ControleVendasOriginal() {
 
               {/* Tempo Médio de Conversão por Origem */}
               {dadosTempoConversao.length > 0 && (
-                <Card className="lg:col-span-2 overflow-hidden border-0 shadow-lg bg-gradient-to-br from-card to-card/80">
-                  <div ref={tempoConversaoRef} className="bg-white dark:bg-card">
-                    <CardHeader className="pb-2 bg-gradient-to-r from-amber-500/10 to-transparent">
+                <Card className="vendas-panel lg:col-span-2 overflow-hidden">
+                  <div ref={tempoConversaoRef} className="vendas-chart-surface bg-card">
+                    <CardHeader className="vendas-panel-header pb-2 bg-gradient-to-r from-amber-500/10 to-transparent">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg">
                             <Clock className="h-5 w-5 text-white" />
                           </div>
                           <div>
-                            <CardTitle className="text-lg font-bold">Tempo Médio de Conversão</CardTitle>
+                            <CardTitle className="vendas-panel-title text-lg font-bold">Tempo Médio de Conversão</CardTitle>
                             <p className="text-xs text-muted-foreground mt-0.5">Dias entre primeiro contato e fechamento da venda</p>
                           </div>
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="pt-4">
+                    <CardContent className="vendas-panel-content pt-4">
                       <div className="space-y-3">
                         {dadosTempoConversao.map((item, index) => {
                           const maxDias = Math.max(...dadosTempoConversao.map(c => c.mediaDias));
@@ -2727,9 +2733,9 @@ export default function ControleVendasOriginal() {
             </div>
 
             {/* Painel de Análise IA */}
-            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-purple-500/5">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between">
+            <Card className="vendas-panel border-primary/20">
+              <CardHeader className="vendas-panel-header pb-3">
+                <CardTitle className="vendas-panel-title flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="p-2 rounded-lg bg-primary/10">
                       <Sparkles className="h-5 w-5 text-primary" />
@@ -2764,7 +2770,7 @@ export default function ControleVendasOriginal() {
                   A IA analisa todos os dados de vendas e fornece insights, alertas e sugestões práticas.
                 </p>
               </CardHeader>
-              <CardContent>
+              <CardContent className="vendas-panel-content">
                 {analisandoIA ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -2806,9 +2812,9 @@ export default function ControleVendasOriginal() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between flex-wrap gap-2">
+            <Card className="vendas-panel vendas-list">
+              <CardHeader className="vendas-panel-header">
+                <CardTitle className="vendas-panel-title flex items-center justify-between flex-wrap gap-2">
                   <span>Listagem de Vendas ({new Set(listagemFiltrada.map(p => p.id)).size})</span>
                   {(tabelaFiltroUF !== 'todos' || tabelaFiltroVendedor !== 'todos' || tabelaFiltroOrigem !== 'todos' || tabelaFiltroStatus !== 'todos' || tabelaBusca) && (
                     <Button
@@ -2827,9 +2833,9 @@ export default function ControleVendasOriginal() {
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="vendas-panel-content">
                 {/* Barra de filtros */}
-                <div className="flex flex-wrap gap-2 mb-4 items-center">
+                <div className="vendas-table-filters flex flex-wrap gap-2 mb-5 items-center">
                   <Input
                     placeholder="Buscar pedido ou cliente..."
                     value={tabelaBusca}
@@ -2873,8 +2879,8 @@ export default function ControleVendasOriginal() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[900px]">
+                <div className="vendas-table-scroll overflow-x-auto">
+                  <table className="vendas-table w-full text-sm min-w-[900px]">
                     <thead>
                       <tr className="border-b border-border">
                         <th className="text-left py-3 px-2 font-medium text-muted-foreground">Pedido</th>
@@ -2932,7 +2938,7 @@ export default function ControleVendasOriginal() {
                     </tbody>
                   </table>
                   {listagemFiltrada.length > 50 && !listagemExpandida && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
+                    <p className="vendas-table-footer text-sm text-muted-foreground text-center py-4">
                       Exibindo 50 de {listagemFiltrada.length} pedidos • 
                       <Button variant="link" size="sm" onClick={() => podeAbrirPedidos ? navigate('/controle/pedidos') : setExpansaoListagem(contextoListagem)} className="ml-1">
                         Ver todos
