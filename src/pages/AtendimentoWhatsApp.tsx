@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useVendors } from '@/hooks/useVendors'
 import { chatRpc, useAtendimentoChat, useChatMedia, useChatHistoryMedia } from '@/hooks/useAtendimentoChat'
-import { attachmentExtension, CHAT_ATTACHMENT_ACCEPT, CHAT_MEDIA_BUCKET, CHAT_PRIVATE_MEDIA_PREFIX, deliveryLabel, displayMessageBody, privateChatMediaPath, resolveAttachmentMime, validateAttachment, type ChatMessage, type ChatOutbox } from '@/lib/atendimento-chat'
+import { attachmentExtension, CHAT_ATTACHMENT_ACCEPT, CHAT_MEDIA_BUCKET, CHAT_PRIVATE_MEDIA_PREFIX, chatMessageSenderName, deliveryLabel, displayMessageBody, privateChatMediaPath, resolveAttachmentMime, validateAttachment, type ChatMessage, type ChatOutbox } from '@/lib/atendimento-chat'
 import { clearPendingSend, readPendingSend, savePendingSend } from '@/lib/chat-pending-send'
 import { clearChatDraft, readChatDraft, saveChatDraft } from '@/lib/chat-drafts'
 import { createChatRecorder } from '@/lib/chat-recorder'
@@ -20,8 +20,10 @@ const fmtDay=(s:string)=>new Date(s).toLocaleDateString('pt-BR',{day:'2-digit',m
 function MessageBubble({message,url}:{message:ChatMessage;url:string|null}) {
   const hasMedia=['image','sticker','audio','ptt','video','document'].includes(message.tipo)
   const body=displayMessageBody(message.body)
+  const senderName=chatMessageSenderName(message)
   return <div className={cn('flex',message.from_me?'justify-end':'justify-start')}>
     <div className={cn('max-w-[88%] sm:max-w-[78%] rounded-xl border px-3 py-2 shadow-sm',message.from_me?'bg-accent/10 border-accent/20 rounded-tr-sm':'bg-surface border-border rounded-tl-sm')}>
+      {senderName&&<p className="mb-1 break-words text-xs font-semibold text-accent">{senderName}</p>}
       {hasMedia&&<Media type={message.tipo} url={url} filename={message.filename}/>}
       {body&&<p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{body}</p>}
       {!body&&!hasMedia&&<p className="text-xs text-ink-muted">{message.body?'Mídia':`[${message.tipo}]`}</p>}

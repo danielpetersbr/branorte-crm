@@ -73,6 +73,10 @@ export interface ChatMessage {
   id:number; msg_id:string; from_me:boolean; tipo:string; body:string|null;
   media_url:string|null; data_msg:string; transcricao:string|null; duracao_seg:number|null;
   filename?:string|null;
+  sender_id?:string|null; sender_name?:string|null;
+}
+export function chatMessageSenderName(message:Pick<ChatMessage,'from_me'|'sender_name'>):string|null {
+  return message.from_me ? message.sender_name?.trim() || null : null
 }
 export interface ChatOutbox {
   id:string; body:string; tipo:string; media_path:string|null; created_at:string;
