@@ -4,6 +4,12 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
+    "api/controle-vendas.ts": {
+      "maxDuration": 60
+    },
+    "api/controle-vendas-analise.ts": {
+      "maxDuration": 60
+    },
     "api/controle-producao.ts": {
       "maxDuration": 60
     },

@@ -169,6 +169,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true, permKey: 'menu.controle' },
       { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.controle' },
       { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
+      { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2, permKey: 'menu.financeiro' },
       { to: '/controle/producao/fabrica', label: 'Produção da fábrica', icon: Package, permKey: 'menu.producao_fabrica' },
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
@@ -498,7 +499,9 @@ export function Layout() {
   // Este menu é a ÚNICA navegação do papel — o que não estiver aqui, ele não
   // alcança. Manter em sincronia com MAPA_PERMITIDAS no App.tsx.
   if (menuRestrito) {
-    const MENU_MAPA = [...menuRestrito,...(can('menu.producao_fabrica')===true?[{to:'/controle/producao/fabrica',label:'Produção da fábrica',icon:Package}]:[])]
+    const MENU_MAPA = [...menuRestrito,
+      ...(can('menu.financeiro')===true?[{to:'/controle/vendas',label:'Controle de Vendas',icon:BarChart2}]:[]),
+      ...(can('menu.producao_fabrica')===true?[{to:'/controle/producao/fabrica',label:'Produção da fábrica',icon:Package}]:[])]
     return (
       <div className="min-h-screen flex bg-bg">
         {/* mesma largura da barra real (w-80): com md:w-56 a tela dava um pulo de 64px quando o perfil carregava */}

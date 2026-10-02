@@ -88,6 +88,7 @@ const FreteCotacoesPainel = lazy(() => import('@/pages/FreteCotacoesPainel'))
 const ControleDashboard = lazy(() => import('@/pages/ControleDashboard').then(m => ({ default: m.ControleDashboard })))
 const ControlePedidos = lazy(() => import('@/pages/ControlePedidos').then(m => ({ default: m.ControlePedidos })))
 const ControleFinanceiro = lazy(() => import('@/pages/ControleFinanceiro').then(m => ({ default: m.ControleFinanceiro })))
+const ControleVendas = lazy(() => import('@/pages/controle/ControleVendas'))
 const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(m => ({ default: m.ControleNovoPedido })))
 // Subsistema de Pedido de Venda portado de controle.branorte.com (export default la na origem).
 // Sao os 4 tipos de pedido: o seletor + form completo (NovoPedido), o rapido sem orcamento
@@ -412,7 +413,7 @@ function AppRoutes() {
      * decide é /api/financeiro, no servidor, a partir do JWT. Este guard só
      * escolhe a tela.
      */
-    const financeiroOk = p.startsWith('/controle/financeiro') && can('menu.financeiro')
+    const financeiroOk = (p.startsWith('/controle/financeiro') || p === '/controle/vendas') && can('menu.financeiro')
     // Testar a IA: arena isolada onde o vendedor conversa com a própria IA e aponta
     // o que ela errou. Amarrado no can() pelo mesmo motivo do roadmap/contatos —
     // tirar a permissão fecha o acesso por URL junto.
@@ -493,6 +494,7 @@ function AppRoutes() {
       // O Patrick tem papel 'mapa' mas vende: 12 pedidos, R$ 5,95 mi. Com o
       // vendor_id apontado, /api/financeiro devolve só os pedidos dele.
       '/controle/financeiro',
+      '/controle/vendas',
     ],
     consultor: ['/producao-propria', '/viabilidade', '/venda-racao', '/perfil'],
     // representante = representante EXTERNO com territorio (06/08/2026). Ve o mapa
@@ -582,6 +584,7 @@ function AppRoutes() {
         <Route path="/controle/producao/fabrica" element={<ProducaoFabrica />} />
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
+        <Route path="/controle/vendas" element={<ControleVendas />} />
         {/* Pedido de Venda completo (portado do controle.branorte.com):
             seletor dos 4 tipos + formulario com upload de orcamento, extracao,
             equipamentos, plano de pagamento, geracao de DOCX/PDF e envio pra fabrica. */}

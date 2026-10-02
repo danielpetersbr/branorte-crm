@@ -1,0 +1,76 @@
+/* Paleta do Controle original, limitada à página e aos seus portais. */
+:where(.controle-vendas-original *, .controle-vendas-original-portal, .controle-vendas-original-portal *, .controle-vendas-original-pdf *) {
+  /* Especificidade zero: border-primary/yellow/etc. continuam prevalecendo. */
+  border-color: hsl(var(--border));
+}
+
+.controle-vendas-original,
+.controle-vendas-original-portal,
+.controle-vendas-original-pdf {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 217 91% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 251 91% 55%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --destructive: 4 87% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 217 91% 50%;
+  --radius: 0.75rem;
+  /* Os componentes portados já usam os aliases Tailwind do CRM. */
+  --bg: var(--background);
+  --ink: var(--foreground);
+  --ink-muted: var(--muted-foreground);
+  --surface: var(--card);
+  --surface-2: var(--muted);
+  --accent: var(--primary);
+  --accent-fg: var(--primary-foreground);
+  --danger: var(--destructive);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color: hsl(var(--foreground));
+}
+
+.dark .controle-vendas-original:not(.controle-vendas-original-pdf),
+.dark .controle-vendas-original-portal {
+  --background: 228 55% 9%;
+  --foreground: 210 40% 98%;
+  --card: 220 45% 12%;
+  --card-foreground: 210 40% 98%;
+  --popover: 220 45% 12%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 217 91% 60%;
+  --secondary: 251 91% 63%;
+  --muted: 220 40% 16%;
+  --muted-foreground: 215 20% 65%;
+  --destructive: 4 87% 58%;
+  --border: 220 35% 18%;
+  --input: 220 35% 18%;
+  --ring: 217 91% 60%;
+}
+
+.controle-vendas-original .prose {
+  color: hsl(var(--foreground));
+}
+
+.controle-vendas-original .rounded-lg,
+.controle-vendas-original-portal.rounded-lg {
+  border-radius: var(--radius);
+}
+
+.controle-vendas-original .rounded-md,
+.controle-vendas-original-portal.rounded-md {
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.controle-vendas-original .rounded-sm,
+.controle-vendas-original-portal .rounded-sm {
+  border-radius: calc(var(--radius) - 4px);
+}

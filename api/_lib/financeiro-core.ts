@@ -907,18 +907,27 @@ export function pedidoNoEscopo(p: Pick<PedidoRaw, 'vendedor' | 'vendedor_2'>, es
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Pagina o REST do controle até o fim (o default do PostgREST corta em 1000). */
-export async function lerControle<T>(recurso: string, colunas: string, filtro = ''): Promise<T[]> {
+export async function lerControle<T>(recurso: string, colunas: string, filtro = '', options: { signal?: AbortSignal; maxRows?: number } = {}): Promise<T[]> {
   const out: T[] = []
   const PAGE = 1000
+  if (options.maxRows !== undefined && (!Number.isSafeInteger(options.maxRows) || options.maxRows < 1)) throw new Error('controle_limite_invalido')
   for (let offset = 0; ; offset += PAGE) {
-    const url = `${CONTROLE_URL}/rest/v1/${recurso}?select=${encodeURIComponent(colunas)}${filtro}&limit=${PAGE}&offset=${offset}`
+    options.signal?.throwIfAborted()
+    // One extra row proves that the bounded result would be incomplete. Never truncate.
+    const pageLimit = options.maxRows === undefined ? PAGE : Math.min(PAGE, options.maxRows - out.length + 1)
+    const url = `${CONTROLE_URL}/rest/v1/${recurso}?select=${encodeURIComponent(colunas)}${filtro}&limit=${pageLimit}&offset=${offset}`
     const resp = await fetch(url, {
       headers: { apikey: CONTROLE_KEY, Authorization: `Bearer ${CONTROLE_KEY}` },
+      signal: options.signal,
     })
+    options.signal?.throwIfAborted()
     if (!resp.ok) throw new Error(`controle ${recurso} ${resp.status}: ${await resp.text()}`)
     const lote = (await resp.json()) as T[]
+    options.signal?.throwIfAborted()
+    if (!Array.isArray(lote)) throw new Error('controle_resposta_invalida')
+    if (options.maxRows !== undefined && out.length + lote.length > options.maxRows) throw new Error('controle_leitura_incompleta')
     out.push(...lote)
-    if (lote.length < PAGE) return out
+    if (lote.length < pageLimit) return out
   }
 }
 
