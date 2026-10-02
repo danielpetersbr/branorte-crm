@@ -4,7 +4,7 @@ Estado: **arquivos publicados, aguardando atualização natural do runtime**. Ne
 
 ## Contrato
 
-- A migration `20261002152303_crm_chat_closure_reasons.sql` fornece os RPCs exclusivos de `service_role`: `crm_ana_automation_gate(p_chat_id)` e `crm_ana_close_label_gate(p_chat_id,p_close)`.
+- A migration `20261002154030_crm_chat_closure_reasons.sql` fornece os RPCs exclusivos de `service_role`: `crm_ana_automation_gate(p_chat_id)` e `crm_ana_close_label_gate(p_chat_id,p_close)`.
 - A nova rota POST `wa-contact-hub/ana-automation-gate` preserva a autenticação compartilhada existente, aceita apenas vendedor ANA e ID de conversa individual real. Corpo máximo de 2.048 caracteres. Não devolve credencial privilegiada.
 - Sem `close`, responde à decisão de automação do servidor. Com `close`, valida exclusivamente a aplicação da etiqueta do encerramento, sem autorizar atendimento automático.
 - A fila existente recebe `payload.crm_close={conversation_id,marker,label_id}` e nome real em `payload.etiqueta`. `origem` é auditoria; o transporte reconhece `crm_close` independentemente dela.
@@ -41,7 +41,7 @@ Ordem obrigatória: migration/RPCs → hub com rota nova e guardas da Edge Ana �
 | painel-worker.js | `84344b5a383febb21825613720ebba235d3fd4398761dc0d3abf902c10fb1127` |
 | manifest.json | `a10390c60f853bf0828af4a576576de9011e8c4e482b8d61097fc13f965a708a` |
 
-Após autorização, registrar aqui backup, horário, hashes montados e heartbeat da versão 35/final 1144. Para reversão, validar o backup e restaurar arquivos originais com metadados salvos e manifesto por último, sem tocar no perfil/login. O script recusa baseline diferente; nunca sobrescrever uma atualização concorrente.
+Backup confirmado: `/opt/branorte/backups/crm-media-1.70.35-20261002T154146Z-c40d8bb8`. Os quatro hashes montados coincidem com o candidato. Ativação natural pelo updater, container ativo com zero reinícios. Prova em `outputs/whatsapp-ana-control-release.log` na raiz da tarefa. Para reversão, validar o backup e restaurar arquivos originais com metadados salvos e manifesto por último, sem tocar no perfil/login. O script recusa baseline diferente; nunca sobrescrever uma atualização concorrente.
 
 Publicação autorizada em **02/10/2026, 15:41 UTC**. Backup: `/opt/branorte/backups/crm-media-1.70.35-20261002T154146Z-c40d8bb8`. Os quatro hashes publicados e montados em `/ext` correspondem à tabela. Modos 644 e owners originais preservados (background/shim/manifest 0:0; agente 1000:1000). Container `running`, reinícios 0, iniciado em `2026-10-01T20:11:36.129357833Z`, sem alteração. Heartbeat inicial às `15:42:07.369 UTC`: background/residente 34, WPP pronto, final 1144; atualização natural ainda pendente. Evidência final de ativação será registrada no log de entrega da tarefa sem alterar estes hashes.
 
