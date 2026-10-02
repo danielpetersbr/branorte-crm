@@ -5,8 +5,8 @@ export function ChatAnaTags({tags,limit=2,compact=true}:{tags?:string[];limit?:n
   const names=anaTagNames(tags),shown=compact?names.slice(0,limit):names,remaining=compact?names.slice(limit):[]
   if(!names.length)return null
   return <div aria-label="Etiquetas da Ana" className={`flex min-w-0 items-center gap-1 text-[10px] ${compact?'overflow-hidden':'flex-wrap'}`}>
-    <span className="shrink-0 font-medium text-amber-500">Ana:</span>
-    {shown.map(tag=><span key={tag} title={tag} className={`min-w-0 rounded border border-amber-500/20 bg-amber-500/5 px-1.5 py-0.5 text-amber-500 ${compact?'max-w-[130px] truncate':'max-w-full break-words whitespace-normal'}`}>{tag}</span>)}
+    <span className="shrink-0 font-medium text-indigo-700 dark:text-indigo-300">Ana:</span>
+    {shown.map(tag=><span key={tag} title={tag} className={`min-w-0 rounded border border-indigo-500/20 bg-indigo-500/5 px-1.5 py-0.5 text-indigo-700 dark:text-indigo-300 ${compact?'max-w-[130px] truncate':'max-w-full break-words whitespace-normal'}`}>{tag}</span>)}
     {!!remaining.length&&<span title={remaining.join(', ')} aria-label={`Mais ${remaining.length} etiquetas da Ana: ${remaining.join(', ')}`} className="shrink-0 text-ink-muted">+{remaining.length}</span>}
   </div>
 }
