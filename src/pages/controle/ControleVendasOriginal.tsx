@@ -13,6 +13,8 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, L
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
+import { useCan } from "@/hooks/usePermissions";
+import { podeNavegarPedidosVendas, linhasVisiveisVendas } from "@/components/controle/vendas-original/navegacao";
 import { toast as sonnerToast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -56,10 +58,12 @@ const normalizarOrigem = (origem: string | null | undefined): string => {
 
 export default function ControleVendasOriginal() {
   const { session, profile, loading: authLoading, profileError, signOut } = useAuth();
+  const can = useCan();
   // Esta chave fica apenas em memória e nunca é renderizada ou registrada.
   const authContexto = !authLoading && !profileError && session && profile?.id === session.user.id && profile.approved_at
     ? [session.user.id, profile.role, profile.vendor_id || '', profile.approved_at, session.access_token].join('|') : '';
   const authAtual = useRef(authContexto);
+  const podeAbrirPedidos = !!authContexto && podeNavegarPedidosVendas(profile?.role, can('menu.controle'));
   authAtual.current = authContexto;
   const [escopoConsulta, setEscopoConsulta] = useState<{ contexto: string; global: boolean; vendedorNome: string | null }>({ contexto: '', global: false, vendedorNome: null });
   const isAdmin = !!authContexto && escopoConsulta.contexto === authContexto && escopoConsulta.global;
@@ -1754,6 +1758,12 @@ export default function ControleVendasOriginal() {
     });
   }, [pedidosFiltrados, tabelaFiltroUF, tabelaFiltroVendedor, tabelaFiltroOrigem, tabelaFiltroStatus, tabelaBusca]);
 
+  const contextoListagem = JSON.stringify([contextoAnalise, geracaoPedidos.current, tabelaFiltroUF, tabelaFiltroVendedor, tabelaFiltroOrigem, tabelaFiltroStatus, tabelaBusca, podeAbrirPedidos]);
+  const [expansaoListagem, setExpansaoListagem] = useState<string | null>(null);
+  const listagemExpandida = expansaoListagem === contextoListagem;
+  const listagemVisivel = linhasVisiveisVendas(listagemFiltrada, contextoListagem, expansaoListagem);
+  useEffect(() => { setExpansaoListagem(null); }, [contextoListagem]);
+
 
   return (
     <div className="controle-vendas-original min-h-screen bg-background">
@@ -2879,16 +2889,16 @@ export default function ControleVendasOriginal() {
                       </tr>
                     </thead>
                     <tbody>
-                      {listagemFiltrada.slice(0, 50).map((pedido) => {
+                      {listagemVisivel.map((pedido) => {
                         const displayId = (pedido as any)._displayId || pedido.id;
                         const parceiro = (pedido as any)._parceiro;
                         return (
                         <tr 
                           key={displayId} 
-                          className="border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors"
-                          onClick={() => navigate(`/controle/pedidos/${encodeURIComponent(pedido.id)}`)}
+                          className={`border-b border-border/50 transition-colors ${podeAbrirPedidos ? 'hover:bg-muted/30 cursor-pointer' : ''}`}
+                          onClick={podeAbrirPedidos ? () => navigate(`/controle/pedidos/${encodeURIComponent(pedido.id)}`) : undefined}
                         >
-                          <td className="py-3 px-2 font-medium text-primary">{pedido.pedido_numero || pedido.numero_orcamento}</td>
+                          <td className={`py-3 px-2 font-medium ${podeAbrirPedidos ? 'text-primary' : 'text-foreground'}`}>{pedido.pedido_numero || pedido.numero_orcamento}</td>
                           <td className="py-3 px-2 text-muted-foreground text-xs">
                             {formatarData(pedido.data_primeiro_contato)}
                           </td>
@@ -2921,10 +2931,10 @@ export default function ControleVendasOriginal() {
                       })}
                     </tbody>
                   </table>
-                  {listagemFiltrada.length > 50 && (
+                  {listagemFiltrada.length > 50 && !listagemExpandida && (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       Exibindo 50 de {listagemFiltrada.length} pedidos • 
-                      <Button variant="link" size="sm" onClick={() => navigate('/controle/pedidos')} className="ml-1">
+                      <Button variant="link" size="sm" onClick={() => podeAbrirPedidos ? navigate('/controle/pedidos') : setExpansaoListagem(contextoListagem)} className="ml-1">
                         Ver todos
                       </Button>
                     </p>
