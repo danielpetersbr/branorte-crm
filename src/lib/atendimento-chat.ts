@@ -68,12 +68,14 @@ export interface ChatConversation {
   last_message_at:string; last_preview:string|null; last_from_me:boolean; unread:number;
   human_hold:boolean; lock_user_id:string|null; lock_session_id:string|null; lock_until:string|null;
   avatar_url?:string|null;
+  waiting_since?:string|null; follow_up_at?:string|null; lock_user_name?:string|null;
 }
 export interface ChatMessage {
   id:number; msg_id:string; from_me:boolean; tipo:string; body:string|null;
   media_url:string|null; data_msg:string; transcricao:string|null; duracao_seg:number|null;
   filename?:string|null;
   sender_id?:string|null; sender_name?:string|null;
+  reply_msg_id?:string|null; reply_preview?:string|null; reply_sender_name?:string|null; reply_from_me?:boolean|null;
 }
 export function chatMessageSenderName(message:Pick<ChatMessage,'from_me'|'sender_name'>):string|null {
   return message.from_me ? message.sender_name?.trim() || null : null
@@ -82,5 +84,6 @@ export interface ChatOutbox {
   id:string; body:string; tipo:string; media_path:string|null; created_at:string;
   status:string; error:string|null; sent_at:string|null; wa_msg_id:string|null; sender_name:string|null;
   filename?:string|null;
+  reply_msg_id?:string|null; reply_preview?:string|null; reply_sender_name?:string|null; reply_from_me?:boolean|null;
 }
 export interface ChatNote {id:string;body:string;created_at:string;author_name:string|null}

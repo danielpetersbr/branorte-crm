@@ -1,0 +1,130 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.32'
++const BG_VERSAO = '1.70.33'
+@@ -6150,0 +6151,9 @@
++async function crmEnviarTexto(chatId, envelope, tabId, requestId) {
++  if (await envioTravado(chatId)) return { ok: false, erro: 'cancelado' }
++  registrarAutoEnvio(chatId, envelope.body)
++  try {
++    const result = await chamarAgenteNaAba(tabId, 'crmSendText', [{ ...envelope, requestId, chatId }], 45000)
++    if (result?.ok && result.wa_msg_id) registrarAutoEnvioId(result.wa_msg_id)
++    return result || { ok: false, timeout: true, erro: 'Envio não confirmado' }
++  } catch (e) { return { ok: false, timeout: true, erro: String(e?.message || e).slice(0, 200) } }
++}
+@@ -6217,0 +6227,2 @@
++      const crmHasReply = isCrm && msg.reply_msg_id != null
++      const crmReply = crmHasReply ? { replyMsgId: msg.reply_msg_id, replyFromMe: msg.reply_from_me } : {}
+@@ -6280 +6291 @@
+-          midiaPronta = { dataUrl, filename: msg.media_filename || 'arquivo', caption, mediaType: msg.media_type || 'document' }
++          midiaPronta = { dataUrl, filename: msg.media_filename || 'arquivo', caption, mediaType: msg.media_type || 'document', ...crmReply }
+@@ -6290 +6301 @@
+-              midiaPronta = { ...media, caption }
++              midiaPronta = { ...media, caption, ...crmReply }
+@@ -6295,0 +6307 @@
++              : crmHasReply ? await crmEnviarTexto(alvo, { body: msg.body, ...crmReply }, tabs[0].id, msg.crm_request_id)
+@@ -6307 +6319 @@
+-      if (result && !result.ok && !msg.to_self && msg.contato_numero &&
++      if (result && !result.ok && !result.quoteError && !msg.to_self && msg.contato_numero &&
+@@ -6330 +6342 @@
+-          if (!result?.ok && !(isCrm && (crmHasMedia || midiaPronta))) {
++          if (!result?.ok && !(isCrm && (crmHasMedia || midiaPronta || crmHasReply))) {
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.32'
++  var AGENTE_V = '1.70.33'
+@@ -1557,0 +1558,76 @@
++    // A quote must resolve to a real message key in this conversation. Never guess its fromMe/remote.
++    crmResolveQuote: async (p) => {
++      if (p?.replyMsgId == null) return { ok: true }
++      const failed = () => ({ ok: false, quoteError: true, erro: 'Não foi possível localizar a mensagem citada nesta conversa. Selecione novamente ou cancele a citação.' })
++      if (typeof p.replyMsgId !== 'string' || !/^[A-Za-z0-9_@.]+$/.test(p.replyMsgId) || p.replyMsgId.length > 300) return failed()
++      const serial = /^(true|false)_(\d+@(c\.us|lid))_([A-Za-z0-9]+)$/.exec(p.replyMsgId)
++      if (serial && serial[2] !== p.chatId) return failed()
++      if (!serial && !/^[A-Za-z0-9]{6,200}$/.test(p.replyMsgId)) return failed()
++      if (typeof p.replyFromMe !== 'boolean' && p.replyFromMe != null) return failed()
++      const expectedHash = serial ? serial[4] : p.replyMsgId
++      const match = m => {
++        const id = m?.id
++        const full = typeof id?._serialized === 'string' ? id._serialized : typeof id === 'string' ? id : null
++        const parts = /^(true|false)_(\d+@(c\.us|lid))_([A-Za-z0-9]+)$/.exec(full || '')
++        if (!parts || parts[2] !== p.chatId || parts[4] !== expectedHash || (serial && full !== p.replyMsgId)) return null
++        if (typeof p.replyFromMe === 'boolean' && (parts[1] === 'true') !== p.replyFromMe) return null
++        return full
++      }
++      let timer
++      try {
++        const lookup = async () => {
++          if (typeof window.WPP?.chat?.getMessageById !== 'function') return failed()
++          if (serial) {
++            const full = match(await window.WPP.chat.getMessageById(p.replyMsgId))
++            return full ? { ok: true, quotedMsg: full } : failed()
++          }
++          let found = null
++          try {
++            const cached = window.WPP?.whatsapp?.MsgStore?.getModelsArray?.()
++            if (Array.isArray(cached)) {
++              for (const m of cached) { found = match(m); if (found) break }
++            }
++          } catch (_) {}
++          if (!found && typeof window.WPP.chat.getMessages === 'function') {
++            const recent = await window.WPP.chat.getMessages(p.chatId, { count: 100 })
++            for (const m of (Array.isArray(recent) ? recent : [])) { found = match(m); if (found) break }
++          }
++          if (!found) return failed()
++          const full = match(await window.WPP.chat.getMessageById(found))
++          return full ? { ok: true, quotedMsg: full } : failed()
++        }
++        return await Promise.race([lookup(), new Promise(resolve => { timer = setTimeout(() => resolve(failed()), 8000) })])
++      } catch (_) { return failed() }
++      finally { clearTimeout(timer) }
++    },
++    crmSendText: async (p) => {
++      if (!window.WPP?.isReady || !window.WPP?.chat?.sendTextMessage) return { ok: false, notReady: true, erro: 'not_ready' }
++      if (!p?.requestId || !/^\d+@(c\.us|lid)$/.test(p?.chatId || '') || typeof p.body !== 'string' || !p.body.trim()) return { ok: false, erro: 'texto_invalido' }
++      const cache = window.__bsbCrmSends || (window.__bsbCrmSends = new Map())
++      const key = p.requestId + ':' + p.chatId
++      if (cache.has(key)) return cache.get(key).promise
++      if (cache.size >= 100) {
++        for (const [id, old] of cache) { if (old.done) { cache.delete(id); break } }
++        if (cache.size >= 100) return { ok: false, notReady: true, erro: 'crm_envios_em_voo' }
++      }
++      const entry = { done: false }
++      entry.promise = Promise.resolve().then(async () => {
++        const quote = await FNS.crmResolveQuote(p)
++        if (!quote.ok) return quote
++        const opts = { waitForAck: false, ...(quote.quotedMsg ? { quotedMsg: quote.quotedMsg } : {}) }
++        try {
++          const sent = await window.WPP.chat.sendTextMessage(p.chatId, p.body, opts)
++          const id = sent?.id?._serialized || sent?.id?.id || sent?.id
++          if (typeof id !== 'string' || !id) return { ok: false, timeout: true, erro: 'wpp_sem_id_confirmado' }
++          if (typeof sent.sendMsgResult?.then !== 'function') return { ok: false, timeout: true, wa_msg_id: id, erro: 'Envio não confirmado' }
++          try {
++            const outcome = await sent.sendMsgResult
++            const state = typeof outcome === 'string' ? outcome : outcome?.messageSendResult
++            if (state && state !== 'OK') return { ok: false, wa_msg_id: id, erro: String(state).slice(0, 200) }
++          } catch (e) { return { ok: false, wa_msg_id: id, erro: String(e?.message || e).slice(0, 200) } }
++          return { ok: true, wa_msg_id: id, ack: sent.ack }
++        } catch (e) { return { ok: false, erro: String(e?.message || e).slice(0, 200) } }
++      }).finally(() => { entry.done = true })
++      cache.set(key, entry)
++      return entry.promise
++    },
+@@ -1579,0 +1656,5 @@
++        if (p.replyMsgId != null) {
++          const quote = await FNS.crmResolveQuote(p)
++          if (!quote.ok) return quote
++          opts.quotedMsg = quote.quotedMsg
++        }
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -2 +2 @@
+-// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.32'
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.33'
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.32",
++  "version": "1.70.33",

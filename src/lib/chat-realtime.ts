@@ -10,6 +10,8 @@ export function chatChange(value:unknown):ChatChange|null {
 export function chatRefresh(change:ChatChange,selected:string|null):string[] {
   const keys:string[]=[]
   if(['conversation','messages','tags'].includes(change.kind))keys.push('list')
+  if(['conversation','messages','outbox'].includes(change.kind))keys.push('summary')
+  if(change.kind==='tags')keys.push('quick-replies')
   if(change.id&&change.id===selected){keys.push('detail');if(change.kind==='messages')keys.push('messages')}
   return keys
 }

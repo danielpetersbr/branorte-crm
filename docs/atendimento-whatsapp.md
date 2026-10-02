@@ -12,7 +12,7 @@ Acesse **Comercial → Atendimento WhatsApp** (`/whatsapp`). A interface usa o l
 
 Fotos de perfil aparecem na lista, no cabeçalho e nas informações do cliente quando disponíveis para a conexão WhatsApp. A busca usa o cache existente, em lotes na VPS. Uma consulta com erro não é interpretada como perfil sem foto; ausência confirmada deixa as iniciais. As imagens recebidas podem ser ampliadas dentro da conversa; vídeos e áudios têm controles de reprodução. O nome original acompanha os documentos novos.
 
-O texto digitado fica como rascunho por cliente e usuário neste navegador. **Respostas rápidas** permite criar até 20 mensagens pessoais e inserir uma no campo para revisar antes de enviar. Os rascunhos e respostas não são sincronizados entre computadores. A edição permanece vinculada ao atendimento assumido, e trocar de cliente cancela a gravação em andamento.
+O texto digitado fica como rascunho por cliente e usuário neste navegador. **Respostas rápidas** permite criar até 20 mensagens pessoais e inserir uma no campo para revisar antes de enviar. Rascunhos e respostas pessoais não são sincronizados entre computadores; as respostas da equipe são compartilhadas pelo servidor. É possível preparar texto antes de assumir; envio e gravação exigem o atendimento assumido. Trocar de cliente cancela a gravação em andamento.
 
 O gravador usa Ogg/Opus nativo ou o [codificador Opus MediaRecorder](https://github.com/kbumsik/opus-media-recorder), carregado sob demanda. Na conexão da VPS, um arquivo Ogg com cabeçalho Opus é enviado como mensagem de voz com waveform. Se o codificador não carregar, um formato nativo suportado pode ser enviado como arquivo de áudio, com aviso na tela. A licença distribuída está em `public/licenses/opus-media-recorder.txt`. O teste local `tools/qa/recorder.html` produz áudio sintético sem microfone e sem envio.
 
@@ -25,6 +25,24 @@ Com **Tempo real conectado**, a tela recebe eventos privados e atualiza as conve
 No transporte, novas mensagens acordam a captura do chat na extensão. Novos envios do CRM notificam o worker ANA por um stream autenticado em `wa-contact-hub/crm-events`; a consulta periódica da fila continua como recuperação. O navegador recebe apenas IDs e tipos de mudança pelo Supabase Broadcast privado. O conteúdo é consultado novamente pelas RPCs que validam a carteira.
 
 Finalizar/liberar a sessão não religa a IA automaticamente. A decisão de reativação continua nos controles existentes de IA; o bloqueio humano do CRM protege contra retomada inadvertida da automação.
+
+## Organização do atendimento
+
+**Aguardando resposta** separa os clientes cuja última mensagem confirmada ainda não recebeu resposta. Abrir a conversa continua marcando a mensagem como lida, mas não remove o cliente dessa fila. A fila mostra a espera desde a última mensagem recebida e prioriza os pendentes mais antigos. Os contadores do resumo consultam toda a carteira autorizada, inclusive conversas ainda não carregadas na lista.
+
+O cabeçalho distingue o **responsável pela carteira** de quem está **atendendo agora** com sessão ativa. O campo permite preparar um rascunho antes de assumir; o botão próximo ao campo assume e dá foco ao texto. Envio, upload e gravação continuam exigindo a sessão exclusiva. Assumir nunca envia o rascunho automaticamente.
+
+**Pesquisar mensagens** consulta o histórico da conversa no servidor, com paginação e autorização por carteira. Resultados ficam separados do histórico normal. **Responder citando** adiciona uma prévia da mensagem escolhida; é possível cancelar antes do envio. O servidor valida a origem, e a confirmação do envio mantém a mesma citação. Se o WhatsApp não localizar a mensagem original, o envio falha com aviso; não é enviado sem citação. Mensagens antigas que só têm hash e não estão nos modelos carregados ou nas 100 mensagens recentes podem exigir selecionar uma mensagem mais recente.
+
+**Retorno ao cliente** guarda um lembrete interno por conversa, com data e horário local. A fila **Retornos vencidos** destaca os retornos atrasados. Concluir ou cancelar limpa o lembrete; nenhum desses controles envia mensagens. O acesso ao lembrete acompanha a carteira quando o cliente é transferido.
+
+Em **Respostas rápidas → Equipe**, todos os vendedores aprovados consultam as mensagens compartilhadas. Administradores criam, editam e excluem até 100 respostas. **Pessoais** mantém as mensagens locais anteriores, separadas por usuário. Escolher uma resposta apenas insere o texto no rascunho para revisão.
+
+O painel de vendas consulta pedidos e orçamentos associados por vínculos existentes ao contato, respeitando também as permissões desses registros. Não há associação por nomes parecidos.
+
+O resumo mostra aguardando resposta, retornos vencidos, sem responsável (administradores) e finalizados hoje. A média de resposta do dia usa somente envios humanos pelo CRM com confirmação e vínculo registrado, medidos a partir da última mensagem pendente do cliente. O registro começa nesta atualização; o passado não é estimado. Sem amostras confirmadas no dia, a tela informa essa ausência. O dia dos indicadores segue **America/Sao_Paulo**.
+
+Validação de produtividade em 02/10/2026: 1.226 testes Node e 62 testes de transporte passaram, assim como o build Vite e os testes SQL transacionais após aplicação da migração em produção. As revisões cobriram carteira, autorização, filas paginadas, citações, repetição segura de envio, lembretes internos, respostas compartilhadas e vínculos comerciais. ANA 1.70.33 ativa e conectada ao final 1144 às 12:09:21 UTC, sem reinício nem mensagem real de teste a clientes. Métricas de resposta e finalização começam nesta atualização.
 
 Referências de produto: [Chatwoot](https://github.com/chatwoot/chatwoot), [Whaticket](https://github.com/canove/whaticket-community), [Front](https://help.front.com/en/articles/2403), [Intercom](https://www.intercom.com/). Implementação nativa no CRM; não exige instalar outro atendimento nem trocar a API do número.
 
