@@ -1,0 +1,240 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.28'
++const BG_VERSAO = '1.70.29'
+@@ -2404,0 +2405,2 @@
++      // CRM photos must refresh even when no labels/messages changed.
++      void crmSyncAvatarsIfDue(cfg.vendedor_nome, tab.id)
+@@ -3172 +3174,3 @@
+-          try { await sincronizarAvatars(cfg.vendedor_nome.toUpperCase(), tab.id) } catch (e) { /* best-effort */ }
++          if (String(cfg.vendedor_nome).toUpperCase() !== 'ANA') {
++            try { await sincronizarAvatars(cfg.vendedor_nome.toUpperCase(), tab.id) } catch (e) { /* best-effort */ }
++          }
+@@ -4497,0 +4502,10 @@
++let _crmAvatarStarted = 0, _crmAvatarInFlight = null
++async function crmSyncAvatarsIfDue(vendedor, tab) {
++  if (String(vendedor).toUpperCase() !== 'ANA' || !podeAutomatizar() || _crmAvatarInFlight) return
++  const now = Date.now()
++  if (_crmAvatarStarted && now - _crmAvatarStarted < 60000) return
++  _crmAvatarStarted = now
++  _crmAvatarInFlight = Promise.resolve().then(() => sincronizarAvatars('ANA', tab)).catch(() => {})
++    .finally(() => { _crmAvatarInFlight = null })
++  await _crmAvatarInFlight
++}
+@@ -4501 +4515 @@
+-      const dataUrl = await chamarAgenteNaAba(tab, 'crmMedia', [p], 15000)
++      const dataUrl = await chamarAgenteNaAba(tab, 'crmMedia', [p], 30000)
+@@ -4505 +4519 @@
+-        body: JSON.stringify({ vendedor_nome: 'ANA', media: [{ msg_id: p.msg_id, dataUrl }] }),
++        body: JSON.stringify({ vendedor_nome: 'ANA', media: [{ msg_id: p.msg_id, dataUrl, tipo: p.tipo, filename: p.filename }] }),
+@@ -6105,0 +6120,37 @@
++// CRM strict media transport. Download is bounded before constructing a data URL.
++async function crmDownloadMedia(url) {
++  const limit = 20 * 1024 * 1024
++  const response = await fetch(url, { signal: AbortSignal.timeout(30000) })
++  if (!response.ok) throw new Error('download HTTP ' + response.status)
++  if (Number(response.headers.get('content-length')) > limit) {
++    await response.body?.cancel().catch(() => {})
++    throw new Error('Arquivo maior que 20 MiB')
++  }
++  const reader = response.body?.getReader()
++  if (!reader) {
++    const blob = await response.blob()
++    if (!blob.size || blob.size > limit) throw new Error('Arquivo vazio ou maior que 20 MiB')
++    return blob
++  }
++  const chunks = []; let size = 0
++  try {
++    while (true) {
++      const { done, value } = await reader.read()
++      if (done) break
++      size += value.byteLength
++      if (size > limit) { await reader.cancel(); throw new Error('Arquivo maior que 20 MiB') }
++      chunks.push(value)
++    }
++  } finally { reader.releaseLock() }
++  if (!size) throw new Error('Arquivo vazio')
++  return new Blob(chunks, { type: response.headers.get('content-type') || 'application/octet-stream' })
++}
++async function crmEnviarMidia(chatId, media, tabId, requestId) {
++  if (envioTravado(chatId)) return { ok: false, erro: 'cancelado' }
++  try {
++    const result = await chamarAgenteNaAba(tabId, 'crmSendMedia', [{ ...media, requestId, chatId }], 45000)
++    return result || { ok: false, timeout: true, erro: 'Envio não confirmado' }
++  } catch (e) {
++    return { ok: false, timeout: true, erro: String(e?.message || e).slice(0, 200) }
++  }
++}
+@@ -6161,0 +6213,2 @@
++      const isCrm = String(cfg.vendedor_nome).toUpperCase() === 'ANA' && !!msg.crm_request_id
++      const crmHasMedia = isCrm && (!!msg.media_url || ['image', 'video', 'audio', 'document'].includes(msg.media_type))
+@@ -6211,3 +6264,7 @@
+-          const resp = await fetch(msg.media_url)
+-          if (!resp.ok) throw new Error('download HTTP ' + resp.status)
+-          const blob = await resp.blob()
++          let blob
++          if (isCrm) blob = await crmDownloadMedia(msg.media_url)
++          else {
++            const resp = await fetch(msg.media_url)
++            if (!resp.ok) throw new Error('download HTTP ' + resp.status)
++            blob = await resp.blob()
++          }
+@@ -6221 +6278,2 @@
+-          result = await enviarMidia(alvo, dataUrl, midiaPronta.filename, caption, midiaPronta.mediaType)
++          result = isCrm ? await crmEnviarMidia(alvo, midiaPronta, tabs[0].id, msg.crm_request_id)
++            : await enviarMidia(alvo, dataUrl, midiaPronta.filename, caption, midiaPronta.mediaType)
+@@ -6228 +6286,4 @@
+-            result = await enviarMidia(alvo, media.dataUrl, media.filename, caption, media.mediaType)
++            if (isCrm) {
++              midiaPronta = { ...media, caption }
++              result = await crmEnviarMidia(alvo, midiaPronta, tabs[0].id, msg.crm_request_id)
++            } else result = await enviarMidia(alvo, media.dataUrl, media.filename, caption, media.mediaType)
+@@ -6231 +6292,2 @@
+-            result = await enviarTexto(alvo, msg.body, msg.mention_phones)
++            result = crmHasMedia ? { ok: false, erro: 'Anexo indisponível; mensagem não enviada' }
++              : await enviarTexto(alvo, msg.body, msg.mention_phones)
+@@ -6259,3 +6321,4 @@
+-              const rm = await enviarMidia(w.wid, midiaPronta.dataUrl, midiaPronta.filename,
+-                                           midiaPronta.caption, midiaPronta.mediaType, tabs[0].id)
+-              if (rm?.ok) result = rm
++              const rm = isCrm ? await crmEnviarMidia(w.wid, midiaPronta, tabs[0].id, msg.crm_request_id)
++                : await enviarMidia(w.wid, midiaPronta.dataUrl, midiaPronta.filename,
++                                   midiaPronta.caption, midiaPronta.mediaType, tabs[0].id)
++              if (isCrm || rm?.ok) result = rm
+@@ -6264 +6327 @@
+-          if (!result?.ok) {
++          if (!result?.ok && !(isCrm && (crmHasMedia || midiaPronta))) {
+@@ -6280 +6343 @@
+-      const entregue = !!(result?.ok || result?.timeout)
++      const entregue = !!(result?.ok || (!isCrm && result?.timeout))
+@@ -6284 +6347,5 @@
+-      if (result?.timeout) patch.error = 'enviado sem confirmacao do WPP (timeout)'
++      if (isCrm && result?.ok) { patch.wa_msg_id = result.wa_msg_id || null; patch.error = null }
++      else if (isCrm && result?.wa_msg_id) patch.wa_msg_id = result.wa_msg_id
++      if (result?.timeout) patch.error = isCrm
++        ? 'Envio não confirmado. Confira no WhatsApp antes de enviar novamente.'
++        : 'enviado sem confirmacao do WPP (timeout)'
+@@ -10203,0 +10271,3 @@
++    const strict = String(vendedor).toUpperCase() === 'ANA'
++    const cursorKey = 'crm_avatar_cursor_ana'
++    const cursor = strict ? (await chrome.storage.local.get(cursorKey))[cursorKey] || null : null
+@@ -10208 +10278,2 @@
+-      body: JSON.stringify({ vendedor_nome: vendedor }),
++      body: JSON.stringify({ vendedor_nome: vendedor, ...(strict ? { avatar_cursor: cursor } : {}) }),
++      ...(strict ? { signal: AbortSignal.timeout(15000) } : {}),
+@@ -10212,0 +10284,5 @@
++    if (strict) {
++      // Advance even when WPP cannot resolve photos, so later contacts are visited.
++      const next = pend.length ? (j1.avatar_cursor || pend[pend.length - 1]?.phone) : null
++      await chrome.storage.local.set({ [cursorKey]: typeof next === 'string' && /^\d{10,15}$/.test(next) ? next : null })
++    }
+@@ -10219 +10295 @@
+-      func: async (lista) => {
++      func: async (lista, strict) => {
+@@ -10225,4 +10301,13 @@
+-              url = await window.WPP.contact.getProfilePictureUrl(item.chat_id)
+-            }
+-          } catch { /* contato sem foto ou id inválido */ }
+-          out.push({ phone: item.phone, pic_url: url || null })
++              if (strict) {
++                let timer
++                try {
++                  url = await Promise.race([
++                    window.WPP.contact.getProfilePictureUrl(item.chat_id),
++                    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('avatar_lookup_timeout')), 3500) }),
++                  ])
++                } finally { clearTimeout(timer) }
++              } else url = await window.WPP.contact.getProfilePictureUrl(item.chat_id)
++            } else if (strict) continue
++          } catch { if (strict) continue }
++          if (strict && url !== null && typeof url !== 'string') continue
++          out.push({ phone: item.phone, pic_url: url || null, ...(strict ? { pic_checked: true } : {}) })
+@@ -10233 +10318 @@
+-      args: [pend],
++      args: [pend, String(vendedor).toUpperCase() === 'ANA'],
+@@ -10242,0 +10328 @@
++      ...(strict ? { signal: AbortSignal.timeout(15000) } : {}),
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.28'
++  var AGENTE_V = '1.70.29'
+@@ -906 +906,2 @@
+-              duracao_seg: dur,
++              duracao_seg: dur,
++              filename: (m.filename || m.fileName) ? String(m.filename || m.fileName).split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 255) : null,
+@@ -1521,0 +1523,2 @@
++      const limit = 20 * 1024 * 1024
++      if (Number(p.size) > limit) return null
+@@ -1523 +1526 @@
+-      const okBlob = blob => blob?.size > 0 && blob.size <= 6000000
++      const okBlob = blob => blob?.size > 0 && blob.size <= limit
+@@ -1526,0 +1530,9 @@
++      let model
++      try {
++        const messages = await window.WPP.chat.getMessages(p.chat_id, { count: 40 })
++        model = (messages || []).find(m => {
++          const id = m?.id?._serialized || m?.id?.id || m?.key?.id || ''
++          return id === serial || id === p.msg_id || String(id).slice(String(id).lastIndexOf('_') + 1) === p.msg_id
++        })
++        if (Number(model?.size || model?.filesize || model?.mediaData?.size) > limit) return null
++      } catch {}
+@@ -1535,5 +1546,0 @@
+-        const messages = await window.WPP.chat.getMessages(p.chat_id, { count: 40 })
+-        const model = (messages || []).find(m => {
+-          const id = m?.id?._serialized || m?.id?.id || m?.key?.id || ''
+-          return id === serial || id === p.msg_id || String(id).slice(String(id).lastIndexOf('_') + 1) === p.msg_id
+-        })
+@@ -1547,0 +1555,46 @@
++    },
++    // CRM sends keep one attempt/result per request+target while this page lives.
++    // No document/text fallback after upload: a thrown promise can already have sent.
++    crmSendMedia: async (p) => {
++      if (!window.WPP?.isReady || !window.WPP?.chat?.sendFileMessage) return { ok: false, notReady: true, erro: 'not_ready' }
++      const type = p?.mediaType
++      const match = /^data:([^;,]+)(?:;[^,]*)?;base64,([A-Za-z0-9+/]*={0,2})$/.exec(p?.dataUrl || '')
++      if (!p?.requestId || !/^\d+@(c\.us|lid)$/.test(p?.chatId || '') || !['image', 'video', 'audio', 'document'].includes(type) || !match) return { ok: false, erro: 'midia_invalida' }
++      const mime = match[1].toLowerCase()
++      if (match[2].length % 4 !== 0) return { ok: false, erro: 'base64_invalido' }
++      const bytes = Math.floor(match[2].length * 3 / 4) - (match[2].endsWith('==') ? 2 : match[2].endsWith('=') ? 1 : 0)
++      if (bytes <= 0 || bytes > 20 * 1024 * 1024) return { ok: false, erro: 'Arquivo deve ter entre 1 byte e 20 MiB' }
++      if (type !== 'document' && !mime.startsWith(type + '/')) return { ok: false, erro: 'tipo_mime_incompativel' }
++      const filename = String(p.filename || 'arquivo').split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 255) || 'arquivo'
++      const cache = window.__bsbCrmSends || (window.__bsbCrmSends = new Map())
++      const key = p.requestId + ':' + p.chatId
++      if (cache.has(key)) return cache.get(key).promise
++      if (cache.size >= 100) {
++        for (const [id, old] of cache) { if (old.done) { cache.delete(id); break } }
++        if (cache.size >= 100) return { ok: false, notReady: true, erro: 'crm_envios_em_voo' }
++      }
++      const entry = { done: false }
++      // Defer execution so the single-flight entry is visible before any async work.
++      entry.promise = Promise.resolve().then(async () => {
++        const opts = { type, filename, caption: String(p.caption || ''), mimetype: mime, waitForAck: false }
++        if (type === 'audio' && /^audio\/(ogg|opus)$/.test(mime)) {
++          const header = atob(match[2].slice(0, 684))
++          if (header.startsWith('OggS') && header.includes('OpusHead')) { opts.isPtt = true; opts.waveform = true }
++        }
++        try {
++          const sent = await window.WPP.chat.sendFileMessage(p.chatId, p.dataUrl, opts)
++          const id = sent?.id?._serialized || sent?.id?.id || sent?.id
++          if (typeof id !== 'string' || !id) return { ok: false, timeout: true, erro: 'wpp_sem_id_confirmado' }
++          if (typeof sent.sendMsgResult?.then !== 'function') return { ok: false, timeout: true, wa_msg_id: id, erro: 'Envio não confirmado' }
++          // The ID alone confirms only local registration, not a completed upload.
++          try {
++            const outcome = sent.sendMsgResult ? await sent.sendMsgResult : null
++            const state = typeof outcome === 'string' ? outcome : outcome?.messageSendResult
++            if (state && state !== 'OK') return { ok: false, wa_msg_id: id, erro: String(state).slice(0, 200) }
++          }
++          catch (e) { return { ok: false, wa_msg_id: id, erro: String(e?.message || e).slice(0, 200) } }
++          return { ok: true, wa_msg_id: id, ack: sent.ack, estrategia: opts.isPtt ? 'ptt_waveform' : type }
++        } catch (e) { return { ok: false, erro: String(e?.message || e).slice(0, 200) } }
++      }).finally(() => { entry.done = true })
++      cache.set(key, entry)
++      return entry.promise
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.28",
++  "version": "1.70.29",

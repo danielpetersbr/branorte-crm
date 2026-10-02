@@ -55,12 +55,13 @@ test('incoming and cellphone outgoing changes reach CRM once, while AI only sees
   assert.equal(JSON.parse(h.events[1].detail).id, 'true_5511999991111@c.us_OUT')
 })
 test('LID lookup maps phone and canonical IDs without publishing image thumbnails as text', async () => {
-  const h = agentHarness({ contact: { getPhoneFromLid: async () => '5511999991111@c.us' }, chat: { getMessages: async () => [message(false), { ...message(true, 'image', 'PHOTO'), body: 'a'.repeat(130), caption: '' }] } })
+  const h = agentHarness({ contact: { getPhoneFromLid: async () => '5511999991111@c.us' }, chat: { getMessages: async () => [message(false), { ...message(true, 'image', 'PHOTO'), body: 'a'.repeat(130), caption: '', filename: '../../foto.jpg' }] } })
   const result = await h.context.methods.crmLive('12345678901234@lid')
   assert.equal(result.out[0].phone, '5511999991111')
   assert.equal(result.out[0].msg_id, 'HASH')
   assert.equal(result.out[1].body, '')
   assert.equal(result.out[1].from_me, true)
+  assert.equal(result.out[1].filename, 'foto.jpg')
   assert.equal((await h.context.methods.crmLive('123@g.us')).out.length, 0)
 })
 test('live media falls back to the WA model when serialized and short IDs cannot download', async () => {
@@ -123,8 +124,16 @@ test('a second message arriving during a history upload gets another flush witho
   assert.equal(h.writes.length, 2)
 })
 test('live media avoids converting a blob larger than the safe upload limit', async () => {
-  const h = agentHarness({ chat: { downloadMedia: async () => ({ size: 6000001, data: 'too-large' }), getMessages: async () => [] } })
+  const h = agentHarness({ chat: { downloadMedia: async () => ({ size: 20 * 1024 * 1024 + 1, data: 'too-large' }), getMessages: async () => [] } })
   assert.equal(await h.context.methods.crmMedia({ chat_id: '5511999991111@c.us', msg_id: 'BIG', from_me: false }), null)
+})
+test('CRM video/document media uploads one file per request with history metadata', async () => {
+  const calls = []
+  const h = harness({ chamarAgenteNaAba: async () => 'data:application/octet-stream;base64,AQID', fetch: async (_url, init) => { calls.push(JSON.parse(init.body)); return { ok: true } } })
+  await h.context.crmSyncMedia(7, [{ msg_id: 'VIDEO', tipo: 'video', filename: 'video.mp4' }, { msg_id: 'PDF', tipo: 'document', filename: 'proposta.pdf' }])
+  assert.equal(calls.length, 2)
+  assert.ok(calls.every(body => body.media.length === 1 && body.vendedor_nome === 'ANA'))
+  assert.equal(calls[0].media[0].tipo, 'video'); assert.equal(calls[1].media[0].filename, 'proposta.pdf')
 })
 test('fragmented SSE frames reconnect and wake the queue promptly, ignoring heartbeat comments', async () => {
   let calls = 0, reads = 0, h

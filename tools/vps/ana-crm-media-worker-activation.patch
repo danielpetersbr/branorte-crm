@@ -1,0 +1,4 @@
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -1,0 +2 @@
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.29'
