@@ -128,6 +128,12 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: 'layout-3d', label: 'Layout 3D', icon: Boxes, section: 'comercial',
+    items: [
+      { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
+    ],
+  },
+  {
     id: 'orcamentos', label: 'Orçamentos e contratos', icon: FileText, section: 'comercial',
     items: [
       { to: '/orcamentos/montar', label: 'Montar Orçamento', icon: Package, permKey: 'menu.orcamentos' },
@@ -204,12 +210,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/guia?modo=animais', label: 'Guia de Animais', icon: Beef, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
       { to: '/guia?modo=materias', label: 'Matérias-primas', icon: Wheat, permKey: 'menu.viabilidade', roles: ['admin', 'vendor', 'marketing'] },
       { to: '/guia/admin', label: 'Revisão do Guia', icon: BookCheck, permKey: 'guia.editar' },
-    ],
-  },
-  {
-    id: 'layout-3d', label: 'Layout 3D', icon: Boxes, section: 'gestao',
-    items: [
-      { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
     ],
   },
   {
