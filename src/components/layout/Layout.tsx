@@ -124,6 +124,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
       { to: '/contatos', label: 'Carteira de Contatos', icon: Users, permKey: 'menu.contatos' },
+      { to: '/mapa-visitas', label: 'Mapa de clientes', icon: MapPin, roles: ['admin', 'vendor', 'marketing'] },
       { to: '/whatsapp', label: 'Atendimento WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
     ],
   },
