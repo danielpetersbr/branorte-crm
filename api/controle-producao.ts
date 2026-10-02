@@ -22,7 +22,7 @@ export function criarHandlerControleProducao(deps:{crm?:()=>SupabaseClient;lerFa
         const access=await obterAcessoEspelho(crm,token);check();if(!access.ok)return {status:access.status,body:{error:access.error}};
         const scope=await resolverEscopoEspelho(crm,access.snapshot);check();
         const raw=await (deps.lerFabrica??lerProducaoEspelho)(scope,{signal:controller.signal});check();
-        const current=await revalidarAcessoEspelho(crm,token,access.snapshot);check();if(!current.ok)return {status:current.status,body:{error:current.error}};
+        const current=await revalidarAcessoEspelho(crm,token,access.snapshot,scope);check();if(!current.ok)return {status:current.status,body:{error:current.error}};
         const envelope=projetarEspelhoProducao(raw,scope,check);check();return {status:200,body:envelope};
       };
       const result=await Promise.race([work(),stopped]);return res.status(result.status).json(result.body);

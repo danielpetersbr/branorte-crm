@@ -53,9 +53,19 @@ export async function obterAcessoEspelho(crm:SupabaseClient,token:string):Promis
     return permitido?{ok:true,snapshot}:denied();
   } catch {return {ok:false,status:503,error:'producao_indisponivel'};}
 }
-export async function revalidarAcessoEspelho(crm:SupabaseClient,token:string,old:SnapshotEspelho):Promise<AcessoEspelho> {
+export async function revalidarAcessoEspelho(crm:SupabaseClient,token:string,old:SnapshotEspelho,oldScope:EscopoEspelho):Promise<AcessoEspelho> {
   const next=await obterAcessoEspelho(crm,token);if(!next.ok)return next;
-  return ['userId','role','approvedAt','vendorId'].every(k=>next.snapshot[k as keyof SnapshotEspelho]===old[k as keyof SnapshotEspelho])?next:denied('identity_changed');
+  if(!['userId','role','approvedAt','vendorId'].every(k=>next.snapshot[k as keyof SnapshotEspelho]===old[k as keyof SnapshotEspelho]))return denied('identity_changed');
+  try {
+    // Re-read the canonical entity and all cross-field collisions after the source await.
+    // Never project previously fetched data under a newly acquired scope.
+    const currentScope=await resolverEscopoEspelho(crm,next.snapshot);
+    const previous=oldScope.vendedores,current=currentScope.vendedores;
+    const same=previous===null?current===null:current!==null&&previous.length===current.length&&previous.every(value=>current.includes(value));
+    return same&&oldScope.userId===currentScope.userId&&oldScope.role===currentScope.role?next:denied('identity_changed');
+  } catch(error) {
+    return {ok:false,status:error instanceof ErroAcessoEspelho?error.status:503,error:error instanceof ErroAcessoEspelho?error.message:'producao_indisponivel'};
+  }
 }
 export async function resolverEscopoEspelho(crm:SupabaseClient,snapshot:SnapshotEspelho):Promise<EscopoEspelho> {
   if(!uuid(snapshot.userId)||!roles.includes(snapshot.role))throw new ErroAcessoEspelho(403,'sem_escopo');
