@@ -138,7 +138,7 @@ test('strict video and PDF document preserve media type and filename', async () 
   assert.equal(calls[1][2].filename, 'proposta.pdf'); assert.equal(calls[1][2].mimetype, 'application/pdf')
 })
 function helperContext(overrides = {}) {
-  const context = vm.createContext({ console, Blob, AbortSignal, envioTravado: () => false, ...overrides })
+  const context = vm.createContext({ console, Blob, AbortSignal, envioTravado: async () => false, ...overrides })
   const start = bg.indexOf('// CRM strict media transport.')
   assert.notEqual(start, -1)
   vm.runInContext(bg.slice(start, bg.indexOf('async function processarAgendamentos()', start)), context)
@@ -164,6 +164,16 @@ test('strict dispatch timeout is uncertain and never uses generic media fallback
   } })
   const result = await ctx.crmEnviarMidia('123@lid', { requestId: 'untrusted', dataUrl: 'test' }, 7, 'trusted')
   assert.equal(result.timeout, true); assert.equal(calls, 1)
+})
+test('CRM media awaits asynchronous send permission, allowing false and preventing true', async () => {
+  let calls = 0, resolvePermission
+  const ctx = helperContext({ envioTravado: async () => await new Promise(resolve => { resolvePermission = resolve }), chamarAgenteNaAba: async () => { calls++; return { ok: true, wa_msg_id: 'HASH' } } })
+  const pending = ctx.crmEnviarMidia('123@lid', { dataUrl: 'test' }, 7, 'request')
+  await Promise.resolve(); assert.equal(calls, 0)
+  resolvePermission(false); assert.equal((await pending).ok, true); assert.equal(calls, 1)
+  ctx.envioTravado = async () => true
+  const blocked = await ctx.crmEnviarMidia('123@lid', { dataUrl: 'test' }, 7, 'blocked')
+  assert.equal(blocked.ok, false); assert.equal(blocked.erro, 'cancelado'); assert.equal(calls, 1)
 })
 test('ANA avatar errors and undefined answers cannot clear cached photos; confirmed absence can', async () => {
   const posted = []
@@ -242,13 +252,13 @@ test('wrapper stamp satisfies the unchanged old auto-update guard without declar
   let imported = 0
   const ctx = vm.createContext({ Set, _autoUpdHash: () => 'test-hash',
     chrome: { tabs: { query: async () => [] }, storage: { local: { set: async () => {} } }, alarms: { onAlarm: { addListener() {} } } },
-    _autoUpdLerManifest: async () => ({ man: manifest, versao: '1.70.29', hash: 'test-hash' }),
+    _autoUpdLerManifest: async () => ({ man: manifest, versao: manifest.version, hash: 'test-hash' }),
     _autoUpdLerPasta: async file => file === 'painel-worker.js' ? shim : file === 'bsb-detect-chat.js' ? agent : true,
   })
-  ctx.importScripts = file => { assert.equal(file, 'background.js'); imported++; vm.runInContext("const BG_VERSAO = '1.70.29'", ctx) }
+  ctx.importScripts = file => { assert.equal(file, 'background.js'); imported++; vm.runInContext('const BG_VERSAO = ' + JSON.stringify(manifest.version), ctx) }
   vm.runInContext(shim, ctx); assert.equal(imported, 1)
   const start = bg.indexOf('async function _autoUpdConferirPasta()')
   vm.runInContext(bg.slice(start, bg.indexOf('function _autoUpdSetDiag(', start)), ctx)
   const check = await ctx._autoUpdConferirPasta()
-  assert.equal(check.ok, true); assert.equal(check.versao, '1.70.29')
+  assert.equal(check.ok, true); assert.equal(check.versao, manifest.version)
 })

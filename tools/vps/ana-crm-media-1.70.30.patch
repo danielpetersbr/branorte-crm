@@ -1,0 +1,23 @@
+--- a/background.js
++++ b/background.js
+@@ -16 +16 @@
+-const BG_VERSAO = '1.70.29'
++const BG_VERSAO = '1.70.30'
+@@ -6149 +6149 @@
+-  if (envioTravado(chatId)) return { ok: false, erro: 'cancelado' }
++  if (await envioTravado(chatId)) return { ok: false, erro: 'cancelado' }
+--- a/bsb-detect-chat.js
++++ b/bsb-detect-chat.js
+@@ -52 +52 @@
+-  var AGENTE_V = '1.70.29'
++  var AGENTE_V = '1.70.30'
+--- a/painel-worker.js
++++ b/painel-worker.js
+@@ -2 +2 @@
+-// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.29'
++// Build stamp for the existing auto-update guard: const BG_VERSAO = '1.70.30'
+--- a/manifest.json
++++ b/manifest.json
+@@ -4 +4 @@
+-  "version": "1.70.29",
++  "version": "1.70.30",
