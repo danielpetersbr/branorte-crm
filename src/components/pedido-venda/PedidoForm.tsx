@@ -34,6 +34,8 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useVendedores } from "@/hooks/pedido-venda/useVendedores";
+import { useVendedorPedido } from "@/hooks/pedido-venda/useVendedorPedido";
+import { destinoAposCriarPedido, vendedorPrincipalPedido } from "@/lib/pedido-venda/vendedorPedido";
 
 // Lista de vendedores vem de `vendedores` (ativo = true) via useVendedores().
 
@@ -66,6 +68,7 @@ const detectarEstadoNaCidade = (cidade: string): string | null => {
 export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   const navigate = useNavigate();
   const { vendedores: vendedoresCadastrados } = useVendedores();
+  const identidadeVendedor = useVendedorPedido();
   const [searchParams] = useSearchParams();
   const isProcessingRef = useRef(false);
   const [numeroOrcamento, setNumeroOrcamento] = useState("");
@@ -101,7 +104,10 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   const [tipoPrazo, setTipoPrazo] = useState<"uteis" | "corridos">("uteis");
   const [dataEntregaManual, setDataEntregaManual] = useState<Date | undefined>(undefined);
   const [usarDataEntregaManual, setUsarDataEntregaManual] = useState(false);
-  const [vendedor, setVendedor] = useState("");
+  const [vendedorEscolhido, setVendedor] = useState("");
+  const vendedorFixo = !pedidoInicial && identidadeVendedor.fixo;
+  const vendedor = vendedorFixo ? identidadeVendedor.nome : vendedorEscolhido;
+  const vendedorBloqueado = !pedidoInicial && identidadeVendedor.bloqueado;
   const [vendedor2, setVendedor2Raw] = useState("");
   const setVendedor2 = (v: string) => setVendedor2Raw(v === "nenhum" ? "" : v);
   const [valorTotal, setValorTotal] = useState("");
@@ -1069,6 +1075,14 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   };
 
   const handleGerarPedido = async (formato: 'docx' | 'pdf' = 'docx') => {
+    if (!pedidoInicial) {
+      try {
+        vendedorPrincipalPedido(identidadeVendedor, vendedor);
+      } catch (erro) {
+        toast.error((erro as Error).message);
+        return;
+      }
+    }
     // Proteção SINCRONIZADA contra dupla submissão usando ref
     if (isProcessingRef.current) {
       console.log('⚠️ BLOQUEADO: Já está processando um pedido');
@@ -1538,9 +1552,9 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         console.log('[App2] Condições não atendidas - arquivoOriginalRef:', !!arquivoOriginalRef.current, 'pedido_id:', !!data.pedido_id);
       }
       
-      // Redirecionar para página de pedidos após sucesso
+      // Vendedor abre o pedido vivo; a listagem espelhada pode esperar o sync.
       setTimeout(() => {
-        navigate("/controle/pedidos");
+        navigate(destinoAposCriarPedido(identidadeVendedor.fixo, data.pedido_id));
       }, 1500);
     } catch (error: any) {
       console.error('Erro na geração:', error);
@@ -1770,7 +1784,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           toast.success("Pedido cadastrado com sucesso (modo local, sem documento Word)!", { duration: 6000 });
           
           setTimeout(() => {
-            navigate("/controle/pedidos");
+            navigate(destinoAposCriarPedido(identidadeVendedor.fixo, insertedOrder.id));
           }, 1500);
         } catch (fallbackError: any) {
           console.error('[Fallback] Erro no fallback local:', fallbackError);
@@ -2284,7 +2298,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       Vendedor Responsável *
                       {modoPartesOutros && <span className="ml-2 text-red-500 font-semibold animate-pulse">• Obrigatório</span>}
                     </Label>
-                    <Select value={vendedor} onValueChange={setVendedor}>
+                    <Select value={vendedor} onValueChange={setVendedor} disabled={vendedorFixo}>
                       <SelectTrigger className={cn(
                         "mt-1",
                         (isFieldEmpty(vendedor) || (modoPartesOutros && !vendedor)) && "border-red-300 bg-red-50/50"
@@ -2292,13 +2306,16 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                         <SelectValue placeholder="Selecione o vendedor" />
                       </SelectTrigger>
                       <SelectContent>
-                        {vendedoresCadastrados.map((v) => (
+                        {(vendedorFixo ? (vendedor ? [vendedor] : []) : vendedoresCadastrados).map((v) => (
                           <SelectItem key={v} value={v}>
                             {v}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {vendedorBloqueado && (
+                      <p role="status" className="text-sm text-destructive mt-1">{identidadeVendedor.aviso}</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="vendedor2" className="font-medium">
@@ -2792,10 +2809,10 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         <div className="pt-6">
           <Button
             onClick={() => handleGerarPedido('docx')}
-            disabled={isGenerating || isGeneratingPDF || isExtracting || !numeroOrcamento || !vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico")}
+            disabled={isGenerating || isGeneratingPDF || isExtracting || vendedorBloqueado || !numeroOrcamento || !vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico")}
             className={cn(
               "w-full h-14 text-lg font-bold shadow-[var(--shadow-medium)] transition-all hover:scale-[1.02]",
-              (!vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico"))
+              (vendedorBloqueado || !vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico"))
                 ? "bg-muted hover:bg-muted text-muted-foreground cursor-not-allowed" 
                 : "bg-green-600 hover:bg-green-700 text-white"
             )}

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { readFileSync } from 'node:fs'
 import * as ts from 'typescript'
 import * as politica from './navegacao'
+import { rotaPedidosVendedorPermitida } from '@/lib/novo-pedido-acesso'
 
 const app = ts.createSourceFile('App.tsx', readFileSync(new URL('../../../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const pagina = ts.createSourceFile('ControleVendasOriginal.tsx', readFileSync(new URL('../../../pages/controle/ControleVendasOriginal.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -13,12 +14,13 @@ const variavel = (nome: string) => nodes.find(node => ts.isVariableStatement(nod
 const condicional = (inicio: string) => nodes.find(node => ts.isIfStatement(node) && node.expression.getText(app).startsWith(inicio))!.getText(app)
 
 /** Executa os mesmos blocos de rota do App; todas as permissões retornam true. */
-function guardReal(papel: 'vendor' | 'mapa', rota: string) {
+function guardReal(papel: 'vendor' | 'mapa', rota: string, pedidos = true) {
   const fonte = [variavel('freteLiberado'), variavel('VENDOR_PREFIXES'), condicional("profile.role === 'vendor'"), variavel('ROTAS_RESTRITAS'), variavel('rotasDoPapel'), condicional('rotasDoPapel &&')].join('\n')
   const js = ts.transpileModule(fonte, { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2020 } }).outputText
-  return new Function('profile', 'loc', 'can', 'fabricaPermitida', 'React', 'Navigate', `${js}; return 'permitida';`)(
-    { role: papel }, { pathname: rota }, () => true, false,
+  return new Function('profile', 'loc', 'can', 'fabricaPermitida', 'React', 'Navigate', 'rotaPedidosVendedorPermitida', `${js}; return 'permitida';`)(
+    { role: papel }, { pathname: rota }, (key: string) => key !== 'menu.novo_pedido' || pedidos, false,
     { createElement: (_tipo: unknown, props: { to: string }) => ({ redireciona: props.to }) }, 'Navigate',
+    rotaPedidosVendedorPermitida,
   )
 }
 
@@ -36,17 +38,20 @@ function callbackPagina(tag: string, conteudo: string) {
   return new Function('pedido', 'navigate', 'podeAbrirPedidos', 'setExpansaoListagem', 'contextoListagem', `return (${expressao});`)
 }
 
-test('vendor e mapa têm Vendas mas não Pedidos mesmo com todas as permissões true', () => {
-  for (const papel of ['vendor', 'mapa'] as const) {
-    assert.equal(guardReal(papel, '/controle/vendas'), 'permitida')
-    assert.notEqual(guardReal(papel, '/controle/pedidos'), 'permitida')
-    assert.notEqual(guardReal(papel, '/controle/pedidos/pedido-sintetico'), 'permitida')
-    assert.equal(politica.podeNavegarPedidosVendas(papel, true), false)
-  }
+test('vendedor abre os próprios pedidos com a permissão nova e mapa mantém acesso restrito', () => {
+  assert.equal(guardReal('vendor', '/controle/vendas'), 'permitida')
+  assert.equal(guardReal('vendor', '/controle/pedidos'), 'permitida')
+  assert.equal(guardReal('vendor', '/controle/pedidos/00ee409d-a25a-4c73-bf52-cb66917e43fd'), 'permitida')
+  assert.notEqual(guardReal('vendor', '/controle/pedidos', false), 'permitida')
+  assert.notEqual(guardReal('vendor', '/controle/pedidos/editar/00ee409d-a25a-4c73-bf52-cb66917e43fd'), 'permitida')
+  assert.equal(politica.podeNavegarPedidosVendas('vendor', true), true)
+  assert.equal(guardReal('mapa', '/controle/vendas'), 'permitida')
+  assert.notEqual(guardReal('mapa', '/controle/pedidos'), 'permitida')
+  assert.equal(politica.podeNavegarPedidosVendas('mapa', true), false)
 })
 
 test('links exigem papel compatível com Controle e permissão própria', () => {
-  for (const papel of ['admin', 'financeiro', 'marketing']) {
+  for (const papel of ['admin', 'financeiro', 'marketing', 'vendor']) {
     assert.equal(politica.podeNavegarPedidosVendas(papel, true), true)
     assert.equal(politica.podeNavegarPedidosVendas(papel, false), false)
   }

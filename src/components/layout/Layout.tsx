@@ -131,8 +131,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
       { to: '/area-vendedor', label: 'Área do Vendedor · Prévia', icon: GitBranch, permKey: 'menu.area_vendedor' },
-      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.controle' },
-      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.controle' },
+      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.novo_pedido' },
+      { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.novo_pedido' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
     ],
   },

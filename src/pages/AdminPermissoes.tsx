@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { CHAVE_NOVO_PEDIDO, permissaoNovoPedido } from '@/lib/novo-pedido-acesso'
 import {
   ASSIGNABLE_ROLES,
   FEATURE_CATALOG,
@@ -32,7 +33,7 @@ export function AdminPermissoes() {
     if (!data) return
     const next = emptyMatrix()
     for (const row of data) {
-      next[row.role as AssignableRole] = { ...row.permissions }
+      next[row.role as AssignableRole] = { ...row.permissions, [CHAVE_NOVO_PEDIDO]: permissaoNovoPedido(row.permissions) }
     }
     setDraft(next)
   }, [data])
@@ -44,7 +45,8 @@ export function AdminPermissoes() {
       const current = draft[role] ?? {}
       const allKeys = new Set([...Object.keys(original), ...Object.keys(current), ...FEATURE_CATALOG.map(f => f.key)])
       for (const k of allKeys) {
-        if (!!original[k] !== !!current[k]) return true
+        const originalPermitido = k === CHAVE_NOVO_PEDIDO ? permissaoNovoPedido(original) : !!original[k]
+        if (originalPermitido !== !!current[k]) return true
       }
     }
     return false

@@ -906,7 +906,7 @@ export default function PedidoDetalhe() {
                 fazer ele rolar até a lateral era o atrito da origem. Em telas
                 pequenas os rótulos somem e ficam só os ícones. */}
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <Button
+              {profile?.role !== 'vendor' && <Button
                 variant="outline"
                 size="sm"
                 onClick={() => navigate(`/controle/pedidos/editar/${pedido.id}`)}
@@ -914,7 +914,7 @@ export default function PedidoDetalhe() {
               >
                 <Edit2 className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Editar Pedido</span>
-              </Button>
+              </Button>}
 
               {temArquivo && (
                 <Button

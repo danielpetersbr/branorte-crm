@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,6 +20,8 @@ import { useAuth } from "@/lib/pedido-venda/auth-shim";
 import { supabase } from "@/lib/controle-supabase/client";
 import { toast } from "sonner";
 import { useVendors } from "@/hooks/pedido-venda/useInstallments";
+import { useVendedorPedido } from "@/hooks/pedido-venda/useVendedorPedido";
+import { destinoAposCriarPedido, vendedorPrincipalPedido } from "@/lib/pedido-venda/vendedorPedido";
 
 const formSchema = z.object({
   data_venda: z.string().min(1, "Data é obrigatória"),
@@ -48,6 +50,7 @@ const fileToBase64 = (file: File): Promise<string> =>
 export default function PedidoGarantia() {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const identidadeVendedor = useVendedorPedido();
   const [loading, setLoading] = useState(false);
   const { data: vendedores = [] } = useVendors();
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -70,7 +73,12 @@ export default function PedidoGarantia() {
     },
   });
 
-  const vendedor = watch("vendedor");
+  const vendedorEscolhido = watch("vendedor");
+  const vendedor = identidadeVendedor.fixo ? identidadeVendedor.nome : vendedorEscolhido;
+  const opcoesVendedores = identidadeVendedor.fixo ? (vendedor ? [vendedor] : []) : vendedores;
+  useEffect(() => {
+    if (identidadeVendedor.fixo) setValue("vendedor", identidadeVendedor.nome);
+  }, [identidadeVendedor.fixo, identidadeVendedor.nome, setValue]);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -89,6 +97,7 @@ export default function PedidoGarantia() {
       return;
     }
     try {
+      const vendedorResponsavel = vendedorPrincipalPedido(identidadeVendedor, data.vendedor);
       setLoading(true);
 
       const { data: pedidoNumero, error: rpcError } = await supabase.rpc(
@@ -124,7 +133,7 @@ export default function PedidoGarantia() {
           pedido_numero: pedidoNumero,
           numero_orcamento: pedidoNumero,
           cliente: data.cliente,
-          vendedor: data.vendedor,
+          vendedor: vendedorResponsavel,
           telefone: data.telefone || null,
           cidade: data.cidade || null,
           estado: data.estado || null,
@@ -176,7 +185,7 @@ export default function PedidoGarantia() {
           body: {
             pedidoId: pedidoInserido.id,
             clienteNome: data.cliente,
-            vendedorNome: data.vendedor,
+            vendedorNome: vendedorResponsavel,
             docxBase64: base64,
             nomeArquivo: arquivo.name,
             tituloEquipamento: descricaoFinal,
@@ -201,7 +210,7 @@ export default function PedidoGarantia() {
       toast.success("Pedido de Garantia cadastrado e enviado à fábrica ✅");
       reset();
       setArquivo(null);
-      navigate("/controle/pedidos");
+      navigate(destinoAposCriarPedido(identidadeVendedor.fixo, pedidoInserido.id));
     } catch (error: any) {
       console.error(error);
       toast.error(error?.message || "Erro ao cadastrar pedido de garantia");
@@ -237,18 +246,21 @@ export default function PedidoGarantia() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="vendedor">Vendedor Responsável *</Label>
-                  <Select value={vendedor} onValueChange={(v) => setValue("vendedor", v)}>
+                  <Select value={vendedor} onValueChange={(v) => setValue("vendedor", v)} disabled={identidadeVendedor.fixo}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o vendedor" />
                     </SelectTrigger>
                     <SelectContent>
-                      {vendedores.map((v) => (
+                      {opcoesVendedores.map((v) => (
                         <SelectItem key={v} value={v}>
                           {v}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {identidadeVendedor.aviso && (
+                    <p role="status" className="text-sm text-destructive">{identidadeVendedor.aviso}</p>
+                  )}
                   {errors.vendedor && (
                     <p className="text-sm text-destructive">{errors.vendedor.message}</p>
                   )}
@@ -336,7 +348,7 @@ export default function PedidoGarantia() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={loading} className="flex-1">
+                <Button type="submit" disabled={loading || identidadeVendedor.bloqueado} className="flex-1">
                   {loading ? "Salvando..." : "Cadastrar Pedido de Garantia"}
                 </Button>
               </div>

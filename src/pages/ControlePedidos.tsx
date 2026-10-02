@@ -1104,9 +1104,9 @@ export function ControlePedidos() {
                               <Cog className="h-4 w-4" />
                             </IconBtn>
 
-                            <IconBtn title="Editar pedido" onClick={() => navigate(`/controle/pedidos/editar/${p.id}`)}>
+                            {profile?.role !== 'vendor' && <IconBtn title="Editar pedido" onClick={() => navigate(`/controle/pedidos/editar/${p.id}`)}>
                               <Pencil className="h-4 w-4" />
-                            </IconBtn>
+                            </IconBtn>}
 
                             {podeExcluir && (
                               <IconBtn title="Excluir pedido" tone="danger" onClick={() => setParaExcluir(p)}>

@@ -56,7 +56,7 @@ export default function ControleVendasOriginal() {
   const authContexto = !authLoading && !profileError && session && profile?.id === session.user.id && profile.approved_at
     ? [session.user.id, profile.role, profile.vendor_id || '', profile.approved_at, session.access_token].join('|') : '';
   const authAtual = useRef(authContexto);
-  const podeAbrirPedidos = !!authContexto && podeNavegarPedidosVendas(profile?.role, can('menu.controle'));
+  const podeAbrirPedidos = !!authContexto && podeNavegarPedidosVendas(profile?.role, can('menu.novo_pedido'));
   authAtual.current = authContexto;
   const [escopoConsulta, setEscopoConsulta] = useState<{ contexto: string; global: boolean; vendedorNome: string | null }>({ contexto: '', global: false, vendedorNome: null });
   const isAdmin = !!authContexto && escopoConsulta.contexto === authContexto && escopoConsulta.global;

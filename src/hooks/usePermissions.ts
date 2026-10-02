@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import {CHAVE_PRODUCAO_FABRICA,canComExcecaoFabrica,type EstadoPermissoesFabrica} from '@/lib/producao-espelho-permissoes'
+import { CHAVE_NOVO_PEDIDO, permissaoNovoPedido } from '@/lib/novo-pedido-acesso'
 
 // 'mapa' e 'financeiro' entraram em 06/08/2026 junto com o Financeiro por parcelas.
 // 'mapa' porque o Patrick tem esse papel e vende (12 pedidos, R$ 5,95 mi) — sem uma
@@ -37,11 +38,10 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },
   { key: 'menu.frete', label: 'Frete', group: 'Menu' },
   { key: 'menu.controle', label: 'Controle (Vendas)', group: 'Menu' },
+  { key: CHAVE_NOVO_PEDIDO, label: 'Pedidos de Venda: criar e consultar os próprios pedidos', group: 'Menu', description: 'Pedido completo, acessórios, sem orçamento e garantia.' },
   { key: CHAVE_PRODUCAO_FABRICA, label: 'Produção da fábrica (somente leitura)', group: 'Menu' },
-  // Chave própria, separada de menu.controle: o Financeiro é a única tela do
-  // grupo Controle que o vendedor precisa ver (e só os pedidos dele — o recorte
-  // é feito no servidor, em /api/financeiro). Ligar menu.controle pra ele abriria
-  // junto Painel de Vendas, Pedidos e Novo Pedido, que não é o caso.
+  // Financeiro e Pedidos têm permissões próprias, separadas do painel geral.
+  // O recorte financeiro é feito no servidor, em /api/financeiro.
   { key: 'menu.financeiro', label: 'Financeiro (recebíveis — vendedor vê só os pedidos dele)', group: 'Menu' },
   { key: 'menu.projeto', label: 'Projeto', group: 'Menu' },
   { key: 'menu.projeto_3d', label: 'Projeto 3D', group: 'Menu' },
@@ -128,6 +128,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     'menu.venda_racao': true,
     'menu.roadmap': true,
     'menu.financeiro': true,
+    'menu.novo_pedido': true,
     'menu.ia_teste': true,
     // Liberados no banco em 06/08 (contatos) e desde que a tela nasceu (ligações),
     // e faltavam aqui — as duas rotas caíam em /atendimentos na carga fria.
@@ -227,6 +228,7 @@ export function useCan(): (featureKey: string) => boolean {
     return canComExcecaoFabrica(featureKey,fabrica,()=>{
       const row = data?.find(r => r.role === role)
       const perms = row?.permissions ?? FALLBACK[role as AssignableRole] ?? {}
+      if (featureKey === CHAVE_NOVO_PEDIDO) return permissaoNovoPedido(perms)
       return perms[featureKey] === true
     })
   }

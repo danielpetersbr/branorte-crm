@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +19,8 @@ import { useAuth } from "@/lib/pedido-venda/auth-shim";
 import { supabase } from "@/lib/controle-supabase/client";
 import { toast } from "sonner";
 import { useVendors } from "@/hooks/pedido-venda/useInstallments";
+import { useVendedorPedido } from "@/hooks/pedido-venda/useVendedorPedido";
+import { destinoAposCriarPedido, vendedorPrincipalPedido } from "@/lib/pedido-venda/vendedorPedido";
 import { PaymentPlanEditor } from "@/components/pedido-venda/PaymentPlanEditor";
 import {
   ChecklistComprasEditor,
@@ -41,6 +43,7 @@ type FormData = z.infer<typeof formSchema>;
 export default function PedidoSimples() {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const identidadeVendedor = useVendedorPedido();
   const [loading, setLoading] = useState(false);
   const { data: vendedores = [] } = useVendors();
   const [paymentPlan, setPaymentPlan] = useState<any>(null);
@@ -60,7 +63,12 @@ export default function PedidoSimples() {
     },
   });
 
-  const vendedor = watch("vendedor");
+  const vendedorEscolhido = watch("vendedor");
+  const vendedor = identidadeVendedor.fixo ? identidadeVendedor.nome : vendedorEscolhido;
+  const opcoesVendedores = identidadeVendedor.fixo ? (vendedor ? [vendedor] : []) : vendedores;
+  useEffect(() => {
+    if (identidadeVendedor.fixo) setValue("vendedor", identidadeVendedor.nome);
+  }, [identidadeVendedor.fixo, identidadeVendedor.nome, setValue]);
   const valor_total = watch("valor_total");
   
   const valorTotalNumerico = valor_total 
@@ -69,6 +77,7 @@ export default function PedidoSimples() {
 
   const onSubmit = async (data: FormData) => {
     try {
+      const vendedorResponsavel = vendedorPrincipalPedido(identidadeVendedor, data.vendedor);
       setLoading(true);
 
       // Informações para o projeto: texto + ao menos 1 imagem são obrigatórios
@@ -108,7 +117,7 @@ export default function PedidoSimples() {
           pedido_numero: pedidoNumero,
           numero_orcamento: pedidoNumero,
           cliente: data.cliente,
-          vendedor: data.vendedor,
+          vendedor: vendedorResponsavel,
           data_venda: data.data_venda,
           data_entrega: data.data_venda,
           equipamentos_json: [data.produto],
@@ -211,7 +220,7 @@ export default function PedidoSimples() {
           body: {
             pedidoId: pedidoInserido.id,
             clienteNome: data.cliente,
-            vendedorNome: data.vendedor,
+            vendedorNome: vendedorResponsavel,
             equipamentos: equipamentosFormatados,
             motores: [],
             tensao: '',
@@ -231,7 +240,7 @@ export default function PedidoSimples() {
 
       toast.success("Pedido cadastrado com sucesso!");
       reset();
-      navigate("/controle/pedidos");
+      navigate(destinoAposCriarPedido(identidadeVendedor.fixo, pedidoInserido.id));
     } catch (error: any) {
       console.error("Erro ao cadastrar pedido:", error);
       toast.error(error?.message || "Erro ao cadastrar pedido");
@@ -271,18 +280,22 @@ export default function PedidoSimples() {
                   <Select
                     value={vendedor}
                     onValueChange={(value) => setValue("vendedor", value)}
+                    disabled={identidadeVendedor.fixo}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o vendedor" />
                     </SelectTrigger>
                     <SelectContent>
-                      {vendedores.map((v) => (
+                      {opcoesVendedores.map((v) => (
                         <SelectItem key={v} value={v}>
                           {v}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {identidadeVendedor.aviso && (
+                    <p role="status" className="text-sm text-destructive">{identidadeVendedor.aviso}</p>
+                  )}
                   {errors.vendedor && (
                     <p className="text-sm text-destructive">
                       {errors.vendedor.message}
@@ -360,7 +373,7 @@ export default function PedidoSimples() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={loading} className="flex-1">
+                <Button type="submit" disabled={loading || identidadeVendedor.bloqueado} className="flex-1">
                   {loading ? "Salvando..." : "Cadastrar Pedido"}
                 </Button>
               </div>

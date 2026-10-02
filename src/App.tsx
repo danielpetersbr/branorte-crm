@@ -8,6 +8,7 @@ import { Layout } from '@/components/layout/Layout'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useCan,useProducaoEspelhoPermissions } from '@/hooks/usePermissions'
+import { rotaPedidosVendedorPermitida } from '@/lib/novo-pedido-acesso'
 import {decidirRotaProducaoFabrica} from '@/lib/producao-espelho-permissoes'
 import { useTrilhaAcesso } from '@/hooks/useAcesso'
 import { AcessoBloqueado } from '@/components/AcessoBloqueado'
@@ -405,8 +406,8 @@ function AppRoutes() {
     /*
      * Financeiro: SÓ /controle/financeiro, não o grupo /controle inteiro.
      *
-     * O vendedor precisa ver os recebíveis dos pedidos dele, mas não o Painel de
-     * Vendas nem o Novo Pedido, que moram no mesmo prefixo. Por isso a entrada é
+     * O vendedor precisa ver os recebíveis dos pedidos dele. A criação de pedidos
+     * tem permissão própria abaixo. Por isso a entrada financeira é
      * exata e amarrada em `menu.financeiro` (chave própria, não `menu.controle`).
      *
      * O recorte "só os pedidos dele" NÃO depende deste guard nem do menu: quem
@@ -414,6 +415,9 @@ function AppRoutes() {
      * escolhe a tela.
      */
     const financeiroOk = (p.startsWith('/controle/financeiro') || p === '/controle/vendas') && can('menu.financeiro')
+    // Criação, retorno à lista e consulta dos próprios pedidos. Edição por URL
+    // continua fechada; a lista e o detalhe já conferem o escopo do vendedor.
+    const pedidosOk = rotaPedidosVendedorPermitida(p, can('menu.novo_pedido'))
     // Testar a IA: arena isolada onde o vendedor conversa com a própria IA e aponta
     // o que ela errou. Amarrado no can() pelo mesmo motivo do roadmap/contatos —
     // tirar a permissão fecha o acesso por URL junto.
@@ -456,7 +460,7 @@ function AppRoutes() {
      */
     const funilOk = p === '/funil' && can('menu.funil')
     const whatsappOk = p === '/whatsapp' && can('menu.whatsapp')
-    const allowed = fabricaPermitida || whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const allowed = fabricaPermitida || whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || pedidosOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
