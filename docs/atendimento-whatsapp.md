@@ -8,7 +8,7 @@ Acesse **Comercial → Atendimento WhatsApp** (`/whatsapp`). A interface usa o l
 4. Envie texto, foto, vídeo, áudio ou documentos (PDF, Word, Excel, PowerPoint, TXT, CSV e ZIP; até 20 MB). Use o menu de anexos, cole uma imagem ou arraste um arquivo para a conversa. Confira a prévia antes de enviar. O microfone grava até 2 minutos, permite ouvir antes de enviar e cancelar.
 5. Crie/aplique etiquetas e salve notas internas. Notas não são enviadas ao cliente. **Finalizar** exige que os envios estejam concluídos; mensagem nova reabre a conversa.
 
-**Envios recentes** mostra o estado confirmado pela conexão existente: fila da VPS, aguardando confirmação, enviada ou falha. “Enviada” não significa lida pelo cliente. Em erro incerto, **Confirmar envio** consulta/reutiliza o mesmo identificador, inclusive depois de trocar de conversa ou recarregar. Confira o histórico antes de reenviar uma mensagem cuja conexão não confirmou a entrega.
+As mensagens aparecem no histórico sincronizado pelo WhatsApp. A faixa adicional de **Envios recentes** foi removida para liberar espaço na conversa. Em erro incerto, **Confirmar envio** consulta/reutiliza o mesmo identificador, inclusive depois de trocar de conversa ou recarregar. Confira o histórico antes de reenviar uma mensagem cuja conexão não confirmou a entrega.
 
 Fotos de perfil aparecem na lista, no cabeçalho e nas informações do cliente quando disponíveis para a conexão WhatsApp. A busca usa o cache existente, em lotes na VPS. Uma consulta com erro não é interpretada como perfil sem foto; ausência confirmada deixa as iniciais. As imagens recebidas podem ser ampliadas dentro da conversa; vídeos e áudios têm controles de reprodução. O nome original acompanha os documentos novos.
 
@@ -42,7 +42,7 @@ O cabeçalho distingue o **responsável pela carteira** de quem está **atendend
 
 **Retorno ao cliente** guarda um lembrete interno por conversa, com data e horário local. A fila **Retornos vencidos** destaca os retornos atrasados. Concluir ou cancelar limpa o lembrete; nenhum desses controles envia mensagens. O acesso ao lembrete acompanha a carteira quando o cliente é transferido.
 
-Em **Respostas rápidas → Equipe**, todos os vendedores aprovados consultam as mensagens compartilhadas. Administradores criam, editam e excluem até 100 respostas. **Pessoais** mantém as mensagens locais anteriores, separadas por usuário. Escolher uma resposta apenas insere o texto no rascunho para revisão.
+O **ícone de raio**, ao lado do microfone, abre as **Respostas rápidas** acima do campo, sem ocupar uma linha fixa. O menu fecha ao escolher uma resposta, clicar fora ou pressionar Escape. Em **Equipe**, todos os vendedores aprovados consultam as mensagens compartilhadas. Administradores criam, editam e excluem até 100 respostas. **Pessoais** mantém as mensagens locais anteriores, separadas por usuário. Escolher uma resposta apenas insere o texto no rascunho para revisão.
 
 O painel de vendas consulta pedidos e orçamentos associados por vínculos existentes ao contato, respeitando também as permissões desses registros. Não há associação por nomes parecidos.
 

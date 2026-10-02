@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useVendors } from '@/hooks/useVendors'
 import { chatRpc, useAtendimentoChat, useChatMedia, useChatHistoryMedia } from '@/hooks/useAtendimentoChat'
-import { attachmentExtension, attachmentType, CHAT_ATTACHMENT_ACCEPT, CHAT_MEDIA_BUCKET, CHAT_PRIVATE_MEDIA_PREFIX, chatMessageSenderName, deliveryLabel, displayMessageBody, privateChatMediaPath, resolveAttachmentMime, validateAttachment, type ChatMessage, type ChatOutbox } from '@/lib/atendimento-chat'
+import { attachmentExtension, attachmentType, CHAT_ATTACHMENT_ACCEPT, CHAT_MEDIA_BUCKET, CHAT_PRIVATE_MEDIA_PREFIX, chatMessageSenderName, displayMessageBody, privateChatMediaPath, resolveAttachmentMime, validateAttachment, type ChatMessage } from '@/lib/atendimento-chat'
 import { clearPendingSend, readPendingSend, savePendingSend, type PendingChatSend } from '@/lib/chat-pending-send'
 import { clearChatDraft, readChatDraft, saveChatDraft } from '@/lib/chat-drafts'
 import { createChatRecorder } from '@/lib/chat-recorder'
@@ -39,18 +39,6 @@ function MessageBubble({message,url,onReply,replyDisabled}:{message:ChatMessage;
     </div>
   </div>
 }
-function OutboxEntry({item}:{item:ChatOutbox}) {
-  const media=useChatMedia(item.media_path)
-  const body=displayMessageBody(item.body)
-  return <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs">
-    <div className="flex flex-wrap justify-between gap-2"><span className="font-medium">{item.sender_name||'Vendedor'} · {fmtTime(item.created_at)}</span><span className={item.status==='failed'?'text-danger':item.status==='sent'?'text-accent':'text-ink-muted'}>{deliveryLabel(item.status)}</span></div>
-    {item.reply_msg_id&&<div className="mt-2"><ChatReplyPreview preview={item.reply_preview} author={item.reply_sender_name}/></div>}
-    {body&&<p className="mt-1 whitespace-pre-wrap break-words">{body}</p>}
-    {item.media_path&&<div className="mt-2"><Media type={item.tipo} url={media.data||null} filename={item.filename}/></div>}
-    {item.error&&<p className="mt-1 text-danger">{item.error}</p>}
-  </div>
-}
-
 export function AtendimentoWhatsApp() {
   const [selected,setSelected]=useState<string|null>(null)
   const [search,setSearch]=useState(''),[debounced,setDebounced]=useState('')
@@ -104,7 +92,7 @@ export function AtendimentoWhatsApp() {
     const area=scrollArea.current
     if(prependHeight.current!==null&&area){area.scrollTop=area.scrollHeight-prependHeight.current;prependHeight.current=null}
     else if(stickToBottom.current)bottom.current?.scrollIntoView({block:'end',behavior:'auto'})
-  },[chat.messages,chat.detail.data?.outbox.length])
+  },[chat.messages])
   useEffect(()=>{
     if(!recording)return
     const t=setInterval(()=>setRecordSeconds(n=>n+1),1000)
@@ -266,7 +254,6 @@ export function AtendimentoWhatsApp() {
             {chat.history.isPending&&<div className="text-center text-sm text-ink-muted">Carregando histórico…</div>}
             {!chat.history.isPending&&!chat.messages.length&&<p className="py-8 text-center text-sm text-ink-muted">Nenhuma mensagem no histórico ainda.</p>}
             <div className="space-y-3">{chat.messages.map((m,i)=><div key={m.msg_id}>{(i===0||fmtDay(m.data_msg)!==fmtDay(chat.messages[i-1].data_msg))&&<div className="mb-4 text-center"><span className="rounded-full border border-border bg-surface px-3 py-1 text-[10px] text-ink-muted">{fmtDay(m.data_msg)}</span></div>}<MessageBubble message={m} url={m.media_url?.startsWith(CHAT_PRIVATE_MEDIA_PREFIX)?historyMedia.data?.[privateChatMediaPath(m.media_url)??'']??null:m.media_url} onReply={quote} replyDisabled={draftDisabled||recording}/></div>)}</div>
-            {!!chat.detail.data?.outbox.length&&<details open={chat.detail.data.outbox.some(o=>o.status!=='sent')} className="mt-5 rounded-xl border border-border bg-surface/70 p-3"><summary className="cursor-pointer text-xs font-medium text-ink-muted">Envios recentes · {chat.detail.data.outbox.length}<span className="ml-2 font-normal">A confirmação aparece aqui; o histórico é sincronizado pelo WhatsApp.</span></summary><div className="mt-3 space-y-2">{chat.detail.data.outbox.map(item=><OutboxEntry item={item} key={item.id}/>)}</div></details>}
             <div ref={bottom}/>
           </div>}
           <div className="shrink-0 border-t border-border bg-surface p-3 md:p-4">
@@ -284,15 +271,15 @@ export function AtendimentoWhatsApp() {
                   <p className="px-3 py-2 text-[10px] text-ink-muted">Até 20 MB. Também pode colar ou arrastar um arquivo.</p>
                 </div>}
               </div>
-              <textarea ref={messageInput} aria-label="Mensagem ao cliente" className={cn(inputClass,'resize-none min-h-[44px] max-h-32')} rows={2} maxLength={4000} placeholder={chat.ownsLease?'Escreva ou cole uma foto…':'Prepare o texto. Assuma para enviar.'} disabled={draftDisabled} value={draft} onChange={e=>editDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(!chat.ownsLease){toast.info('Assuma o atendimento para enviar sua resposta.');return}void send()}}}/>
+              <textarea ref={messageInput} aria-label="Mensagem ao cliente" className={cn(inputClass,'min-w-0 flex-1 resize-none min-h-[44px] max-h-32')} rows={2} maxLength={4000} placeholder={chat.ownsLease?'Escreva ou cole uma foto…':'Prepare o texto. Assuma para enviar.'} disabled={draftDisabled} value={draft} onChange={e=>editDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(!chat.ownsLease){toast.info('Assuma o atendimento para enviar sua resposta.');return}void send()}}}/>
+              {chat.profile?.id&&<ChatQuickReplies key={chat.profile.id} userId={chat.profile.id} isAdmin={isAdmin} disabled={draftDisabled||recording} onSelect={body=>{const next=draft?`${draft}\n${body}`:body;if(next.length>4000){toast.error('A mensagem pode ter até 4.000 caracteres.');messageInput.current?.focus();return}editDraft(next);messageInput.current?.focus()}}/>}
               <button className={buttonClass} aria-label={preparingRecording?'Preparando microfone':'Gravar áudio'} disabled={composerDisabled} onClick={startRecording}>{preparingRecording?<Loader2 size={18} className="animate-spin"/>:<Mic size={18}/>}</button>
               <button className={cn(buttonClass,'bg-accent text-white border-transparent hover:bg-accent/90')} aria-label={uncertain?'Confirmar envio':'Enviar mensagem'} disabled={!chat.ownsLease||sending||preparingRecording||(!draft.trim()&&!attachment&&!recoveredAttachment&&!uncertain)||blocked} onClick={send}>{sending?<Loader2 size={18} className="animate-spin"/>:<Send size={18}/>}<span className="hidden lg:inline">{uncertain?'Confirmar envio':'Enviar'}</span></button>
             </div>}
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              {chat.profile?.id&&<ChatQuickReplies key={chat.profile.id} userId={chat.profile.id} isAdmin={isAdmin} disabled={draftDisabled||recording} onSelect={body=>{const next=draft?`${draft}\n${body}`:body;if(next.length>4000){toast.error('A mensagem pode ter até 4.000 caracteres.');return}editDraft(next);messageInput.current?.focus()}}/>}
               <span className="text-[10px] text-ink-faint">{draftSaveError?'Rascunho não salvo neste navegador':!uncertain&&draft?'Rascunho salvo neste navegador':chat.ownsLease?'Cole ou arraste um arquivo · até 20 MB':'Assuma para responder'}</span>
+              <p className="text-[10px] text-ink-faint">{chat.ownsLease?'Você está atendendo · número final 1144 · Enter envia, Shift+Enter quebra linha':'O rascunho fica neste navegador · anexos e microfone disponíveis após assumir'}</p>
             </div>
-            <p className="mt-1 text-[10px] text-ink-faint">{chat.ownsLease?'Você está atendendo · número final 1144 · Enter envia, Shift+Enter quebra linha':'O rascunho fica neste navegador · anexos e microfone disponíveis após assumir'}</p>
           </div>
         </>}
       </section>
