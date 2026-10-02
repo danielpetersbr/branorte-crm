@@ -15,6 +15,7 @@ import { recoverRejectedChatQuote, type RecoveredChatAttachment } from '@/lib/ch
 import { ChatAttachmentPreview, ChatAvatar, ChatMedia as Media } from '@/components/chat/ChatMedia'
 import { ChatQuickReplies } from '@/components/chat/ChatQuickReplies'
 import { ChatOriginButton, ChatOriginCard } from '@/components/chat/ChatOrigin'
+import { ChatCloseDialog } from '@/components/chat/ChatCloseDialog'
 import { ChatTeamSummary } from '@/components/chat/ChatTeamSummary'
 import { ChatAnaContext, ChatAnaTags, ChatResolutionBadge } from '@/components/chat/ChatAnaContext'
 import { anaTagNames, chatResolution } from '@/lib/chat-ana'
@@ -47,6 +48,7 @@ export function AtendimentoWhatsApp() {
   const [status,setStatus]=useState('open'),[vendor,setVendor]=useState(''),[tag,setTag]=useState('')
   const [anaTag,setAnaTag]=useState('')
   const [showSummary,setShowSummary]=useState(false)
+  const [closing,setClosing]=useState<{id:string;identity:string;generation:number}|null>(null)
   const [queue,setQueue]=useState<ChatQueue>('all'),[now,setNow]=useState(Date.now)
   const [historySearch,setHistorySearch]=useState(''),[historyDebounced,setHistoryDebounced]=useState('')
   const [reply,setReply]=useState<ChatCitation|null>(null)
@@ -64,6 +66,7 @@ export function AtendimentoWhatsApp() {
   const stickToBottom=useRef(true),prependHeight=useRef<number|null>(null)
   const messageInput=useRef<HTMLTextAreaElement>(null)
   const focusAfterClaim=useRef<number|null>(null)
+  const closeButton=useRef<HTMLButtonElement>(null)
   const chat=useAtendimentoChat({search:debounced,status,vendor,tag,ana_tag:anaTag,queue},selected,historyDebounced)
   const historyMedia=useChatHistoryMedia([...chat.messages,...chat.searchMessages])
   const recoveredMedia=useChatMedia(recoveredAttachment?.path??null)
@@ -90,7 +93,7 @@ export function AtendimentoWhatsApp() {
     pendingRequest.current=saved?{...saved,file:null}:null
     const restored=selected&&chat.profile?.id?readChatDraft(localStorage,chat.profile.id,selected):''
     setReply(saved?.reply_msg_id?{reply_msg_id:saved.reply_msg_id,reply_preview:saved.reply_preview??null,reply_sender_name:saved.reply_sender_name??null}:null)
-    setHistorySearch('');setHistoryDebounced('');focusAfterClaim.current=null;setRecoveredAttachment(null)
+    setHistorySearch('');setHistoryDebounced('');focusAfterClaim.current=null;setRecoveredAttachment(null);setClosing(null)
     setRecording(false);setPreparingRecording(false);setSending(false);setDraft(saved?saved.body:restored);setDraftSaveError(false);setAttachment(null);setAttachmentMenu(false);setDragging(false);setNote('');setUncertain(!!saved);stickToBottom.current=true;prependHeight.current=null
   },[selected,chat.profile?.id,chat.profile?.role,chat.profile?.vendor_id])
   useEffect(()=>{
@@ -116,6 +119,14 @@ export function AtendimentoWhatsApp() {
     try {await chat.action.mutateAsync({name,...args});return true} catch(e){toast.error((e as Error).message);return false}
   }
   async function assume(){const generation=chatGeneration.current;focusAfterClaim.current=generation;if(!await act('claim')&&generation===chatGeneration.current)focusAfterClaim.current=null}
+  function closeDialog(){setClosing(null);closeButton.current?.focus()}
+  async function confirmClose(reasonId:string,blockAutomation:boolean){
+    const context=closing
+    if(!context||context.id!==selected||context.id!==c?.id||context.identity!==recordContext.current||context.generation!==chatGeneration.current||blocked||sending||recording||preparingRecording||uncertain)return false
+    const ok=await act('resolve',{id:context.id,reason_id:reasonId,block_automation:blockAutomation})
+    if(ok&&context.generation===chatGeneration.current&&context.identity===recordContext.current){toast.success(blockAutomation?'Atendimento finalizado e Ana silenciada neste contato.':'Atendimento finalizado. A Ana aguarda uma nova mensagem relevante.');setClosing(null);closeButton.current?.focus()}
+    return ok
+  }
   function selectQueue(next:ChatQueue){const filters=selectChatQueue(next,status);setQueue(filters.queue);setStatus(filters.status)}
   function selectStatus(next:string){const filters=selectChatStatus(next,queue);setQueue(filters.queue);setStatus(filters.status)}
   function quote(message:ChatMessage){if(draftDisabled||recording)return;setReply(messageCitation(message,c?.name||'Cliente'));messageInput.current?.focus()}
@@ -266,9 +277,9 @@ export function AtendimentoWhatsApp() {
         {dragging&&<div role="status" className="pointer-events-none absolute inset-2 z-40 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-accent bg-surface/95 text-accent"><Upload size={36}/><p className="font-semibold">Solte o arquivo para anexar</p><p className="text-xs">Um arquivo por vez · até 20 MB · revise antes de enviar</p></div>}
         {!selected?<div className="flex flex-1 items-center justify-center p-8 text-center"><div className="max-w-md"><div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl border border-accent/20 bg-accent/5 text-accent"><MessageSquare size={34}/></div><h2 className="text-xl font-semibold">Seu atendimento, em um só lugar</h2><p className="mt-3 text-sm leading-relaxed text-ink-muted">Selecione um cliente para conversar pelo WhatsApp da Ana. Mensagens, fotos, áudios e histórico ficam juntos no CRM.</p><p className="mt-5 inline-flex items-center gap-2 text-xs text-ink-faint"><Lock size={13}/>Carteiras protegidas por vendedor</p></div></div>:<>
           <div className="flex shrink-0 items-center gap-3 border-b border-border bg-surface p-3 md:px-5">
-            <button className="p-2 md:hidden" aria-label="Voltar para conversas" onClick={()=>setSelected(null)}><ArrowLeft size={20}/></button><ChatAvatar name={name} url={c?c.avatar_url:selectedList?.avatar_url}/><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{name}</h2><p className="mt-0.5 text-xs text-ink-muted">{c?.phone||selectedList?.phone} · {resolution?.label||(shownConversation?.human_hold?'Atendimento humano':'Atendimento da Ana')}</p><p className="mt-1 text-[11px] text-ink-muted">Responsável: {responsible||'Sem responsável'}{activeLease&&` · Atendendo: ${c?.lock_user_name||'Sessão ativa'}${chat.ownsLease?' (você)':''}`}</p>{!!anaTagNames(shownConversation?.ana_tags).length&&<div className="mt-1"><ChatAnaTags tags={shownConversation?.ana_tags}/></div>}</div>
+            <button className="p-2 md:hidden" aria-label="Voltar para conversas" onClick={()=>setSelected(null)}><ArrowLeft size={20}/></button><ChatAvatar name={name} url={c?c.avatar_url:selectedList?.avatar_url}/><div className="min-w-0 flex-1"><h2 className="truncate text-sm font-semibold">{name}</h2><p className="mt-0.5 text-xs text-ink-muted">{c?.phone||selectedList?.phone} · {resolution?[resolution.label,resolution.reason].filter(Boolean).join(' · '):(shownConversation?.human_hold?'Atendimento humano':'Atendimento da Ana')}</p><p className="mt-1 text-[11px] text-ink-muted">Responsável: {responsible||'Sem responsável'}{activeLease&&` · Atendendo: ${c?.lock_user_name||'Sessão ativa'}${chat.ownsLease?' (você)':''}`}</p>{!!anaTagNames(shownConversation?.ana_tags).length&&<div className="mt-1"><ChatAnaTags tags={shownConversation?.ana_tags}/></div>}</div>
             {c&&!blocked&&<ChatOriginButton key={c.id} data={chat.origin.data} loading={chat.origin.isPending} error={chat.origin.isError} onRetry={()=>{void chat.origin.refetch()}}/>}
-            {c&&<button className={cn(buttonClass,'text-xs')} disabled={chat.action.isPending||blocked} onClick={()=>act(c.status==='resolved'?'reopen':'resolve')}><CheckCircle2 size={15}/><span className="hidden sm:inline">{c.status==='resolved'?'Reabrir':'Finalizar'}</span></button>}<button type="button" className={cn(buttonClass,'text-xs',showInfo&&'bg-surface-2')} aria-label="Dados do cliente" aria-expanded={showInfo} aria-controls="chat-client-details" title={showInfo?'Ocultar dados do cliente':'Mostrar dados do cliente'} disabled={blocked} onClick={()=>setShowInfo(value=>!value)}><Info size={16}/><span className="hidden lg:inline">Cliente</span></button>
+            {c&&<button ref={closeButton} type="button" className={cn(buttonClass,'text-xs')} aria-label={c.status==='resolved'?'Reabrir atendimento':'Finalizar atendimento'} title={c.status==='resolved'?'Reabrir atendimento':'Finalizar atendimento'} disabled={chat.action.isPending||blocked||sending||uncertain||recording||preparingRecording||otherLease} onClick={()=>{if(c.status==='resolved'){void act('reopen');return}setClosing({id:c.id,identity:recordContext.current,generation:chatGeneration.current})}}><CheckCircle2 size={15}/><span className="hidden sm:inline">{c.status==='resolved'?'Reabrir':'Finalizar'}</span></button>}<button type="button" className={cn(buttonClass,'text-xs',showInfo&&'bg-surface-2')} aria-label="Dados do cliente" aria-expanded={showInfo} aria-controls="chat-client-details" title={showInfo?'Ocultar dados do cliente':'Mostrar dados do cliente'} disabled={blocked} onClick={()=>setShowInfo(value=>!value)}><Info size={16}/><span className="hidden lg:inline">Cliente</span></button>
           </div>
           {chat.leaseError&&<div role="alert" className="border-b border-danger/20 bg-danger/5 px-4 py-2 text-xs text-danger">{chat.leaseError}</div>}
           {c?.follow_up_at&&<div role="status" className={cn('shrink-0 border-b border-border px-4 py-2 text-xs',followUpState(c.follow_up_at,now)==='overdue'?'bg-danger/5 text-danger':'bg-amber-500/5 text-amber-500')}>Retorno {followUpState(c.follow_up_at,now)==='overdue'?'atrasado':'agendado'} · {new Date(c.follow_up_at).toLocaleString('pt-BR')}<button type="button" className="ml-3 underline" onClick={()=>setShowInfo(true)}>Ver lembrete interno</button></div>}
@@ -318,6 +329,7 @@ export function AtendimentoWhatsApp() {
           <div><ChatAvatar name={name} url={c?c.avatar_url:selectedList?.avatar_url} className="mb-3 h-16 w-16 text-lg"/><h3 className="text-sm font-semibold">{name}</h3><p className="mt-1 text-xs text-ink-muted">{c?.phone}</p>{chat.detail.data?.contact&&<div className="mt-3 space-y-1 text-xs text-ink-muted"><p>{chat.detail.data.contact.empresa}</p><p>{[chat.detail.data.contact.city,chat.detail.data.contact.state].filter(Boolean).join(' / ')}</p><p>{chat.detail.data.contact.email}</p></div>}</div>
           <div><label className="mb-2 block text-xs font-medium text-ink-muted" htmlFor="chat-owner">Responsável da carteira</label>{isAdmin?<select id="chat-owner" className={inputClass} disabled={chat.action.isPending||!c} value={c?.vendor_id||''} onChange={e=>act('assign',{vendor:e.target.value}).then(ok=>{if(ok)toast.success('Responsável atualizado.')})}><option value="">Sem responsável</option>{vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>:<p className="text-sm">{responsible||'Sem responsável'}</p>}<p className="mt-2 text-xs text-ink-muted">Atendente: {activeLease?c?.lock_user_name||'Sessão ativa':'Nenhuma sessão ativa'}{chat.ownsLease?' (você)':''}</p></div>
           <ChatAnaContext conversation={c}/>
+          {c&&(c.ana_blocked_at||c.ana_paused_at)&&<div className="rounded-lg border border-border p-3 text-xs"><p className="font-medium">{c.ana_blocked_at?'Ana silenciada neste contato':'Ana aguarda uma nova mensagem relevante'}</p><p className="mt-2 leading-relaxed text-ink-muted">{c.ana_blocked_at?'As mensagens continuam chegando à equipe. A Ana não responde automaticamente.':'Saudações repetidas e correntes não reativam um atendimento encerrado.'}</p>{c.ana_blocked_at&&<button type="button" disabled={chat.action.isPending||otherLease} className={cn(buttonClass,'mt-3 w-full text-xs')} onClick={()=>{const id=c.id,generation=chatGeneration.current;void act('unblock_ana',{id}).then(ok=>{if(ok&&generation===chatGeneration.current)toast.success('Ana liberada para uma nova mensagem relevante do cliente.')})}}>Liberar Ana</button>}</div>}
           {c&&<ChatOriginCard data={chat.origin.data} loading={chat.origin.isPending} error={chat.origin.isError} onRetry={()=>{void chat.origin.refetch()}}/>}
           <ChatFollowUp key={selected} dueAt={c?.follow_up_at} now={now} disabled={chat.action.isPending||!c} onSave={due=>act('followup',{id:c?.id,due_at:due})} onDone={()=>act('followup_done',{id:c?.id})}/>
           <ChatSalesPanel data={chat.sales.data} loading={chat.sales.isPending} error={chat.sales.error?.message} onRetry={()=>{void chat.sales.refetch()}}/>
@@ -326,6 +338,7 @@ export function AtendimentoWhatsApp() {
         </div>
       </aside>}
     </div>
+    {c&&closing?.id===c.id&&closing.identity===recordContext.current&&closing.generation===chatGeneration.current&&<ChatCloseDialog conversationId={c.id} conversationName={name} userIdentity={closing.identity} open onOpenChange={open=>{if(!open)closeDialog()}} onConfirm={confirmClose}/>}
     {showNew&&<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Nova conversa"><div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Nova conversa</h2><button aria-label="Fechar nova conversa" onClick={()=>setShowNew(false)}><X size={20}/></button></div><p className="mb-3 text-xs text-ink-muted">Selecione um contato {isAdmin?'do CRM':'da sua carteira'}. O envio começa somente após assumir o atendimento.</p><input autoFocus className={inputClass} aria-label="Buscar contato para nova conversa" value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Nome ou telefone"/><div className="mt-3 max-h-72 overflow-y-auto">{contacts.isPending&&<p className="p-4 text-sm">Buscando contatos…</p>}{contacts.isError&&<p role="alert" className="p-4 text-sm text-danger">{contacts.error.message}</p>}{contacts.data?.map(ct=><button className="w-full border-b border-border p-3 text-left hover:bg-surface-2" key={ct.id} disabled={chat.action.isPending} onClick={async()=>{try{const r=await chatRpc<{id:string}>('start',{contact:ct.id});setSelected(r.id);setQueue('all');setStatus('');setShowNew(false);await chat.invalidate()}catch(e){toast.error((e as Error).message)}}}><p className="text-sm font-medium">{ct.name}</p><p className="text-xs text-ink-muted">{ct.phone}</p></button>)}{contacts.data?.length===0&&<p className="p-4 text-sm text-ink-muted">Nenhum contato encontrado.</p>}</div></div></div>}
   </div>
 }

@@ -37,6 +37,26 @@ Deno.serve(async (req: Request) => {
   const parts = url.pathname.split('/').filter(Boolean)
   const resource = parts[parts.length - 1]
 
+  // ANA only: the shared-auth worker never receives the service credential or bypasses the CRM decision.
+  if (req.method === 'POST' && resource === 'ana-automation-gate') {
+    try {
+      const raw = await req.text()
+      if (raw.length > 2048) return json({ allowed: false, reason: 'invalid_gate_request' }, 413)
+      const body = JSON.parse(raw) as Record<string, unknown>
+      if (body.vendedor_nome !== 'ANA' || typeof body.chat_id !== 'string' || !/^\d{1,40}@(lid|c\.us)$/.test(body.chat_id)) {
+        return json({ allowed: false, reason: 'invalid_gate_request' }, 400)
+      }
+      const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+      const hasClose = Object.prototype.hasOwnProperty.call(body, 'close')
+      if (hasClose && (!body.close || typeof body.close !== 'object' || Array.isArray(body.close))) return json({ allowed: false, reason: 'invalid_gate_request' }, 400)
+      const { data, error } = hasClose
+        ? await sb.rpc('crm_ana_close_label_gate', { p_chat_id: body.chat_id, p_close: body.close })
+        : await sb.rpc('crm_ana_automation_gate', { p_chat_id: body.chat_id })
+      if (error || !data || typeof data.allowed !== 'boolean') return json({ allowed: false, reason: 'gate_unavailable' }, 503)
+      return json(data)
+    } catch { return json({ allowed: false, reason: 'gate_unavailable' }, 503) }
+  }
+
   // Server-side private Broadcast -> authenticated VPS stream. No client data or JWT is exposed.
   if (req.method === 'GET' && resource === 'crm-events') {
     if (url.searchParams.get('vendedor') !== 'ANA') return json({ error: 'invalid_worker' }, 400)

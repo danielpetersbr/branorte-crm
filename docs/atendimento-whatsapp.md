@@ -8,7 +8,13 @@ Os filtros da lista ficam recolhidos por padrão no botão ao lado de **Conversa
 2. Abra uma conversa ou use **+ Nova conversa** para selecionar um contato da carteira.
 3. Clique **Assumir** antes de responder. A sessão fica exclusiva e a IA da Ana pausa para aquele cliente. Outra sessão não pode enviar simultaneamente.
 4. Envie texto, foto, vídeo, áudio ou documentos (PDF, Word, Excel, PowerPoint, TXT, CSV e ZIP; até 20 MB). Use o menu de anexos, cole uma imagem ou arraste um arquivo para a conversa. Confira a prévia antes de enviar. O microfone grava até 2 minutos, permite ouvir antes de enviar e cancelar.
-5. Crie/aplique etiquetas e salve notas internas. Notas não são enviadas ao cliente. **Finalizar** exige que os envios estejam concluídos; mensagem nova reabre a conversa.
+5. Crie/aplique etiquetas e salve notas internas. Notas não são enviadas ao cliente. **Finalizar** exige que os envios estejam concluídos e abre os motivos reais de encerramento da Ana. Escolha uma etiqueta e confirme; o motivo fica registrado no CRM e a VPS aplica a mesma etiqueta no WhatsApp, preservando as etiquetas de vendedor.
+
+Ao finalizar, a Ana para naquele contato e os envios automáticos pendentes são cancelados. Uma nova mensagem relevante do cliente pode reabrir e liberar a Ana; saudações vazias, correntes, figurinhas e mensagens antigas reimportadas não reativam o atendimento encerrado. Perguntas comerciais e mídias que possam conter uma solicitação continuam sendo consideradas. Travas de atendimento humano e bloqueios anteriores da IA permanecem respeitados.
+
+Para spam, marque **Não reativar a Ana neste contato** ao finalizar. A equipe continua recebendo e vendo as mensagens; a Ana fica silenciada até **Cliente → Liberar Ana** e uma nova mensagem relevante posterior à liberação. Essa opção controla a automação da Ana. Não bloqueia a pessoa no WhatsApp.
+
+A VPS verifica a pausa antes de buscar o contexto da IA, transcrever áudio, analisar imagem e enviar uma resposta automática. Se essa verificação falhar, aguarda e tenta novamente sem liberar o contato. Em conversas abertas, três mensagens distintas com a mesma saudação pura e nenhum outro contexto do cliente são ignoradas antes da IA. A primeira saudação, perguntas, números, anúncios, mídias e qualquer assunto comercial mantêm o fluxo normal; não se bloqueia automaticamente uma pessoa com base em uma saudação.
 
 As mensagens aparecem no histórico sincronizado pelo WhatsApp. A faixa adicional de **Envios recentes** foi removida para liberar espaço na conversa. Em erro incerto, **Confirmar envio** consulta/reutiliza o mesmo identificador, inclusive depois de trocar de conversa ou recarregar. Confira o histórico antes de reenviar uma mensagem cuja conexão não confirmou a entrega.
 

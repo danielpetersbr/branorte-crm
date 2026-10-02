@@ -72,6 +72,7 @@ export interface ChatConversation {
   ana_tags?:string[];
   resolution_source?:'ana'|'crm'|null; resolution_reason?:string|null;
   resolved_at?:string|null; resolution_observed_at?:string|null;
+  resolution_label_id?:string|null; ana_paused_at?:string|null; ana_blocked_at?:string|null;
 }
 export interface ChatMessage {
   id:number; msg_id:string; from_me:boolean; tipo:string; body:string|null;

@@ -12,7 +12,8 @@ export function ChatAnaTags({tags,limit=2,compact=true}:{tags?:string[];limit?:n
 }
 export function ChatResolutionBadge({conversation}:{conversation?:Conversation}) {
   const resolution=chatResolution(conversation)
-  return resolution?<span title={resolution.label} className="inline-block max-w-full truncate rounded border border-accent/20 bg-accent/5 px-1.5 py-0.5 text-[10px] text-accent">{resolution.label}</span>:null
+  const label=resolution&&[resolution.label,resolution.reason].filter(Boolean).join(' · ')
+  return resolution?<span title={label||undefined} className="inline-block max-w-full truncate rounded border border-accent/20 bg-accent/5 px-1.5 py-0.5 text-[10px] text-accent">{label}</span>:null
 }
 export function ChatAnaContext({conversation}:{conversation?:Conversation}) {
   const resolution=chatResolution(conversation)
