@@ -1,0 +1,25 @@
+diff --git a/index.ts b/index.ts
+index 06bda13..795cf50 100644
+--- a/index.ts
++++ b/index.ts
+@@ -1679,7 +1679,7 @@ async function fechaPUVAna(supa: any, o: { rep: any, pk: any, paAna: any, midias
+ function vendedoresRepasseAna(v: any): string[] {
+   if (v?.ativo !== true || v?.repasse_qualificados !== true || !Array.isArray(v?.vendedores_repasse)) return []
+   const nomes = v.vendedores_repasse.map((n: any) => String(n).trim().toUpperCase())
+-  if (!nomes.length || nomes.some((n: string) => !['DANIEL', 'RAMON', 'GUSTAVO'].includes(n))) return []
++  if (!nomes.length || nomes.some((n: string) => !['DANIEL', 'RAMON', 'GUSTAVO', 'ALVARO', 'EDER', 'EDILSON JR', 'IGOR', 'JARDEL', 'LUCAS', 'PEDRO'].includes(n))) return []
+   return [...new Set<string>(nomes)]
+ }
+ async function contingenciaPrecoLigada(supa: any): Promise<boolean> {
+@@ -11476,9 +11476,9 @@ Deno.serve(async (req: Request) => {
+       if (cfg.anaSemCidade === true && (PORTEIRA || (!!personaPilotoAtiva && normNome(st.vendedor_nome) === 'DANIEL'))) persona = promptSemCidadeV24011(persona, PORTEIRA)
+       // (v240.1, corretor f2) na ANA o cabecalho da conversa tambem leva o nome pela regra (o handle "Thiagosjb" ia pro prompt por aqui)
+       if (CONTINGENCIA) persona += vendedoresRepasseAna(cfg.anaContingenciaRepasse).length
+-        ? '\n\nORDEM COMERCIAL ATUAL DO DANIEL: qualifique a necessidade do cliente. Depois da qualificação, a rotina de repasse encaminha exclusivamente para Daniel, Ramon ou Gustavo pelo rodízio; não escolha nem prometa um vendedor antes da confirmação da rotina. Antes de qualificar, continue pela Ana. Preços oficiais vêm da rotina separada; NÃO invente números, desconto, frete ou condição. Dúvida pendente ao Daniel mantém atendimento com Ana até confirmação. Respeite recusa e pedido para parar.'
++        ? '\n\nORDEM COMERCIAL ATUAL DO DANIEL: qualifique a necessidade do cliente. Depois da qualificação, a rotina de repasse encaminha exclusivamente para os vendedores habilitados na configuração pelo rodízio; não escolha nem prometa um vendedor antes da confirmação da rotina. Antes de qualificar, continue pela Ana. Preços oficiais vêm da rotina separada; NÃO invente números, desconto, frete ou condição. Dúvida pendente ao Daniel mantém atendimento com Ana até confirmação. Respeite recusa e pedido para parar.'
+         : '\n\nCONTINGÊNCIA COMERCIAL (ordem atual do Daniel, prevalece sobre regras anteriores): mantenha atendimento pela Ana, sem repassar nem prometer contato de vendedor. Os preços e tabelas oficiais são inseridos por uma rotina separada: NÃO invente números, desconto, frete ou condição. Continue esclarecendo a necessidade e dúvidas conhecidas. Pedido de humano: explique que a equipe comercial está indisponível neste canal. Respeite recusa e pedido para parar.'
+-      if (CONSULTA_DANIEL && cfg.anaContingenciaRepasse?.repasse_duvidas === true) persona += '\n\nORDEM ATUAL DO DANIEL: se houver dúvida que não consegue confirmar com segurança, use consultar_vendedor com a pergunta exata. O sistema transfere o atendimento a Daniel, Ramon ou Gustavo e envia a pergunta ao mesmo consultor. Não escolha nem prometa um nome antes da confirmação do encaminhamento. Não invente preço, condição, frete, prazo ou resposta técnica. Se só faltam dados para identificar o produto, pergunte ao cliente. Valores confirmados no catálogo oficial podem ser informados normalmente.'
++      if (CONSULTA_DANIEL && cfg.anaContingenciaRepasse?.repasse_duvidas === true) persona += '\n\nORDEM ATUAL DO DANIEL: se houver dúvida que não consegue confirmar com segurança, use consultar_vendedor com a pergunta exata. O sistema transfere o atendimento a um dos vendedores habilitados na configuração e envia a pergunta ao mesmo consultor. Não escolha nem prometa um nome antes da confirmação do encaminhamento. Não invente preço, condição, frete, prazo ou resposta técnica. Se só faltam dados para identificar o produto, pergunte ao cliente. Valores confirmados no catálogo oficial podem ser informados normalmente.'
+       else if (CONSULTA_DANIEL) persona += '\n\nORDEM ATUAL DO DANIEL: qualquer dúvida que você NÃO consiga confirmar com segurança deve ser consultada ao Daniel, sem transferir o atendimento. No JSON, use consultar_vendedor (string de até 500 caracteres) com a pergunta exata que precisa confirmar. Inclui dúvida técnica, preço sem tabela, frete, prazo, desconto, parcelamento e condições especiais. NÃO responda por suposição nem prometa condição sem aprovação. Se só faltam dados do cliente para identificar o produto, pergunte ao próprio cliente. texto deve informar de forma breve que você vai confirmar a informação. Nunca diga que já recebeu uma resposta que ainda não chegou.'
+       const user = `CONVERSA (WhatsApp, cliente ${(PORTEIRA ? nomePrev : nome_contato) || 'sem nome'}):\n${conversa}${blocoSei}\n\n`
+         + (_enterrada

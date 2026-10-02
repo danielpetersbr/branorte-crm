@@ -1,0 +1,13 @@
+diff --git a/index.ts b/index.ts
+index 31a5533..ee05a40 100644
+--- a/index.ts
++++ b/index.ts
+@@ -1620,7 +1620,7 @@ Deno.serve(async (req: Request) => {
+   const cont = contingencia?.valor?.v;
+   const nomesCont = Array.isArray(cont?.vendedores_repasse) ? cont.vendedores_repasse.map((n: any) => String(n).trim().toUpperCase()) : [];
+   const restritoAna = cont?.ativo === true;
+-  const poolValido = cont?.repasse_qualificados === true && nomesCont.length > 0 && nomesCont.every((n: string) => ['DANIEL','RAMON','GUSTAVO'].includes(n));
++  const poolValido = cont?.repasse_qualificados === true && nomesCont.length > 0 && nomesCont.every((n: string) => ['DANIEL', 'RAMON', 'GUSTAVO', 'ALVARO', 'EDER', 'EDILSON JR', 'IGOR', 'JARDEL', 'LUCAS', 'PEDRO'].includes(n));
+   if (restritoAna && (!poolValido || !nomesCont.includes(vendedorNome))) return json({ ok: true, skip: 'contingencia_vendedores_indisponiveis', passos: [] });
+   const filtroAna = (q: any) => {
+     if (!restritoAna) return q;
