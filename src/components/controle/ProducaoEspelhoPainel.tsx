@@ -26,8 +26,10 @@ function Ficha({card,close}:{card:CardEspelho;close:()=>void}) {
 function Cartao({card,hoje,onOpen}:{card:CardEspelho;hoje:Date;onOpen:(button:HTMLButtonElement)=>void}) {
   const [copia,setCopia]=useState<'pronto'|'copiando'|'copiado'|'erro'>('pronto');
   const raw=card.dadosOriginais,parado=cardParado(card),prazo=prazoCard(card,hoje),entregue=card.etapa==='ENTREGUE';
-  const nota=parado?textoCard(raw.parado_motivo):textoCard(raw.observacao_vendedor)||textoCard(raw.observacoes);
-  const motor=[textoCard(raw.motor_tensao_vendedor)||textoCard(raw.motor_tensao),textoCard(raw.motor_marca)].filter(Boolean).join(' · ');
+  const nota=parado?textoCard(raw.parado_motivo):'';
+  const equipamento=textoCard(raw.titulo_equipamento)||textoCard(raw.resumo_equipamentos);
+  const tensao=textoCard(raw.motor_tensao_vendedor)||textoCard(raw.motor_tensao);
+  const motor=[tensao?(/^motor\b/i.test(tensao)?tensao:`Motor ${tensao}`):'',textoCard(raw.motor_marca)].filter(Boolean).join(' · ');
   const entrada=new Date(textoCard(raw.created_at)),dataEntrada=Number.isFinite(entrada.getTime())?entrada.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace(' de ',' ').replace('.',''):'';
   const codigo=textoCard(raw.codigo_rastreio);
   const revisado=!!textoCard(raw.orcamento_revisado_em)&&!textoCard(raw.orcamento_revisado_visto_em),op=/^OP\b/i.test(card.numeroOrcamento??'');
@@ -46,7 +48,7 @@ function Cartao({card,hoje,onOpen}:{card:CardEspelho;hoje:Date;onOpen:(button:HT
     <span className="pq-card-top"><span className="pq-orcamento">{card.numeroOrcamento||'Sem orçamento'}</span>{parado&&<span className="pq-parado">PARADO</span>}{op&&<span className="pq-flag">OP</span>}{revisado&&<span className="pq-flag pq-flag-revisado">REVISADO</span>}{raw.excluido===true&&<span className="pq-parado">Excluído</span>}<span className="pq-entrada" title={dataEntrada?`Entrou na produção em ${entrada.toLocaleDateString('pt-BR')}`:undefined}>{dataEntrada}</span></span>
     <span className="pq-cliente">{card.cliente}</span>
     <span className="pq-vendedor">{card.vendedor||'Sem vendedor'}</span>
-    {textoCard(raw.titulo_equipamento)&&<span className="pq-equipamento">{textoCard(raw.titulo_equipamento)}</span>}
+    {equipamento&&<span className="pq-equipamento" title={equipamento}>{equipamento}</span>}
     {nota&&<span className={`pq-nota${parado?' pq-nota-parado':''}`} title={nota}>{nota}</span>}
     {motor&&<span className="pq-motor" title={motor}>{motor}</span>}
     <span className={`pq-prazo${prazo&&prazo.dias<0&&!entregue?' pq-prazo-atrasado':''}${!prazo?' pq-prazo-vazio':''}`} title={prazo?`Entrega: ${prazo.data.toLocaleDateString('pt-BR')}${entregue?'':` · ${prazo.descricao}`}`:undefined}>

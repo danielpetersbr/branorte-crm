@@ -34,7 +34,7 @@ export function prazoCard(card:CardEspelho,hoje:Date){
   if(!date)return null;
   const dias=Math.round((diaCalendario(date)-diaCalendario(hoje))/86400000);
   const base=`${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}`;
-  return {data:date,label:base+(date.getFullYear()===hoje.getFullYear()?'':`/${String(date.getFullYear()).slice(-2)}`),dias,descricao:dias<0?`${Math.abs(dias)} d de atraso`:dias===0?'entrega hoje':`faltam ${dias} d`};
+  return {data:date,label:base+(date.getFullYear()===hoje.getFullYear()?'':`/${String(date.getFullYear()).slice(-2)}`),dias,descricao:dias<0?`${Math.abs(dias)} d de atraso`:dias===0?'vence hoje':`faltam ${dias} d`};
 }
 function instanteCard(card:CardEspelho){const n=Date.parse(textoCard(card.dadosOriginais.created_at));return Number.isFinite(n)?n:null;}
 

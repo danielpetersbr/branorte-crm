@@ -261,7 +261,7 @@ export async function criarRelatorioVendasPDF(input: RelatorioVendasPDFInput, va
   secao('Demonstrativo completo de registros',`${numero(input.registros.length)} registros do período, incluindo cancelados. AJUSTE identifica lançamento na data do acréscimo ou desconto. Valores compartilhados correspondem à parcela atribuída ao vendedor.`,42);
   tabela(['Data','Pedido / orçamento','Cliente','Vendedor','UF','Status','Valor do registro'],prepararRegistrosPDF(input.registros),{
     styles:{font:fonte,fontSize:7.8,textColor:cores.texto,cellPadding:{top:1.8,bottom:1.8,left:1.8,right:1.8},overflow:'linebreak',lineColor:cores.linha,lineWidth:{bottom:0.15},valign:'middle'},
-    columnStyles:{0:{cellWidth:20},1:{cellWidth:23},2:{cellWidth:50},3:{cellWidth:22},4:{cellWidth:10,halign:'center'},5:{cellWidth:25},6:{cellWidth:32,halign:'right'}},
+    columnStyles:{0:{cellWidth:20},1:{cellWidth:24},2:{cellWidth:49},3:{cellWidth:22},4:{cellWidth:10,halign:'center'},5:{cellWidth:25},6:{cellWidth:32,halign:'right'}},
     foot:[[{content:`TOTAL ATIVO - ${numero(input.totalRegistros)} registros`,colSpan:6,styles:{halign:'left'}},{content:moeda(input.valorTotal),styles:{halign:'right'}}]],
     showFoot:'lastPage',footStyles:{fillColor:cores.verdeClaro,textColor:cores.navy,fontStyle:'bold',fontSize:8.5},
     didParseCell:(hook)=>{

@@ -38,6 +38,9 @@ test('due labels count calendar days rather than elapsed 24-hour periods',()=>{
   const result=prazoCard(card(1,{prazo_data:'2026-10-03'}),new Date(2026,9,2,23,55));
   assert.equal(result?.dias,1);assert.equal(result?.descricao,'faltam 1 d');
 });
+test('a delivery on the day of the reading uses the original due-today label',()=>{
+  assert.equal(prazoCard(card(1,{prazo_data:'2026-10-02'}),new Date(2026,9,2,12))?.descricao,'vence hoje');
+});
 test('grouping retains unknown physical stages and puts every included card in exactly one column',()=>{
   const groups=agruparQuadro([card(1),card(2,{status:'PROJETOS_PADROES'}),card(3,{status:'__proto__'})]);
   assert.deepEqual(groups.flatMap(g=>g.cards).map(c=>c.cliente).sort(),['Cliente 1','Cliente 2','Cliente 3']);

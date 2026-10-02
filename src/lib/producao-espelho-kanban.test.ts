@@ -112,9 +112,17 @@ test('copying the printed tracking code has its own button outside the button th
   }
   assert.equal(depth,0);
 });
-test('the card retains the source observation when there is no seller-specific note',()=>{
-  const annotated=card(1);annotated.dadosOriginais.observacoes='Observação sintética de garantia';
-  assert.match(render([annotated]),/Observação sintética de garantia/);
+test('general and seller observations stay out of the compact card while its equipment summary remains visible',()=>{
+  const annotated=card(1);Object.assign(annotated.dadosOriginais,{observacoes:'Observação geral só na ficha',observacao_vendedor:'Observação do vendedor só na ficha',titulo_equipamento:null,resumo_equipamentos:'[PEDIDO DE GARANTIA] Equipamento sintético'});
+  const html=render([annotated]);
+  assert.ok(!html.includes('Observação geral só na ficha'));assert.ok(!html.includes('Observação do vendedor só na ficha'));
+  assert.match(html,/\[PEDIDO DE GARANTIA\] Equipamento sintético/);
+});
+test('motor labels receive one Motor prefix while the literal source details stay intact',()=>{
+  const missing=card(1),present=card(2);
+  missing.dadosOriginais.motor_tensao='Trifásico - A confirmar';present.dadosOriginais.motor_tensao='Motor Monofásico 220V';
+  const html=render([missing,present]);
+  assert.match(html,/Motor Trifásico - A confirmar/);assert.match(html,/Motor Monofásico 220V/);assert.ok(!html.includes('Motor Motor'));
 });
 test('retained board data is synchronously hidden on denied, error and loading states',()=>{
   for(const patch of [{autorizado:false},{error:true},{loading:true}]){

@@ -208,3 +208,12 @@ test('apêndice comporta data larga e status compartilhado inteiros em Poppins',
   assert.deepEqual(tabela.body[0].cells[0].text,['06/06/2026']);
   assert.deepEqual(tabela.body[0].cells[5].text,['FECHADO','Compartilhado']);
 });
+
+test('referência mantém identificador de pedido largo inteiro em Poppins',async()=>{
+  const pedidoNumero='PV-2026-2509';
+  const doc=await criarRelatorioVendasPDF(entrada({registros:[pedido({pedido_numero:pedidoNumero,numero_orcamento:'2026-2923'})]}),()=>{});
+  const tabela=(doc as unknown as {lastAutoTable:{columns:Array<{width:number}>;body:Array<{cells:Record<number,{text:string[]}>}>}}).lastAutoTable;
+  doc.setFont('Poppins','normal');doc.setFontSize(7.8);
+  assert.ok(doc.getTextWidth(pedidoNumero)<=tabela.columns[1].width-3.6,'identificador cabe sem cortar a última cifra');
+  assert.deepEqual(tabela.body[0].cells[1].text,[pedidoNumero,'2026-2923']);
+});
