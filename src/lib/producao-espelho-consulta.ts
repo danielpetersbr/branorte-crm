@@ -2,8 +2,10 @@
 const utf8=(text:string)=>new TextEncoder().encode(text).byteLength;
 type Linha = Record<string, unknown>;
 export type ProjetoEspelho = {id:string;card_id:string;responsavel_projeto_id:string|null;responsavel_nome:string|null;status_projeto:string|null;andamento:number|null;previsao_termino:string|null;prazo_prometido:string|null;prazo_interno:string|null};
-type DadosCard = Linha & { checklist_compras: string | null; vinculo: 'confirmado' | 'nao_verificado'; historico: Linha[]; logistica: Linha | null; setores: Array<Linha & { checklists: Linha[] }>; projeto?:ProjetoEspelho|null };
-export type CardEspelho = { id: string; pedidoId: string | null; numeroOrcamento: string | null; cliente: string; vendedor: string | null; etapa: string; atualizadoEm: string; dadosOriginais: DadosCard };
+type DadosCardQuadro = Linha & { checklist_compras:string|null;vinculo:'confirmado'|'nao_verificado';projeto?:ProjetoEspelho|null };
+type DadosCard = DadosCardQuadro & { historico: Linha[]; logistica: Linha | null; setores: Array<Linha & { checklists: Linha[] }> };
+export type CardQuadroEspelho = { id: string; pedidoId: string | null; numeroOrcamento: string | null; cliente: string; vendedor: string | null; etapa: string; atualizadoEm: string; dadosOriginais: DadosCardQuadro };
+export type CardEspelho = CardQuadroEspelho & {dadosOriginais:DadosCard};
 export type ConsultaEspelho = {
   origem: 'app2'; fonte: 'controle-producao-live'; consultadoEm: string; atualizadoEm: null; sincronizadoEm: null;
   parcial: false; aviso: string; consistency: 'crossread_unproved';
@@ -11,6 +13,14 @@ export type ConsultaEspelho = {
   totals: { cards: number; historico: number; logistica: number; setores: number; checklists: number };
   dados: { cards: CardEspelho[]; kpis: Record<string, number>; porEtapa: Record<string, number>; porSetor: Record<string, number> };
 };
+export type ConsultaQuadroEspelho = Omit<ConsultaEspelho,'parcial'|'complete'|'totals'|'dados'> & {
+  visao:'quadro-v1';parcial:true;
+  complete:{cards:true;historico:false;logistica:false;setores:false;checklists:false};
+  totals:{cards:number;historico:null;logistica:null;setores:null;checklists:null};
+  dados:{cards:CardQuadroEspelho[];kpis:Record<string,number>;porEtapa:Record<string,number>;porSetor:null};
+};
+export type ConsultaProducaoEspelho=ConsultaEspelho|ConsultaQuadroEspelho;
+export type DetalhesCardProducao={complete:{historico:true;setores:true;checklists:true};totals:{historico:number;setores:number;checklists:number};historico:Linha[];setores:Array<Linha&{checklists:Linha[]}>};
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_ROWS = 100000;
 const AVISO = 'Leituras independentes; consistência entre coleções não comprovada.';
@@ -78,6 +88,48 @@ function assemble(cards: CardEspelho[], instant: string): ConsultaEspelho {
     dados: { cards, kpis: { total: cards.length, excluidos: cards.filter(c => c.dadosOriginais.excluido === true).length, ativos: cards.filter(c => c.dadosOriginais.excluido === false && !['ENTREGUE', 'CANCELADO'].includes(c.etapa)).length, entregues: cards.filter(c => c.dadosOriginais.excluido === false && c.etapa === 'ENTREGUE').length, cancelados: cards.filter(c => c.dadosOriginais.excluido === false && c.etapa === 'CANCELADO').length, pedidosUnicos: new Set(cards.flatMap(c => c.pedidoId ? [c.pedidoId.toLowerCase()] : [])).size }, porEtapa: countBy(cards.map(c => c.etapa)), porSetor: countBy(sectors.map(s => s.setor as string)) } };
 }
 
+export function montarConsultaQuadro(cards:CardQuadroEspelho[],instant:string):ConsultaQuadroEspelho {
+  return {origem:'app2',fonte:'controle-producao-live',consultadoEm:instant,atualizadoEm:null,sincronizadoEm:null,parcial:true,aviso:AVISO,consistency:'crossread_unproved',visao:'quadro-v1',
+    complete:{cards:true,historico:false,logistica:false,setores:false,checklists:false},totals:{cards:cards.length,historico:null,logistica:null,setores:null,checklists:null},
+    dados:{cards,kpis:{total:cards.length,excluidos:cards.filter(c=>c.dadosOriginais.excluido===true).length,ativos:cards.filter(c=>c.dadosOriginais.excluido===false&&!['ENTREGUE','CANCELADO'].includes(c.etapa)).length,entregues:cards.filter(c=>c.dadosOriginais.excluido===false&&c.etapa==='ENTREGUE').length,cancelados:cards.filter(c=>c.dadosOriginais.excluido===false&&c.etapa==='CANCELADO').length,pedidosUnicos:new Set(cards.flatMap(c=>c.pedidoId?[c.pedidoId.toLowerCase()]:[])).size},porEtapa:countBy(cards.map(c=>c.etapa)),porSetor:null}};
+}
+
+/** Separate opt-in contract: unread collections must be absent, never declared empty. */
+export function decodificarConsultaQuadro(input:unknown):ConsultaQuadroEspelho {
+  try {
+    const dto=record(input);fields(dto,['origem','fonte','consultadoEm','atualizadoEm','sincronizadoEm','parcial','aviso','consistency','visao','complete','totals','dados']);
+    if(dto.visao!=='quadro-v1'||dto.origem!=='app2'||dto.fonte!=='controle-producao-live'||dto.atualizadoEm!==null||dto.sincronizadoEm!==null||dto.parcial!==true||typeof dto.aviso!=='string'||dto.consistency!=='crossread_unproved'||typeof dto.consultadoEm!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(dto.consultadoEm)||!Number.isFinite(Date.parse(dto.consultadoEm)))return fail();
+    const complete=record(dto.complete),totals=record(dto.totals),data=record(dto.dados),omitted=['historico','logistica','setores','checklists'];
+    fields(complete,['cards',...omitted]);fields(totals,['cards',...omitted]);fields(data,['cards','kpis','porEtapa','porSetor']);
+    if(complete.cards!==true||omitted.some(k=>complete[k]!==false||totals[k]!==null)||data.porSetor!==null)return fail();
+    const projectIds=new Set<string>();let jsonBytes=0;
+    const cards=dense(data.cards).map(candidate=>{
+      const c=record(candidate);fields(c,['id','pedidoId','numeroOrcamento','cliente','vendedor','etapa','atualizadoEm','dadosOriginais']);
+      const raw=record(c.dadosOriginais),row=physical(raw,'producao_cards',()=>{});fields(raw,['vinculo','projeto']);
+      if(omitted.some(k=>own(raw,k))||c.id!==row.id||c.numeroOrcamento!==row.numero_orcamento||c.cliente!==row.cliente_nome||c.vendedor!==row.vendedor_nome||c.etapa!==row.status||c.atualizadoEm!==row.updated_at)return fail();
+      if(raw.vinculo==='nao_verificado'){if(c.pedidoId!==null)return fail();}else if(raw.vinculo!=='confirmado'||!uuid(c.pedidoId)||key(c.pedidoId)!==key(row.pedido_id))return fail();
+      jsonBytes+=json(row.checklist_compras,()=>{}).bytes;if(jsonBytes>8388608)return fail();
+      const projeto=projetoFisico(raw.projeto,row.id as string);if(projeto){const p=key(projeto.id);if(projectIds.has(p))return fail();projectIds.add(p);}
+      return {id:row.id as string,pedidoId:c.pedidoId as string|null,numeroOrcamento:row.numero_orcamento as string|null,cliente:row.cliente_nome as string,vendedor:row.vendedor_nome as string,etapa:row.status as string,atualizadoEm:row.updated_at as string,dadosOriginais:{...row,checklist_compras:row.checklist_compras as string|null,vinculo:raw.vinculo as 'confirmado'|'nao_verificado',projeto}};
+    });
+    unique(cards as unknown as Linha[]);if(cards.length+projectIds.size>MAX_ROWS)return fail();const out=montarConsultaQuadro(cards,dto.consultadoEm);
+    if(totals.cards!==out.totals.cards)return fail();
+    for(const name of ['kpis','porEtapa'] as const){const declared=record(data[name]),actual=out.dados[name];fields(declared,Object.keys(actual));if(Object.keys(actual).some(k=>declared[k]!==actual[k])||Object.keys(declared).some(k=>!own(actual,k)))return fail();}
+    if(utf8(JSON.stringify(out))>4000000)return fail();return out;
+  }catch{return fail();}
+}
+
+export function decodificarDetalhesCardProducao(input:unknown,cardId:string):DetalhesCardProducao {
+  const dto=record(input);fields(dto,['complete','totals','historico','setores']);const complete=record(dto.complete),totals=record(dto.totals);fields(complete,['historico','setores','checklists']);fields(totals,['historico','setores','checklists']);
+  for(const k of ['historico','setores','checklists'])if(complete[k]!==true||!Number.isSafeInteger(totals[k])||Number(totals[k])<0)return fail();
+  const historico=dense(dto.historico).map(v=>{const row=physical(v,'producao_status_log',()=>{});if(key(row.card_id)!==key(cardId))return fail();return row;});unique(historico);
+  const checks:Linha[]=[];
+  const setores=dense(dto.setores).map(v=>{const raw=record(v),row=physical(v,'setor_producao',()=>{});if(key(row.card_id)!==key(cardId))return fail();
+    const checklists=dense(raw.checklists).map(v=>{const c=physical(v,'setor_checklist',()=>{});if(key(c.setor_producao_id)!==key(row.id))return fail();checks.push(c);return c;});return {...row,checklists};});unique(setores);unique(checks);
+  if(historico.length+setores.length+checks.length>MAX_ROWS||totals.historico!==historico.length||totals.setores!==setores.length||totals.checklists!==checks.length)return fail();
+  return {complete:{historico:true,setores:true,checklists:true},totals:{historico:historico.length,setores:setores.length,checklists:checks.length},historico,setores};
+}
+
 /** Closed browser boundary: preserves only the physical readonly contract. */
 export function decodificarConsultaEspelho(input: unknown): ConsultaEspelho {
   try {
@@ -127,10 +179,10 @@ const mensagens={sessao:'Sessão alterada. Atualize a leitura.',negado:'Sem perm
 export function autoridadeEspelhoValida(a:AutoridadeEspelho) {
   return !a.loading&&!a.profileError&&!!a.userId&&a.userId===a.profileId&&!!a.approvedAt&&a.menu===true&&['admin','financeiro','vendor','mapa','marketing','visualizador'].includes(a.role??'');
 }
-export function chaveConsultaEspelho(a:AutoridadeEspelho):readonly unknown[] {
-  return [NS,a.userId,a.profileId,a.role,a.vendorId,a.approvedAt,'menu.producao_fabrica',a.menu,a.loading,a.profileError,a.generation];
+export function chaveConsultaEspelho(a:AutoridadeEspelho,visao:'completo'|'quadro-v1'='completo'):readonly unknown[] {
+  return [NS,a.userId,a.profileId,a.role,a.vendorId,a.approvedAt,'menu.producao_fabrica',a.menu,a.loading,a.profileError,...(visao==='quadro-v1'?[visao]:[]),a.generation];
 }
-export function dadosEspelhoVisiveis(data:ConsultaEspelho|undefined,a:AutoridadeEspelho,error:boolean) {return autoridadeEspelhoValida(a)&&!error?data:undefined;}
+export function dadosEspelhoVisiveis<T extends ConsultaProducaoEspelho>(data:T|undefined,a:AutoridadeEspelho,error:boolean) {return autoridadeEspelhoValida(a)&&!error?data:undefined;}
 let ultimaGeracao=0;
 export function criarCicloEspelho() {
   const initial=++ultimaGeracao,owned=new Set<number>([initial]);
@@ -138,21 +190,21 @@ export function criarCicloEspelho() {
   return cycle;
 }
 /** All cleanup paths are limited to this page lifetime, even when an old effect runs late. */
-export function consultaEspelhoRemovivel(cycle:ReturnType<typeof criarCicloEspelho>,queryKey:readonly unknown[],a:AutoridadeEspelho,failed?:string) {
+export function consultaEspelhoRemovivel(cycle:ReturnType<typeof criarCicloEspelho>,queryKey:readonly unknown[],a:AutoridadeEspelho,failed?:string,visao:'completo'|'quadro-v1'='completo') {
   if(!cycle.possui(queryKey))return false;
   const signature=JSON.stringify(queryKey);
-  return !cycle.ativo||!autoridadeEspelhoValida(a)||signature===failed||signature!==JSON.stringify(chaveConsultaEspelho(a));
+  return !cycle.ativo||!autoridadeEspelhoValida(a)||signature===failed||signature!==JSON.stringify(chaveConsultaEspelho(a,visao));
 }
 export type DepsConsultaEspelho={authority:AutoridadeEspelho;signal:AbortSignal;getCurrentAuthority:()=>AutoridadeEspelho;getCurrentToken:()=>string|null;getSession:()=>Promise<{user:{id:string};access_token:string}|null>;fetch:(url:string,init:RequestInit)=>Promise<{ok:boolean;status:number;json:()=>Promise<unknown>}>};
-export async function consultarEspelho(d:DepsConsultaEspelho):Promise<ConsultaEspelho> {
+async function consultarContratoEspelho<T>(d:DepsConsultaEspelho,url:string,decode:(input:unknown)=>T):Promise<T> {
   const signature=JSON.stringify(chaveConsultaEspelho(d.authority)),token=d.getCurrentToken();
   const check=()=>{const live=d.getCurrentAuthority();if(d.signal.aborted||!token||d.getCurrentToken()!==token||!autoridadeEspelhoValida(d.authority)||!autoridadeEspelhoValida(live)||signature!==JSON.stringify(chaveConsultaEspelho(live)))throw Error(mensagens.sessao);};
   const checkSession=(session:Awaited<ReturnType<DepsConsultaEspelho['getSession']>>)=>{check();if(!session||session.user.id!==d.authority.userId||session.access_token!==token)throw Error(mensagens.sessao);};
   try {
     check();const before=await d.getSession();checkSession(before);
-    check();const response=await d.fetch('/api/controle-producao?origem=app2',{method:'GET',headers:{Authorization:`Bearer ${token}`},cache:'no-store',signal:d.signal});check();
+    check();const response=await d.fetch(url,{method:'GET',headers:{Authorization:`Bearer ${token}`},cache:'no-store',signal:d.signal});check();
     if(!response.ok)throw Error(response.status===401?mensagens.sessao:response.status===403?mensagens.negado:mensagens.indisponivel);
-    check();const raw=await response.json();check();const dto=decodificarConsultaEspelho(raw);check();
+    check();const raw=await response.json();check();const dto=decode(raw);check();
     const after=await d.getSession();checkSession(after);return dto;
   } catch(error) {
     // A SDK rejection racing revocation must still be classified as changed authority.
@@ -161,9 +213,11 @@ export async function consultarEspelho(d:DepsConsultaEspelho):Promise<ConsultaEs
     throw Error(mensagens.indisponivel);
   }
 }
+export function consultarEspelho(d:DepsConsultaEspelho):Promise<ConsultaEspelho>{return consultarContratoEspelho(d,'/api/controle-producao?origem=app2',decodificarConsultaEspelho);}
+export function consultarQuadroEspelho(d:DepsConsultaEspelho):Promise<ConsultaQuadroEspelho>{return consultarContratoEspelho(d,'/api/controle-producao?origem=app2&visao=quadro-v1',decodificarConsultaQuadro);}
 export type FiltrosEspelho={busca:string;status:string;exclusao:'todos'|'incluidos'|'excluidos';vendedor:string};
 export function codificarFiltroEspelho(v:string|null){return JSON.stringify(v);}
-export function filtrarEspelho(cards:readonly CardEspelho[],f:FiltrosEspelho) {
+export function filtrarEspelho<T extends CardQuadroEspelho>(cards:readonly T[],f:FiltrosEspelho) {
   const search=f.busca.toLocaleLowerCase();
   return cards.filter(c=>(!search||[c.id,c.numeroOrcamento,c.cliente,c.vendedor,c.etapa].some(v=>v?.toLocaleLowerCase().includes(search)))&&(!f.status||codificarFiltroEspelho(c.etapa)===f.status)&&(!f.vendedor||codificarFiltroEspelho(c.vendedor)===f.vendedor)&&(f.exclusao==='todos'||c.dadosOriginais.excluido===(f.exclusao==='excluidos')));
 }
@@ -171,5 +225,5 @@ export function paginarEspelho<T>(rows:readonly T[],page:number) {
   const paginas=Math.max(1,Math.ceil(rows.length/25)),pagina=Math.min(paginas,Math.max(1,Number.isSafeInteger(page)?page:1));
   return {linhas:rows.slice((pagina-1)*25,pagina*25),pagina,paginas,total:rows.length};
 }
-export function chaveSelecaoEspelho(identity:string,revision:number,filters:FiltrosEspelho,page:number,cards:readonly CardEspelho[]) {return JSON.stringify([identity,revision,filters,page,cards.map(c=>c.id)]);}
-export function selecionarEspelhoPagina(cards:readonly CardEspelho[],selected:{id:string;context:string}|null,context:string) {return selected?.context===context?cards.find(c=>c.id===selected.id):undefined;}
+export function chaveSelecaoEspelho(identity:string,revision:number,filters:FiltrosEspelho,page:number,cards:readonly {id:string}[]) {return JSON.stringify([identity,revision,filters,page,cards.map(c=>c.id)]);}
+export function selecionarEspelhoPagina<T extends {id:string}>(cards:readonly T[],selected:{id:string;context:string}|null,context:string) {return selected?.context===context?cards.find(c=>c.id===selected.id):undefined;}

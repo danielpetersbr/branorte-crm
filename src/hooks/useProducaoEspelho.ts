@@ -3,13 +3,13 @@ import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {useAuth} from './useAuth';
 import {useCan} from './usePermissions';
 import {supabase} from '@/lib/supabase';
-import {autoridadeEspelhoValida,chaveConsultaEspelho,criarCicloEspelho,consultaEspelhoRemovivel,consultarEspelho,dadosEspelhoVisiveis,type AutoridadeEspelho} from '@/lib/producao-espelho-consulta';
+import {autoridadeEspelhoValida,chaveConsultaEspelho,criarCicloEspelho,consultaEspelhoRemovivel,consultarEspelho,consultarQuadroEspelho,dadosEspelhoVisiveis,type AutoridadeEspelho,type ConsultaProducaoEspelho} from '@/lib/producao-espelho-consulta';
 
-export function useProducaoEspelho() {
+export function useProducaoEspelho(visao:'completo'|'quadro-v1'='completo') {
   const {session,profile,loading,profileError}=useAuth(),can=useCan(),queryClient=useQueryClient();
   const [,changed]=useState(0),[cycle]=useState(criarCicloEspelho);
   const fields={userId:session?.user.id??null,profileId:profile?.id??null,role:profile?.role??null,vendorId:profile?.vendor_id??null,approvedAt:profile?.approved_at??null,menu:can('menu.producao_fabrica'),loading,profileError};
-  const signature=JSON.stringify(fields),surfaceToken=session?.access_token??null;
+  const signature=JSON.stringify({fields,visao}),surfaceToken=session?.access_token??null;
   const observed=useRef({signature,surfaceToken,liveToken:surfaceToken,liveUserId:fields.userId,generation:cycle.geracao});
   const current=observed.current;
   if(current.signature!==signature||current.surfaceToken!==surfaceToken) {
@@ -18,9 +18,9 @@ export function useProducaoEspelho() {
   }
   const authority:AutoridadeEspelho={...fields,loading:loading||current.liveToken!==surfaceToken||current.liveUserId!==fields.userId,generation:current.generation};
   const authorityRef=useRef(authority);authorityRef.current=authority;
-  const autorizado=autoridadeEspelhoValida(authority),queryKey=chaveConsultaEspelho(authority),identityKey=JSON.stringify(queryKey),failedIdentity=useRef<string|null>(null);
+  const autorizado=autoridadeEspelhoValida(authority),queryKey=chaveConsultaEspelho(authority,visao),identityKey=JSON.stringify(queryKey),failedIdentity=useRef<string|null>(null);
   const cleanup=(failed?:string)=>{
-    const predicate=(q:{queryKey:readonly unknown[]})=>consultaEspelhoRemovivel(cycle,q.queryKey,authorityRef.current,failed);
+    const predicate=(q:{queryKey:readonly unknown[]})=>consultaEspelhoRemovivel(cycle,q.queryKey,authorityRef.current,failed,visao);
     void queryClient.cancelQueries({predicate});queryClient.removeQueries({predicate});
   };
   useEffect(()=>{
@@ -35,8 +35,8 @@ export function useProducaoEspelho() {
     });
     return ()=>{active=false;cycle.encerrar();authorityRef.current={...authorityRef.current,loading:true};subscription.unsubscribe();cleanup();};
   },[cycle,queryClient]);
-  const query=useQuery({queryKey,enabled:autorizado&&failedIdentity.current!==identityKey,retry:false,staleTime:30000,
-    queryFn:({signal})=>consultarEspelho({authority,signal,getCurrentAuthority:()=>({...authorityRef.current,loading:authorityRef.current.loading||!cycle.ativo}),getCurrentToken:()=>observed.current.liveToken,
+  const query=useQuery<ConsultaProducaoEspelho>({queryKey,enabled:autorizado&&failedIdentity.current!==identityKey,retry:false,staleTime:30000,
+    queryFn:({signal})=>(visao==='quadro-v1'?consultarQuadroEspelho:consultarEspelho)({authority,signal,getCurrentAuthority:()=>({...authorityRef.current,loading:authorityRef.current.loading||!cycle.ativo}),getCurrentToken:()=>observed.current.liveToken,
       getSession:async()=>{const {data:{session:now},error}=await supabase.auth.getSession();if(error)throw error;return now;},fetch:(url,init)=>fetch(url,init)})});
   if(query.isError)failedIdentity.current=identityKey;
   const failed=query.isError||failedIdentity.current===identityKey;

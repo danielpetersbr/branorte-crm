@@ -113,7 +113,6 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
       if (error) throw error
       return { contacts: (data ?? []) as Contact[], total: count ?? 0, coberturaLimitada }
     },
-    placeholderData: (prev) => prev,
   })
 }
 

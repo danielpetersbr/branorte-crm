@@ -1,4 +1,4 @@
-import {autoridadeEspelhoValida,chaveConsultaEspelho,type AutoridadeEspelho} from './producao-espelho-consulta.js';
+import {autoridadeEspelhoValida,chaveConsultaEspelho,decodificarDetalhesCardProducao,type AutoridadeEspelho,type DetalhesCardProducao} from './producao-espelho-consulta.js';
 
 export type ArquivoFichaEspelho={id:string;tipo:'anexo'|'video'|'foto'|'comentario';nome:string;mime:string|null;tamanho:number|null;categoria:string|null;criadoEm:string|null};
 export type ProjetoFichaEspelho={id:string;card_id:string;responsavel_projeto_id:string|null;responsavel_nome:string|null;status_projeto:string|null;andamento:number|null;previsao_termino:string|null;prazo_prometido:string|null;prazo_interno:string|null;motivo_bloqueio:string|null;bom_aprovada:boolean|null;data_inicio:string|null;data_conclusao:string|null;standby_inicio:string|null;dias_pausados:number|null};
@@ -6,7 +6,7 @@ export type LogisticaFichaEspelho={card_id:string;peso_kg:string|null;qtd_volume
 export type BomFichaEspelho={id:string;card_id:string;item:string;categoria:string|null;quantidade:string;unidade:string|null;item_critico:boolean|null;observacao:string|null;status_item:string|null;created_at:string|null;updated_at:string|null};
 export type ChecklistProjetoFichaEspelho={id:string;card_id:string;titulo:string;descricao:string|null;ordem:number|null;status:string|null;responsavel_id:string|null;responsavel_nome:string|null;created_at:string|null;updated_at:string|null;concluido_por:string|null;concluido_em:string|null};
 export type ComentarioFichaEspelho={id:string;conteudo:string;autor_nome:string|null;created_at:string|null;updated_at:string|null;anexos:ArquivoFichaEspelho[]};
-export type FichaEspelho={cardId:string;consultadoEm:string;parcial:false;aviso:string;complete:{projeto:true;logistica:true;bom:true;projetoChecklist:true;comentarios:true;anexos:true};totals:{projeto:number;logistica:number;bom:number;projetoChecklist:number;comentarios:number;anexos:number};documento:{disponivel:boolean};projeto:ProjetoFichaEspelho|null;logistica:LogisticaFichaEspelho|null;bom:BomFichaEspelho[];projetoChecklist:ChecklistProjetoFichaEspelho[];comentarios:ComentarioFichaEspelho[];anexos:ArquivoFichaEspelho[]};
+export type FichaEspelho={producao?:DetalhesCardProducao;cardId:string;consultadoEm:string;parcial:false;aviso:string;complete:{projeto:true;logistica:true;bom:true;projetoChecklist:true;comentarios:true;anexos:true};totals:{projeto:number;logistica:number;bom:number;projetoChecklist:number;comentarios:number;anexos:number};documento:{disponivel:boolean};projeto:ProjetoFichaEspelho|null;logistica:LogisticaFichaEspelho|null;bom:BomFichaEspelho[];projetoChecklist:ChecklistProjetoFichaEspelho[];comentarios:ComentarioFichaEspelho[];anexos:ArquivoFichaEspelho[]};
 export const uuidFicha=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const own=(v:object,key:string)=>Object.prototype.hasOwnProperty.call(v,key);
 const fail=():never=>{throw Error('Ficha de produção indisponível. Tente novamente.');};
@@ -47,17 +47,18 @@ export function decodificarFichaEspelho(input:unknown,cardId:string):FichaEspelh
   const counts={projeto:projeto?1:0,logistica:logistica?1:0,bom:bom.length,projetoChecklist:projetoChecklist.length,comentarios:comentarios.length,anexos:allFiles.length};
   if(Object.values(counts).reduce((n,v)=>n+v,0)>100000||keys.some(key=>totals[key]!==counts[key]))return fail();
   const out: FichaEspelho={cardId:data.cardId,consultadoEm:data.consultadoEm,parcial:false,aviso:data.aviso,complete:{projeto:true,logistica:true,bom:true,projetoChecklist:true,comentarios:true,anexos:true},totals:counts,documento:{disponivel:documento.disponivel as boolean},projeto,logistica,bom,projetoChecklist,comentarios,anexos};
+  if(own(data,'producao')){out.producao=decodificarDetalhesCardProducao(data.producao,cardId);if(Object.values(counts).reduce((n,v)=>n+v,0)+out.producao.totals.historico+out.producao.totals.setores+out.producao.totals.checklists>100000)return fail();}
   if(new TextEncoder().encode(JSON.stringify(out)).byteLength>4000000)return fail();return out;
 }
 
-export type DepsConsultaFicha={cardId:string;authority:AutoridadeEspelho;signal:AbortSignal;getCurrentAuthority:()=>AutoridadeEspelho;getCurrentToken:()=>string|null;getSession:()=>Promise<{user:{id:string};access_token:string}|null>;fetch:(url:string,init:RequestInit)=>Promise<{ok:boolean;status:number;json:()=>Promise<unknown>}>};
+export type DepsConsultaFicha={cardId:string;producao?:boolean;authority:AutoridadeEspelho;signal:AbortSignal;getCurrentAuthority:()=>AutoridadeEspelho;getCurrentToken:()=>string|null;getSession:()=>Promise<{user:{id:string};access_token:string}|null>;fetch:(url:string,init:RequestInit)=>Promise<{ok:boolean;status:number;json:()=>Promise<unknown>}>};
 export async function consultarFichaEspelho(d:DepsConsultaFicha):Promise<FichaEspelho>{
   const signature=JSON.stringify(chaveConsultaEspelho(d.authority)),token=d.getCurrentToken();
   const check=()=>{const current=d.getCurrentAuthority();if(d.signal.aborted||!uuidFicha(d.cardId)||!token||d.getCurrentToken()!==token||!autoridadeEspelhoValida(d.authority)||!autoridadeEspelhoValida(current)||signature!==JSON.stringify(chaveConsultaEspelho(current)))throw Error('Sessão alterada. Abra o card novamente.');};
   const sessionCheck=(session:Awaited<ReturnType<DepsConsultaFicha['getSession']>>)=>{check();if(!session||session.user.id!==d.authority.userId||session.access_token!==token)throw Error('Sessão alterada. Abra o card novamente.');};
   try {
     check();sessionCheck(await d.getSession());
-    const response=await d.fetch('/api/controle-producao-ficha?cardId='+encodeURIComponent(d.cardId),{method:'GET',headers:{Authorization:'Bearer '+token},cache:'no-store',signal:d.signal});check();
-    if(!response.ok)return fail();const raw=await response.json();check();const out=decodificarFichaEspelho(raw,d.cardId);check();sessionCheck(await d.getSession());return out;
+    const response=await d.fetch('/api/controle-producao-ficha?cardId='+encodeURIComponent(d.cardId)+(d.producao?'&detalhes=producao':''),{method:'GET',headers:{Authorization:'Bearer '+token},cache:'no-store',signal:d.signal});check();
+    if(!response.ok)return fail();const raw=await response.json();check();const out=decodificarFichaEspelho(raw,d.cardId);if(d.producao&&!out.producao)return fail();check();sessionCheck(await d.getSession());return out;
   } catch(error){check();if(error instanceof Error&&error.message==='Ficha de produção indisponível. Tente novamente.')throw error;return fail();}
 }

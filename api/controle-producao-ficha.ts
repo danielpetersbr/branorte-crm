@@ -9,7 +9,8 @@ export function criarHandlerProducaoFicha(deps:{crm?:()=>SupabaseClient;lerFicha
     res.setHeader('Cache-Control','no-store');res.setHeader('Vary','Authorization');
     if(req.method!=='GET'){res.setHeader('Allow','GET');return res.status(405).json({error:'method_not_allowed'});}
     const query=req.query??{};
-    if(!Object.prototype.hasOwnProperty.call(query,'cardId')||!uuidFicha(query.cardId)||Object.keys(query).length!==1||req.body!==null&&req.body!==undefined)return res.status(400).json({error:'parametros_invalidos'});
+    const producao=Object.prototype.hasOwnProperty.call(query,'detalhes')&&query.detalhes==='producao';
+    if(!Object.prototype.hasOwnProperty.call(query,'cardId')||!uuidFicha(query.cardId)||Object.keys(query).length!==(producao?2:1)||Object.prototype.hasOwnProperty.call(query,'detalhes')&&!producao||req.body!==null&&req.body!==undefined)return res.status(400).json({error:'parametros_invalidos'});
     const header=req.headers.authorization,token=typeof header==='string'?/^Bearer[ \t]+([^\s]+)$/i.exec(header)?.[1]:undefined;
     if(!token)return res.status(401).json({error:'no_auth'});
     const duration=deps.deadlineMs??45000,controller=new AbortController();
@@ -22,9 +23,9 @@ export function criarHandlerProducaoFicha(deps:{crm?:()=>SupabaseClient;lerFicha
         check();const crm=deps.crm?.()??criarCrmEspelho({SUPABASE_URL:process.env.SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY:process.env.SUPABASE_SERVICE_ROLE_KEY});
         const access=await obterAcessoEspelho(crm,token);check();if(!access.ok)return {status:access.status,body:{error:access.error}};
         const scope=await resolverEscopoEspelho(crm,access.snapshot);check();
-        const raw=await(deps.lerFicha??lerFichaEspelho)(scope,query.cardId as string,{signal:controller.signal});check();
+        const raw=await(deps.lerFicha??lerFichaEspelho)(scope,query.cardId as string,{signal:controller.signal,producao});check();
         const current=await revalidarAcessoEspelho(crm,token,access.snapshot,scope);check();if(!current.ok)return {status:current.status,body:{error:current.error}};
-        const data=decodificarFichaEspelho(raw,query.cardId as string);check();return {status:200,body:data};
+        const data=decodificarFichaEspelho(raw,query.cardId as string);if(producao&&!data.producao)throw Error('producao_indisponivel');check();return {status:200,body:data};
       };
       const result=await Promise.race([work(),stopped]);return res.status(result.status).json(result.body);
     }catch(error){return res.status(error instanceof ErroAcessoEspelho?error.status:503).json({error:error instanceof ErroAcessoEspelho?error.message:'producao_indisponivel'});}

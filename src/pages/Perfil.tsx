@@ -68,26 +68,34 @@ export function Perfil() {
       return
     }
     setSavingPwd(true)
-    // Re-autenticar com senha antiga primeiro (verifica que é o dono da conta)
-    const { error: signErr } = await supabase.auth.signInWithPassword({
-      email: profile.email,
-      password: oldPwd,
-    })
-    if (signErr) {
+    try {
+      // Re-autenticar com senha antiga primeiro (verifica que é o dono da conta)
+      const { error: signErr } = await supabase.auth.signInWithPassword({
+        email: profile.email,
+        password: oldPwd,
+      })
+      if (signErr) {
+        const credencialInvalida = signErr.code === 'invalid_credentials'
+          || (!signErr.code && signErr.status === 400 && /invalid login credentials/i.test(signErr.message))
+        setPwdMsg({ ok: false, text: credencialInvalida
+          ? 'Senha atual incorreta'
+          : 'Não foi possível confirmar a senha atual. Verifique sua conexão e tente novamente.' })
+        return
+      }
+      const { error: updErr } = await supabase.auth.updateUser({ password: newPwd })
+      if (updErr) {
+        setPwdMsg({ ok: false, text: 'Erro ao trocar senha: ' + updErr.message })
+        return
+      }
+      setOldPwd('')
+      setNewPwd('')
+      setConfirmPwd('')
+      setPwdMsg({ ok: true, text: 'Senha trocada com sucesso!' })
+    } catch {
+      setPwdMsg({ ok: false, text: 'Não foi possível trocar a senha. Verifique sua conexão e tente novamente.' })
+    } finally {
       setSavingPwd(false)
-      setPwdMsg({ ok: false, text: 'Senha atual incorreta' })
-      return
     }
-    const { error: updErr } = await supabase.auth.updateUser({ password: newPwd })
-    setSavingPwd(false)
-    if (updErr) {
-      setPwdMsg({ ok: false, text: 'Erro ao trocar senha: ' + updErr.message })
-      return
-    }
-    setOldPwd('')
-    setNewPwd('')
-    setConfirmPwd('')
-    setPwdMsg({ ok: true, text: 'Senha trocada com sucesso!' })
   }
 
   return (

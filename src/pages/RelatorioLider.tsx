@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -348,11 +348,45 @@ export function RelatorioLider() {
   const erroLeitura = consultas.find(q => q.error)?.error
   const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
   const marcar = useMarcarAndamento()
+  type DadosMarcacao = Parameters<typeof marcar.mutate>[0]
+  type ContextoMarcacao = { time: TimeSlug | null; ultima: DadosMarcacao | null }
+  const contextoMarcacao = useRef<ContextoMarcacao>({ time: timeSlug, ultima: null })
+  const marcacaoEmCurso = useRef(false)
+  if (contextoMarcacao.current.time !== timeSlug) {
+    // A new identity also distinguishes leaving and returning to the same team.
+    contextoMarcacao.current = { time: timeSlug, ultima: null }
+  }
+  const [falhaMarcacao, setFalhaMarcacao] = useState<{
+    contexto: ContextoMarcacao; dados: DadosMarcacao; erro: Error
+  } | null>(null)
+  useEffect(() => { setFalhaMarcacao(null) }, [timeSlug])
+  const falhaAtual = falhaMarcacao?.contexto === contextoMarcacao.current ? falhaMarcacao : null
+
+  const gravarMarcacao = (dados: DadosMarcacao) => {
+    const contexto = contextoMarcacao.current
+    if (!contexto.time || dados.time_slug !== contexto.time || marcacaoEmCurso.current) return
+    const tentativa = { ...dados }
+    marcacaoEmCurso.current = true
+    contexto.ultima = tentativa
+    setFalhaMarcacao(null)
+    marcar.mutate(tentativa, {
+      onError: erro => {
+        if (contextoMarcacao.current === contexto && contexto.ultima === tentativa) {
+          setFalhaMarcacao({ contexto, dados: tentativa, erro })
+        }
+      },
+      onSettled: () => { marcacaoEmCurso.current = false },
+    })
+  }
+  const repetirMarcacao = () => {
+    if (falhaAtual && falhaAtual.contexto === contextoMarcacao.current &&
+      contextoMarcacao.current.ultima === falhaAtual.dados) gravarMarcacao(falhaAtual.dados)
+  }
 
   const marcarLinha = (
     tipo: 'orcamento' | 'quente', chave: string, cliente: string,
     vendedor: string, status: Andamento | null,
-  ) => marcar.mutate({
+  ) => gravarMarcacao({
     time_slug: time?.slug ?? '', tipo, chave, cliente,
     vendedor_nome: vendedor, status, anotado_por: euSou || '(sem nome)',
   })
@@ -407,7 +441,7 @@ export function RelatorioLider() {
   return (
     <div className="w-full min-w-0 px-3 sm:px-5 py-4 sm:py-6">
       <QueryNotice error={erroLeitura} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todos os dados do time. O último retrato permanece visível." onRetry={atualizar} />
-      <QueryNotice error={marcar.error} loading={marcar.isPending} message="Não foi possível salvar a marcação." onRetry={() => { if (marcar.variables) marcar.mutate(marcar.variables) }} />
+      <QueryNotice error={falhaAtual?.erro} loading={marcar.isPending} message={`Não foi possível salvar a marcação de ${falhaAtual?.dados.cliente ?? 'cliente'}.`} onRetry={repetirMarcacao} />
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">

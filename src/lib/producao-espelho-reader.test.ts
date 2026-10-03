@@ -51,6 +51,22 @@ const project=(n=1,cardId=id(1),extra:Record<string,unknown>={})=>({
 });
 const projectFixture=():Tables=>({...fixture(),projeto_detalhes:[project()],projetistas:[{id:id(7001),nome:'Betuel'}]});
 
+test('opt-in board reads cards and linked project names without loading any detail collection',async()=>{
+  const s=source(projectFixture()),out=await read(projectFixture(),global,{fonte:()=>s.fonte,visao:'quadro-v1'});
+  assert.equal(out.parcial,true);assert.deepEqual(out.complete,{cards:true,historico:false,logistica:false,setores:false,checklists:false});
+  assert.deepEqual(out.totals,{cards:1,historico:null,logistica:null,setores:null,checklists:null});assert.equal(out.dados.porSetor,null);
+  assert.deepEqual(s.calls.map(c=>c.table),['producao_cards','projeto_detalhes','projetistas']);
+  const raw=out.dados.cards[0].dadosOriginais;assert.equal(raw.projeto?.responsavel_nome,'Betuel');
+  for(const name of ['historico','logistica','setores'])assert.equal(Object.prototype.hasOwnProperty.call(raw,name),false);
+});
+
+test('light board filters by canonical authorized parents before reading project details',async()=>{
+  const tables=projectFixture();tables.producao_cards.push(card(2));tables.projeto_detalhes.push(project(2,id(2)));
+  const s=source(tables),out=await read(tables,restricted,{fonte:()=>s.fonte,visao:'quadro-v1',pais:async()=>({complete:true,rows:[{id:id(2001),vendedor:'ANA',vendedor_2:null},{id:id(2002),vendedor:'Ana OTHER',vendedor_2:null}]})});
+  assert.deepEqual(out.dados.cards.map(c=>c.id),[id(1)]);assert.equal(out.dados.cards[0].pedidoId,id(2001));
+  assert.deepEqual(s.calls.find(c=>c.table==='projeto_detalhes')?.ids,[id(1)]);
+});
+
 test('project lookup reads only cards already authorized and names only referenced professionals',async()=>{
   const tables=projectFixture();tables.producao_cards.push(card(2));
   tables.projeto_detalhes.push(project(2,id(2),{responsavel_projeto_id:id(7002)}));

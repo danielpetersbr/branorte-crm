@@ -1,7 +1,7 @@
 import {ErroAcessoEspelho,pedidoNoEscopoEspelho,type EscopoEspelho} from './producao-espelho-acesso.js';
 import {criarFonteEspelhoPrivada,validarEscopoEspelho,type FonteEspelho} from './producao-espelho-reader.js';
 import {decodificarFichaEspelho,uuidFicha,type FichaEspelho,type ArquivoFichaEspelho} from '../../src/lib/producao-ficha-consulta.js';
-export type DepsFicha={fonte?:()=>FonteEspelho|Promise<FonteEspelho>;fontePais?:()=>FonteEspelho|Promise<FonteEspelho>;signal?:AbortSignal;agora?:()=>number;instante?:()=>string;deadlineMs?:number};
+export type DepsFicha={producao?:boolean;fonte?:()=>FonteEspelho|Promise<FonteEspelho>;fontePais?:()=>FonteEspelho|Promise<FonteEspelho>;signal?:AbortSignal;agora?:()=>number;instante?:()=>string;deadlineMs?:number};
 export type CardAutorizadoFicha={id:string;pedido_id:string;doc_tratado_path:string|null};
 type Row=Record<string,unknown>;
 type Field=[string,(value:unknown)=>boolean,boolean?];
@@ -25,6 +25,9 @@ const schemas:Record<string,Field[]>={
   comentarios:[['id',uuidFicha],['card_id',uuidFicha],['autor_id',uuidFicha,true],['conteudo',str],...texts('created_at,updated_at')],
   card_attachments:[['id',uuidFicha],['card_id',uuidFicha],['file_name',str],['file_path',str],...texts('file_type'),['file_size',v=>int(v)&&Number(v)>=0,true],['created_at',str],['categoria',str]],
   comentarios_anexos:[['id',uuidFicha],['comentario_id',uuidFicha],['file_name',str],['file_path',str],...texts('file_type,created_at'),['file_size',v=>int(v)&&Number(v)>=0,true]],
+  producao_status_log:[['id',uuidFicha],['card_id',uuidFicha],['new_status',str],['changed_at',str],...texts('old_status,cliente_nome,numero_orcamento'),['changed_by',uuidFicha,true]],
+  setor_producao:[['id',uuidFicha],['card_id',uuidFicha],['setor',str],['responsavel_id',uuidFicha,true],...texts('previsao_termino,status,motivo_bloqueio,iniciado_em,concluido_em,created_at,updated_at'),['andamento',int,true]],
+  setor_checklist:[['id',uuidFicha],['setor_producao_id',uuidFicha],['titulo',str],...texts('descricao,concluido_em,created_at'),['ordem',int,true],['concluido',bool,true],['concluido_por',uuidFicha,true]],
 };
 type Context={signal:AbortSignal;check:()=>void;read:(source:FonteEspelho,table:string,field:string,ids:string[])=>Promise<Row[]>};
 async function bounded<T>(deps:DepsFicha,work:(context:Context)=>Promise<T>):Promise<T>{
@@ -87,8 +90,11 @@ export async function autorizarCardFicha(scope:EscopoEspelho,cardId:string,deps:
 export async function lerFichaEspelho(scope:EscopoEspelho,cardId:string,deps:DepsFicha={}):Promise<FichaEspelho>{
   return bounded(deps,async ctx=>{
     const {fonte,card}=await authorize(scope,cardId,deps,ctx);ctx.check();
-    const [projects,logistics,bom,checks,comments,attachments]=await Promise.all([
+    const [projects,logistics,bom,checks,comments,attachments,producao]=await Promise.all([
       ctx.read(fonte,'projeto_detalhes','card_id',[card.id]),ctx.read(fonte,'producao_logistica','card_id',[card.id]),ctx.read(fonte,'bom_itens','card_id',[card.id]),ctx.read(fonte,'projeto_checklist','card_id',[card.id]),ctx.read(fonte,'comentarios','card_id',[card.id]),ctx.read(fonte,'card_attachments','card_id',[card.id]),
+      (async()=>{if(!deps.producao)return undefined;const [historico,sectors]=await Promise.all([ctx.read(fonte,'producao_status_log','card_id',[card.id]),ctx.read(fonte,'setor_producao','card_id',[card.id])]);ctx.check();
+        const checklists=await ctx.read(fonte,'setor_checklist','setor_producao_id',sectors.map(s=>key(s.id)));ctx.check();const grouped=new Map<string,Row[]>();for(const row of checklists){const id=key(row.setor_producao_id),list=grouped.get(id)??[];list.push(row);grouped.set(id,list);}
+        return {complete:{historico:true,setores:true,checklists:true},totals:{historico:historico.length,setores:sectors.length,checklists:checklists.length},historico,setores:sectors.map(s=>({...s,checklists:grouped.get(key(s.id))??[]}))};})(),
     ]);ctx.check();if(projects.length>1||logistics.length>1)return fail();
     const professionalIds=projects.flatMap(p=>p.responsavel_projeto_id===null?[]:[key(p.responsavel_projeto_id)]),profileIds=[...comments.flatMap(c=>c.autor_id===null?[]:[key(c.autor_id)]),...checks.flatMap(c=>c.responsavel_id===null?[]:[key(c.responsavel_id)])];
     const [professionals,profiles,commentFiles]=await Promise.all([ctx.read(fonte,'projetistas','id',professionalIds),ctx.read(fonte,'profiles','id',profileIds),ctx.read(fonte,'comentarios_anexos','comentario_id',comments.map(c=>key(c.id)))]);ctx.check();
@@ -97,6 +103,6 @@ export async function lerFichaEspelho(scope:EscopoEspelho,cardId:string,deps:Dep
     const projeto=projects.length?{...projects[0],responsavel_nome:projects[0].responsavel_projeto_id===null?null:professionalNames.get(key(projects[0].responsavel_projeto_id))}:null;
     const comentarioFiles=new Map<string,ArquivoFichaEspelho[]>();for(const row of commentFiles){ctx.check();const id=key(row.comentario_id),list=comentarioFiles.get(id)??[];list.push(file(row,true));comentarioFiles.set(id,list);}
     const out={cardId:card.id,consultadoEm:(deps.instante??(()=>new Date().toISOString()))(),parcial:false,aviso:'Leituras independentes; consistência entre coleções não comprovada.',complete:{projeto:true,logistica:true,bom:true,projetoChecklist:true,comentarios:true,anexos:true},totals:{projeto:projects.length,logistica:logistics.length,bom:bom.length,projetoChecklist:checks.length,comentarios:comments.length,anexos:attachments.length+commentFiles.length},documento:{disponivel:typeof card.doc_tratado_path==='string'&&/\.docx$/i.test(card.doc_tratado_path)},projeto,logistica:logistics[0]??null,bom,projetoChecklist:checks.map(c=>({...c,responsavel_nome:c.responsavel_id===null?null:names.get(key(c.responsavel_id))??null})),comentarios:comments.map(c=>({id:c.id,conteudo:c.conteudo,autor_nome:c.autor_id===null?null:names.get(key(c.autor_id))??null,created_at:c.created_at,updated_at:c.updated_at,anexos:comentarioFiles.get(key(c.id))??[]})),anexos:attachments.map(a=>file(a))};
-    ctx.check();const result=decodificarFichaEspelho(out,card.id);ctx.check();return result;
+    ctx.check();const result=decodificarFichaEspelho({...out,...(producao?{producao}:{})},card.id);ctx.check();return result;
   });
 }

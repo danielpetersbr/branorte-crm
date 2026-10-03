@@ -36,7 +36,7 @@ export function useProducaoFichaEspelho(cardId:string|null,parentIdentity:string
     return()=>{active.current=false;observed.current.generation++;authorityRef.current={...authorityRef.current,generation:observed.current.generation,loading:true};subscription.unsubscribe();cleanup();};
   },[instance,queryClient]);
   const query=useQuery({queryKey,enabled:autorizado,retry:false,staleTime:0,
-    queryFn:({signal})=>consultarFichaEspelho({cardId:cardId!,authority,signal,getCurrentAuthority,getCurrentToken:()=>observed.current.liveToken,getSession,fetch:(url,init)=>fetch(url,init)})});
+    queryFn:({signal})=>consultarFichaEspelho({cardId:cardId!,producao:true,authority,signal,getCurrentAuthority,getCurrentToken:()=>observed.current.liveToken,getSession,fetch:(url,init)=>fetch(url,init)})});
   useEffect(()=>{cleanup();},[identityKey,autorizado,queryClient]);
   const atualizar=()=>{if(!active.current||!autorizado)return;observed.current.generation++;authorityRef.current={...authorityRef.current,generation:observed.current.generation};changed(n=>n+1);};
   const recursoContexto=()=>({cardId,authority,getCurrentAuthority,getCurrentToken:()=>observed.current.liveToken,getSession});

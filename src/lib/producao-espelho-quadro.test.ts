@@ -47,3 +47,24 @@ test('grouping retains unknown physical stages and puts every included card in e
   assert.equal(groups.find(g=>g.status==='__proto__')?.cards[0].cliente,'Cliente 3');
   assert.equal(groups.find(g=>g.status==='PROJETOS_PADROES')?.label,'Projetos Padrões');
 });
+
+test('visual seller filter includes case, whitespace and equivalent Unicode variants without changing source names',()=>{
+  const cards=[card(1,{vendedor_nome:'Alvaro'}),card(2,{vendedor_nome:' ALVARO '}),card(3,{vendedor_nome:'ALVARO OUTRO'}),card(4,{vendedor_nome:'JOSÉ'}),card(5,{vendedor_nome:'Jose\u0301'})];
+  assert.deepEqual(consultarQuadro(cards,{...filtrosIniciaisQuadro,vendedor:codificarFiltroEspelho('Alvaro')}).map(c=>c.cliente),['Cliente 1','Cliente 2']);
+  assert.deepEqual(consultarQuadro(cards,{...filtrosIniciaisQuadro,vendedor:codificarFiltroEspelho('JOSÉ')}).map(c=>c.cliente),['Cliente 4','Cliente 5']);
+  assert.deepEqual(cards.map(c=>c.vendedor),['Alvaro',' ALVARO ','ALVARO OUTRO','JOSÉ','Jose\u0301']);
+  assert.equal(consultarQuadro(cards,{...filtrosIniciaisQuadro,vendedor:'invalid'}).length,0);
+});
+
+test('visual seller filter preserves SQL null versus empty names',()=>{
+  const cards=[card(1,{vendedor_nome:null}),card(2,{vendedor_nome:''}),card(3,{vendedor_nome:' '})];
+  assert.deepEqual(consultarQuadro(cards,{...filtrosIniciaisQuadro,vendedor:codificarFiltroEspelho(null)}).map(c=>c.cliente),['Cliente 1']);
+  assert.deepEqual(consultarQuadro(cards,{...filtrosIniciaisQuadro,vendedor:codificarFiltroEspelho('')}).map(c=>c.cliente),['Cliente 2','Cliente 3']);
+});
+
+test('sorting reads each physical creation instant once rather than during every comparison',()=>{
+  let reads=0;const cards=Array.from({length:40},(_,i)=>card(i+1));
+  cards.forEach((row,i)=>Object.defineProperty(row.dadosOriginais,'created_at',{get(){reads++;return `2026-09-${String(28-i%28).padStart(2,'0')}T12:00:00Z`;}}));
+  const result=consultarQuadro(cards,filtrosIniciaisQuadro);
+  assert.equal(result.length,40);assert.equal(reads,40);assert.equal(result[0].cliente,'Cliente 28');
+});

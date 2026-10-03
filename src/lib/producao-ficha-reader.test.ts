@@ -34,6 +34,22 @@ test('selected ficha preserves physical project, BOM, comments, logistics and sa
   assert.ok(calls.every(c=>c.ids.length>0));assert.ok(calls.filter(c=>!['profiles','projetistas','comentarios_anexos','producao_cards'].includes(c.table)).every(c=>c.field==='card_id'&&c.ids.length===1&&c.ids[0]===id(1)));
   assert.equal(calls.find(c=>c.table==='profiles')?.columns,'id,full_name');assert.match(calls.find(c=>c.table==='bom_itens')!.columns,/quantidade:quantidade::text/);
 });
+
+test('opt-in ficha loads complete production history and sector checklists only for the authorized selected card',async()=>{
+  const tables=fixture();tables.producao_status_log=[{id:id(30),card_id:id(1),new_status:'SOLDA',changed_at:stamp,old_status:'PROJETO_CONCLUIDO',cliente_nome:null,numero_orcamento:null,changed_by:null}];
+  tables.setor_producao=[{id:id(31),card_id:id(1),setor:'solda',responsavel_id:null,previsao_termino:null,status:'em_andamento',motivo_bloqueio:null,iniciado_em:null,concluido_em:null,created_at:null,updated_at:null,andamento:40}];
+  tables.setor_checklist=[{id:id(32),setor_producao_id:id(31),titulo:'Conferir solda',descricao:null,concluido_em:null,created_at:null,ordem:1,concluido:false,concluido_por:null}];
+  const {out,calls}=await read(tables,{producao:true});
+  assert.deepEqual(out.producao?.totals,{historico:1,setores:1,checklists:1});assert.equal(out.producao?.setores[0].andamento,40);assert.equal(out.producao?.setores[0].checklists[0].titulo,'Conferir solda');
+  assert.deepEqual(calls.find(c=>c.table==='setor_checklist')?.ids,[id(31)]);assert.deepEqual(calls.find(c=>c.table==='producao_status_log')?.ids,[id(1)]);
+  tables.setor_checklist[0].setor_producao_id=id(99);const leaking=fonte(tables,(r,c)=>c.table==='setor_checklist'?{...r,data:tables.setor_checklist,count:1}:r);
+  await assert.rejects(lerFichaEspelho(scope,id(1),{fonte:()=>leaking.client,producao:true}));
+});
+
+test('production detail completeness and counts must be own fields, never inherited declarations',async()=>{
+  const {out}=await read(fixture(),{producao:true});assert.ok(out.producao);
+  for(const field of ['complete','totals'] as const){const data=structuredClone(out);data.producao![field]=Object.create(data.producao![field]);assert.throws(()=>decodificarFichaEspelho(data,id(1)));}
+});
 test('restricted ficha authorizes only exact canonical parent vendor slot before any extra collection',async()=>{
   const s=fonte(fixture()),parents=fonte({pedidos_venda:[{id:id(2),vendedor:'OTHER',vendedor_2:'ANA'}]});
   const out=await lerFichaEspelho(restricted,id(1),{fonte:()=>s.client,fontePais:()=>parents.client,instante:()=>stamp});assert.equal(out.cardId,id(1));assert.deepEqual(parents.calls[0].ids,[id(2)]);

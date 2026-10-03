@@ -26,6 +26,14 @@ test('default board reaches every card rather than the first catalog page',()=>{
   for(const n of [1,25,26,50,51])assert.ok(html.includes(`Cliente do card ${n}<`),`card ${n} missing from board`);
   assert.match(html,/Equipamento teste/);assert.match(html.replace(/<[^>]+>/g,''),/Entrega: 20\/10/);
 });
+
+test('seller dropdown groups display variants while the printed card retains its physical seller name',()=>{
+  const cards=[card(1),card(2),card(3)];cards[0].vendedor='Alvaro';cards[1].vendedor=' ALVARO ';cards[2].vendedor='ALVARO OUTRO';
+  const html=render(cards),select=html.match(/<select aria-label="Vendedor"[\s\S]*?<\/select>/)?.[0];
+  assert.ok(select);assert.equal((select.match(/<option/g)??[]).length,3);
+  assert.match(select,/>ALVARO<\/option>/);assert.match(select,/>ALVARO OUTRO<\/option>/);
+  assert.match(html,/<span class="pq-vendedor">Alvaro<\/span>/);assert.match(html,/<span class="pq-vendedor"> ALVARO <\/span>/);
+});
 test('board assigns included cards exactly once to their physical stage and retains unknown states',()=>{
   const html=render([card(1,'SOLDA'),card(2,'CANCELADO'),card(3,'__proto__'),card(4,'constructor')]);
   const sections=[...html.matchAll(/<section\b[^>]*data-etapa="([^"]*)"[^>]*>([\s\S]*?)<\/section>/g)];

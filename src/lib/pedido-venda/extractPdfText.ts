@@ -12,29 +12,42 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
  */
 export async function extractPdfLines(file: File): Promise<string[]> {
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const allLines: string[] = [];
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  let readingFailed = false;
+  try {
+    const pdf = await loadingTask.promise;
+    const allLines: string[] = [];
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    
-    // Group text items by Y position to reconstruct lines
-    const itemsByY = new Map<number, string[]>();
-    for (const item of content.items) {
-      if (!("str" in item)) continue;
-      const y = Math.round((item as any).transform[5]);
-      if (!itemsByY.has(y)) itemsByY.set(y, []);
-      itemsByY.get(y)!.push((item as any).str);
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+
+      // Group text items by Y position to reconstruct lines.
+      const itemsByY = new Map<number, string[]>();
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        const y = Math.round(item.transform[5]);
+        if (!itemsByY.has(y)) itemsByY.set(y, []);
+        itemsByY.get(y)!.push(item.str);
+      }
+
+      // Sort by Y (descending = top to bottom in PDF coords).
+      const sortedYs = Array.from(itemsByY.keys()).sort((a, b) => b - a);
+      for (const y of sortedYs) {
+        const line = itemsByY.get(y)!.join(" ").replace(/\s+/g, " ").trim();
+        if (line) allLines.push(line);
+      }
     }
-
-    // Sort by Y (descending = top to bottom in PDF coords)
-    const sortedYs = Array.from(itemsByY.keys()).sort((a, b) => b - a);
-    for (const y of sortedYs) {
-      const line = itemsByY.get(y)!.join(" ").replace(/\s+/g, " ").trim();
-      if (line) allLines.push(line);
+    return allLines;
+  } catch (error) {
+    readingFailed = true;
+    throw error;
+  } finally {
+    // The loading task also owns the worker when loading itself fails.
+    try {
+      await loadingTask.destroy();
+    } catch (cleanupError) {
+      if (!readingFailed) throw cleanupError;
     }
   }
-
-  return allLines;
 }

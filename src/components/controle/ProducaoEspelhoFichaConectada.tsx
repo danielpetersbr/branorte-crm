@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Download,Eye,FileText,Loader2,Play} from 'lucide-react';
 import {useProducaoFichaEspelho} from '../../hooks/useProducaoFichaEspelho';
-import type {CardEspelho} from '../../lib/producao-espelho-consulta';
+import type {CardEspelho,CardQuadroEspelho} from '../../lib/producao-espelho-consulta';
 import type {ArquivoFichaEspelho} from '../../lib/producao-ficha-consulta';
 import {consultarRecursoFicha,validarSessaoRecursoFicha,type ArquivoCarregadoFicha} from '../../lib/producao-ficha-recurso';
 import {ProducaoEspelhoFicha,type RecursoProducaoFicha} from './ProducaoEspelhoFicha';
@@ -23,14 +23,15 @@ function Arquivo({arquivo,carregar,validar}:{arquivo:ArquivoFichaEspelho;carrega
   </article>;
 }
 function Arquivos({arquivos,carregar,validar,vazio}:{arquivos:readonly ArquivoFichaEspelho[];carregar:CarregarRecursoFicha;validar:()=>Promise<void>;vazio:string}){return arquivos.length?<div className="pf-arquivos">{arquivos.map(file=><Arquivo key={file.id} arquivo={file} carregar={carregar} validar={validar}/>)}</div>:<p className="pf-ausente">{vazio}</p>;}
-export function ProducaoEspelhoFichaConectada({card,close,context,autorizado}:{card:CardEspelho;close:()=>void;context:string;autorizado:boolean}){
+export function ProducaoEspelhoFichaConectada({card,close,context,autorizado}:{card:CardQuadroEspelho;close:()=>void;context:string;autorizado:boolean}){
   const query=useProducaoFichaEspelho(card.id,context,autorizado),[gerando,setGerando]=useState(''),[erroGeracao,setErroGeracao]=useState(false);
+  const loadedCard:CardEspelho|undefined=query.data?.producao?{...card,dadosOriginais:{...card.dadosOriginais,historico:query.data.producao.historico,setores:query.data.producao.setores,logistica:query.data.logistica,projeto:query.data.projeto}}:undefined;
   const active=useRef(true);useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
   const carregar=useCallback<CarregarRecursoFicha>((recurso,signal)=>{const deps=query.recursoContexto();if(!deps.cardId)return Promise.reject(Error('Sessão alterada.'));return consultarRecursoFicha({...deps,cardId:deps.cardId,signal,recurso,fetch:(url,init)=>fetch(url,init)});},[query.identityKey]);
   const validar=useCallback(()=>validarSessaoRecursoFicha(query.recursoContexto()),[query.identityKey]);
   const gerar=async(tipo:'placa'|'ordem')=>{setGerando(tipo);setErroGeracao(false);const deps=query.recursoContexto();
     try {await validarSessaoRecursoFicha(deps);const docs=await import('../../lib/producao-ficha-documentos');await validarSessaoRecursoFicha(deps);if(!active.current)return;
-      const currentCard={...card,dadosOriginais:{...card.dadosOriginais,projeto:query.data?query.data.projeto:card.dadosOriginais.projeto}};
+      if(!loadedCard)throw Error('Ficha não carregada.');const currentCard=loadedCard;
       const pdf=tipo==='placa'?docs.gerarPlacaIdentificacaoPdf(currentCard):docs.gerarOrdemProducaoPdf(docs.montarOrdemProducao(currentCard,query.data?.bom??[]));
       await validarSessaoRecursoFicha(deps);if(!active.current)return;pdf.save(docs.nomeDocumentoProducao(tipo,card.numeroOrcamento??card.id));
     }catch{if(active.current)setErroGeracao(true);}finally{if(active.current)setGerando('');}
@@ -43,5 +44,6 @@ export function ProducaoEspelhoFichaConectada({card,close,context,autorizado}:{c
     return <Arquivos arquivos={files} carregar={carregar} validar={validar} vazio={tipo==='video'?'Nenhum vídeo enviado.':tipo==='fotos'?'Nenhuma foto enviada.':'Nenhum arquivo anexado.'}/>;
   };
   if(!query.autorizado)return null;
-  return <ProducaoEspelhoFicha key={query.identityKey} card={card} close={close} detalhes={query.data} carregando={query.isPending} erro={query.isError} renderRecurso={render} renderComentarioAnexos={id=><Arquivos arquivos={query.data?.comentarios.find(c=>c.id===id)?.anexos??[]} carregar={carregar} validar={validar} vazio=""/>}/>;
+  if(!loadedCard)return <section className="p-6"><h2 className="text-lg font-semibold">{card.cliente}</h2><button type="button" className="pf-recurso-button" onClick={close}>Fechar ficha</button>{query.isError?<div role="alert"><p>Não foi possível consultar a ficha deste pedido. Os detalhes ainda não foram carregados.</p><button type="button" className="pf-recurso-button" onClick={query.atualizar} disabled={query.isFetching}>Tentar novamente</button></div>:<p role="status">Consultando ficha de produção…</p>}</section>;
+  return <ProducaoEspelhoFicha key={query.identityKey} card={loadedCard} close={close} detalhes={query.data} carregando={query.isPending} erro={query.isError} renderRecurso={render} renderComentarioAnexos={id=><Arquivos arquivos={query.data?.comentarios.find(c=>c.id===id)?.anexos??[]} carregar={carregar} validar={validar} vazio=""/>}/>;
 }

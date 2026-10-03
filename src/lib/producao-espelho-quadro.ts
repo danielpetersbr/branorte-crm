@@ -1,4 +1,4 @@
-import {filtrarEspelho,type CardEspelho,type FiltrosEspelho} from './producao-espelho-consulta';
+import {codificarFiltroEspelho,filtrarEspelho,type CardQuadroEspelho as CardEspelho,type FiltrosEspelho} from './producao-espelho-consulta';
 
 export type FiltrosQuadro=FiltrosEspelho&{parados:''|'somente'|'sem';ordem:'antigos'|'recentes'|'entrega'};
 export const filtrosIniciaisQuadro:FiltrosQuadro={busca:'',status:'',exclusao:'incluidos',vendedor:'',parados:'',ordem:'antigos'};
@@ -38,14 +38,23 @@ export function prazoCard(card:CardEspelho,hoje:Date){
 }
 function instanteCard(card:CardEspelho){const n=Date.parse(textoCard(card.dadosOriginais.created_at));return Number.isFinite(n)?n:null;}
 
+// Display filtering only: never use this key for authorization or parent ownership.
+function vendedorVisual(value:string|null){return value===null?null:value.normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleUpperCase('pt-BR');}
+export function opcoesVendedoresQuadro(cards:readonly CardEspelho[]){
+  const values=new Map<string,{value:string;label:string}>();
+  for(const card of cards){const nome=vendedorVisual(card.vendedor),value=codificarFiltroEspelho(nome);values.set(value,{value,label:nome??'Sem vendedor'});}
+  return [...values.values()].map(option=>({...option,label:option.label||'Vendedor não informado'})).sort((a,b)=>a.label.localeCompare(b.label,'pt-BR'));
+}
+
 export function consultarQuadro(cards:readonly CardEspelho[],filters:FiltrosQuadro){
   const search=filters.busca.trim().toLocaleLowerCase();
-  return filtrarEspelho(cards,{...filters,busca:''}).filter(card=>(!search||[card.id,card.numeroOrcamento,card.cliente,card.vendedor,card.etapa,card.dadosOriginais.codigo_rastreio].some(value=>textoCard(value).toLocaleLowerCase().includes(search)))&&(filters.parados===''||(filters.parados==='somente'?cardParado(card):!cardParado(card)))).sort((a,b)=>{
-    const left=filters.ordem==='entrega'?dataCalendario(a.dadosOriginais.prazo_data)?.getTime()??null:instanteCard(a);
-    const right=filters.ordem==='entrega'?dataCalendario(b.dadosOriginais.prazo_data)?.getTime()??null:instanteCard(b);
+  let vendor:string|null|undefined;
+  if(filters.vendedor){try{const raw:unknown=JSON.parse(filters.vendedor);if(raw!==null&&typeof raw!=='string')return [];vendor=vendedorVisual(raw);}catch{return [];}}
+  return filtrarEspelho(cards,{...filters,busca:'',vendedor:''}).filter(card=>(vendor===undefined||vendedorVisual(card.vendedor)===vendor)&&(!search||[card.id,card.numeroOrcamento,card.cliente,card.vendedor,card.etapa,card.dadosOriginais.codigo_rastreio].some(value=>textoCard(value).toLocaleLowerCase().includes(search)))&&(filters.parados===''||(filters.parados==='somente'?cardParado(card):!cardParado(card)))).map(card=>({card,instant:filters.ordem==='entrega'?dataCalendario(card.dadosOriginais.prazo_data)?.getTime()??null:instanteCard(card)})).sort((a,b)=>{
+    const left=a.instant,right=b.instant;
     if(left===null&&right===null)return 0;if(left===null)return 1;if(right===null)return -1;
     return filters.ordem==='recentes'?right-left:left-right;
-  });
+  }).map(row=>row.card);
 }
 
 export function agruparQuadro(cards:readonly CardEspelho[]){

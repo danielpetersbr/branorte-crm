@@ -4,7 +4,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {QueryClient} from '@tanstack/react-query';
 import {ProducaoEspelhoView,formatarValorEspelho} from '../components/controle/ProducaoEspelhoPainel';
-import {decodificarConsultaEspelho,autoridadeEspelhoValida,chaveConsultaEspelho,consultarEspelho,criarCicloEspelho,consultaEspelhoRemovivel,dadosEspelhoVisiveis,codificarFiltroEspelho,filtrarEspelho,paginarEspelho,selecionarEspelhoPagina,chaveSelecaoEspelho,type AutoridadeEspelho} from './producao-espelho-consulta';
+import {decodificarConsultaEspelho,decodificarConsultaQuadro,autoridadeEspelhoValida,chaveConsultaEspelho,consultarEspelho,consultarQuadroEspelho,criarCicloEspelho,consultaEspelhoRemovivel,dadosEspelhoVisiveis,codificarFiltroEspelho,filtrarEspelho,paginarEspelho,selecionarEspelhoPagina,chaveSelecaoEspelho,type AutoridadeEspelho,type DepsConsultaEspelho} from './producao-espelho-consulta';
 const id=(n:number)=>`00000000-0000-4000-8abc-${n.toString(16).padStart(12,'0')}`;
 const stamp='2026-10-01T20:38:12.028294+00',instant='2026-10-01T20:38:12.028Z';
 const rawCard=(n=1,extra:Record<string,unknown>={})=>({id:id(n),pedido_id:'MANUAL-X',cliente_nome:'<img inert-name>',vendedor_nome:'todos',status:'UNKNOWN',doc_original_path:'javascript:inert-path',created_at:stamp,updated_at:stamp,excluido:false,doc_tratado_path:null,prazo_dias:null,prazo_tipo:null,prazo_data:null,observacoes:null,numero_orcamento:null,motor_marca:null,motor_tensao:null,resumo_equipamentos:null,titulo_equipamento:null,codigo_rastreio:null,cidade_destino:null,observacao_vendedor:null,parado_status:null,parado_motivo:null,orcamento_revisado_info:null,motor_tensao_vendedor:null,excluido_em:null,parado_em:null,orcamento_revisado_em:null,orcamento_revisado_visto_em:null,excluido_por:null,checklist_compras:null,...extra});
@@ -19,6 +19,32 @@ const unavailable=/Produção indisponível/;
 const filters={busca:'',status:'',exclusao:'todos' as const,vendedor:''};
 
 const projeto=()=>({id:id(700),card_id:id(1),responsavel_projeto_id:id(701),responsavel_nome:'Betuel <texto literal>',status_projeto:'em_andamento',andamento:40,previsao_termino:null,prazo_prometido:'2026-10-16',prazo_interno:null});
+function lightDto(){const full=dto(),{historico,logistica,setores,...raw}=full.dados.cards[0].dadosOriginais;return {...full,visao:'quadro-v1',parcial:true,complete:{cards:true,historico:false,logistica:false,setores:false,checklists:false},totals:{cards:1,historico:null,logistica:null,setores:null,checklists:null},dados:{...full.dados,cards:[{...full.dados.cards[0],dadosOriginais:{...raw,projeto:projeto()}}],porSetor:null}};}
+
+test('light decoder preserves known project data while rejecting fabricated unread totals and mismatched contracts',()=>{
+  const out=decodificarConsultaQuadro(lightDto());assert.equal(out.dados.cards[0].dadosOriginais.projeto?.responsavel_nome,'Betuel <texto literal>');assert.equal(out.totals.historico,null);assert.equal(out.complete.historico,false);
+  assert.equal(Object.prototype.hasOwnProperty.call(out.dados.cards[0].dadosOriginais,'historico'),false);
+  for(const mutate of [(v:ReturnType<typeof lightDto>)=>{Object.assign(v.totals,{historico:0});},(v:ReturnType<typeof lightDto>)=>{Object.assign(v.complete,{historico:true});},(v:ReturnType<typeof lightDto>)=>{Object.assign(v,{visao:'unknown'});},(v:ReturnType<typeof lightDto>)=>{Object.assign(v.dados.cards[0].dadosOriginais,{historico:[]});},(v:ReturnType<typeof lightDto>)=>{Object.assign(v.dados.cards[0].dadosOriginais.projeto,{card_id:id(99)});},(v:ReturnType<typeof lightDto>)=>{Object.assign(v.dados,{porSetor:{}});}]){const data=lightDto();mutate(data);assert.throws(()=>decodificarConsultaQuadro(data),unavailable);}
+  assert.throws(()=>decodificarConsultaEspelho(lightDto()),unavailable);assert.throws(()=>decodificarConsultaQuadro(dto()),unavailable);
+});
+
+test('light presenter identifies details not loaded without displaying fake empty collection totals',()=>{
+  const html=renderToStaticMarkup(React.createElement(ProducaoEspelhoView,{data:decodificarConsultaQuadro(lightDto()),autorizado:true,identityKey:'light',loading:false,fetching:false,error:false,atualizar(){}}));
+  assert.match(html,/Quadro carregado/);assert.match(html,/ainda não carregados/);assert.ok(!/Histórico: 0|Logística: 0|Setores: 0|Checklists: 0/.test(html));
+});
+
+test('light HTTP caller requests the opt-in contract and rejects late session or generation changes',async()=>{
+  for(const changed of [false,true]){const c=caller(),deps:DepsConsultaEspelho={...c.deps,fetch:async(url,init)=>{assert.equal(url,'/api/controle-producao?origem=app2&visao=quadro-v1');assert.equal(init.cache,'no-store');return {ok:true,status:200,json:async()=>{if(changed)c.context.current.generation++;return lightDto();}};}};
+    if(changed)await assert.rejects(consultarQuadroEspelho(deps),/Sessão alterada/);else assert.equal((await consultarQuadroEspelho(deps)).totals.setores,null);
+  }
+});
+
+test('real cache separates full versus board and old mode cleanup never deletes another mounted reader',()=>{
+  const qc=new QueryClient(),cycle=criarCicloEspelho(),a=authority(cycle.geracao),fullKey=chaveConsultaEspelho(a),boardKey=chaveConsultaEspelho(a,'quadro-v1'),other=criarCicloEspelho(),otherKey=chaveConsultaEspelho(authority(other.geracao),'quadro-v1');
+  qc.setQueryData(fullKey,'full');qc.setQueryData(boardKey,'board');qc.setQueryData(otherKey,'other');assert.notDeepEqual(fullKey,boardKey);
+  qc.removeQueries({predicate:q=>consultaEspelhoRemovivel(cycle,q.queryKey,a,undefined,'quadro-v1')});assert.equal(qc.getQueryData(fullKey),undefined);assert.equal(qc.getQueryData(boardKey),'board');assert.equal(qc.getQueryData(otherKey),'other');
+  cycle.encerrar();qc.removeQueries({predicate:q=>consultaEspelhoRemovivel(cycle,q.queryKey,{...a,loading:true},undefined,'quadro-v1')});assert.equal(qc.getQueryData(boardKey),undefined);assert.equal(qc.getQueryData(otherKey),'other');qc.clear();
+});
 test('project lookup fields preserve responsible name and raw dates while stripping unrelated personal data',()=>{
   const input=dto(); Object.assign(input.dados.cards[0].dadosOriginais,{projeto:{...projeto(),email:'PRIVATE',role:'admin'}});
   const out=decodificarConsultaEspelho(input).dados.cards[0].dadosOriginais;

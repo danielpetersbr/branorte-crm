@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { pedidoNoEscopoEspelho as pedidoNoEscopo, type EscopoEspelho as Escopo } from './producao-espelho-acesso.js';
+import {decodificarConsultaQuadro,montarConsultaQuadro,type ConsultaQuadroEspelho,type CardQuadroEspelho} from '../../src/lib/producao-espelho-consulta.js';
 
 export type ReciboEspelho = { data: unknown[] | null; count: number | null; error: unknown };
 interface ConsultaEspelho {
@@ -169,7 +170,14 @@ export function projetarEspelhoProducao(input: unknown, scopeInput: Escopo, chec
 }
 
 /** Five original collections plus scoped project/name lookups; independent SELECTs do not promise a snapshot. */
-export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho = {}): Promise<EnvelopeEspelho> {
+export function projetarQuadroProducao(input:unknown,scopeInput:Escopo,check:()=>void=()=>{}):ConsultaQuadroEspelho {
+  try{check();const scope=validarEscopoEspelho(scopeInput),out=decodificarConsultaQuadro(input);check();
+    for(const card of out.dados.cards){check();if(scope.vendedores===null?card.pedidoId!==null||card.dadosOriginais.vinculo!=='nao_verificado':!uuid(card.pedidoId)||key(card.pedidoId)!==key(card.dadosOriginais.pedido_id)||card.dadosOriginais.vinculo!=='confirmado')return fail();}return out;
+  }catch{return fail();}
+}
+export function lerProducaoEspelho(scopeInput:Escopo,deps:DepsEspelho&{visao:'quadro-v1'}):Promise<ConsultaQuadroEspelho>;
+export function lerProducaoEspelho(scopeInput:Escopo,deps?:DepsEspelho):Promise<EnvelopeEspelho>;
+export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho&{visao?:'quadro-v1'} = {}): Promise<EnvelopeEspelho|ConsultaQuadroEspelho> {
   const scope = validarEscopoEspelho(scopeInput), duration = deps.deadlineMs ?? 30000;
   if (!Number.isFinite(duration) || duration <= 0 || duration > 30000) return fail();
   const controller = new AbortController(), now = deps.agora ?? (() => performance.now());
@@ -241,9 +249,10 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
       const cards = allCards.filter(c => { check(); if (scope.vendedores === null) return true; const parent = uuid(c.pedido_id) ? parentMap.get(key(c.pedido_id)) : undefined; return !!parent && pedidoNoEscopo({ vendedor: parent.vendedor as string | null, vendedor_2: parent.vendedor_2 as string | null }, scope); });
       const cardIds = cards.map(c => key(c.id));
       const [histories, logistics, { sectors, checklists }, { projects, professionals }] = await Promise.all([
-        batches(source, 'producao_status_log', 'card_id', cardIds),
-        batches(source, 'producao_logistica', 'card_id', cardIds),
+        deps.visao==='quadro-v1'?Promise.resolve([]):batches(source, 'producao_status_log', 'card_id', cardIds),
+        deps.visao==='quadro-v1'?Promise.resolve([]):batches(source, 'producao_logistica', 'card_id', cardIds),
         (async () => {
+          if(deps.visao==='quadro-v1')return {sectors:[],checklists:[]};
           const sectors = await batches(source, 'setor_producao', 'card_id', cardIds); check();
           const checklists = await batches(source, 'setor_checklist', 'setor_producao_id', sectors.map(s => key(s.id))); check();
           return { sectors, checklists };
@@ -261,6 +270,11 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
         const projected = projectPhysical({ ...p, responsavel_nome: nome }, p.card_id, check);
         return [key(p.card_id), projected] as const;
       }));
+      if(deps.visao==='quadro-v1'){
+        const projected:CardQuadroEspelho[]=cards.map(c=>{check();const parent=scope.vendedores!==null?parentMap.get(key(c.pedido_id)):undefined;
+          return {id:c.id as string,pedidoId:parent?parent.id as string:null,numeroOrcamento:c.numero_orcamento as string|null,cliente:c.cliente_nome as string,vendedor:c.vendedor_nome as string,etapa:c.status as string,atualizadoEm:c.updated_at as string,dadosOriginais:{...c,checklist_compras:c.checklist_compras as string|null,vinculo:parent?'confirmado':'nao_verificado',projeto:projectMap.get(key(c.id))??null}};});
+        check();const instant=(deps.instante??(()=>new Date().toISOString()))();check();return projetarQuadroProducao(montarConsultaQuadro(projected,instant),scope,check);
+      }
       const group = (rows: Linha[], column: string) => { const map = new Map<string, Linha[]>(); for (const row of rows) { check(); const k = key(row[column]), list = map.get(k) ?? []; list.push(row); map.set(k, list); } return map; };
       const hs = group(histories, 'card_id'), ls = new Map(logistics.map(l => [key(l.card_id), l])), ss = group(sectors, 'card_id'), cs = group(checklists, 'setor_producao_id');
       const projected: CardEspelho[] = cards.map(c => { check(); const parent = scope.vendedores !== null ? parentMap.get(key(c.pedido_id)) : undefined;
@@ -272,3 +286,4 @@ export async function lerProducaoEspelho(scopeInput: Escopo, deps: DepsEspelho =
   } catch { stop(); return fail(); }
   finally { if (timer !== undefined) clearTimeout(timer); deps.signal?.removeEventListener('abort', stop); }
 }
+export function lerQuadroProducaoEspelho(scope:Escopo,deps:DepsEspelho={}):Promise<ConsultaQuadroEspelho>{return lerProducaoEspelho(scope,{...deps,visao:'quadro-v1'});}

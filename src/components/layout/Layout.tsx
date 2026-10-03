@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, Zap,
+  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, Menu, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, X, Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState, Suspense, type CSSProperties, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -15,6 +15,7 @@ import { GenerationOverlay } from '@/components/GenerationOverlay'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LembretesNotifier } from '@/components/LembretesNotifier'
 import { isNavigationItemActive } from './navigation-active'
+import { ModalDialog } from './ModalDialog'
 
 /**
  * Papéis de ACESSO RESTRITO: contas externas sem a sidebar do CRM. Não passam
@@ -324,6 +325,7 @@ export function Layout() {
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()
   const [confirmSair, setConfirmSair] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const feedbackTrigger = useRef<HTMLButtonElement | null>(null)
   const feedbackWasOpen = useRef(false)
   const abrirFeedback = (event: MouseEvent<HTMLButtonElement>) => {
@@ -336,6 +338,15 @@ export function Layout() {
     }
     feedbackWasOpen.current = feedbackOpen
   }, [feedbackOpen])
+  useEffect(() => { setMobileMenuOpen(false) }, [loc.pathname, loc.search, profile?.id])
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const viewport = window.matchMedia('(min-width: 768px)')
+    const closeOnDesktop = () => { if (viewport.matches) setMobileMenuOpen(false) }
+    closeOnDesktop()
+    viewport.addEventListener('change', closeOnDesktop)
+    return () => viewport.removeEventListener('change', closeOnDesktop)
+  }, [mobileMenuOpen])
 
   // Papel restrito? Então o chrome do CRM não monta — vale o menu próprio.
   const menuRestrito = profile?.role ? MENUS_RESTRITOS[profile.role] : undefined
@@ -410,16 +421,18 @@ export function Layout() {
   const mobileNav = mobileBase.filter(visible)
 
   // Item dentro de um grupo aberto (modo expandido)
-  const renderItem = (it: NavItem) => {
+  const renderItem = (it: NavItem, mobile = false) => {
     const isActive = isItemActive(it)
     return (
     <NavLink
       key={it.to}
       to={it.to}
       end={it.end}
+      onClick={mobile ? () => setMobileMenuOpen(false) : undefined}
       aria-current={isActive ? 'page' : false}
       className={() => cn(
         'group relative flex items-center gap-2 rounded-md pl-3 pr-2 py-1.5 text-[12.5px] font-medium transition-all duration-150',
+        mobile && 'min-h-11 py-2.5 text-[13px]',
         isActive ? 'text-accent bg-accent-bg' : 'text-ink-muted hover:text-ink hover:bg-surface-2',
       )}
     >
@@ -439,7 +452,7 @@ export function Layout() {
   }
 
   // Grupo colapsavel (modo expandido)
-  const renderGroup = (g: NavGroup) => {
+  const renderGroup = (g: NavGroup, mobile = false) => {
     const groupActive = g.items.some(isItemActive)
     const open = openGroups[g.id] ?? false
     const headerCount = g.items.reduce(
@@ -451,9 +464,10 @@ export function Layout() {
           type="button"
           onClick={() => toggleGroup(g.id)}
           aria-expanded={open}
-          aria-controls={`nav-group-${g.id}`}
+          aria-controls={`${mobile ? 'mobile-nav-group' : 'nav-group'}-${g.id}`}
           className={cn(
             'w-full group flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-semibold transition-all duration-150',
+            mobile && 'min-h-11 py-3',
             groupActive ? 'text-accent bg-accent-bg/50' : 'text-ink hover:bg-surface-2',
           )}
         >
@@ -467,8 +481,8 @@ export function Layout() {
           <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-ink-faint transition-transform duration-200', open ? 'rotate-0' : '-rotate-90')} />
         </button>
         {open && (
-          <div id={`nav-group-${g.id}`} className="mt-1 mb-2 ml-[19px] border-l border-border pl-1 flex flex-col gap-0.5">
-            {g.items.map(renderItem)}
+          <div id={`${mobile ? 'mobile-nav-group' : 'nav-group'}-${g.id}`} className="mt-1 mb-2 ml-[19px] border-l border-border pl-1 flex flex-col gap-0.5">
+            {g.items.map(it => renderItem(it, mobile))}
           </div>
         )}
       </div>
@@ -704,7 +718,7 @@ export function Layout() {
                 ) : (
                   <h2 className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{section.label}</h2>
                 )}
-                {sectionGroups.map(collapsed ? renderGroupCollapsed : renderGroup)}
+                {sectionGroups.map(g => collapsed ? renderGroupCollapsed(g) : renderGroup(g))}
               </section>
             )
           })}
@@ -773,10 +787,45 @@ export function Layout() {
         <LembretesNotifier />
       </ErrorBoundary>
 
-      <nav className={cn(
-        'md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center justify-between gap-1 overflow-x-auto px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50',
+      {mobileMenuOpen && (
+        <ModalDialog label="Menu completo Branorte" onClose={() => setMobileMenuOpen(false)} className="justify-end">
+          <div className="relative w-full max-w-md h-full bg-surface border-l border-border shadow-2xl flex flex-col">
+            <header className="shrink-0 flex items-center justify-between gap-3 px-4 py-3 border-b border-border" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+              <div>
+                <h2 className="text-lg font-semibold text-ink">Menu Branorte</h2>
+                <p className="text-xs text-ink-muted">Todas as áreas disponíveis para você</p>
+              </div>
+              <button type="button" aria-label="Fechar menu" data-dialog-initial-focus onClick={() => setMobileMenuOpen(false)} className="h-11 w-11 shrink-0 rounded-xl flex items-center justify-center text-ink-muted hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+            <nav aria-label="Menu completo" className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-4">
+              {NAV_SECTIONS.map(section => {
+                const sectionGroups = groups.filter(g => g.section === section.id)
+                if (!sectionGroups.length) return null
+                return (
+                  <section key={section.id} aria-label={section.label}>
+                    <h3 className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-faint">{section.label}</h3>
+                    {sectionGroups.map(g => renderGroup(g, true))}
+                  </section>
+                )
+              })}
+            </nav>
+            <footer className="shrink-0 border-t border-border px-4 py-2 flex items-center justify-between gap-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+              <NavLink to="/perfil" onClick={() => setMobileMenuOpen(false)} className="min-h-11 inline-flex items-center px-2 text-sm font-medium text-ink hover:text-accent">Meu perfil</NavLink>
+              <button type="button" onClick={toggleDark} aria-label={dark ? 'Usar tema claro' : 'Usar tema escuro'} className="h-11 w-11 rounded-xl flex items-center justify-center text-ink-muted hover:bg-surface-2">
+                {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
+            </footer>
+          </div>
+        </ModalDialog>
+      )}
+
+      <nav aria-label="Navegação rápida" className={cn(
+        'md:hidden fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border flex items-center gap-1 px-2 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] z-50',
         aiDrawerOpen && 'hidden',
       )}>
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {mobileNav.map(l => (
           <NavLink
             key={l.to}
@@ -807,6 +856,11 @@ export function Layout() {
             <MessageSquarePlus className="h-[18px] w-[18px]" />
           </button>
         )}
+        </div>
+        <button type="button" onClick={() => setMobileMenuOpen(true)} aria-haspopup="dialog" aria-expanded={mobileMenuOpen} className="shrink-0 flex flex-col items-center justify-center gap-0.5 min-h-11 min-w-[62px] px-2 py-1.5 rounded-xl text-micro font-medium text-ink-muted hover:text-accent hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+          <Menu className="h-[18px] w-[18px]" />
+          <span>Mais</span>
+        </button>
       </nav>
     </div>
   )

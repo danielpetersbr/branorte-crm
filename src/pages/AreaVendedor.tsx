@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useWaVendedores, useWaMensagens } from '@/hooks/useWaKanban'
 import { useAreaVendedor } from '@/hooks/useAreaVendedor'
 import { ETAPAS_AREA, REGRAS_ETAPA, syncDesatualizada, type AreaCliente } from '@/lib/area-vendedor'
-import { corpoVisivel } from '@/lib/wa-funil'
+import { corpoVisivel, digitosDaBusca } from '@/lib/wa-funil'
 import { estadoAnalisePrecalculada, type AnalisePrecalculada } from '@/lib/area-vendedor-analises'
 
 const control = 'min-h-10 rounded-md border border-border bg-surface px-3 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
@@ -43,14 +43,17 @@ export default function AreaVendedor() {
   const vendedorId = isAdmin ? (nome && matches.length === 1 ? matches[0].id : null) : (meuVendor?.id ?? null)
   const area = useAreaVendedor(nome || null, vendedorId, isAdmin)
   const analisesPorChat = useMemo(() => new Map((area.precalculadas.data ?? []).map(a => [a.chat_id, a])), [area.precalculadas.data])
+  const buscaNormalizada = normalizar(busca)
+  const buscaDigitos = digitosDaBusca(busca)
   const filtrados = useMemo(() => area.clientes.filter(c =>
     (!etapa || c.etapas.includes(etapa)) &&
-    normalizar(`${c.chat.contact_name ?? ''} ${c.chat.phone}`).includes(normalizar(busca))
+    (normalizar(`${c.chat.contact_name ?? ''} ${c.chat.phone}`).includes(buscaNormalizada) ||
+      (!!buscaDigitos && c.chat.phone.replace(/\D/g, '').includes(buscaDigitos)))
   ).sort((a, b) => {
     const pa = analisesPorChat.get(a.chat.chat_id ?? '')?.pendencias.length ?? 0
     const pb = analisesPorChat.get(b.chat.chat_id ?? '')?.pendencias.length ?? 0
     return Number(pb > 0) - Number(pa > 0) || (Date.parse(b.chat.last_message_at ?? '') || 0) - (Date.parse(a.chat.last_message_at ?? '') || 0)
-  }), [area.clientes, etapa, busca, analisesPorChat])
+  }), [area.clientes, etapa, buscaNormalizada, buscaDigitos, analisesPorChat])
   const pendencias = filtrados.filter(c => (analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias.length ?? 0) > 0).length
   const clientes = somentePendencias ? filtrados.filter(c => (analisesPorChat.get(c.chat.chat_id ?? '')?.pendencias.length ?? 0) > 0) : filtrados
   const cliente = clientes.find(c => c.id === selecionado) ?? null

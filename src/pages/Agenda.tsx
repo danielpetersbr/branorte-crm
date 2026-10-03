@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { ModalDialog } from '@/components/layout/ModalDialog'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import { useVendedorNome } from '@/hooks/useVendedorNome'
@@ -409,9 +410,10 @@ function PainelTarefas({ tarefas, onToggle, onEditar, onNovo }: {
 // ============================================================================
 // Drawer do dia
 // ============================================================================
-function DrawerDia({ diaKey, itens, onFechar, onEditar, onNovo, onToggle }: {
+function DrawerDia({ diaKey, itens, erro, onFechar, onEditar, onNovo, onToggle }: {
   diaKey: string
   itens: AgendaItem[]
+  erro?: string | null
   onFechar: () => void
   onEditar: (item: AgendaItem) => void
   onNovo: (dataInicial: string) => void
@@ -420,8 +422,7 @@ function DrawerDia({ diaKey, itens, onFechar, onEditar, onNovo, onToggle }: {
   const d = parseLocalDateTime(diaKey, null)
   const titulo = d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
   return (
-    <div className="fixed inset-0 z-[1200] flex justify-end" onClick={onFechar}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]" />
+    <ModalDialog label={`Dia: ${titulo}`} onClose={onFechar} className="justify-end">
       <div
         className="relative w-full sm:max-w-sm h-full bg-surface border-l border-border shadow-2xl flex flex-col animate-[drawerIn_.18s_ease-out]"
         onClick={e => e.stopPropagation()}
@@ -431,11 +432,12 @@ function DrawerDia({ diaKey, itens, onFechar, onEditar, onNovo, onToggle }: {
             <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">Dia</div>
             <h3 className="text-[15px] font-semibold text-ink capitalize">{titulo}</h3>
           </div>
-          <button onClick={onFechar} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 transition-colors">
+          <button onClick={onFechar} aria-label="Fechar detalhes do dia" data-dialog-initial-focus className="h-8 w-8 inline-flex items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 transition-colors">
             <X className="h-4.5 w-4.5" />
           </button>
         </div>
 
+        {erro && <p role="alert" className="mx-3 mt-3 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{erro}</p>}
         <div className="flex-1 overflow-y-auto p-2">
           {itens.length === 0 ? (
             <div className="px-3 py-10 text-center text-[12px] text-ink-faint">Nada marcado neste dia.</div>
@@ -453,16 +455,17 @@ function DrawerDia({ diaKey, itens, onFechar, onEditar, onNovo, onToggle }: {
           </button>
         </div>
       </div>
-    </div>
+    </ModalDialog>
   )
 }
 
 // ============================================================================
 // Modal de formulário (novo / editar)
 // ============================================================================
-function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, excluindo }: {
+function FormModal({ form, setForm, erro, onSalvar, onExcluir, onFechar, salvando, excluindo }: {
   form: FormState
   setForm: (f: FormState) => void
+  erro?: string | null
   onSalvar: () => void
   onExcluir: () => void
   onFechar: () => void
@@ -473,8 +476,7 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
   const tituloOk = form.titulo.trim().length > 0
   const busy = salvando || excluindo
   return (
-    <div role="dialog" aria-modal="true" aria-label={editando ? 'Editar item da agenda' : 'Novo item da agenda'} className="fixed inset-0 z-[1250] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => { if (!busy) onFechar() }}>
-      <div className="absolute inset-0 bg-black/50" />
+    <ModalDialog label={editando ? 'Editar item da agenda' : 'Novo item da agenda'} locked={busy} onClose={onFechar} className="items-end sm:items-center justify-center p-0 sm:p-4">
       <div
         className="relative w-full sm:max-w-lg bg-surface border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto animate-[modalIn_.18s_ease-out]"
         onClick={e => e.stopPropagation()}
@@ -519,7 +521,7 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
               value={form.titulo}
               onChange={e => setForm({ ...form, titulo: e.target.value })}
               placeholder="Ex: Ligar pro cliente sobre o orçamento"
-              autoFocus
+              data-dialog-initial-focus
             />
           </div>
 
@@ -577,7 +579,8 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
         </fieldset>
 
         {/* Rodapé */}
-        <div className="sticky bottom-0 flex items-center gap-2 px-4 py-3 border-t border-border bg-surface">
+        <div className="sticky bottom-0 flex flex-wrap items-center gap-2 px-4 py-3 border-t border-border bg-surface">
+          {erro && <p role="alert" className="w-full rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">{erro}</p>}
           {editando && (
             <button
               onClick={onExcluir}
@@ -607,7 +610,7 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
           </div>
         </div>
       </div>
-    </div>
+    </ModalDialog>
   )
 }
 
@@ -624,6 +627,7 @@ export function Agenda() {
     return new Date(n.getFullYear(), n.getMonth(), 1)
   })
   const [drawerDia, setDrawerDia] = useState<string | null>(null)
+  const [erroForm, setErroForm] = useState<string | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
 
   const { data: itens, isLoading, error: itensError, refetch, isFetching } = useAgendaItens(nome)
@@ -649,6 +653,7 @@ export function Agenda() {
 
   // ── Mutations ──
   const salvar = useMutation({
+    onMutate: () => setErroForm(null),
     mutationFn: async (f: FormState) => {
       const titulo = f.titulo.trim()
       if (!titulo) throw new Error('Dê um título pro item')
@@ -681,7 +686,11 @@ export function Agenda() {
       setForm(null)
       push(f.id == null ? 'Item criado' : 'Item salvo', 'success')
     },
-    onError: (err: Error) => push('Erro ao salvar: ' + (err?.message ?? 'falha de rede'), 'danger'),
+    onError: (err: Error) => {
+      const mensagem = 'Erro ao salvar: ' + (err?.message ?? 'falha de rede') + '. Tente novamente.'
+      setErroForm(mensagem)
+      push(mensagem, 'danger')
+    },
   })
 
   const toggleConcluido = useMutation({
@@ -697,6 +706,7 @@ export function Agenda() {
   })
 
   const excluir = useMutation({
+    onMutate: () => setErroForm(null),
     mutationFn: async (id: number) => {
       const { error } = await supabase.from('agenda_itens').delete().eq('id', id)
       if (error) throw error
@@ -706,12 +716,16 @@ export function Agenda() {
       setForm(null)
       push('Item excluído', 'success')
     },
-    onError: (err: Error) => push('Erro ao excluir: ' + (err?.message ?? 'falha de rede'), 'danger'),
+    onError: (err: Error) => {
+      const mensagem = 'Erro ao excluir: ' + (err?.message ?? 'falha de rede') + '. Tente novamente.'
+      setErroForm(mensagem)
+      push(mensagem, 'danger')
+    },
   })
 
   // ── Handlers ──
-  const abrirNovo = (dataInicial = '') => setForm(formVazio(dataInicial))
-  const abrirEditar = (item: AgendaItem) => setForm(formDeItem(item))
+  const abrirNovo = (dataInicial = '') => { setErroForm(null); setForm(formVazio(dataInicial)) }
+  const abrirEditar = (item: AgendaItem) => { setErroForm(null); setForm(formDeItem(item)) }
   const abrirNovoDoDrawer = (dataInicial: string) => { setDrawerDia(null); abrirNovo(dataInicial) }
   const fecharForm = () => { if (!salvar.isPending && !excluir.isPending) setForm(null) }
 
@@ -804,6 +818,7 @@ export function Agenda() {
         <DrawerDia
           diaKey={drawerDia}
           itens={itensDoDrawer}
+          erro={toggleConcluido.error && toggleConcluido.variables?.data === drawerDia ? `Erro ao atualizar: ${toggleConcluido.error.message}. Tente novamente.` : null}
           onFechar={() => setDrawerDia(null)}
           onEditar={item => { setDrawerDia(null); abrirEditar(item) }}
           onNovo={abrirNovoDoDrawer}
@@ -816,6 +831,7 @@ export function Agenda() {
         <FormModal
           form={form}
           setForm={setForm}
+          erro={erroForm}
           onSalvar={() => salvar.mutate(form)}
           onExcluir={() => { if (form.id != null && window.confirm('Excluir este item?')) excluir.mutate(form.id) }}
           onFechar={fecharForm}

@@ -1,14 +1,15 @@
 import type {VercelRequest,VercelResponse} from '@vercel/node';
 import type {SupabaseClient} from '@supabase/supabase-js';
 import {criarCrmEspelho,obterAcessoEspelho,revalidarAcessoEspelho,resolverEscopoEspelho,ErroAcessoEspelho} from './_lib/producao-espelho-acesso.js';
-import {lerProducaoEspelho,projetarEspelhoProducao} from './_lib/producao-espelho-reader.js';
+import {lerProducaoEspelho,lerQuadroProducaoEspelho,projetarEspelhoProducao,projetarQuadroProducao} from './_lib/producao-espelho-reader.js';
 /** Public URL unchanged; this release serves only the readonly factory origin. */
-export function criarHandlerControleProducao(deps:{crm?:()=>SupabaseClient;lerFabrica?:typeof lerProducaoEspelho;deadlineMs?:number}={}) {
+export function criarHandlerControleProducao(deps:{crm?:()=>SupabaseClient;lerFabrica?:typeof lerProducaoEspelho;lerQuadro?:typeof lerQuadroProducaoEspelho;deadlineMs?:number}={}) {
   return async(req:VercelRequest,res:VercelResponse)=>{
     res.setHeader('Cache-Control','no-store');res.setHeader('Vary','Authorization');
     if(req.method!=='GET'){res.setHeader('Allow','GET');return res.status(405).json({error:'method_not_allowed'});}
     const query=req.query??{};
-    if(!Object.prototype.hasOwnProperty.call(query,'origem')||query.origem!=='app2'||Object.keys(query).length!==1||req.body!==null&&req.body!==undefined)return res.status(400).json({error:'parametros_invalidos'});
+    const quadro=Object.prototype.hasOwnProperty.call(query,'visao')&&query.visao==='quadro-v1';
+    if(!Object.prototype.hasOwnProperty.call(query,'origem')||query.origem!=='app2'||Object.keys(query).length!==(quadro?2:1)||Object.prototype.hasOwnProperty.call(query,'visao')&&!quadro||req.body!==null&&req.body!==undefined)return res.status(400).json({error:'parametros_invalidos'});
     const header=req.headers.authorization,token=typeof header==='string'?/^Bearer[ \t]+([^\s]+)$/i.exec(header)?.[1]:undefined;
     if(!token)return res.status(401).json({error:'no_auth'});
     const duration=deps.deadlineMs??45000,controller=new AbortController();
@@ -21,9 +22,9 @@ export function criarHandlerControleProducao(deps:{crm?:()=>SupabaseClient;lerFa
         check();const crm=deps.crm?.()??criarCrmEspelho({SUPABASE_URL:process.env.SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY:process.env.SUPABASE_SERVICE_ROLE_KEY});
         const access=await obterAcessoEspelho(crm,token);check();if(!access.ok)return {status:access.status,body:{error:access.error}};
         const scope=await resolverEscopoEspelho(crm,access.snapshot);check();
-        const raw=await (deps.lerFabrica??lerProducaoEspelho)(scope,{signal:controller.signal});check();
+        const raw=await(quadro?(deps.lerQuadro??lerQuadroProducaoEspelho)(scope,{signal:controller.signal}):(deps.lerFabrica??lerProducaoEspelho)(scope,{signal:controller.signal}));check();
         const current=await revalidarAcessoEspelho(crm,token,access.snapshot,scope);check();if(!current.ok)return {status:current.status,body:{error:current.error}};
-        const envelope=projetarEspelhoProducao(raw,scope,check);check();return {status:200,body:envelope};
+        const envelope=(quadro?projetarQuadroProducao:projetarEspelhoProducao)(raw,scope,check);check();return {status:200,body:envelope};
       };
       const result=await Promise.race([work(),stopped]);return res.status(result.status).json(result.body);
     }catch(error){return res.status(error instanceof ErroAcessoEspelho?error.status:503).json({error:error instanceof ErroAcessoEspelho?error.message:'producao_indisponivel'});}

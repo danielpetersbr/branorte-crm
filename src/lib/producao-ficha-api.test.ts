@@ -50,3 +50,11 @@ test('late token, card generation, capability and abort changes discard all down
     return {ok:true,status:200,json:async()=>empty};
   };await assert.rejects(consultarFichaEspelho(f.deps),/Sessão alterada/);}
 });
+
+test('production ficha opt-in requires actual complete detail receipts and rejects unknown selectors',async()=>{
+  const producao={complete:{historico:true,setores:true,checklists:true},totals:{historico:0,setores:0,checklists:0},historico:[],setores:[]};
+  const request={query:{cardId:id(1),detalhes:'producao'}};const r=await call(request,undefined,{...empty,producao});assert.equal(r.status,200);assert.deepEqual(r.body.producao,producao);
+  assert.equal((await call(request)).status,503);
+  for(const detalhes of ['','unknown',['producao']])assert.equal((await call({query:{cardId:id(1),detalhes}} as Partial<VercelRequest>)).status,400);
+  const f=clientFixture();f.deps.producao=true;f.deps.fetch=async url=>{assert.equal(url,'/api/controle-producao-ficha?cardId='+id(1)+'&detalhes=producao');return {ok:true,status:200,json:async()=>empty};};await assert.rejects(consultarFichaEspelho(f.deps));
+});
