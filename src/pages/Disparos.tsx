@@ -11,6 +11,8 @@ import { EscritorioMapa } from '@/components/EscritorioMapa'
 import { LinksRoteamento } from '@/components/LinksRoteamento'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
+import { QueryNotice } from '@/components/ui/QueryNotice'
+import { createSequentialSave } from '@/lib/sequential-save'
 import { TituloRecolhivel, SecaoRecolhivel, BotaoRecolherTudo } from '@/components/ui/Recolhivel'
 
 /** Linha de `vendor_roteamento_efetivo`: o que o vendedor recebe DEPOIS da cota. */
@@ -50,10 +52,11 @@ export function Disparos() {
   const qc = useQueryClient()
 
   // Vendedores status
-  const { data: vendedores, isLoading: loadingV } = useQuery<Vendedor[]>({
+  const vendedoresQuery = useQuery<Vendedor[]>({
     queryKey: ['vendor-dispatch-status'],
     queryFn: async () => {
-      const { data } = await supabase.from('vendor_dispatch_status').select('*').order('vendedor_nome')
+      const { data, error } = await supabase.from('vendor_dispatch_status').select('*').order('vendedor_nome')
+      if (error) throw error
       return data || []
     },
     refetchInterval: 10000,
@@ -62,22 +65,25 @@ export function Disparos() {
   // COTA DE PARADOS: a fatia acima é a INTENÇÃO do admin; a cota reduz por cima
   // dela conforme o vendedor acumula cliente parado no topo do funil. Sem mostrar
   // isso aqui a tela mente — o JARDEL aparecia com 14,29% e recebia ZERO.
-  const { data: efetivo } = useQuery<Record<string, Efetivo>>({
+  const efetivoQuery = useQuery<Record<string, Efetivo>>({
     queryKey: ['vendor-roteamento-efetivo'],
     queryFn: async () => {
-      const { data } = await supabase.from('vendor_roteamento_efetivo').select('*')
+      const { data, error } = await supabase.from('vendor_roteamento_efetivo').select('*')
+      if (error) throw error
       const m: Record<string, Efetivo> = {}
       for (const r of (data ?? []) as Efetivo[]) m[r.vendedor_nome] = r
       return m
     },
     refetchInterval: 30000,
   })
-  const { data: cotaCfg } = useQuery<{ cota_ativa: boolean; cota_verde: number; cota_zero: number } | null>({
+  const cotaQuery = useQuery<{ cota_ativa: boolean; cota_verde: number; cota_zero: number }>({
     queryKey: ['outbound-rota-config'],
     queryFn: async () => {
-      const { data } = await supabase.from('outbound_rota_config')
+      const { data, error } = await supabase.from('outbound_rota_config')
         .select('cota_ativa, cota_verde, cota_zero').eq('id', 1).maybeSingle()
-      return data ?? null
+      if (error) throw error
+      if (!data) throw new Error('Configuração de cotas indisponível.')
+      return data
     },
     refetchInterval: 60000,
   })
@@ -85,15 +91,16 @@ export function Disparos() {
   // Heartbeat da extensão por vendedor (só pra saber se está online/com WA aberto).
   // Não dispara nada — é só sinal de disponibilidade pra roteamento.
   type Runtime = { ts: string; versao: string; semWa: boolean; heartbeatOnly: boolean; wppReady: boolean; semChatsHaTempo: boolean; interacaoSec: number | null; envioSec: number | null }
-  const { data: vendorRuntime } = useQuery<Record<string, Runtime>>({
+  const runtimeQuery = useQuery<Record<string, Runtime>>({
     queryKey: ['vendor-runtime'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('wa_sync_debug')
         .select('vendedor_nome, recebido_em, client_version, diag, etiquetas_count, total_chats')
         .gte('recebido_em', new Date(Date.now() - 30 * 60_000).toISOString())
         .order('recebido_em', { ascending: false })
         .limit(500)
+      if (error) throw error
       const pingsRecentes: Record<string, { total: number; comDados: number }> = {}
       const cincoMinAtras = Date.now() - 5 * 60_000
       for (const row of (data || []) as any[]) {
@@ -215,10 +222,12 @@ export function Disparos() {
 
   // Toggle GLOBAL: envio de avaliação de atendimento pro cliente.
   // A extensão lê essa flag via ext-version a cada ~30s e respeita nos 3 envios (auto + manuais).
-  const { data: avaliacaoAtiva } = useQuery<boolean>({
+  const avaliacaoQuery = useQuery<boolean>({
     queryKey: ['avaliacao-config'],
     queryFn: async () => {
-      const { data } = await supabase.from('wa_avaliacao_config').select('ativa').eq('id', 1).maybeSingle()
+      const { data, error } = await supabase.from('wa_avaliacao_config').select('ativa').eq('id', 1).maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error('Configuração de avaliação indisponível.')
       return data?.ativa !== false
     },
     refetchInterval: 15000,
@@ -244,10 +253,12 @@ export function Disparos() {
   })
 
   // Toggle GLOBAL: auto-aplicar etiqueta PROSPECÇÃO quando cliente novo chega sem etiqueta.
-  const { data: prospecAtiva } = useQuery<boolean>({
+  const prospecQuery = useQuery<boolean>({
     queryKey: ['prospec-config'],
     queryFn: async () => {
-      const { data } = await supabase.from('wa_avaliacao_config').select('auto_prospec_ativa').eq('id', 1).maybeSingle()
+      const { data, error } = await supabase.from('wa_avaliacao_config').select('auto_prospec_ativa').eq('id', 1).maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error('Configuração de prospecção indisponível.')
       return data?.auto_prospec_ativa !== false
     },
     refetchInterval: 15000,
@@ -274,10 +285,12 @@ export function Disparos() {
   })
 
   // Toggle GLOBAL: automação do funil (move etiqueta sozinho no ritmo certo). OPT-IN (nasce desligada).
-  const { data: funilAtiva } = useQuery<boolean>({
+  const funilQuery = useQuery<boolean>({
     queryKey: ['funil-config'],
     queryFn: async () => {
-      const { data } = await supabase.from('wa_avaliacao_config').select('funil_auto_ativa').eq('id', 1).maybeSingle()
+      const { data, error } = await supabase.from('wa_avaliacao_config').select('funil_auto_ativa').eq('id', 1).maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error('Configuração do funil indisponível.')
       return data?.funil_auto_ativa === true
     },
     refetchInterval: 15000,
@@ -293,10 +306,12 @@ export function Disparos() {
   })
 
   // Modo teste (dry-run): quando ligado, a automação só computa/avisa, NÃO aplica etiqueta.
-  const { data: funilDryRun } = useQuery<boolean>({
+  const dryRunQuery = useQuery<boolean>({
     queryKey: ['funil-dryrun'],
     queryFn: async () => {
-      const { data } = await supabase.from('wa_avaliacao_config').select('funil_dry_run').eq('id', 1).maybeSingle()
+      const { data, error } = await supabase.from('wa_avaliacao_config').select('funil_dry_run').eq('id', 1).maybeSingle()
+      if (error) throw error
+      if (!data) throw new Error('Modo de teste do funil indisponível.')
       return data?.funil_dry_run !== false
     },
     refetchInterval: 15000,
@@ -320,6 +335,19 @@ export function Disparos() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
     onError: (err: any) => alert('Não foi possível alterar o funil do vendedor: ' + (err?.message || err)),
   })
+
+  const vendedores = vendedoresQuery.data
+  const loadingV = vendedoresQuery.isLoading
+  const efetivo = efetivoQuery.data
+  const cotaCfg = cotaQuery.data
+  const vendorRuntime = runtimeQuery.data
+  const avaliacaoAtiva = avaliacaoQuery.data
+  const prospecAtiva = prospecQuery.data
+  const funilAtiva = funilQuery.data
+  const funilDryRun = dryRunQuery.data
+  const consultas = [vendedoresQuery, efetivoQuery, cotaQuery, runtimeQuery, avaliacaoQuery, prospecQuery, funilQuery, dryRunQuery]
+  const erroLeitura = consultas.find(q => q.error)?.error
+  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
   // Estado ao vivo por vendedor pro mapa do escritório (heartbeat + leads hoje)
   const liveMesas = useMemo(() => {
@@ -349,8 +377,13 @@ export function Disparos() {
     )
   }
 
+  if (consultas.some(q => q.error && q.data === undefined)) return <div className="p-4"><h1 className="mb-4 text-2xl font-bold">Central de Roteamento</h1><QueryNotice error={erroLeitura} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar o estado do roteamento. Recarregue os dados antes de alterar os controles." onRetry={atualizar} /></div>
+  if (consultas.some(q => q.isPending && q.data === undefined)) return <PageLoading />
+
   return (
     <div className="p-4 space-y-4">
+      <QueryNotice error={erroLeitura} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar o roteamento. O último estado permanece visível; os controles aguardam uma leitura válida." onRetry={atualizar} />
+      <fieldset disabled={!!erroLeitura} className="min-w-0 space-y-4">
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
@@ -725,6 +758,7 @@ export function Disparos() {
             mesmo erro que já pintava Álvaro e Lucas de cinza. */}
         <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} />
       </SecaoRecolhivel>
+      </fieldset>
     </div>
   )
 }
@@ -741,15 +775,18 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
 }) {
   const qc = useQueryClient()
   const secao = useSecaoRecolhivel('disparos.distribuicao')
+  const [saveInOrder] = useState(createSequentialSave)
+  const [pendingSaves, setPendingSaves] = useState(0)
   // Todos os online (mesmo bloqueados aparecem na lista pra dar opção de desbloquear)
   const online = useMemo(() => vendedores.filter(v => v.online), [vendedores])
   const ativos = useMemo(() => online.filter(v => !v.bloqueado), [online])
   const [local, setLocal] = useState<Record<string, number>>({})
   useEffect(() => {
+    if (pendingSaves > 0) return
     const novo: Record<string, number> = {}
     for (const v of online) novo[v.vendedor_nome] = Number(v.share_percent) || 0
     setLocal(novo)
-  }, [online.map(v => `${v.vendedor_nome}:${v.share_percent}`).join('|')])
+  }, [online.map(v => `${v.vendedor_nome}:${v.share_percent}`).join('|'), pendingSaves])
 
   const soma = useMemo(() => Object.values(local).reduce((s, n) => s + (Number(n) || 0), 0), [local])
 
@@ -770,22 +807,35 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
   const cores = ['bg-emerald-500', 'bg-cyan-500', 'bg-purple-500', 'bg-amber-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500', 'bg-rose-500', 'bg-teal-500']
 
   async function persistirUm(nome: string, valor: number) {
-    const { error } = await supabase.from('vendor_dispatch_status').update({ share_percent: valor }).eq('vendedor_nome', nome)
-    if (error) {
-      alert('Não foi possível salvar % do ' + nome + ': ' + error.message)
-      return
+    setPendingSaves(count => count + 1)
+    try {
+      await saveInOrder(async () => {
+        const { error } = await supabase.from('vendor_dispatch_status').update({ share_percent: valor }).eq('vendedor_nome', nome)
+        if (error) throw error
+      })
+    } catch {
+      alert('Não foi possível salvar o peso de ' + nome + '. A distribuição será recarregada para conferir os valores salvos.')
+    } finally {
+      await qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
+      setPendingSaves(count => count - 1)
     }
-    qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
   }
   async function persistirTodos(novo: Record<string, number>) {
-    const results = await Promise.all(Object.entries(novo).map(([nome, p]) =>
-      supabase.from('vendor_dispatch_status').update({ share_percent: p }).eq('vendedor_nome', nome)
-    ))
-    const erros = results.filter(r => r.error).map(r => r.error?.message)
-    if (erros.length > 0) {
-      alert('Erro ao salvar pesos: ' + erros[0])
+    const entries = Object.entries(novo)
+    setPendingSaves(count => count + 1)
+    try {
+      await saveInOrder(async () => {
+        const results = await Promise.allSettled(entries.map(([nome, valor]) =>
+          supabase.from('vendor_dispatch_status').update({ share_percent: valor }).eq('vendedor_nome', nome)
+        ))
+        if (results.some(result => result.status === 'rejected' || result.value.error)) throw new Error('Falha ao salvar a distribuição')
+      })
+    } catch {
+      alert('Não foi possível salvar todos os pesos. A distribuição será recarregada para conferir os valores salvos.')
+    } finally {
+      await qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
+      setPendingSaves(count => count - 1)
     }
-    qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] })
   }
 
   function igualar() {
@@ -849,13 +899,13 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
           </div>
           {secao.aberta && (
             <>
-              <button onClick={igualar} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 font-medium">
+              <button onClick={igualar} disabled={pendingSaves > 0} className="text-[10px] px-2 py-1 rounded bg-accent/10 text-accent border border-accent/30 hover:bg-accent/20 font-medium disabled:opacity-40">
                 Dividir igualmente
               </button>
-              <button onClick={normalizar} disabled={soma <= 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
+              <button onClick={normalizar} disabled={soma <= 0 || pendingSaves > 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink border border-border hover:bg-surface-3 disabled:opacity-40">
                 Ajustar p/ 100%
               </button>
-              <button onClick={zerar} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink-muted border border-border hover:bg-red-500/10 hover:text-red-300">
+              <button onClick={zerar} disabled={pendingSaves > 0} className="text-[10px] px-2 py-1 rounded bg-surface-2 text-ink-muted border border-border hover:bg-red-500/10 hover:text-red-300 disabled:opacity-40">
                 Zerar tudo
               </button>
             </>
@@ -947,7 +997,8 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
       )}
 
       {/* Sliders por vendedor */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+      {pendingSaves > 0 && <p role="status" className="mb-2 text-xs text-ink-muted">Salvando distribuição…</p>}
+      <fieldset disabled={pendingSaves > 0} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
         {online.map((v, i) => {
           const valor = Number(local[v.vendedor_nome] ?? 0)
           const cor = cores[i % cores.length]
@@ -982,11 +1033,13 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                   <div className="flex items-center justify-end gap-1 mb-2">
                     <button
                       onClick={() => ajustar(v.vendedor_nome, -5)}
+                      aria-label={`Diminuir peso de ${v.vendedor_nome} em 5 pontos`}
                       className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-red-500/30 hover:text-red-200 hover:border-red-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
                       title="-5%"
                     >−</button>
                     <input
                       type="number" min={0} max={100} step="1"
+                      aria-label={`Percentual de distribuição de ${v.vendedor_nome}`}
                       value={valor === 0 ? '' : valor}
                       onChange={e => setLocal({ ...local, [v.vendedor_nome]: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
                       onBlur={() => persistirUm(v.vendedor_nome, valor)}
@@ -996,16 +1049,19 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                     <span className="text-[11px] text-ink-muted font-semibold">%</span>
                     <button
                       onClick={() => ajustar(v.vendedor_nome, 5)}
+                      aria-label={`Aumentar peso de ${v.vendedor_nome} em 5 pontos`}
                       className="w-6 h-6 rounded bg-slate-900 border border-slate-700 text-ink hover:bg-emerald-500/30 hover:text-emerald-200 hover:border-emerald-500/50 text-[14px] font-bold leading-none flex items-center justify-center transition-colors"
                       title="+5%"
                     >+</button>
                   </div>
                   <input
                     type="range" min={0} max={100} step={1}
+                    aria-label={`Ajustar percentual de ${v.vendedor_nome}`}
                     value={valor}
                     onChange={e => setLocal({ ...local, [v.vendedor_nome]: Number(e.target.value) })}
-                    onMouseUp={() => persistirUm(v.vendedor_nome, valor)}
-                    onTouchEnd={() => persistirUm(v.vendedor_nome, valor)}
+                    onMouseUp={event => { void persistirUm(v.vendedor_nome, Number(event.currentTarget.value)) }}
+                    onTouchEnd={event => { void persistirUm(v.vendedor_nome, Number(event.currentTarget.value)) }}
+                    onKeyUp={event => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) void persistirUm(v.vendedor_nome, Number(event.currentTarget.value)) }}
                     className={`w-full h-1.5 ${corAccent} cursor-pointer`}
                   />
                   <div className="text-[10px] text-ink-faint mt-1.5 min-h-[14px]">
@@ -1054,7 +1110,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
             </div>
           )
         })}
-      </div>
+      </fieldset>
       </>
       )}
     </Card>
@@ -1083,14 +1139,15 @@ function OutboundDispatchCard() {
   const [copied, setCopied] = useState<string | null>(null)
   const secao = useSecaoRecolhivel('disparos.outbound')
   const secWebhook = useSecaoRecolhivel('disparos.outbound.webhook', false)
-  const { data: rows, isLoading } = useQuery<DispatchRow[]>({
+  const { data: rows, isLoading, error, isFetching, refetch } = useQuery<DispatchRow[]>({
     queryKey: ['outbound-dispatch-log'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('outbound_dispatch')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(30)
+      if (error) throw error
       return (data ?? []) as DispatchRow[]
     },
     refetchInterval: 5000,
@@ -1173,9 +1230,10 @@ function OutboundDispatchCard() {
       </div>
 
       {/* Log */}
+      <QueryNotice error={error} loading={isFetching} message="Não foi possível carregar o histórico de envios." onRetry={() => { void refetch() }} />
       {isLoading ? (
         <PageLoading />
-      ) : (rows?.length ?? 0) === 0 ? (
+      ) : error && !rows ? null : (rows?.length ?? 0) === 0 ? (
         <div className="text-center py-6 text-ink-muted text-[12px]">
           Nenhum envio ainda. Configure o webhook no ReplyAgent e faça um teste.
         </div>

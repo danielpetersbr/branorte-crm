@@ -3,6 +3,7 @@
 // Fecha um frete arrastando o card pra "Fretes fechados" OU pelo botão "Fechar frete"
 // (abre modal pra informar o valor final combinado). Funciona no desktop (drag) e no celular (botão).
 import { useMemo, useState } from 'react'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import type { DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Truck, MapPin, Trophy, Clock, CheckCircle2, Paperclip, PackageCheck, X, Undo2, Loader2, Send, RotateCw, Settings } from 'lucide-react'
@@ -296,8 +297,9 @@ export default function FreteCotacoesPainel() {
       )}
 
       {painel.isLoading && <div className="text-sm text-ink-faint">Carregando…</div>}
+      <QueryNotice error={painel.error} loading={painel.isFetching} onRetry={() => { void painel.refetch() }} message="Não foi possível carregar o quadro de cotações de frete." />
 
-      {!painel.isLoading && (
+      {!painel.isLoading && !painel.error && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
           {COLS.map(col => {
             const Icon = col.icon

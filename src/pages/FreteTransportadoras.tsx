@@ -2,6 +2,7 @@
 // Lista + form modal de edicao. R$/km por tipo de caminhao + UFs atendidas.
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { Link } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -237,7 +238,7 @@ function CoberturaMapa({ transportadoras, melhorPorUf }: {
 }
 
 export default function FreteTransportadoras() {
-  const { data: lista, isLoading } = useTransportadoras()
+  const { data: lista, isLoading, error, refetch, isFetching } = useTransportadoras()
   const { data: melhorPorUf } = useFreteMelhorPorUf()
   const upsert = useUpsertTransportadora()
   const del = useDeleteTransportadora()
@@ -293,7 +294,7 @@ export default function FreteTransportadoras() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-ink leading-tight">Transportadoras Parceiras</h1>
-            <p className="text-xs text-ink-muted">{lista?.length ?? 0} cadastrada{(lista?.length ?? 0) === 1 ? '' : 's'} · {(lista ?? []).filter(t => t.autorizado && t.ativo).length} na auto-cotação</p>
+            <p className="text-xs text-ink-muted">{lista ? <>{lista.length} cadastrada{lista.length === 1 ? '' : 's'} · {lista.filter(t => t.autorizado && t.ativo).length} na auto-cotação</> : isLoading ? 'Carregando transportadoras…' : error ? 'Transportadoras não carregadas' : '0 cadastradas · 0 na auto-cotação'}</p>
           </div>
         </div>
         <button
@@ -305,7 +306,8 @@ export default function FreteTransportadoras() {
         </button>
       </div>
 
-      {!isLoading && (lista?.length ?? 0) > 0 && (
+      <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar as transportadoras." />
+      {!isLoading && !error && (lista?.length ?? 0) > 0 && (
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-ink"><MapPin className="h-4 w-4 text-accent" /> Cobertura por estado</div>
           <CoberturaMapa transportadoras={lista ?? []} melhorPorUf={melhorPorUf ?? {}} />
@@ -319,7 +321,7 @@ export default function FreteTransportadoras() {
         </div>
       )}
 
-      {!isLoading && (lista?.length ?? 0) === 0 && (
+      {!isLoading && !error && (lista?.length ?? 0) === 0 && (
         <div className="rounded-2xl border border-dashed border-border p-10 text-center text-ink-faint">
           <Truck className="h-8 w-8 mx-auto mb-2 opacity-40" />
           Nenhuma transportadora cadastrada ainda. Clique em <b className="text-ink-muted">"Nova"</b> pra começar.

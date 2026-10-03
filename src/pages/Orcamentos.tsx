@@ -5,9 +5,9 @@ import { useVendors } from '@/hooks/useVendors'
 import { usePipelineVendedor } from '@/hooks/usePipelineVendedor'
 import { Card, CardContent } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { formatNumber } from '@/lib/utils'
 import { FileText, TrendingUp, Calendar, BarChart2, Trophy, Handshake, Hourglass, XCircle, Snowflake, FilePlus2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { OrcamentosLista } from '@/pages/OrcamentosLista'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -25,7 +25,7 @@ export function Orcamentos() {
   const loc = useLocation()
   const tab: 'painel' | 'lista' = loc.pathname.startsWith('/orcamentos/lista') ? 'lista' : 'painel'
 
-  const { data, isLoading } = useOrcamentoStats()
+  const { data, isLoading, error, refetch, isFetching } = useOrcamentoStats()
   const { data: vendorsList } = useVendors({ incluirInativos: true })
   const { data: pipeline } = usePipelineVendedor()
 
@@ -41,6 +41,7 @@ export function Orcamentos() {
       .sort((a, b) => b.count - a.count)
   }, [data?.vendorStats, vendorsList])
 
+  if (error) return <div className="p-4 lg:p-8 space-y-6"><h1 className="text-2xl font-bold text-text-primary">Orçamentos</h1><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar os indicadores de orçamentos." /></div>
   if (isLoading || !data) return <PageLoading />
 
   const { total, yearStats, monthStats, hasMonthData } = data

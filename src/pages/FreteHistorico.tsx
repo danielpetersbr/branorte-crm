@@ -1,5 +1,6 @@
 // /frete/historico - Histórico de TODAS as cotações de frete (RFQ), com filtros. Tela inteira.
 import { useMemo, useState } from 'react'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { Link } from 'react-router-dom'
 import { Truck, ArrowLeft } from 'lucide-react'
 import { useFreteHistorico, useTiposCaminhao } from '@/hooks/useFrete'
@@ -65,18 +66,19 @@ export default function FreteHistorico() {
             {tipos.data?.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
           </select>
         </div>
-        <div className="ml-auto text-xs text-ink-muted">{rows.length} cotação(ões)</div>
+        <div className="ml-auto text-xs text-ink-muted">{hist.data ? `${rows.length} cotação(ões)` : hist.isLoading ? 'Carregando cotações…' : hist.error ? 'Cotações não carregadas' : '0 cotação(ões)'}</div>
       </div>
 
       {hist.isLoading && <div className="text-sm text-ink-muted">Carregando…</div>}
+      <QueryNotice error={hist.error} loading={hist.isFetching} onRetry={() => { void hist.refetch() }} message="Não foi possível carregar o histórico de fretes." />
 
-      {!hist.isLoading && rows.length === 0 && (
+      {!hist.isLoading && !hist.error && rows.length === 0 && (
         <div className="border border-dashed border-border rounded-xl p-10 text-center text-ink-faint">
           Nenhuma cotação encontrada com esses filtros.
         </div>
       )}
 
-      {rows.length > 0 && (
+      {!hist.error && rows.length > 0 && (
         <div className="bg-surface-1 border border-border rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-xs text-ink-muted">

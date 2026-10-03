@@ -5,8 +5,8 @@
 // Setup: CONVERTAPI_SECRET no Vercel env (formato 'secret_xxx', pegado em
 // https://v2.convertapi.com/user com Authorization Bearer do token v2).
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-// @ts-ignore - lib sem tipos completos
 import ConvertAPI from 'convertapi'
+import { Readable } from 'node:stream'
 import { createClient } from '@supabase/supabase-js'
 import { exigirAprovado } from './_lib/exigir-aprovado.js'
 
@@ -52,32 +52,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const t0 = Date.now()
     const convertapi = new ConvertAPI(SECRET)
+    const upload = await convertapi.upload(Readable.from(Buffer.from(pdfBase64, 'base64')), filename)
     // Doc: https://www.convertapi.com/pdf-to-docx
     const result = await convertapi.convert('docx',
       {
-        File: { name: filename, data: pdfBase64 },
+        File: upload,
         FileName: filename.replace(/\.pdf$/i, ''),
       },
       'pdf',
     )
 
     // Resultado: lista de files. Pega o primeiro.
-    const files = result.files || (result as any).Files
-    const file = files?.[0]
+    const file = result.files[0]
     if (!file) throw new Error('ConvertAPI nao retornou files')
-
-    let docxBuf: Buffer
-    if (typeof file.fileBase64 === 'function') {
-      const b64 = await file.fileBase64()
-      docxBuf = Buffer.from(b64, 'base64')
-    } else if (file.url || file.Url) {
-      const fileUrl: string = file.url || file.Url
-      const dr = await fetch(fileUrl)
-      if (!dr.ok) throw new Error(`Falha baixar DOCX: HTTP ${dr.status}`)
-      docxBuf = Buffer.from(await dr.arrayBuffer())
-    } else {
-      throw new Error('File sem fileBase64() nem url')
-    }
+    if (!file.url) throw new Error('ConvertAPI não retornou a URL do DOCX')
+    const dr = await fetch(file.url)
+    if (!dr.ok) throw new Error(`Falha baixar DOCX: HTTP ${dr.status}`)
+    const docxBuf = Buffer.from(await dr.arrayBuffer())
 
     const ms = Date.now() - t0
     console.log(`[pdf-to-docx] OK ${docxBuf.length} bytes em ${ms}ms`)

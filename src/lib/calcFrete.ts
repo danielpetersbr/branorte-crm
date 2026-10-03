@@ -413,7 +413,7 @@ export type DistanciaResultado = {
  * Consulta ViaCEP para resolver CEP -> endereço.
  * Aceita CEP com ou sem hífen.
  */
-export async function consultarCEP(cep: string): Promise<{
+export async function consultarCEP(cep: string, signal?: AbortSignal): Promise<{
   cidade: string;
   uf: string;
   bairro: string;
@@ -421,9 +421,10 @@ export async function consultarCEP(cep: string): Promise<{
 } | null> {
   const cepLimpo = cep.replace(/\D/g, '');
   if (cepLimpo.length !== 8) return null;
+  signal?.throwIfAborted();
 
   try {
-    const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+    const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`, { signal });
     if (!res.ok) return null;
     const data = await res.json();
     if (data.erro) return null;
@@ -434,6 +435,7 @@ export async function consultarCEP(cep: string): Promise<{
       logradouro: data.logradouro,
     };
   } catch {
+    signal?.throwIfAborted();
     return null;
   }
 }
@@ -445,12 +447,15 @@ export async function consultarCEP(cep: string): Promise<{
 export async function geocodificarCidade(
   cidade: string,
   uf: string,
+  signal?: AbortSignal,
 ): Promise<{ lat: number; lng: number } | null> {
+  signal?.throwIfAborted();
   try {
     const query = encodeURIComponent(`${cidade}, ${uf}, Brasil`);
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=br`,
       {
+        signal,
         headers: {
           'User-Agent': 'Branorte-CRM-Frete/1.0 (contato@mbranorte.com.br)',
         },
@@ -461,6 +466,7 @@ export async function geocodificarCidade(
     if (!Array.isArray(arr) || arr.length === 0) return null;
     return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
   } catch {
+    signal?.throwIfAborted();
     return null;
   }
 }
@@ -472,10 +478,12 @@ export async function geocodificarCidade(
 export async function calcularDistanciaOSRM(
   origem: { lat: number; lng: number },
   destino: { lat: number; lng: number },
+  signal?: AbortSignal,
 ): Promise<{ distancia_km: number; tempo_horas: number } | null> {
+  signal?.throwIfAborted();
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}?overview=false`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.routes || data.routes.length === 0) return null;
@@ -485,6 +493,7 @@ export async function calcularDistanciaOSRM(
       tempo_horas: rota.duration / 3600,
     };
   } catch {
+    signal?.throwIfAborted();
     return null;
   }
 }
@@ -495,19 +504,23 @@ export async function calcularDistanciaOSRM(
  */
 export async function calcularDistanciaBranortePara(
   cepDestino: string,
+  signal?: AbortSignal,
 ): Promise<DistanciaResultado | null> {
-  const enderecoDestino = await consultarCEP(cepDestino);
+  const enderecoDestino = await consultarCEP(cepDestino, signal);
+  signal?.throwIfAborted();
   if (!enderecoDestino) return null;
 
   const coordsDestino = await geocodificarCidade(
     enderecoDestino.cidade,
     enderecoDestino.uf,
+    signal,
   );
   if (!coordsDestino) return null;
 
   const dist = await calcularDistanciaOSRM(
     { lat: BRANORTE_ORIGEM.lat, lng: BRANORTE_ORIGEM.lng },
     coordsDestino,
+    signal,
   );
   if (!dist) return null;
 
@@ -557,16 +570,20 @@ export type DestinoResolvido = {
 export async function resolverDestinoPorCidade(
   cidade: string,
   uf: string,
+  signal?: AbortSignal,
 ): Promise<DestinoResolvido> {
   let distancia_km: number | null = null;
   let tempo_horas: number | null = null;
 
-  const coords = await geocodificarCidade(cidade, uf);
+  const coords = await geocodificarCidade(cidade, uf, signal);
+  signal?.throwIfAborted();
   if (coords) {
     const dist = await calcularDistanciaOSRM(
       { lat: BRANORTE_ORIGEM.lat, lng: BRANORTE_ORIGEM.lng },
       coords,
+      signal,
     );
+    signal?.throwIfAborted();
     if (dist) {
       distancia_km = Math.round(dist.distancia_km);
       tempo_horas = Math.round(dist.tempo_horas * 10) / 10;
@@ -586,20 +603,25 @@ export async function resolverDestinoPorCidade(
 
 export async function resolverDestino(
   cepDestino: string,
+  signal?: AbortSignal,
 ): Promise<DestinoResolvido | null> {
-  const endereco = await consultarCEP(cepDestino);
+  const endereco = await consultarCEP(cepDestino, signal);
+  signal?.throwIfAborted();
   if (!endereco) return null; // CEP inválido — único caso de null
 
   // Cidade/UF já garantidos. Distância é best-effort.
   let distancia_km: number | null = null;
   let tempo_horas: number | null = null;
 
-  const coords = await geocodificarCidade(endereco.cidade, endereco.uf);
+  const coords = await geocodificarCidade(endereco.cidade, endereco.uf, signal);
+  signal?.throwIfAborted();
   if (coords) {
     const dist = await calcularDistanciaOSRM(
       { lat: BRANORTE_ORIGEM.lat, lng: BRANORTE_ORIGEM.lng },
       coords,
+      signal,
     );
+    signal?.throwIfAborted();
     if (dist) {
       distancia_km = Math.round(dist.distancia_km);
       tempo_horas = Math.round(dist.tempo_horas * 10) / 10;

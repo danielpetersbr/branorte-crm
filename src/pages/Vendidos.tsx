@@ -56,6 +56,7 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
   return useQuery({
     queryKey: ['vendidos', filters],
     queryFn: async () => {
+      let coberturaLimitada = false
       let query = supabase
         .from('contacts')
         .select('*', { count: 'exact' })
@@ -69,7 +70,8 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
       if (filters.search) {
         query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,descricao_orcamento.ilike.%${filters.search}%,city.ilike.%${filters.search}%`)
       }
-      if (filters.vendor_id) query = query.eq('vendor_id', filters.vendor_id)
+      if (filters.vendor_id === 'unassigned') query = query.is('vendor_id', null)
+      else if (filters.vendor_id) query = query.eq('vendor_id', filters.vendor_id)
       if (filters.estado) query = query.eq('state', filters.estado)
       if (filters.ano) {
         // Cruza com orcamentos_files: pega contact_ids que têm orçamento neste ano
@@ -92,13 +94,14 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
         }
         const { data: orcRows, error: orcErr } = await orcQ
         if (orcErr) throw orcErr
+        coberturaLimitada = (orcRows?.length ?? 0) >= 10000
         const idsSet = new Set<string>()
         for (const r of (orcRows ?? []) as { contact_id: string | null }[]) {
           if (r.contact_id) idsSet.add(r.contact_id)
         }
         const ids = Array.from(idsSet)
         if (ids.length === 0) {
-          return { contacts: [], total: 0 }
+          return { contacts: [], total: 0, coberturaLimitada }
         }
         query = query.in('id', ids)
       }
@@ -108,7 +111,7 @@ function useSoldContacts(filters: { search: string; vendor_id: string; estado: s
 
       const { data, error, count } = await query
       if (error) throw error
-      return { contacts: (data ?? []) as Contact[], total: count ?? 0 }
+      return { contacts: (data ?? []) as Contact[], total: count ?? 0, coberturaLimitada }
     },
     placeholderData: (prev) => prev,
   })
@@ -122,7 +125,7 @@ function useSoldStats() {
         .from('contacts')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'FECHADO')
-        .like('origin', 'Orcamento%')
+        .or('origin.ilike.Orcamento%,origin.ilike.Orçamento%')
       if (error) throw error
       return count ?? 0
     },
@@ -133,8 +136,8 @@ export function Vendidos() {
   const [filters, setFilters] = useState({ search: '', vendor_id: '', estado: '', ano: '', mes: '', page: 0 })
   const [searchInput, setSearchInput] = useState('')
 
-  const { data, isLoading } = useSoldContacts(filters)
-  const { data: totalSold } = useSoldStats()
+  const { data, isLoading, error, isFetching, refetch } = useSoldContacts(filters)
+  const { data: totalSold, error: statsError, refetch: refetchStats } = useSoldStats()
   const { data: vendorsData } = useVendors()
   const { profile } = useAuth()
   const isVendor = profile?.role === 'vendor'
@@ -171,7 +174,7 @@ export function Vendidos() {
           <p className="text-sm text-text-muted mt-1">
             {totalSold != null ? (
               <><span className="font-semibold text-green-600">{totalSold.toLocaleString('pt-BR')}</span> vendas fechadas</>
-            ) : 'Carregando...'}
+            ) : statsError ? 'Total de vendas indisponível' : 'Carregando...'}
           </p>
         </div>
       </div>
@@ -222,7 +225,12 @@ export function Vendidos() {
         </div>
       </Card>
 
-      {isLoading ? <PageLoading /> : (
+      {(error || statsError) && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+        {error ? 'Não foi possível carregar a lista de vendas.' : 'Não foi possível carregar o total de vendas.'} {data && error && 'A lista anterior permanece visível.'}
+        <button type="button" className="ml-2 underline" disabled={isFetching} onClick={() => { void refetch(); void refetchStats() }}>Tentar novamente</button>
+      </div>}
+      {data?.coberturaLimitada && <p role="status" className="mb-3 text-sm text-warning">O filtro de ano atingiu o limite de 10.000 orçamentos consultados. A lista e sua contagem podem estar incompletas; selecione um mês para restringir a consulta.</p>}
+      {isLoading ? <PageLoading /> : error && !data ? null : (
         <div className="space-y-4">
           {/* Results count */}
           <div className="flex items-center justify-between">

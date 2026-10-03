@@ -25,6 +25,7 @@ import { assinaturaRota } from '@/lib/mapa-rota-assinatura'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
 import { CompletarCidade } from '@/components/mapa/CompletarCidade'
 import { MapaDialog, MapaPainel } from '@/components/mapa/MapaDialog'
@@ -442,13 +443,13 @@ type VisitaFiltro = 'todos' | 'visitados' | 'pendentes'
 
 export function MapaVisitas() {
   const [showLista, setShowLista] = useState(false)
-  const { data: visitas = VISITAS_VAZIAS, isLoading } = useVisitas()
-  const { data: orcPontos = PONTOS_VAZIOS, isLoading: loadingOrc, error: errorOrc, refetch: refetchOrc } = useOrcamentosMapa()
+  const { data: visitas = VISITAS_VAZIAS, isLoading, error: errorVisitas, refetch: refetchVisitas, isFetching: fetchingVisitas } = useVisitas()
+  const { data: orcPontos = PONTOS_VAZIOS, isLoading: loadingOrc, error: errorOrc, refetch: refetchOrc, isFetching: fetchingOrc } = useOrcamentosMapa()
   const { data: lista = LISTA_VAZIA, isLoading: loadingListaQuery, error: errorListaQuery, refetch: refetchListaQuery } = useListaOrcamentos({ enabled: showLista })
   const { data: vendasCount = 0 } = useVendasMapaCount()
   const { data: etiquetasWa = [] } = useEtiquetas()
-  const { data: etiqMap = MAPA_ETIQ_VAZIO, isLoading: loadingEtiquetasMapa, error: errorEtiquetasMapa, refetch: refetchEtiquetasMapa } = useEtiquetasMapa()
-  const { data: marc = MARCACOES_VAZIAS, isLoading: loadingMarcacoes, error: errorMarcacoes, refetch: refetchMarcacoes } = useMapaMarcacoes()
+  const { data: etiqMap = MAPA_ETIQ_VAZIO, isLoading: loadingEtiquetasMapa, error: errorEtiquetasMapa, refetch: refetchEtiquetasMapa, isFetching: fetchingEtiquetasMapa } = useEtiquetasMapa()
+  const { data: marc = MARCACOES_VAZIAS, isLoading: loadingMarcacoes, error: errorMarcacoes, refetch: refetchMarcacoes, isFetching: fetchingMarcacoes } = useMapaMarcacoes()
   const { data: ufsVisiveis = [] } = useUfsVisiveis()
   const salvarMarc = useSalvarMarcacao()
   const salvarViagemMut = useSalvarViagem()
@@ -551,12 +552,36 @@ export function MapaVisitas() {
   const [viagemStatus, setViagemStatus] = useState<ViagemStatus>('rascunho')
   const [abrirSalvas, setAbrirSalvas] = useState(false)
   const [carregarId, setCarregarId] = useState<string | null>(null)
+  const viagemContextoRef = useRef(0)
+  const salvandoViagemRef = useRef(false)
+  const viagemMontadaRef = useRef(true)
+  const viagemSnapshotRef = useRef('')
+  const viagemSnapshotSalvoRef = useRef<string | null>(null)
+  useEffect(() => {
+    viagemMontadaRef.current = true
+    return () => { viagemMontadaRef.current = false }
+  }, [])
   const setCfgViagem = (patch: Partial<ConfigViagem>) => setCfgViagemState(c => ({ ...c, ...patch }))
 
+  function abrirViagem(id: string) {
+    viagemContextoRef.current++
+    viagemSnapshotSalvoRef.current = null
+    setViagemSalvaEm(null)
+    setCarregarId(id)
+  }
+
   // Abrir uma viagem salva: o hook busca, o effect aplica no painel.
-  const { data: viagemCarregada, isFetching: carregandoViagem } = useViagem(carregarId)
+  const { data: viagemCarregada, isFetching: carregandoViagem, error: erroCarregarViagem, isFetched: viagemBuscada, refetch: refetchViagem } = useViagem(carregarId)
+  const erroAbrirViagem = carregarId && !carregandoViagem
+    ? erroCarregarViagem || (viagemBuscada && !viagemCarregada ? new Error('Viagem não encontrada ou indisponível.') : null)
+    : null
+  function cancelarAberturaViagem() {
+    viagemContextoRef.current++
+    setCarregarId(null)
+  }
   useEffect(() => {
     if (!carregarId || !viagemCarregada || viagemCarregada.id !== carregarId) return
+    viagemContextoRef.current++
     setCfgViagemState(viagemCarregada.cfg)
     setParadas(viagemCarregada.paradas)
     setViagemId(viagemCarregada.id)
@@ -1151,6 +1176,14 @@ export function MapaVisitas() {
     () => programar(paradas, cfgViagem, trechos),
     [paradas, cfgViagem, trechos],
   )
+  const viagemSnapshot = useMemo(
+    () => JSON.stringify({ cfg: cfgViagem, paradas, programacao: prog, status: viagemStatus }),
+    [cfgViagem, paradas, prog, viagemStatus],
+  )
+  viagemSnapshotRef.current = viagemSnapshot
+  useEffect(() => {
+    if (viagemSnapshotSalvoRef.current !== viagemSnapshot) setViagemSalvaEm(null)
+  }, [viagemSnapshot])
 
   // Os dias SEGUEM as paradas enquanto ninguém mexer no campo "Dias". O
   // vendedor escolhe onde vai; quantos dias leva é resposta, não pergunta —
@@ -1218,7 +1251,7 @@ export function MapaVisitas() {
     const id = params.get('viagem')
     if (!id) return
     entrarNaViagem()
-    setCarregarId(id)
+    abrirViagem(id)
     const p = new URLSearchParams(params)
     p.delete('viagem')
     setParams(p, { replace: true })
@@ -1226,6 +1259,9 @@ export function MapaVisitas() {
   }, [params])
   function novaViagem() {
     if (paradas.length && !window.confirm('Começar uma viagem em branco? O que está no painel some se não estiver salvo.')) return
+    viagemContextoRef.current++
+    viagemSnapshotSalvoRef.current = null
+    setCarregarId(null)
     setCfgViagemState({ ...CONFIG_PADRAO, nome: `Viagem ${new Date().toLocaleDateString('pt-BR')}` })
     setParadas([])
     setTrechos(new Map())
@@ -1378,15 +1414,22 @@ export function MapaVisitas() {
   }
 
   async function salvarViagem() {
-    if (!cfgViagem.nome.trim()) return
+    if (!cfgViagem.nome.trim() || carregarId || salvandoViagemRef.current || !viagemMontadaRef.current) return
+    salvandoViagemRef.current = true
+    const contexto = viagemContextoRef.current
+    const snapshot = viagemSnapshotRef.current
     setSalvandoViagem(true)
     try {
       // id presente = regrava por cima da mesma viagem (não cria uma cópia a cada salvar)
       const { id, foraDoPlano } = await salvarViagemMut.mutateAsync({
         id: viagemId ?? undefined, cfg: cfgViagem, paradas, programacao: prog, status: viagemStatus,
       })
+      if (!viagemMontadaRef.current || viagemContextoRef.current !== contexto) return
+      // An edited version of this same trip keeps its confirmed ID for the next
+      // update, but only the exact persisted snapshot can be labelled saved.
       setViagemId(id)
-      setViagemSalvaEm(new Date().toISOString())
+      viagemSnapshotSalvoRef.current = snapshot
+      setViagemSalvaEm(viagemSnapshotRef.current === snapshot ? new Date().toISOString() : null)
       // 29/09/2026: parada com check-in/relatório do representante não é apagada pelo
       // salvar (o relatório ia junto). Se o gestor tirou uma dessas do plano, ela
       // continua na viagem — avisar, senão ela "volta sozinha" ao reabrir.
@@ -1399,6 +1442,7 @@ export function MapaVisitas() {
         )
       }
     } catch (e) {
+      if (!viagemMontadaRef.current || viagemContextoRef.current !== contexto) return
       // O hook valida os CHECK do banco antes do INSERT e joga mensagem em pt-BR
       // ("o fim da jornada precisa ser depois do início"). Mostrar ela, não um
       // genérico — senão o usuário não sabe o que corrigir.
@@ -1409,7 +1453,8 @@ export function MapaVisitas() {
           : 'Não consegui salvar a viagem. Nada foi perdido — tente de novo.',
       )
     } finally {
-      setSalvandoViagem(false)
+      salvandoViagemRef.current = false
+      if (viagemMontadaRef.current) setSalvandoViagem(false)
     }
   }
 
@@ -1957,6 +2002,18 @@ export function MapaVisitas() {
     : `${etiquetasSel.size} etiquetas`
   // O MESMO painel no popover do desktop e na folha do celular — uma lista só,
   // senão as duas divergem na primeira mexida.
+  const fontesMapa = [
+    { nome: 'clientes', error: errorOrc, pending: loadingOrc, fetching: fetchingOrc, refetch: refetchOrc },
+    { nome: 'registros de visita', error: errorVisitas, pending: isLoading, fetching: fetchingVisitas, refetch: refetchVisitas },
+    { nome: 'etiquetas', error: errorEtiquetasMapa, pending: loadingEtiquetasMapa, fetching: fetchingEtiquetasMapa, refetch: refetchEtiquetasMapa },
+    { nome: 'marcações de visita', error: errorMarcacoes, pending: loadingMarcacoes, fetching: fetchingMarcacoes, refetch: refetchMarcacoes },
+  ]
+  const erroFontesMapa = fontesMapa.find(fonte => fonte.error)?.error
+  const carregandoFontesMapa = fontesMapa.some(fonte => fonte.pending || fonte.fetching)
+  const leituraMapaConfirmada = !erroFontesMapa && !fontesMapa.some(fonte => fonte.pending)
+  const contagemClientesMapa = leituraMapaConfirmada ? orcFiltrados.length : '—'
+  const contagemVisitasMapa = leituraMapaConfirmada ? visFiltradas.length : '—'
+
   const painelEtiquetas = (
     <div>
       <div className="flex items-center gap-2 mb-1.5 px-1">
@@ -1966,7 +2023,7 @@ export function MapaVisitas() {
         )}
       </div>
       {opcoesEtq.length === 0 ? (
-        <p className="text-[12px] text-ink-muted px-1 py-2">Nenhum cliente com conversa no WhatsApp nos filtros atuais.</p>
+        <p className="text-[12px] text-ink-muted px-1 py-2">{leituraMapaConfirmada ? 'Nenhum cliente com conversa no WhatsApp nos filtros atuais.' : 'Leitura do mapa ainda não confirmada.'}</p>
       ) : (
         <ul className="max-h-[52vh] overflow-y-auto space-y-0.5">
           {opcoesEtq.map(o => (
@@ -2038,7 +2095,7 @@ export function MapaVisitas() {
           </button>
         </li>
       ))}
-      {porUF.length === 0 && <li className="text-[12px] text-ink-muted px-2 py-1.5">Nenhum cliente no filtro atual.</li>}
+      {porUF.length === 0 && <li className="text-[12px] text-ink-muted px-2 py-1.5">{leituraMapaConfirmada ? 'Nenhum cliente no filtro atual.' : 'Leitura do mapa ainda não confirmada.'}</li>}
     </ul>
   )
 
@@ -2049,6 +2106,18 @@ export function MapaVisitas() {
     <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
       {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
       <style>{`.leaflet-marker-icon.marc-check{pointer-events:none!important}`}</style>
+      <div className={erroFontesMapa ? 'shrink-0 px-2 pt-2 md:px-0 md:pt-0' : 'hidden'}>
+        <QueryNotice error={erroFontesMapa} loading={carregandoFontesMapa}
+          onRetry={() => Promise.allSettled(fontesMapa.filter(fonte => fonte.error).map(fonte => fonte.refetch()))}
+          message={`Não foi possível atualizar: ${fontesMapa.filter(fonte => fonte.error).map(fonte => fonte.nome).join(', ')}. Seu planejamento foi preservado. Tente novamente para atualizar o mapa.`} />
+      </div>
+      <div className={erroAbrirViagem ? 'shrink-0 px-2 pt-2 md:px-0 md:pt-0' : 'hidden'}>
+        <QueryNotice error={erroAbrirViagem} loading={carregandoViagem} onRetry={() => refetchViagem()}
+          message={viagemBuscada && !viagemCarregada && !erroCarregarViagem
+            ? 'A viagem não foi encontrada ou não está disponível. Seu planejamento atual foi preservado.'
+            : 'Não foi possível abrir a viagem. Seu planejamento atual foi preservado.'} />
+        <button type="button" onClick={cancelarAberturaViagem} className="mt-1 rounded px-2 py-1 text-sm font-medium text-ink underline">Manter planejamento atual</button>
+      </div>
       {/* HEADER + TOOLBAR — só no desktop. No celular o mapa é tela cheia com filtros flutuantes. */}
       <div className="hidden md:flex flex-col gap-3 shrink-0 rounded-xl border border-border bg-surface px-4 py-3">
         <div>
@@ -2060,12 +2129,12 @@ export function MapaVisitas() {
                 🗺️ {ufsVisiveis.join(' · ')}
               </span>
             )}
-            {showOrc && <>{orcFiltrados.length} clientes no mapa{orcStats.vendido > 0 && <> · <span className="text-accent font-semibold">{orcStats.vendido} vendidos</span></>}</>}
+            {showOrc && <>{contagemClientesMapa} clientes no mapa{leituraMapaConfirmada && orcStats.vendido > 0 && <> · <span className="text-accent font-semibold">{orcStats.vendido} vendidos</span></>}</>}
             {showOrc && showVis && ' · '}
             {/* "sem localização" dava a entender falha de geocode. Medido em 03/09/2026:
                 os 857 registros sem coordenada estão TODOS sem cidade E sem UF — ninguém
                 preencheu. O que falta é cadastro, e é isso que o rótulo tem que dizer. */}
-            {showVis && <>{visFiltradas.length} registros de visita no mapa{semCoord > 0 && <> · <button
+            {showVis && <>{contagemVisitasMapa} registros de visita no mapa{leituraMapaConfirmada && semCoord > 0 && <> · <button
               onClick={() => setCidadeAberta(true)}
               className="text-warning underline underline-offset-2 hover:opacity-80 font-semibold"
               title="Registros sem coordenadas. Abra a fila para completar os cadastros que ainda precisam de cidade e estado.">
@@ -2361,11 +2430,11 @@ export function MapaVisitas() {
             </button>
           </div>
           <div className="pointer-events-auto flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-surface/95 px-3 py-1.5 text-[11px] text-ink-muted shadow backdrop-blur">
-            <span>{showOrc && `${orcFiltrados.length} clientes`}{showOrc && showVis && ' · '}{showVis && `${visFiltradas.length} registros de visita`}{!showOrc && !showVis && 'Nenhuma camada ligada'}</span>
+            <span>{showOrc && `${contagemClientesMapa} clientes`}{showOrc && showVis && ' · '}{showVis && `${contagemVisitasMapa} registros de visita`}{!showOrc && !showVis && 'Nenhuma camada ligada'}</span>
             {vendedorSel && <button onClick={() => setVendedorSel('')} aria-label={`Remover filtro do vendedor ${vendedorSel}`} className="font-semibold text-accent">{vendedorSel} ✕</button>}
             {ufSel && <button onClick={() => setUfSel('')} aria-label="Remover filtro de estado" className="font-semibold text-accent">{ufSel} ✕</button>}
             {showOrc && ocultos.total > 0 && <button onClick={() => setPeriodo('tudo')} className="font-semibold text-warning">+{ocultos.total} fora do período · ver tudo</button>}
-            {showVis && semCoord > 0 && <button onClick={() => setCidadeAberta(true)} className="font-semibold text-warning underline underline-offset-2">{semCoord} sem coordenadas · completar</button>}
+            {showVis && leituraMapaConfirmada && semCoord > 0 && <button onClick={() => setCidadeAberta(true)} className="font-semibold text-warning underline underline-offset-2">{semCoord} sem coordenadas · completar</button>}
             {avisoFormaValor && <button onClick={() => setModo('valor')} className="font-semibold text-warning">Ver formas de valor ↗</button>}
           </div>
           {modoRaio && (
@@ -2398,6 +2467,7 @@ export function MapaVisitas() {
               escolhendoOrigem={escolhendoOrigem}
               onSalvar={() => void salvarViagem()}
               salvando={salvandoViagem}
+              salvarBloqueado={!!carregarId}
               salvoEm={viagemSalvaEm}
               onPDF={() => void gerarPdfViagem()}
               gerandoPdf={gerandoPdf}
@@ -2457,7 +2527,7 @@ export function MapaVisitas() {
                     </button>
                   </li>
                 ))}
-                {noRaio.length === 0 && <li className="text-[12px] text-ink-muted">Nenhum cliente nesse raio.</li>}
+                {noRaio.length === 0 && <li className="text-[12px] text-ink-muted">{leituraMapaConfirmada ? 'Nenhum cliente nesse raio.' : 'Leitura do mapa ainda não confirmada.'}</li>}
               </ul>
             </div>
           ) : (
@@ -2547,7 +2617,7 @@ export function MapaVisitas() {
                             </button>
                           </li>
                         ))}
-                        {statsEtq.length === 0 && <li className="text-[12px] text-ink-muted">Nenhum pino no mapa.</li>}
+                        {statsEtq.length === 0 && <li className="text-[12px] text-ink-muted">{leituraMapaConfirmada ? 'Nenhum pino no mapa.' : 'Leitura do mapa ainda não confirmada.'}</li>}
                       </ul>
                       <p className="text-[10px] text-ink-faint mt-2 leading-snug">
                         Sem conversa (com ou sem telefone) fica menor, apagado e atrás dos outros — pra etiqueta de verdade aparecer. Cor: com filtro ligado, a etiqueta pedida; senao a que o vendedor do pino colocou; senao a principal da conversa. Sem conversa sincronizada = cinza claro. Clique numa linha pra filtrar.
@@ -2685,6 +2755,7 @@ export function MapaVisitas() {
                 escolhendoOrigem={escolhendoOrigem}
                 onSalvar={() => void salvarViagem()}
                 salvando={salvandoViagem}
+                salvarBloqueado={!!carregarId}
                 salvoEm={viagemSalvaEm}
                 onPDF={() => void gerarPdfViagem()}
                 gerandoPdf={gerandoPdf}
@@ -2713,7 +2784,7 @@ export function MapaVisitas() {
         <ViagensSalvas
           viagemAtual={viagemId}
           onFechar={() => setAbrirSalvas(false)}
-          onAbrir={id => setCarregarId(id)}
+          onAbrir={abrirViagem}
         />
       )}
 

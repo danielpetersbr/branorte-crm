@@ -107,7 +107,6 @@ export default function PedidoGarantia() {
       if (rpcError) throw new Error("Erro ao gerar número do pedido");
 
       // Upload do DOCX
-      let arquivoUrl = `SEM_DOCX:garantia_${Date.now()}`;
       const sanitized = arquivo.name
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
@@ -120,10 +119,10 @@ export default function PedidoGarantia() {
           contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           upsert: true,
         });
-      if (!uploadError) {
-        const { data: urlData } = supabase.storage.from("pedidos").getPublicUrl(storagePath);
-        arquivoUrl = urlData.publicUrl;
-      }
+      if (uploadError) throw new Error("Não foi possível enviar o documento obrigatório. O pedido de garantia não foi criado. Tente novamente.");
+      const { data: urlData } = supabase.storage.from("pedidos").getPublicUrl(storagePath);
+      const arquivoUrl = urlData.publicUrl;
+      if (!arquivoUrl) throw new Error("Não foi possível confirmar o documento obrigatório. O pedido de garantia não foi criado.");
 
       const descricaoFinal = `[PEDIDO DE GARANTIA] ${data.motivo}`;
 
@@ -179,9 +178,10 @@ export default function PedidoGarantia() {
       }
 
       // App2
+      let envioFabricaConfirmado = false;
       try {
         const base64 = await fileToBase64(arquivo);
-        await supabase.functions.invoke("enviar-docx-app2", {
+        const { data: envio, error: envioError } = await supabase.functions.invoke("enviar-docx-app2", {
           body: {
             pedidoId: pedidoInserido.id,
             clienteNome: data.cliente,
@@ -203,11 +203,14 @@ export default function PedidoGarantia() {
             motorMarca: "",
           },
         });
+        if (envioError || envio?.ok !== true) throw envioError || new Error(envio?.error || "A fábrica não confirmou o recebimento");
+        envioFabricaConfirmado = true;
       } catch (e) {
         console.warn("App2 não enviado:", e);
       }
 
-      toast.success("Pedido de Garantia cadastrado e enviado à fábrica ✅");
+      if (envioFabricaConfirmado) toast.success("Pedido de Garantia cadastrado e enviado à fábrica ✅");
+      else toast.warning("Pedido de Garantia cadastrado, mas o envio à fábrica não foi confirmado. Confira o pedido salvo antes de tentar reenviar.", { duration: 12000 });
       reset();
       setArquivo(null);
       navigate(destinoAposCriarPedido(identidadeVendedor.fixo, pedidoInserido.id));

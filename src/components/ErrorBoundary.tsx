@@ -53,12 +53,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
     // Falha de chunk → tenta auto-recuperar com 1 reload (anti-loop por tempo).
     if (isChunkLoadError(error)) {
-      const last = Number(sessionStorage.getItem(RELOAD_FLAG) || 0)
-      const now = Date.now()
-      if (now - last > 15_000) {
-        sessionStorage.setItem(RELOAD_FLAG, String(now))
-        window.location.reload()
-      }
+      try {
+        const last = Number(sessionStorage.getItem(RELOAD_FLAG) || 0)
+        const now = Date.now()
+        if (now - last > 15_000) {
+          sessionStorage.setItem(RELOAD_FLAG, String(now))
+          window.location.reload()
+        }
+      } catch { /* Storage bloqueado/sem espaço: mantém a recuperação manual visível. */ }
     }
   }
 
@@ -76,17 +78,17 @@ export class ErrorBoundary extends Component<Props, State> {
     const chunk = isChunkLoadError(error)
 
     return (
-      <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div role="alert" className="min-h-[60vh] flex items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 text-center">
           <div className="mx-auto h-12 w-12 rounded-2xl bg-warning-bg flex items-center justify-center mb-4">
             <AlertTriangle className="h-6 w-6 text-warning" />
           </div>
           <h1 className="text-lg font-bold text-ink">
-            {chunk ? 'Atualizando o app…' : 'Algo deu errado'}
+            {chunk ? 'Não foi possível abrir esta página' : 'Algo deu errado'}
           </h1>
           <p className="text-sm text-ink-muted mt-1.5">
             {chunk
-              ? 'Saiu uma versão nova. Estamos recarregando — se não recarregar sozinho, toque abaixo.'
+              ? 'O carregamento foi interrompido. Recarregue para tentar abrir a versão mais recente.'
               : 'Esta tela encontrou um erro. Você pode recarregar ou voltar ao início.'}
           </p>
 

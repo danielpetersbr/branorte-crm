@@ -23,7 +23,7 @@
 // 4. TEM RECORTE POR VENDEDOR. admin/financeiro veem tudo; os demais só os
 //    pedidos em que são `vendedor` ou `vendedor_2`. A regra vem de
 //    `@/lib/escopo-pedidos` — o MESMO módulo da lista.
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -361,9 +361,15 @@ export default function PedidoDetalhe() {
   // uma ação que vai voltar 403.
   const podeExcluir = profile?.role === "admin";
 
-  const [pedido, setPedido] = useState<PedidoRow | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [naoEncontrado, setNaoEncontrado] = useState(false);
+  const [estadoPedido, setEstadoPedido] = useState<{ id: string; data: PedidoRow | null; erro: string | null; loading: boolean } | null>(null);
+  const consultaPedido = useRef<AbortController | null>(null);
+  const idAtual = useRef(id);
+  idAtual.current = id;
+  const consulta = estadoPedido?.id === id ? estadoPedido : null;
+  const pedido = consulta?.data ?? null;
+  const loading = !consulta || consulta.loading;
+  const erroPedido = consulta?.erro;
+  const naoEncontrado = !!consulta && !consulta.loading && !consulta.data && !consulta.erro;
 
   const [excluindo, setExcluindo] = useState(false);
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
@@ -378,29 +384,28 @@ export default function PedidoDetalhe() {
   const podeConsultar = escopoPodeConsultar(escopo);
 
   const carregarPedido = useCallback(async () => {
-    if (!id) return;
+    if (!id || idAtual.current !== id) return;
+    consultaPedido.current?.abort();
+    const controller = new AbortController();
+    consultaPedido.current = controller;
+    const vigente = () => consultaPedido.current === controller && idAtual.current === id && !controller.signal.aborted;
     try {
-      setLoading(true);
+      setEstadoPedido({ id, data: null, erro: null, loading: true });
       const { data, error } = await supabase
         .from("pedidos_venda")
         .select("*")
         .eq("id", id)
+        .abortSignal(controller.signal)
         .maybeSingle();
 
+      if (!vigente()) return;
       if (error) throw error;
-      if (!data) {
-        setNaoEncontrado(true);
-        setPedido(null);
-        return;
-      }
-      setNaoEncontrado(false);
-      setPedido(data);
-      setNumeroOrcamento(data.numero_orcamento || "");
+      setEstadoPedido({ id, data, erro: null, loading: false });
+      setNumeroOrcamento(data?.numero_orcamento || "");
     } catch (error) {
+      if (!vigente()) return;
       console.error("[PedidoDetalhe] erro ao carregar pedido:", error);
-      toast.error("Não foi possível carregar o pedido");
-    } finally {
-      setLoading(false);
+      setEstadoPedido({ id, data: null, erro: "Não foi possível carregar o pedido.", loading: false });
     }
   }, [id]);
 
@@ -412,7 +417,13 @@ export default function PedidoDetalhe() {
     // e pintado na tela antes da trava valer.
     if (!podeConsultar) return;
     carregarPedido();
+    return () => { consultaPedido.current?.abort(); };
   }, [carregarPedido, location.key, podeConsultar]);
+
+  useEffect(() => {
+    setViewingDoc(null); setPedidoVendaUrl(null); setEditandoOrcamento(false);
+    setAjusteModalOpen(false); setConfirmarExclusao(false); setAcaoEmCurso(null);
+  }, [id]);
 
   /**
    * Reespelha o pedido em `mirror_pedidos_venda` (projeto do CRM).
@@ -617,15 +628,18 @@ export default function PedidoDetalhe() {
     try {
       setAcaoEmCurso("ver-pedido");
       const url = await gerarPedidoRetroativo();
+      if (idAtual.current !== id) { toast.dismiss(toastId); return; }
       setPedidoVendaUrl(url);
       setViewingDoc("pedido");
       await carregarPedido();
+      if (idAtual.current !== id) { toast.dismiss(toastId); return; }
       toast.success("Pedido de Venda gerado", { id: toastId });
     } catch (error) {
       console.error("[PedidoDetalhe] erro ao gerar pedido de venda:", error);
-      toast.error("Não foi possível gerar o Pedido de Venda", { id: toastId });
+      if (idAtual.current === id) toast.error("Não foi possível gerar o Pedido de Venda", { id: toastId });
+      else toast.dismiss(toastId);
     } finally {
-      setAcaoEmCurso(null);
+      if (idAtual.current === id) setAcaoEmCurso(null);
     }
   };
 
@@ -634,15 +648,18 @@ export default function PedidoDetalhe() {
     try {
       setAcaoEmCurso("baixar-pedido");
       const url = await gerarPedidoRetroativo();
+      if (idAtual.current !== id) { toast.dismiss(toastId); return; }
       setPedidoVendaUrl(url);
       window.open(url, "_blank", "noopener,noreferrer");
       await carregarPedido();
+      if (idAtual.current !== id) { toast.dismiss(toastId); return; }
       toast.success("Pedido de Venda gerado — baixando...", { id: toastId });
     } catch (error) {
       console.error("[PedidoDetalhe] erro ao baixar pedido de venda:", error);
-      toast.error("Não foi possível gerar o Pedido de Venda", { id: toastId });
+      if (idAtual.current === id) toast.error("Não foi possível gerar o Pedido de Venda", { id: toastId });
+      else toast.dismiss(toastId);
     } finally {
-      setAcaoEmCurso(null);
+      if (idAtual.current === id) setAcaoEmCurso(null);
     }
   };
 
@@ -668,6 +685,7 @@ export default function PedidoDetalhe() {
       if (!resposta.ok) throw new Error((await resposta.text()) || `HTTP ${resposta.status}`);
 
       const blob = await resposta.blob();
+      if (idAtual.current !== id) { toast.dismiss(toastId); return; }
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -680,9 +698,10 @@ export default function PedidoDetalhe() {
       toast.success("Placa gerada — arquivo baixado", { id: toastId });
     } catch (error) {
       console.error("[PedidoDetalhe] erro ao gerar placa:", error);
-      toast.error("Não foi possível gerar a placa de identificação", { id: toastId });
+      if (idAtual.current === id) toast.error("Não foi possível gerar a placa de identificação", { id: toastId });
+      else toast.dismiss(toastId);
     } finally {
-      setAcaoEmCurso(null);
+      if (idAtual.current === id) setAcaoEmCurso(null);
     }
   };
 
@@ -727,6 +746,14 @@ export default function PedidoDetalhe() {
       />
     );
   }
+
+  if (erroPedido) return (
+    <div role="alert" className="p-6 space-y-3">
+      <p>{erroPedido}</p>
+      <Button variant="outline" onClick={() => carregarPedido()}>Tentar novamente</Button>
+      <Button variant="ghost" onClick={() => navigate('/controle/pedidos')}>Voltar aos pedidos</Button>
+    </div>
+  );
 
   if (loading) {
     return (

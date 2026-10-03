@@ -69,6 +69,7 @@ export function AdminAcessos() {
   const online = useQuemEstaOnline()
   const eventos = useAcessoEventos({ dias, email: filtroEmail || undefined, rota: filtroRota || undefined })
   const usuarios = useUsuarios()
+  const falhaAtiva = aba === 'online' ? online : aba === 'trilha' ? eventos : aba === 'janelas' ? usuarios : null
 
   const paginasTop = useMemo(() => {
     const m = new Map<string, number>()
@@ -100,10 +101,17 @@ export function AdminAcessos() {
         ))}
       </div>
 
+      {falhaAtiva?.isError && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+        Não foi possível carregar os dados de acesso. Os registros exibidos podem estar desatualizados.
+        <Button size="sm" className="ml-2" loading={falhaAtiva.isFetching} onClick={() => { void falhaAtiva.refetch() }}>Tentar novamente</Button>
+      </div>}
+
       {aba === 'online' && (
         <Card className="p-0 overflow-hidden">
           {online.isLoading ? (
             <PageLoading />
+          ) : online.isError && !online.data?.length ? (
+            <p className="p-6 text-[13px] text-ink-muted">A presença de usuários está indisponível nesta leitura.</p>
           ) : !online.data?.length ? (
             <p className="p-6 text-[13px] text-ink-muted">
               Ninguém registrado nas últimas 24 h. A trilha começa a encher assim que as pessoas
@@ -206,6 +214,8 @@ export function AdminAcessos() {
             <Card className="p-0 overflow-hidden">
               {eventos.isLoading ? (
                 <PageLoading />
+              ) : eventos.isError && !eventos.data?.length ? (
+                <p className="p-6 text-[13px] text-ink-muted">A trilha de acessos está indisponível nesta leitura.</p>
               ) : !eventos.data?.length ? (
                 <p className="p-6 text-[13px] text-ink-muted">Nenhum acesso no período.</p>
               ) : (
@@ -336,9 +346,15 @@ function PainelSessoes() {
         </p>
       </Card>
 
+      {sessoes.isError && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+        Não foi possível carregar as sessões abertas.
+        <Button size="sm" className="ml-2" loading={sessoes.isFetching} onClick={() => { void sessoes.refetch() }}>Tentar novamente</Button>
+      </div>}
       <Card className="p-0 overflow-hidden">
         {sessoes.isLoading ? (
           <PageLoading />
+        ) : sessoes.isError && !porPessoa.length ? (
+          <p className="p-6 text-[13px] text-ink-muted">As sessões abertas estão indisponíveis nesta leitura.</p>
         ) : !porPessoa.length ? (
           <p className="p-6 text-[13px] text-ink-muted">Nenhuma sessão ativa.</p>
         ) : (
@@ -425,7 +441,7 @@ const PRECISOES: Array<{ v: number | null; l: string }> = [
 ]
 
 function PainelLocalizacao() {
-  const { data: cfg } = useAcessoConfig()
+  const { data: cfg, error: configError, refetch, isFetching } = useAcessoConfig()
   const salvar = useSalvarAcessoConfig()
   const ligado = !!cfg?.exigir_localizacao
   const papeis = cfg?.papeis_obrigatorios ?? []
@@ -439,6 +455,7 @@ function PainelLocalizacao() {
 
   return (
     <Card className="p-4">
+      {configError && <p role="alert" className="mb-3 text-sm text-danger">Não foi possível carregar as regras de localização. <Button size="sm" loading={isFetching} onClick={() => { void refetch() }}>Tentar novamente</Button></p>}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h3 className="text-[13px] font-medium text-ink flex items-center gap-1.5">
@@ -550,6 +567,12 @@ function PainelJanelas({
     <div className="space-y-4">
       <PainelLocalizacao />
 
+      {janelas.isError && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+        Não foi possível carregar os horários de acesso.
+        <Button size="sm" className="ml-2" loading={janelas.isFetching} onClick={() => { void janelas.refetch() }}>Tentar novamente</Button>
+      </div>}
+      {apagar.isError && <p role="alert" className="text-sm text-danger">Não foi possível remover a regra. Tente novamente.</p>}
+
       <Card className="p-4">
         <p className="text-[13px] text-ink-muted">
           <Clock className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
@@ -562,7 +585,7 @@ function PainelJanelas({
 
       <Card className="p-4">
         <h3 className="text-[13px] font-medium text-ink mb-3">Nova regra</h3>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <fieldset disabled={salvar.isPending} className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="block text-[11px] text-ink-muted mb-1">Pessoa</label>
             <Select
@@ -601,7 +624,7 @@ function PainelJanelas({
               className="font-mono"
             />
           </div>
-        </div>
+        </fieldset>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-ink-muted mr-1">Dias:</span>
@@ -611,6 +634,7 @@ function PainelJanelas({
               size="sm"
               variant={(nova.dias ?? []).includes(d.n) ? 'primary' : 'secondary'}
               onClick={() => toggleDia(d.n)}
+              disabled={salvar.isPending}
             >
               {d.l}
             </Button>
@@ -646,9 +670,11 @@ function PainelJanelas({
         </div>
       </Card>
 
-      <Card className="p-0 overflow-hidden">
+      <Card className="p-0 overflow-x-auto">
         {janelas.isLoading ? (
           <PageLoading />
+        ) : janelas.isError && !janelas.data?.length ? (
+          <p className="p-6 text-[13px] text-ink-muted">As regras de horário estão indisponíveis nesta leitura.</p>
         ) : !janelas.data?.length ? (
           <p className="p-6 text-[13px] text-ink-muted">
             Nenhuma regra ativa — todo mundo acessa em qualquer horário.
@@ -682,6 +708,8 @@ function PainelJanelas({
                       size="sm"
                       variant="ghost"
                       onClick={() => apagar.mutate(j.id)}
+                      disabled={apagar.isPending}
+                      aria-label={`Remover regra de ${emailDe(j.user_id)}`}
                       title="Remover regra"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

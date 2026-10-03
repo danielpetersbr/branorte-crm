@@ -63,7 +63,7 @@ export function NovaVersaoBanner() {
   }
 
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[var(--z-blocking)] flex items-center gap-3 px-5 py-3 rounded-full bg-accent text-white shadow-2xl ring-2 ring-white/30 text-sm font-medium animate-in fade-in slide-in-from-bottom-2">
+    <div role="status" className="fixed top-4 left-1/2 -translate-x-1/2 z-[var(--z-blocking)] flex flex-wrap sm:flex-nowrap justify-center items-center gap-3 w-max max-w-[calc(100vw-2rem)] px-4 sm:px-5 py-3 rounded-2xl sm:rounded-full bg-accent text-white shadow-2xl ring-2 ring-white/30 text-sm font-medium animate-in fade-in slide-in-from-bottom-2">
       <span className="whitespace-nowrap">🚀 Nova versão disponível</span>
       <button
         onClick={atualizar}

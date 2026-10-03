@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { useOrcamentosConversao } from '@/hooks/useOrcamentosConversao'
 import { TrendingUp, FileText, CheckCircle, Clock, Trophy, DollarSign, Send, FilePlus2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -23,8 +24,9 @@ function formatBRLPrecise(v: number): string {
 
 export function OrcamentosConversao() {
   const [janela, setJanela] = useState(90)
-  const { data, isLoading } = useOrcamentosConversao(janela)
+  const { data, isLoading, error, refetch, isFetching } = useOrcamentosConversao(janela)
 
+  if (error) return <div className="p-4 space-y-4"><h1 className="text-2xl font-bold text-ink">Conversão de Orçamentos</h1><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar a conversão de orçamentos." /></div>
   if (isLoading || !data) return <PageLoading />
   const { summary, ranking } = data
 

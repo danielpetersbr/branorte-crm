@@ -104,7 +104,9 @@ export function useSalvarContrato() {
     mutationFn: async (args: { id: number | null; dados: ContratoDados; status: StatusContrato }) => {
       const { id, dados, status } = args
       if (id) {
-        const { data: atual } = await supabase.from('contratos').select('status').eq('id', id).maybeSingle()
+        const { data: atual, error: leituraErro } = await supabase.from('contratos').select('status').eq('id', id).maybeSingle()
+        if (leituraErro) throw leituraErro
+        if (!atual || !Object.prototype.hasOwnProperty.call(STATUS_CONTRATO, atual.status)) throw new Error('Não foi possível confirmar o andamento atual do contrato. Recarregue antes de salvar.')
         const ordem: StatusContrato[] = ['rascunho', 'gerado', 'assinado', 'registrado']
         const atualIdx = ordem.indexOf((atual?.status as StatusContrato) ?? 'rascunho')
         const novoIdx = ordem.indexOf(status)

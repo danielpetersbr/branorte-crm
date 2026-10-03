@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useVendedorNome } from '@/hooks/useVendedorNome'
+import { persistirAcaoLembrete } from '@/lib/agenda-lembrete-acoes'
 import {
   AGENDA_SELECT, hm, parseLocalDateTime, ymd, likeExato,
   type AgendaItem,
@@ -20,6 +21,8 @@ const HORA_MS = 60 * 60 * 1000
 export interface LembreteNotifierApi {
   nome: string
   cards: AgendaItem[]
+  pendingIds: number[]
+  actionErrors: Record<number, string>
   concluir: (item: AgendaItem) => Promise<void>
   adiar1h: (item: AgendaItem) => Promise<void>
   dispensar: (id: number) => void
@@ -30,6 +33,11 @@ export function useLembretesDueNotifier(): LembreteNotifierApi {
   const { nome } = useVendedorNome()
 
   const [cards, setCards] = useState<AgendaItem[]>([])
+  const [pendingIds, setPendingIds] = useState<number[]>([])
+  const [actionErrors, setActionErrors] = useState<Record<number, string>>({})
+  const pendingRef = useRef(new Set<number>())
+  const nomeRef = useRef(nome)
+  nomeRef.current = nome
   // Ids já mostrados nesta sessão — evita duplicar o card entre ciclos de poll.
   const shownRef = useRef<Set<number>>(new Set())
   const runningRef = useRef(false)
@@ -56,6 +64,7 @@ export function useLembretesDueNotifier(): LembreteNotifierApi {
         .order('hora', { ascending: true, nullsFirst: true })
         .limit(50)
       if (error) throw error
+      if (nomeRef.current !== nome) return
 
       const vencidos = ((data ?? []) as AgendaItem[]).filter(it => {
         if (!it.data) return false
@@ -92,54 +101,58 @@ export function useLembretesDueNotifier(): LembreteNotifierApi {
   // Ciclo de polling: roda já ao montar e a cada POLL_MS. Reinicia quando o
   // vendedor muda (login/troca de conta).
   useEffect(() => {
+    setCards([])
+    setActionErrors({})
+    setPendingIds([])
+    pendingRef.current.clear()
+    shownRef.current.clear()
     if (!nome) return
     poll()
     const id = window.setInterval(poll, POLL_MS)
     return () => window.clearInterval(id)
   }, [nome, poll])
 
-  const concluir = useCallback(async (item: AgendaItem) => {
-    setCards(prev => prev.filter(c => c.id !== item.id))
-    const { error } = await supabase
-      .from('agenda_itens')
-      .update({ concluido: true, atualizado_em: new Date().toISOString() })
-      .eq('id', item.id)
-    if (error) {
-      // eslint-disable-next-line no-console
-      console.error('[lembretes] concluir falhou:', error)
-    }
-    invalidar()
-  }, [invalidar])
-
-  const adiar1h = useCallback(async (item: AgendaItem) => {
-    setCards(prev => prev.filter(c => c.id !== item.id))
-    // Base = o mais tarde entre o horário agendado e agora; +1h a partir daí.
-    // (Se estava vencido, isso vira "agora + 1h" — o lembrete volta em 1 hora.)
+  const executar = useCallback(async (item: AgendaItem, acao: 'concluir' | 'adiar') => {
+    if (pendingRef.current.has(item.id)) return
+    const vendedor = nomeRef.current
+    pendingRef.current.add(item.id)
+    setPendingIds([...pendingRef.current])
+    setActionErrors(prev => { const next = { ...prev }; delete next[item.id]; return next })
     const agendado = item.data ? parseLocalDateTime(item.data, item.hora).getTime() : Date.now()
     const alvo = new Date(Math.max(agendado, Date.now()) + HORA_MS)
-    // Libera pra voltar a disparar nesta sessão também.
-    shownRef.current.delete(item.id)
-    const { error } = await supabase
-      .from('agenda_itens')
-      .update({
-        data: ymd(alvo),
-        hora: `${hm(alvo)}:00`,
-        notificado_app: false,
-        notificado_wa: false,
-        atualizado_em: new Date().toISOString(),
-      })
-      .eq('id', item.id)
-    if (error) {
-      // eslint-disable-next-line no-console
-      console.error('[lembretes] adiar falhou:', error)
+    const patch = acao === 'concluir'
+      ? { concluido: true, atualizado_em: new Date().toISOString() }
+      : { data: ymd(alvo), hora: `${hm(alvo)}:00`, notificado_app: false, notificado_wa: false, atualizado_em: new Date().toISOString() }
+    try {
+      await persistirAcaoLembrete(
+        () => supabase.from('agenda_itens').update(patch).eq('id', item.id).select('id').single(),
+        () => {
+          if (nomeRef.current !== vendedor) return
+          if (acao === 'adiar') shownRef.current.delete(item.id)
+          setCards(prev => prev.filter(c => c.id !== item.id))
+          invalidar()
+        },
+      )
+    } catch {
+      if (nomeRef.current === vendedor) {
+        setActionErrors(prev => ({ ...prev, [item.id]: `Não foi possível ${acao === 'concluir' ? 'concluir' : 'adiar'} o lembrete. Tente novamente.` }))
+      }
+    } finally {
+      if (nomeRef.current === vendedor) {
+        pendingRef.current.delete(item.id)
+        setPendingIds([...pendingRef.current])
+      }
     }
-    invalidar()
   }, [invalidar])
+
+  const concluir = useCallback((item: AgendaItem) => executar(item, 'concluir'), [executar])
+  const adiar1h = useCallback((item: AgendaItem) => executar(item, 'adiar'), [executar])
 
   // Dispensa só tira da tela — o item já foi marcado notificado_app=true no poll.
   const dispensar = useCallback((id: number) => {
+    if (pendingRef.current.has(id)) return
     setCards(prev => prev.filter(c => c.id !== id))
   }, [])
 
-  return { nome, cards, concluir, adiar1h, dispensar }
+  return { nome, cards, pendingIds, actionErrors, concluir, adiar1h, dispensar }
 }

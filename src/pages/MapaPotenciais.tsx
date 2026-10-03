@@ -140,7 +140,7 @@ function espalhar(lista: Prospect[]): Map<number, [number, number]> {
 }
 
 export function MapaPotenciais() {
-  const { data: prospects, isLoading, error } = useProspects()
+  const { data: prospects, isLoading, error, refetch, isFetching } = useProspects()
   const salvar = useSalvarProspect()
   const { profile } = useAuth()
 
@@ -343,11 +343,13 @@ export function MapaPotenciais() {
       </div>
 
       {error && (
-        <div className="shrink-0 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+        <div role="alert" className="shrink-0 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-danger">
           Não consegui carregar a base de candidatos. Se o erro persistir, é permissão: esta tela
           exige perfil admin ou a permissão <b>representantes.gerir</b>.
+          <button disabled={isFetching} onClick={() => { void refetch() }} className="ml-2 underline disabled:opacity-50">Tentar novamente</button>
         </div>
       )}
+      {salvar.isError && <p role="alert" className="shrink-0 text-sm text-danger">A alteração do candidato não foi salva. Suas anotações foram mantidas; tente novamente na ficha.</p>}
 
       <div className="relative flex-1 min-h-0 flex flex-col md:flex-row md:gap-3">
         {/* mapa + legenda */}
@@ -471,9 +473,13 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
 }) {
   const [anotacoes, setAnotacoes] = useState(p.anotacoes ?? '')
   const [responsavel, setResponsavel] = useState(p.responsavel ?? '')
+  const draftRef = useRef({ id: p.id, anotacoes: p.anotacoes ?? '', responsavel: p.responsavel ?? '' })
   useEffect(() => {
-    setAnotacoes(p.anotacoes ?? '')
-    setResponsavel(p.responsavel ?? '')
+    const previous = draftRef.current
+    const nextNotas = p.anotacoes ?? '', nextResponsavel = p.responsavel ?? ''
+    if (previous.id !== p.id || anotacoes === previous.anotacoes) setAnotacoes(nextNotas)
+    if (previous.id !== p.id || responsavel === previous.responsavel) setResponsavel(nextResponsavel)
+    draftRef.current = { id: p.id, anotacoes: nextNotas, responsavel: nextResponsavel }
   }, [p.id, p.anotacoes, p.responsavel])
 
   const fones = telefones(p.telefone)
@@ -612,6 +618,8 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
           </select>
           <input
             value={responsavel}
+            readOnly={salvando}
+            aria-label="Responsável pelo candidato"
             onChange={e => setResponsavel(e.target.value)}
             onBlur={() => { if (responsavel !== (p.responsavel ?? '')) onPatch('responsavel', responsavel) }}
             placeholder="Responsável"
@@ -620,12 +628,18 @@ function FichaCandidato({ p, onFechar, onPatch, salvando, copiado, setCopiado }:
         </div>
         <textarea
           value={anotacoes}
+          readOnly={salvando}
+          aria-label="Anotações da conversa"
           onChange={e => setAnotacoes(e.target.value)}
           onBlur={() => { if (anotacoes !== (p.anotacoes ?? '')) onPatch('anotacoes', anotacoes) }}
           rows={3}
           placeholder="Anotações da conversa (salva ao sair do campo)"
           className="w-full rounded-lg border border-border bg-surface px-2 py-1.5 text-[12px] text-ink placeholder:text-ink-faint resize-y"
         />
+        <div className="flex flex-wrap gap-3 text-xs">
+          <button disabled={salvando || anotacoes === (p.anotacoes ?? '')} onClick={() => onPatch('anotacoes', anotacoes)} className="text-accent underline disabled:opacity-50">Salvar anotações</button>
+          <button disabled={salvando || responsavel === (p.responsavel ?? '')} onClick={() => onPatch('responsavel', responsavel)} className="text-accent underline disabled:opacity-50">Salvar responsável</button>
+        </div>
         {p.updated_by && (
           <p className="text-[10px] text-ink-faint">
             última alteração por {p.updated_by}

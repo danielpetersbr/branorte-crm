@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import {
   useCatalogoItemsAdmin,
   useToggleOficialCatalogo,
@@ -119,7 +120,7 @@ function diametrosDoItems(
 }
 
 export function CatalogoAdmin() {
-  const { data: items, isLoading } = useCatalogoItemsAdmin()
+  const { data: items, isLoading, error, refetch, isFetching } = useCatalogoItemsAdmin()
   const { data: stats } = useStatsCatalogo()
   const toggleOficial = useToggleOficialCatalogo()
 
@@ -249,11 +250,13 @@ export function CatalogoAdmin() {
     }
   }
 
-  if (isLoading) return <PageLoading />
+  if (error && !items) return <div className="p-4"><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar o catálogo de equipamentos." /></div>
+  if (isLoading && !items) return <PageLoading />
 
   return (
     <div className="min-h-screen bg-bg">
       <div className="w-full min-w-0 px-4 sm:px-6 py-6">
+        <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível atualizar o catálogo. Os dados anteriores e os rascunhos de edição foram preservados." />
         {/* ── Header ─────────────────────────────────────────────── */}
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>

@@ -17,6 +17,7 @@ import { LocalizacaoObrigatoria } from '@/components/LocalizacaoObrigatoria'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { InstallPrompt } from '@/components/InstallPrompt'
 import { NovaVersaoBanner } from '@/components/NovaVersaoBanner'
+import { readBrowserPreference } from '@/lib/browser-preferences'
 
 // Cada página carrega na sua rota. A boundary em App cobre também páginas
 // públicas/login/portal, que retornam antes da boundary interna do Layout.
@@ -149,7 +150,7 @@ const queryClient = new QueryClient({
 
 // Log auxiliar verbose: timestamps de fetch das queries principais.
 // Ativar via `localStorage.setItem('debug-rq','1')` no console e recarregar.
-if (typeof window !== 'undefined' && window.localStorage?.getItem('debug-rq') === '1') {
+if (readBrowserPreference('debug-rq') === '1') {
   queryClient.getQueryCache().subscribe(event => {
     if (event.type === 'updated' && event.action?.type === 'success') {
       // eslint-disable-next-line no-console

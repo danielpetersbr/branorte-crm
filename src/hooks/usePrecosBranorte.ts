@@ -100,7 +100,7 @@ export function usePrecosAudit() {
   return useQuery({
     queryKey: ['precos-audit'],
     queryFn: async (): Promise<PrecosAuditStats> => {
-      const [{ count: total }, { count: semLink }, { count: desatualizados }] = await Promise.all([
+      const resultados = await Promise.all([
         supabase.from('catalogo_items').select('id', { count: 'exact', head: true }).eq('ativo', true).eq('is_oficial', true),
         supabase.from('catalogo_items').select('id', { count: 'exact', head: true })
           .eq('ativo', true).eq('is_oficial', true).is('preco_branorte_id', null)
@@ -108,9 +108,12 @@ export function usePrecosAudit() {
         supabase.from('precos_branorte').select('id', { count: 'exact', head: true })
           .eq('ativo', true).lt('updated_at', new Date(Date.now() - 30 * 86400 * 1000).toISOString()),
       ])
-      const { count: semFoto } = await supabase
+      for (const resultado of resultados) if (resultado.error) throw resultado.error
+      const [{ count: total }, { count: semLink }, { count: desatualizados }] = resultados
+      const { count: semFoto, error } = await supabase
         .from('catalogo_items').select('id', { count: 'exact', head: true })
         .eq('ativo', true).eq('is_oficial', true).is('foto_url', null)
+      if (error) throw error
       return {
         total_ativos: total ?? 0,
         sem_foto: semFoto ?? 0,

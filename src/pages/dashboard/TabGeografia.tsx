@@ -8,6 +8,7 @@ import { useDashboardOrcamentosDetalhe } from '@/hooks/useDashboardOrcamentos'
 import { useNegociacaoPorUf } from '@/hooks/useNegociacaoPorUf'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
 import { useJanela } from './DashboardFilterContext'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { Card, CardHeader, Inner } from './ui/Card'
 import { JanelaBadge, type TipoJanela } from './ui/JanelaBadge'
 import { brl, brlFull, n, pct } from './ui/format'
@@ -82,9 +83,13 @@ const CAMADAS: Camada[] = [
 export function TabGeografia() {
   const { preset, periodoLabel } = useJanela()
 
-  const { data, isLoading } = useDashboard({ preset })
-  const { data: orcDetalhe } = useDashboardOrcamentosDetalhe(preset, true)
-  const { data: negUf } = useNegociacaoPorUf()
+  const dashboardQuery = useDashboard({ preset })
+  const orcQuery = useDashboardOrcamentosDetalhe(preset, true)
+  const negociacaoQuery = useNegociacaoPorUf()
+  const data = dashboardQuery.data, orcDetalhe = orcQuery.data, negUf = negociacaoQuery.data
+  const consultas = [dashboardQuery, orcQuery, negociacaoQuery]
+  const erro = consultas.find(q => q.error)?.error
+  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
   // Orçamentos por estado — UF pelo DDD do telefone canônico do cliente
   // (mesmo shape do mapa de leads). Cálculo idêntico ao do Dashboard antigo.
@@ -151,7 +156,8 @@ export function TabGeografia() {
   const intl = items.filter(i => !i.isBrasil)
   const totalCamada = items.reduce((s, i) => s + i.total, 0)
 
-  if (isLoading) {
+  if (consultas.some(q => q.error && q.data === undefined)) return <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados por estado." onRetry={atualizar} />
+  if (consultas.some(q => q.isLoading && q.data === undefined)) {
     return (
       <div className="space-y-5">
         <div className="h-[520px] rounded-xl bg-surface-2 animate-pulse" />
@@ -178,6 +184,7 @@ export function TabGeografia() {
   return (
     <div className="space-y-5">
       {/* ── 1. MAPA ÚNICO + RANKING ───────────────────────────────────────── */}
+      <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todos os dados por estado. O último retrato permanece visível." onRetry={atualizar} />
       <Card id="geo-mapa">
         <CardHeader
           title="De onde vêm"

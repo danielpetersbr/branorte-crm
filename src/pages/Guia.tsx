@@ -53,8 +53,9 @@ export function Guia({ modoInicial = 'animais' }: { modoInicial?: Modo }) {
   const [comparando, setComparando] = useState(false)
   const [selecao, setSelecao] = useState<string[]>([])
 
-  const { data: animais = [], isLoading: cA } = useGuiaAnimais()
-  const { data: materias = [], isLoading: cM } = useGuiaMaterias()
+  const animaisQ = useGuiaAnimais(), materiasQ = useGuiaMaterias()
+  const { data: animais = [], isLoading: cA } = animaisQ
+  const { data: materias = [], isLoading: cM } = materiasQ
   const imagens = useMapaImagens()
   const fontes = useMapaFontes()
   const { favoritos, alternar } = useFavoritos()
@@ -178,9 +179,19 @@ export function Guia({ modoInicial = 'animais' }: { modoInicial?: Modo }) {
     return <div className="flex h-64 items-center justify-center"><LoadingSpinner /></div>
   }
 
+  const falhasLeitura = [animaisQ, materiasQ].filter(query => query.isError)
+  const avisos = <>
+    {falhasLeitura.length > 0 && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+      Não foi possível carregar todo o conteúdo do guia. Os resultados podem estar incompletos.
+      <button disabled={falhasLeitura.some(query => query.isFetching)} onClick={() => { for (const query of falhasLeitura) void query.refetch() }} className="ml-2 underline disabled:opacity-50">Tentar novamente</button>
+    </div>}
+    {alternar.isError && <p role="alert" className="text-sm text-danger">Não foi possível atualizar o favorito. Tente novamente no botão de favorito.</p>}
+  </>
+
   // ============================ página individual ============================
   if (slug) {
     if (!aberto) {
+      if (falhasLeitura.length > 0) return <div className="mx-auto max-w-4xl px-3 py-4 space-y-3">{avisos}<Button size="sm" onClick={fechar}>Voltar ao guia</Button></div>
       return (
         <div className="mx-auto max-w-2xl px-4 py-10 text-center">
           <p className="text-[14px] text-ink">Conteúdo não encontrado ou ainda não publicado.</p>
@@ -190,6 +201,7 @@ export function Guia({ modoInicial = 'animais' }: { modoInicial?: Modo }) {
     }
     return (
       <div className="mx-auto max-w-4xl px-3 py-4 sm:px-4">
+        {avisos}
         <Button size="sm" onClick={fechar} className="mb-3">
           <ArrowLeft className="h-3.5 w-3.5" />Voltar ao guia
         </Button>
@@ -234,6 +246,7 @@ export function Guia({ modoInicial = 'animais' }: { modoInicial?: Modo }) {
       // fica boa em 1152 e viraria uma fileira longa demais se esticasse.
       modo === 'atendimento' ? 'max-w-[1600px]' : 'max-w-6xl',
     )}>
+      {avisos}
       <header>
         <h1 className="text-lg font-bold text-ink">Guia do Vendedor</h1>
         <p className="text-[12.5px] text-ink-muted">

@@ -5,6 +5,7 @@ import {
 import { useEffect, useRef, useState, Suspense, type CSSProperties, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
+import { readBrowserPreference, writeBrowserPreference } from '@/lib/browser-preferences'
 import { useAtendimentosTotalMenu } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
@@ -259,7 +260,7 @@ const MOBILE_NAV: NavItem[] = [
 function useCollapsed(): [boolean, () => void] {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
-    const salvo = localStorage.getItem('sidebar-collapsed')
+    const salvo = readBrowserPreference('sidebar-collapsed')
     // Sem preferencia gravada, decide pela tela: em notebook (<1280px) os 320px
     // do menu sao o que faltava pro conteudo — telas de trabalho como o mapa de
     // visitas abrem cortadas. Assim que a pessoa clicar no botao, a escolha
@@ -269,7 +270,7 @@ function useCollapsed(): [boolean, () => void] {
   })
   useEffect(() => {
     if (typeof window === 'undefined') return
-    localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0')
+    writeBrowserPreference('sidebar-collapsed', collapsed ? '1' : '0')
   }, [collapsed])
   return [collapsed, () => setCollapsed(c => !c)]
 }

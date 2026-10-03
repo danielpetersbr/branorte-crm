@@ -19,7 +19,7 @@
  * O rascunho fica em localStorage a cada mudança: fechar a aba sem querer não
  * pode custar 20 minutos de digitação do vendedor.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Calculator, ChevronLeft, ChevronRight, Copy, FilePlus2, FileText, History, ListChecks,
@@ -38,6 +38,8 @@ import { consumoSugerido, novoEstudo, normalizarInput, trocarEspecie } from '@/l
 import { dadosEstudo } from '@/lib/venda-racao/estudo'
 import { brl, hojeISO, meses, pct } from '@/lib/venda-racao/formato'
 import { supabase } from '@/lib/supabase'
+import { readBrowserPreference, writeBrowserPreference } from '@/lib/browser-preferences'
+import { chaveRascunhoConta, restaurarRascunhoConta } from '@/lib/rascunho-conta'
 import type { Especie, EstudoInput, EstudoRow, StatusEstudo } from '@/lib/venda-racao/tipos'
 import { CONFIG_PADRAO, STATUS_ESTUDO } from '@/lib/venda-racao/catalogo'
 import { FormularioEstudo } from '@/components/venda-racao/FormularioEstudo'
@@ -136,6 +138,13 @@ interface SementeGuia {
 
 export function ProducaoPropria() {
   const { profile } = useAuth()
+  const operacaoDocumentoRef = useRef(0)
+  const contaAtualRef = useRef(profile?.id)
+  contaAtualRef.current = profile?.id
+  useEffect(() => {
+    operacaoDocumentoRef.current++
+    return () => { operacaoDocumentoRef.current++ }
+  }, [profile?.id])
   const can = useCan()
   const loc = useLocation()
   const podeVerTodas = profile?.role === 'admin' || can('venda_racao.ver_todas')
@@ -153,6 +162,7 @@ export function ProducaoPropria() {
   /** Assistente: 1..8, uma etapa por vez. Bate com a barra de progresso. */
   const [etapaAtual, setEtapaAtual] = useState(1)
   const [input, setInput] = useState<EstudoInput | null>(null)
+  const [rascunhoOwnerId, setRascunhoOwnerId] = useState<string | null>(null)
   const [estudoId, setEstudoId] = useState<string | null>(null)
   const [codigo, setCodigo] = useState<string>(codigoProvisorio)
   const [filtros, setFiltros] = useState<FiltrosEstudo>({})
@@ -174,28 +184,38 @@ export function ProducaoPropria() {
 
   // --- inicialização: rascunho local > estudo novo com os defaults -----------
   useEffect(() => {
-    if (input || !config) return
+    const userId = profile?.id
+    if (!config || !userId || rascunhoOwnerId === userId) return
+    let cancelado = false
     const vendedor = profile?.display_name ?? ''
-    try {
-      const bruto = localStorage.getItem(CHAVE_RASCUNHO)
-      if (bruto) {
-        const salvo = JSON.parse(bruto) as { input: unknown; id: string | null; codigo?: string }
-        // O rascunho e do NAVEGADOR, nao da conta. Se quem esta logado agora e
-        // outra pessoa, o estudo passa a ser dela — em computador compartilhado o
-        // vendedor herdava o nome de quem mexeu antes e mandava a proposta
-        // assinada com o nome errado. Estudo SALVO (do historico) nao passa por
-        // aqui: la o autor gravado continua valendo.
-        const restaurado = normalizarInput(salvo.input, config)
-        setInput(vendedor && restaurado.identificacao.vendedorNome !== vendedor
-          ? { ...restaurado, identificacao: { ...restaurado.identificacao, vendedorNome: vendedor } }
-          : restaurado)
-        setEstudoId(salvo.id ?? null)
-        if (salvo.codigo) setCodigo(salvo.codigo)
-        return
-      }
-    } catch { /* rascunho corrompido: começa limpo */ }
-    setInput(novoEstudo(config, 'bovinos', vendedor))
-  }, [config, input, profile?.display_name])
+    setInput(null)
+    setEstudoId(null)
+    setCodigo(codigoProvisorio())
+    void (async () => {
+      const salvo = await restaurarRascunhoConta(
+        readBrowserPreference(chaveRascunhoConta(CHAVE_RASCUNHO, userId)),
+        readBrowserPreference(CHAVE_RASCUNHO), userId,
+        async id => {
+          const { data, error } = await supabase.from('venda_racao_simulacoes').select('created_by').eq('id', id).maybeSingle()
+          if (error) throw error
+          return typeof data?.created_by === 'string' ? data.created_by : null
+        },
+      )
+      if (cancelado) return
+      try {
+        if (salvo) {
+          const restaurado = normalizarInput(salvo.input, config)
+          setInput(vendedor && restaurado.identificacao.vendedorNome !== vendedor
+            ? { ...restaurado, identificacao: { ...restaurado.identificacao, vendedorNome: vendedor } }
+            : restaurado)
+          setEstudoId(salvo.id ?? null)
+          if (salvo.codigo) setCodigo(salvo.codigo)
+        } else setInput(novoEstudo(config, 'bovinos', vendedor))
+      } catch { setInput(novoEstudo(config, 'bovinos', vendedor)) }
+      setRascunhoOwnerId(userId)
+    })()
+    return () => { cancelado = true }
+  }, [config, profile?.id, profile?.display_name, rascunhoOwnerId])
 
   // --- semente vinda do Guia do Vendedor ------------------------------------
   // O vendedor levantou espécie/fase/quantidade no /guia e clicou "usar no
@@ -204,7 +224,7 @@ export function ProducaoPropria() {
   // volta a false de propósito: consumo trazido de catálogo ainda é referência.
   useEffect(() => {
     const s = (loc.state as { guiaSemente?: SementeGuia } | null)?.guiaSemente
-    if (!s || !input || !config) return
+    if (!s || !input || !config || rascunhoOwnerId !== profile?.id) return
     setInput(atual => {
       if (!atual) return atual
       const base = atual.produto.especie === s.especie ? atual : trocarEspecie(atual, s.especie, config)
@@ -240,18 +260,16 @@ export function ProducaoPropria() {
     setAviso({ tipo: 'ok', texto: 'Dados trazidos do Guia do Vendedor. Confirme o consumo com o cliente antes de dimensionar.' })
     // Limpa o state pra um F5 não reaplicar a semente por cima do que o vendedor já editou.
     window.history.replaceState({}, '')
-  }, [loc.state, input, config])
+  }, [loc.state, input, config, rascunhoOwnerId, profile?.id])
 
   // --- rascunho automático ---------------------------------------------------
   useEffect(() => {
-    if (!input) return
+    if (!input || !profile?.id || rascunhoOwnerId !== profile.id) return
     const t = setTimeout(() => {
-      try {
-        localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({ input, id: estudoId, codigo }))
-      } catch { /* quota cheia: seguir sem rascunho é melhor que quebrar a tela */ }
+      writeBrowserPreference(chaveRascunhoConta(CHAVE_RASCUNHO, profile.id), JSON.stringify({ userId: profile.id, input, id: estudoId, codigo }))
     }, 600)
     return () => clearTimeout(t)
-  }, [input, estudoId, codigo])
+  }, [input, estudoId, codigo, profile?.id, rascunhoOwnerId])
 
   useEffect(() => {
     if (!aviso) return
@@ -298,6 +316,8 @@ export function ProducaoPropria() {
   }
 
   const novo = () => {
+    if (salvarEstudo.isPending) return
+    operacaoDocumentoRef.current++
     setInput(novoEstudo(config, input.produto.especie, profile?.display_name ?? ''))
     setEstudoId(null)
     setCodigo(codigoProvisorio())
@@ -308,6 +328,8 @@ export function ProducaoPropria() {
   }
 
   const duplicarAtual = () => {
+    if (salvarEstudo.isPending) return
+    operacaoDocumentoRef.current++
     setEstudoId(null)
     setCodigo(codigoProvisorio())
     setInput(s => (s ? { ...s, status: 'rascunho' } : s))
@@ -318,6 +340,9 @@ export function ProducaoPropria() {
   }
 
   const salvar = () => {
+    if (salvarEstudo.isPending) return
+    const operacao = ++operacaoDocumentoRef.current
+    const conta = profile?.id
     salvarEstudo.mutate({
       id: estudoId ?? undefined,
       input,
@@ -335,11 +360,14 @@ export function ProducaoPropria() {
       },
     }, {
       onSuccess: linha => {
+        if (operacaoDocumentoRef.current !== operacao || contaAtualRef.current !== conta) return
         setEstudoId(linha.id)
         setCodigo(linha.codigo)
         setAviso({ tipo: 'ok', texto: `Estudo ${linha.codigo} salvo.` })
       },
-      onError: e => setAviso({ tipo: 'erro', texto: (e as Error).message || 'Não consegui salvar.' }),
+      onError: e => {
+        if (operacaoDocumentoRef.current === operacao && contaAtualRef.current === conta) setAviso({ tipo: 'erro', texto: (e as Error).message || 'Não consegui salvar.' })
+      },
     })
   }
 
@@ -396,7 +424,11 @@ export function ProducaoPropria() {
   }
 
   const abrirDoHistorico = async (id: string, irParaApresentacao = false) => {
+    if (salvarEstudo.isPending) return
+    const operacao = ++operacaoDocumentoRef.current
+    const conta = profile?.id
     const linha = await carregarLinha(id)
+    if (operacaoDocumentoRef.current !== operacao || contaAtualRef.current !== conta) return
     if (!linha) {
       setAviso({ tipo: 'erro', texto: 'Não consegui abrir esse estudo.' })
       return
@@ -408,7 +440,11 @@ export function ProducaoPropria() {
   }
 
   const duplicarDoHistorico = async (id: string) => {
+    if (salvarEstudo.isPending) return
+    const operacao = ++operacaoDocumentoRef.current
+    const conta = profile?.id
     const linha = await carregarLinha(id)
+    if (operacaoDocumentoRef.current !== operacao || contaAtualRef.current !== conta) return
     if (!linha) {
       setAviso({ tipo: 'erro', texto: 'Não consegui duplicar esse estudo.' })
       return

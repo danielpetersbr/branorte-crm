@@ -2,7 +2,7 @@
 // envia no WhatsApp: /cotar-frete/<token>. Mostra o resumo do frete e deixa ela
 // preencher o valor. Lê/grava via edge function `frete-lance` (token-scoped):
 // a transportadora NÃO vê os lances das concorrentes.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { parseMoeda } from '@/lib/moeda'
@@ -48,9 +48,12 @@ function resumoEquip(r: Resumo): string {
 
 export function CotarFrete() {
   const { pathname } = useLocation()
-  const token = decodeURIComponent((pathname.split('/cotar-frete/')[1] || '').replace(/\/+$/, ''))
+  let token = ''
+  try { token = decodeURIComponent((pathname.split('/cotar-frete/')[1] || '').replace(/\/+$/, '')) } catch { /* link malformado */ }
 
   const [loading, setLoading] = useState(true)
+  const [tokenCarregado, setTokenCarregado] = useState<string | null>(null)
+  const [tentativa, setTentativa] = useState(0)
   const [erro, setErro] = useState('')
   const [encerrada, setEncerrada] = useState(false)
   const [resumo, setResumo] = useState<Resumo | null>(null)
@@ -61,30 +64,50 @@ export function CotarFrete() {
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
   const [recusado, setRecusado] = useState(false)
+  const acaoEmCurso = useRef(false)
+  const montado = useRef(true)
+  const tokenAtual = useRef(token)
+  tokenAtual.current = token
+
+  useEffect(() => {
+    montado.current = true
+    return () => { montado.current = false }
+  }, [])
 
   useEffect(() => {
     let cancel = false
+    const controller = new AbortController()
+    const vigente = () => !cancel && montado.current && tokenAtual.current === token && !controller.signal.aborted
+    setTokenCarregado(token); setLoading(true); setErro(''); setResumo(null)
+    setEncerrada(false); setEnviado(false); setRecusado(false); setZoom(false)
+    setValor(''); setPrazo(''); setObs('')
     async function load() {
       if (!token) { setErro('Link inválido.'); setLoading(false); return }
-      const { data, error } = await supabase.functions.invoke('frete-lance', { body: { action: 'get', token } })
-      if (cancel) return
-      if (error || !data || data.error) {
-        setErro(data?.error === 'token_invalido' ? 'Este link de cotação não é válido ou expirou.' : 'Não consegui carregar a cotação. Tente novamente.')
-        setLoading(false); return
+      try {
+        const { data, error } = await supabase.functions.invoke('frete-lance', { body: { action: 'get', token }, signal: controller.signal })
+        if (!vigente()) return
+        if (error || data?.ok !== true || !data.resumo || data.error) {
+          setErro(data?.error === 'token_invalido' ? 'Este link de cotação não é válido ou expirou.' : 'Não consegui carregar a cotação. Tente novamente.')
+          return
+        }
+        setEncerrada(!!data.encerrada)
+        const r = data.resumo as Resumo
+        setResumo(r)
+        if (r.valor != null) setValor(String(r.valor))
+        if (r.prazo_dias != null) setPrazo(String(r.prazo_dias))
+        if (r.lance_observacoes) setObs(r.lance_observacoes)
+      } catch {
+        if (vigente()) setErro('Não consegui carregar a cotação. Tente novamente.')
+      } finally {
+        if (vigente()) setLoading(false)
       }
-      setEncerrada(!!data.encerrada)
-      const r = data.resumo as Resumo
-      setResumo(r)
-      if (r?.valor != null) setValor(String(r.valor))
-      if (r?.prazo_dias != null) setPrazo(String(r.prazo_dias))
-      if (r?.lance_observacoes) setObs(r.lance_observacoes)
-      setLoading(false)
     }
     load()
-    return () => { cancel = true }
-  }, [token])
+    return () => { cancel = true; controller.abort() }
+  }, [token, tentativa])
 
   async function enviar() {
+    if (acaoEmCurso.current) return
     const v = parseMoeda(valor)
     // O parser compartilhado recusa lixo ("16.500 reais", "1,234.56") com NaN em vez de
     // adivinhar — então quem digitou ALGO precisa ouvir "não entendi", não "informe".
@@ -92,25 +115,48 @@ export function CotarFrete() {
     if (!Number.isFinite(v) || v <= 0) { setErro('Informe o valor do frete (R$).'); return }
     const p = Number(prazo)
     if (!prazo || !Number.isFinite(p) || p <= 0) { setErro('Informe o prazo de entrega (dias).'); return }
+    acaoEmCurso.current = true
     setEnviando(true); setErro('')
-    const { data, error } = await supabase.functions.invoke('frete-lance', {
-      body: { action: 'submit', token, valor: v, prazo_dias: p, observacoes: obs.trim() || null },
-    })
-    setEnviando(false)
-    if (error || data?.error) {
-      setErro(data?.error === 'encerrada' ? 'Esta cotação já foi encerrada pela Branorte.' : 'Não consegui enviar agora. Tente de novo em instantes.')
-      return
+    try {
+      const { data, error } = await supabase.functions.invoke('frete-lance', {
+        body: { action: 'submit', token, valor: v, prazo_dias: p, observacoes: obs.trim() || null },
+      })
+      if (!montado.current || tokenAtual.current !== token) return
+      if (error || data?.ok !== true || data.error) {
+        setErro(data?.error === 'encerrada' ? 'Esta cotação já foi encerrada pela Branorte.' : 'Não consegui enviar agora. Tente de novo em instantes.')
+        return
+      }
+      setEnviado(true)
+    } catch {
+      if (montado.current && tokenAtual.current === token) setErro('Não consegui enviar agora. Tente de novo em instantes.')
+    } finally {
+      acaoEmCurso.current = false
+      if (montado.current) setEnviando(false)
     }
-    setEnviado(true)
   }
 
   async function recusar() {
+    if (acaoEmCurso.current) return
     if (!confirm('Confirmar que NÃO consegue atender este frete?')) return
-    await supabase.functions.invoke('frete-lance', { body: { action: 'recusar', token } })
-    setRecusado(true)
+    acaoEmCurso.current = true
+    setEnviando(true); setErro('')
+    try {
+      const { data, error } = await supabase.functions.invoke('frete-lance', { body: { action: 'recusar', token } })
+      if (!montado.current || tokenAtual.current !== token) return
+      if (error || data?.ok !== true || data.error) {
+        setErro(data?.error === 'encerrada' ? 'Esta cotação já foi encerrada pela Branorte.' : 'Não consegui registrar a recusa. Tente novamente.')
+        return
+      }
+      setRecusado(true)
+    } catch {
+      if (montado.current && tokenAtual.current === token) setErro('Não consegui registrar a recusa. Tente novamente.')
+    } finally {
+      acaoEmCurso.current = false
+      if (montado.current) setEnviando(false)
+    }
   }
 
-  if (loading) {
+  if (loading || tokenCarregado !== token) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-bg">
         <div className="text-sm text-ink-muted">Carregando cotação…</div>
@@ -127,6 +173,7 @@ export function CotarFrete() {
           </div>
           <h1 className="font-bold text-ink mb-2">Ops</h1>
           <p className="text-sm text-ink-muted">{erro}</p>
+          {token && <button type="button" onClick={() => setTentativa(n => n + 1)} className="mt-4 text-sm font-semibold text-accent">Tentar novamente</button>}
           <p className="mt-6 text-xs font-semibold tracking-widest text-ink-faint">BRANORTE</p>
         </div>
       </div>
@@ -231,6 +278,7 @@ export function CotarFrete() {
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint text-sm">R$</span>
               <input
                 inputMode="decimal"
+                disabled={enviando}
                 value={valor}
                 onChange={e => { setValor(e.target.value); setErro('') }}
                 placeholder="0,00"
@@ -243,6 +291,7 @@ export function CotarFrete() {
                 <label className="block text-sm font-medium text-ink mb-1.5">Prazo de entrega (dias) <span className="text-red-500">*</span></label>
                 <input
                   inputMode="numeric"
+                  disabled={enviando}
                   value={prazo}
                   onChange={e => setPrazo(e.target.value.replace(/\D/g, ''))}
                   placeholder="Ex: 7"
@@ -252,6 +301,7 @@ export function CotarFrete() {
               <div>
                 <label className="block text-sm font-medium text-ink mb-1.5">Observação <span className="text-ink-faint font-normal">(opcional)</span></label>
                 <textarea
+                  disabled={enviando}
                   value={obs}
                   onChange={e => setObs(e.target.value)}
                   rows={2}
@@ -274,6 +324,7 @@ export function CotarFrete() {
             <button
               type="button"
               onClick={recusar}
+              disabled={enviando}
               className="w-full mt-2 py-2 text-sm text-ink-faint hover:text-ink underline"
             >
               Não consigo atender esse frete

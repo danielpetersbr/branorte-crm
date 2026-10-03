@@ -4,10 +4,11 @@ import {
   ClipboardList, MessageSquare, X, CheckCircle2, Thermometer,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { useVendedorNome } from '@/hooks/useVendedorNome'
 import {
   CATEGORIAS, useApontamentos, useApontamentosDaConversa, useApontar, useAtualizarApontamento,
-  useEnviarTurno, useMensagens, useNovaSessao, useReligarIa, useSessaoAtiva,
+  MensagemTestePersistida, useEnviarTurno, useMensagens, useNovaSessao, useReligarIa, useSessaoAtiva,
   type ApontamentoIa, type FeedbackPrioridade, type FeedbackStatus, type MsgTeste,
 } from '@/hooks/useIaTeste'
 
@@ -106,8 +107,10 @@ export function IaTeste() {
 // ─── ABA CONVERSAR ─────────────────────────────────────────────────────────
 
 function Conversa({ vendedorNome, userId }: { vendedorNome: string; userId: string | null }) {
-  const { data: sessao, isLoading } = useSessaoAtiva(userId)
-  const { data: msgs } = useMensagens(sessao?.chat_id ?? null)
+  const sessaoQuery = useSessaoAtiva(userId)
+  const { data: sessao, isLoading } = sessaoQuery
+  const mensagensQuery = useMensagens(sessao?.chat_id ?? null)
+  const msgs = mensagensQuery.data
   const { data: apontados } = useApontamentosDaConversa(sessao?.chat_id ?? null)
   const novaSessao = useNovaSessao()
   const religar = useReligarIa()
@@ -115,23 +118,26 @@ function Conversa({ vendedorNome, userId }: { vendedorNome: string; userId: stri
   const [texto, setTexto] = useState('')
   const [alvoApontamento, setAlvoApontamento] = useState<MsgTeste | null>(null)
   const fim = useRef<HTMLDivElement>(null)
+  const autoTentativa = useRef<string | null>(null)
 
   const lista = useMemo(() => msgs ?? [], [msgs])
   const jaApontadas = useMemo(() => new Set((apontados ?? []).map(a => a.mensagem_id)), [apontados])
+  useEffect(() => { autoTentativa.current = null }, [userId])
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: 'smooth' }) }, [lista.length, enviar.isPending])
 
   // Sem sessão aberta, cria uma sozinho — o vendedor não deveria precisar apertar
   // "começar" pra fazer a coisa mais óbvia da tela.
   useEffect(() => {
-    if (!isLoading && !sessao && userId && !novaSessao.isPending) {
+    if (sessaoQuery.isSuccess && !sessao && userId && autoTentativa.current !== userId && !novaSessao.isPending) {
+      autoTentativa.current = userId
       novaSessao.mutate({ userId, vendedorNome, nomeContato: 'Cliente' })
     }
-  }, [isLoading, sessao, userId, vendedorNome, novaSessao])
+  }, [sessaoQuery.isSuccess, sessao, userId, vendedorNome, novaSessao])
 
   async function mandar() {
     const t = texto.trim()
-    if (!t || !sessao || enviar.isPending) return
+    if (!t || !sessao || enviar.isPending || mensagensQuery.isPending || mensagensQuery.isError || novaSessao.isPending) return
     setTexto('')
     try {
       await enviar.mutateAsync({
@@ -139,9 +145,18 @@ function Conversa({ vendedorNome, userId }: { vendedorNome: string; userId: stri
         texto: t, historico: lista,
       })
     } catch (e) {
-      setTexto(t)
-      alert('Não consegui falar com a IA: ' + String((e as Error)?.message || e))
+      if (!(e instanceof MensagemTestePersistida)) setTexto(atual => atual || t)
+      alert(e instanceof MensagemTestePersistida ? e.message : 'Não consegui falar com a IA: ' + String((e as Error)?.message || e))
     }
+  }
+
+  if (sessaoQuery.error || (!sessao && novaSessao.error)) {
+    return <QueryNotice error={sessaoQuery.error || novaSessao.error} loading={sessaoQuery.isFetching || novaSessao.isPending}
+      message={sessaoQuery.error ? 'Não foi possível carregar sua sessão de teste. Nenhuma sessão nova foi criada.' : 'Não foi possível criar a sessão de teste.'}
+      onRetry={() => {
+        if (sessaoQuery.error) { void sessaoQuery.refetch(); return }
+        if (userId) novaSessao.mutate({ userId, vendedorNome, nomeContato: 'Cliente' })
+      }} />
   }
 
   if (isLoading || !sessao) {
@@ -176,6 +191,7 @@ function Conversa({ vendedorNome, userId }: { vendedorNome: string; userId: stri
             {!sessao.ativo && (
               <button
                 onClick={() => religar.mutate(sessao.chat_id)}
+                disabled={religar.isPending || novaSessao.isPending || enviar.isPending}
                 className="text-[11px] px-2 py-1 rounded-md border border-border bg-surface-2 text-ink-muted hover:text-ink hover:bg-surface-3 flex items-center gap-1"
                 title="Continuar testando depois do handoff"
               >
@@ -184,7 +200,7 @@ function Conversa({ vendedorNome, userId }: { vendedorNome: string; userId: stri
             )}
             <button
               onClick={() => userId && novaSessao.mutate({ userId, vendedorNome, nomeContato: 'Cliente' })}
-              disabled={novaSessao.isPending}
+              disabled={novaSessao.isPending || enviar.isPending}
               className="text-[11px] px-2 py-1 rounded-md border border-border bg-surface-2 text-ink-muted hover:text-ink hover:bg-surface-3 flex items-center gap-1"
               title="Começa do zero, com a memória limpa"
             >
@@ -219,6 +235,9 @@ function Conversa({ vendedorNome, userId }: { vendedorNome: string; userId: stri
           <div ref={fim} />
         </div>
 
+        <QueryNotice error={mensagensQuery.error || novaSessao.error || religar.error || enviar.error} loading={mensagensQuery.isFetching || novaSessao.isPending || religar.isPending}
+          message={mensagensQuery.error ? 'Não foi possível carregar o histórico. Recarregue antes de enviar outra mensagem.' : enviar.error instanceof MensagemTestePersistida ? enviar.error.message : enviar.error ? 'Não foi possível enviar a mensagem. O texto não enviado permanece no campo.' : 'Não foi possível atualizar a sessão de teste.'}
+          onRetry={() => { void mensagensQuery.refetch(); novaSessao.reset(); religar.reset(); enviar.reset(); void sessaoQuery.refetch() }} />
         <div className="border-t border-border p-2 flex items-end gap-2">
           <textarea
             value={texto}
@@ -230,7 +249,7 @@ function Conversa({ vendedorNome, userId }: { vendedorNome: string; userId: stri
           />
           <button
             onClick={() => void mandar()}
-            disabled={!texto.trim() || enviar.isPending}
+            disabled={!texto.trim() || enviar.isPending || mensagensQuery.isPending || mensagensQuery.isError || novaSessao.isPending}
             className="h-9 px-3 rounded-md bg-accent text-white text-[12px] font-medium disabled:opacity-40 flex items-center gap-1.5 shrink-0"
           >
             <Send className="w-3.5 h-3.5" /> Enviar
@@ -374,16 +393,19 @@ function ModalApontar({ msg, historico, dados, chatId, vendedorNome, userId, onF
       .filter(m => m.papel !== 'sistema')
       .slice(-14)
       .map(m => ({ de: m.papel === 'ia' ? 'ia' : 'cliente', txt: m.texto.slice(0, 400) }))
-    await apontar.mutateAsync({
-      chatId, mensagemId: msg.id, vendedorNome, userId, categoria, comentario, esperado,
-      contexto: { conversa, texto_ia: msg.texto, dados },
-    })
-    onFechar()
+    try {
+      await apontar.mutateAsync({
+        chatId, mensagemId: msg.id, vendedorNome, userId, categoria, comentario, esperado,
+        contexto: { conversa, texto_ia: msg.texto, dados },
+      })
+      onFechar()
+    } catch { /* o formulário preserva o relato e apresenta o erro abaixo */ }
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onFechar}>
       <div className="bg-surface border border-border rounded-lg w-full max-w-lg max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <QueryNotice error={apontar.error} loading={apontar.isPending} message="Não foi possível salvar o apontamento. O relato permanece preenchido." onRetry={() => { void salvar() }} />
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <p className="text-[14px] font-semibold text-ink flex items-center gap-2"><Flag className="w-4 h-4 text-danger" /> O que ela errou?</p>
           <button onClick={onFechar} className="text-ink-faint hover:text-ink"><X className="w-4 h-4" /></button>
@@ -448,7 +470,7 @@ function ModalApontar({ msg, historico, dados, chatId, vendedorNome, userId, onF
 
 function Apontamentos({ ehAdmin }: { ehAdmin: boolean }) {
   const [filtro, setFiltro] = useState<FeedbackStatus | 'todos'>('novo')
-  const { data, isLoading } = useApontamentos(filtro)
+  const { data, isLoading, error, isFetching, refetch } = useApontamentos(filtro)
   const [aberto, setAberto] = useState<number | null>(null)
   const atualizar = useAtualizarApontamento()
 
@@ -469,9 +491,10 @@ function Apontamentos({ ehAdmin }: { ehAdmin: boolean }) {
         ))}
       </div>
 
+      <QueryNotice error={error || atualizar.error} loading={isFetching || atualizar.isPending} message={error ? 'Não foi possível carregar os apontamentos.' : 'Não foi possível salvar a atualização do apontamento.'} onRetry={() => { void refetch(); atualizar.reset() }} />
       {isLoading ? (
         <div className="bg-surface border border-border rounded-lg py-12 text-center text-ink-faint"><Loader2 className="w-5 h-5 mx-auto animate-spin" /></div>
-      ) : lista.length === 0 ? (
+      ) : error && !data ? null : lista.length === 0 ? (
         <div className="bg-surface border border-border rounded-lg py-12 text-center text-ink-faint">
           <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-[13px]">Nenhum apontamento nesse status.</p>

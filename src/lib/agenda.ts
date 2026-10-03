@@ -25,8 +25,7 @@ export interface AgendaItem {
 
 // Colunas lidas em todas as queries (evita divergência entre page e notifier).
 export const AGENDA_SELECT =
-  'id, vendedor_nome, tipo, titulo, descricao, data, hora, chat_id, contato_nome, ' +
-  'concluido, notificar_wa, notificado_wa, notificado_app, criado_em, atualizado_em'
+  'id, vendedor_nome, tipo, titulo, descricao, data, hora, chat_id, contato_nome, concluido, notificar_wa, notificado_wa, notificado_app, criado_em, atualizado_em'
 
 // 'YYYY-MM-DD' local (sem UTC shift) a partir de um Date.
 export function ymd(d: Date): string {

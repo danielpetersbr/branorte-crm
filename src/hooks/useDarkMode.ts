@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { writeBrowserPreference } from '@/lib/browser-preferences'
 
 // Fonte única do tema. O index.html já aplica a classe `dark` antes do React
 // montar (flash-free), lendo localStorage 'theme-v3' (default CLARO — tema Apple).
@@ -18,11 +19,11 @@ export function useDarkMode(): [boolean, () => void] {
     const root = document.documentElement
     if (dark) {
       root.classList.add('dark')
-      localStorage.setItem('theme-v3', 'dark')
+      writeBrowserPreference('theme-v3', 'dark')
       document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0d0d11')
     } else {
       root.classList.remove('dark')
-      localStorage.setItem('theme-v3', 'light')
+      writeBrowserPreference('theme-v3', 'light')
       document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f5f5f7')
     }
     try { localStorage.removeItem('theme'); localStorage.removeItem('theme-v2') } catch { /* legado */ }

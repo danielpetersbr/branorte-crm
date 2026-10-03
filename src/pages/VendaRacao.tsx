@@ -14,7 +14,7 @@
  * O rascunho fica em localStorage a cada mudança: fechar a aba sem querer não
  * pode custar 20 minutos de digitação do vendedor.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Calculator, ChevronLeft, ChevronRight, Copy, FilePlus2, FileText, History, Save, Settings } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
@@ -29,6 +29,8 @@ import { novaSimulacao, normalizarInput, trocarEspecie } from '@/lib/precificaca
 import { dadosProposta } from '@/lib/precificacao-racao/proposta'
 import { brl, hojeISO } from '@/lib/precificacao-racao/formato'
 import { supabase } from '@/lib/supabase'
+import { readBrowserPreference, writeBrowserPreference } from '@/lib/browser-preferences'
+import { chaveRascunhoConta, restaurarRascunhoConta } from '@/lib/rascunho-conta'
 import type { Especie, SimulacaoInput, SimulacaoRow, StatusProposta } from '@/lib/precificacao-racao/tipos'
 import { CONFIG_PADRAO, STATUS_PROPOSTA } from '@/lib/precificacao-racao/catalogo'
 import { FormularioVendaRacao } from '@/components/precificacao-racao/FormularioVendaRacao'
@@ -74,6 +76,13 @@ function codigoProvisorio(): string {
 
 export function VendaRacao() {
   const { profile } = useAuth()
+  const operacaoDocumentoRef = useRef(0)
+  const contaAtualRef = useRef(profile?.id)
+  contaAtualRef.current = profile?.id
+  useEffect(() => {
+    operacaoDocumentoRef.current++
+    return () => { operacaoDocumentoRef.current++ }
+  }, [profile?.id])
   const can = useCan()
   const podeVerTodas = profile?.role === 'admin' || can('venda_racao.ver_todas')
 
@@ -90,6 +99,7 @@ export function VendaRacao() {
   /** Assistente: 1..6, uma etapa por vez. Bate com a barra de progresso. */
   const [etapaAtual, setEtapaAtual] = useState(1)
   const [input, setInput] = useState<SimulacaoInput | null>(null)
+  const [rascunhoOwnerId, setRascunhoOwnerId] = useState<string | null>(null)
   const [simulacaoId, setSimulacaoId] = useState<string | null>(null)
   const [codigo, setCodigo] = useState<string>(codigoProvisorio)
   const [filtros, setFiltros] = useState<FiltrosSimulacao>({})
@@ -108,39 +118,47 @@ export function VendaRacao() {
 
   // --- inicialização: rascunho local > simulação nova com os defaults --------
   useEffect(() => {
-    if (input || !config) return
+    const userId = profile?.id
+    if (!config || !userId || rascunhoOwnerId === userId) return
+    let cancelado = false
     const vendedor = profile?.display_name ?? ''
-    try {
-      const bruto = localStorage.getItem(CHAVE_RASCUNHO)
-      if (bruto) {
-        const salvo = JSON.parse(bruto) as { input: unknown; id: string | null; codigo?: string }
-        // O rascunho e do NAVEGADOR, nao da conta. Se quem esta logado agora e
-        // outra pessoa, o estudo passa a ser dela — em computador compartilhado o
-        // vendedor herdava o nome de quem mexeu antes e mandava a proposta
-        // assinada com o nome errado. Estudo SALVO (do historico) nao passa por
-        // aqui: la o autor gravado continua valendo.
-        const restaurado = normalizarInput(salvo.input, config)
-        setInput(vendedor && restaurado.identificacao.vendedorNome !== vendedor
-          ? { ...restaurado, identificacao: { ...restaurado.identificacao, vendedorNome: vendedor } }
-          : restaurado)
-        setSimulacaoId(salvo.id ?? null)
-        if (salvo.codigo) setCodigo(salvo.codigo)
-        return
-      }
-    } catch { /* rascunho corrompido: começa limpo */ }
-    setInput(novaSimulacao(config, 'bovinos', vendedor))
-  }, [config, input, profile?.display_name])
+    setInput(null)
+    setSimulacaoId(null)
+    setCodigo(codigoProvisorio())
+    void (async () => {
+      const salvo = await restaurarRascunhoConta(
+        readBrowserPreference(chaveRascunhoConta(CHAVE_RASCUNHO, userId)),
+        readBrowserPreference(CHAVE_RASCUNHO), userId,
+        async id => {
+          const { data, error } = await supabase.from('venda_racao_simulacoes').select('created_by').eq('id', id).maybeSingle()
+          if (error) throw error
+          return typeof data?.created_by === 'string' ? data.created_by : null
+        },
+      )
+      if (cancelado) return
+      try {
+        if (salvo) {
+          const restaurado = normalizarInput(salvo.input, config)
+          setInput(vendedor && restaurado.identificacao.vendedorNome !== vendedor
+            ? { ...restaurado, identificacao: { ...restaurado.identificacao, vendedorNome: vendedor } }
+            : restaurado)
+          setSimulacaoId(salvo.id ?? null)
+          if (salvo.codigo) setCodigo(salvo.codigo)
+        } else setInput(novaSimulacao(config, 'bovinos', vendedor))
+      } catch { setInput(novaSimulacao(config, 'bovinos', vendedor)) }
+      setRascunhoOwnerId(userId)
+    })()
+    return () => { cancelado = true }
+  }, [config, profile?.id, profile?.display_name, rascunhoOwnerId])
 
   // --- rascunho automático ---------------------------------------------------
   useEffect(() => {
-    if (!input) return
+    if (!input || !profile?.id || rascunhoOwnerId !== profile.id) return
     const t = setTimeout(() => {
-      try {
-        localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify({ input, id: simulacaoId, codigo }))
-      } catch { /* quota cheia: seguir sem rascunho é melhor que quebrar a tela */ }
+      writeBrowserPreference(chaveRascunhoConta(CHAVE_RASCUNHO, profile.id), JSON.stringify({ userId: profile.id, input, id: simulacaoId, codigo }))
     }, 600)
     return () => clearTimeout(t)
-  }, [input, simulacaoId, codigo])
+  }, [input, simulacaoId, codigo, profile?.id, rascunhoOwnerId])
 
   useEffect(() => {
     if (!aviso) return
@@ -196,6 +214,8 @@ export function VendaRacao() {
   }
 
   const novaProposta = () => {
+    if (salvarSimulacao.isPending) return
+    operacaoDocumentoRef.current++
     setInput(novaSimulacao(config, input.produto.especie, profile?.display_name ?? ''))
     setSimulacaoId(null)
     setCodigo(codigoProvisorio())
@@ -206,6 +226,8 @@ export function VendaRacao() {
   }
 
   const duplicarAtual = () => {
+    if (salvarSimulacao.isPending) return
+    operacaoDocumentoRef.current++
     setSimulacaoId(null)
     setCodigo(codigoProvisorio())
     setInput(s => (s ? { ...s, status: 'rascunho' } : s))
@@ -216,6 +238,9 @@ export function VendaRacao() {
   }
 
   const salvar = () => {
+    if (salvarSimulacao.isPending) return
+    const operacao = ++operacaoDocumentoRef.current
+    const conta = profile?.id
     salvarSimulacao.mutate({
       id: simulacaoId ?? undefined,
       input,
@@ -233,21 +258,28 @@ export function VendaRacao() {
       },
     }, {
       onSuccess: linha => {
+        if (operacaoDocumentoRef.current !== operacao || contaAtualRef.current !== conta) return
         setSimulacaoId(linha.id)
         setCodigo(linha.codigo)
         setAviso({ tipo: 'ok', texto: `Proposta ${linha.codigo} salva.` })
       },
-      onError: e => setAviso({ tipo: 'erro', texto: (e as Error).message || 'Não consegui salvar.' }),
+      onError: e => {
+        if (operacaoDocumentoRef.current === operacao && contaAtualRef.current === conta) setAviso({ tipo: 'erro', texto: (e as Error).message || 'Não consegui salvar.' })
+      },
     })
   }
 
   /** Abre uma proposta do histórico. Busca a linha inteira (a lista vem sem `dados`). */
   const abrirDoHistorico = async (id: string) => {
+    if (salvarSimulacao.isPending) return
+    const operacao = ++operacaoDocumentoRef.current
+    const conta = profile?.id
     const { data, error } = await supabase
       .from('venda_racao_simulacoes')
       .select('*')
       .eq('id', id)
       .maybeSingle()
+    if (operacaoDocumentoRef.current !== operacao || contaAtualRef.current !== conta) return
     if (error || !data) {
       setAviso({ tipo: 'erro', texto: 'Não consegui abrir essa proposta.' })
       return
@@ -262,11 +294,15 @@ export function VendaRacao() {
   }
 
   const duplicarDoHistorico = async (id: string) => {
+    if (salvarSimulacao.isPending) return
+    const operacao = ++operacaoDocumentoRef.current
+    const conta = profile?.id
     const { data, error } = await supabase
       .from('venda_racao_simulacoes')
       .select('*')
       .eq('id', id)
       .maybeSingle()
+    if (operacaoDocumentoRef.current !== operacao || contaAtualRef.current !== conta) return
     if (error || !data) {
       setAviso({ tipo: 'erro', texto: 'Não consegui duplicar essa proposta.' })
       return
@@ -335,10 +371,10 @@ export function VendaRacao() {
                 <Save className="h-4 w-4" />
                 {salvarSimulacao.isPending ? 'Salvando…' : simulacaoId ? 'Salvar alterações' : 'Salvar simulação'}
               </button>
-              <button type="button" className="vr-btn ghost" title="Duplicar" onClick={duplicarAtual}>
+              <button type="button" className="vr-btn ghost" title="Duplicar" disabled={salvarSimulacao.isPending} onClick={duplicarAtual}>
                 <Copy className="h-4 w-4" />
               </button>
-              <button type="button" className="vr-btn ghost" title="Nova simulação" onClick={novaProposta}>
+              <button type="button" className="vr-btn ghost" title="Nova simulação" disabled={salvarSimulacao.isPending} onClick={novaProposta}>
                 <FilePlus2 className="h-4 w-4" />
               </button>
               <span style={{ fontSize: 12, color: 'var(--vr-ink40)', fontFamily: 'var(--vr-mono)' }}>

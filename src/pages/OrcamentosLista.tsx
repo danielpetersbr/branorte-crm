@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { formatNumber, formatRelative } from '@/lib/utils'
 
 /**
@@ -375,7 +376,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
   // Suprime warning de prop não usada (statusInicial herdado de versão anterior)
   void statusInicial
 
-  const { data, isLoading } = useOrcamentosFiles(filters)
+  const { data, isLoading, error, refetch, isFetching } = useOrcamentosFiles(filters)
   const vendorMap = useVendorMap()
   const { data: vendorsData } = useVendors()
   const { chamados, marcar, desmarcar } = useOrcamentosChamados()
@@ -504,7 +505,7 @@ export function OrcamentosLista({ statusInicial = '' }: Props) {
         </div>
       </Card>
 
-      {isLoading ? (
+      {error ? <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar os arquivos de orçamentos." /> : isLoading ? (
         <PageLoading />
       ) : (
         <>

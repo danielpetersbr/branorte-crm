@@ -67,22 +67,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Doc: https://www.convertapi.com/docx-to-pdf
     const result = await convertapi.convert('pdf', { File: uploadResult }, 'docx')
 
-    const files = result.files || (result as any).Files
-    const file = files?.[0]
+    const file = result.files[0]
     if (!file) throw new Error('ConvertAPI nao retornou files')
-
-    let pdfBuf: Buffer
-    if (typeof file.fileBase64 === 'function') {
-      const b64 = await file.fileBase64()
-      pdfBuf = Buffer.from(b64, 'base64')
-    } else if (file.url || file.Url) {
-      const fileUrl: string = file.url || file.Url
-      const dr = await fetch(fileUrl)
-      if (!dr.ok) throw new Error(`Falha baixar PDF: HTTP ${dr.status}`)
-      pdfBuf = Buffer.from(await dr.arrayBuffer())
-    } else {
-      throw new Error('File sem fileBase64() nem url')
-    }
+    if (!file.url) throw new Error('ConvertAPI não retornou a URL do PDF')
+    const dr = await fetch(file.url)
+    if (!dr.ok) throw new Error(`Falha baixar PDF: HTTP ${dr.status}`)
+    const pdfBuf = Buffer.from(await dr.arrayBuffer())
 
     const ms = Date.now() - t0
     console.log(`[docx-to-pdf] OK ${pdfBuf.length} bytes em ${ms}ms`)

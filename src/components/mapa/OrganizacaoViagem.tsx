@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   useQuadroViagens, useConfirmarParada, useStatusViagem, useCorrigirLocalDaParada,
   type ViagemQuadro, type ParadaConfirmacao,
@@ -7,6 +7,7 @@ import type { Confirmacao } from '@/lib/viagem'
 import { lerLocal, ehLinkCurto, urlCurta, distanciaKm } from '@/lib/local-link'
 import { MapaDaViagem } from './MapaDaViagem'
 import { useAuth } from '@/hooks/useAuth'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 // ORGANIZAÇÃO DE VIAGEM — o quadro que fica ABAIXO do mapa de visitas.
 //
@@ -70,7 +71,8 @@ export function OrganizacaoViagem({
    */
   semMoldura?: boolean
 }) {
-  const { data: viagens = [], isLoading, isError, refetch } = useQuadroViagens()
+  const viagensQuery = useQuadroViagens()
+  const { data: viagens = [], isLoading, isError, refetch } = viagensQuery
   const [aberta, setAberta] = useState<string | null>(null)
   const [vendedorSel, setVendedorSel] = useState('')
   const vendedores = useMemo(() => {
@@ -105,12 +107,12 @@ export function OrganizacaoViagem({
   if (isLoading) {
     return <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}><div className="p-4 text-[13px] text-ink-faint">Carregando viagens…</div></Moldura>
   }
-  if (isError) {
+  if (isError && viagensQuery.data === undefined) {
     return (
       <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}>
-        <div className="p-4 text-[13px] text-red-600 flex items-center gap-2">
-          Não consegui carregar as viagens.
-          <button onClick={() => refetch()} className="underline font-semibold">tentar de novo</button>
+        <div className="p-4">
+          <QueryNotice error={viagensQuery.error} loading={viagensQuery.isFetching}
+            onRetry={() => { void refetch() }} message="Não foi possível carregar as viagens." />
         </div>
       </Moldura>
     )
@@ -118,6 +120,10 @@ export function OrganizacaoViagem({
   if (!lista.length) {
     return (
       <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}>
+        <div className="px-4 empty:hidden">
+          <QueryNotice error={viagensQuery.error} loading={viagensQuery.isFetching}
+            onRetry={() => { void refetch() }} message="Não foi possível atualizar as viagens. Os dados da última leitura foram preservados." />
+        </div>
         <div className="p-4 text-[13px] text-ink-faint">
           Nenhuma viagem aguardando. Monte um roteiro em <b className="text-ink">🧭 Planejar viagem</b> e
           clique em <b className="text-ink">Salvar</b> — ele aparece aqui pra os vendedores confirmarem.
@@ -128,6 +134,10 @@ export function OrganizacaoViagem({
 
   return (
     <Moldura aberto={aberto} alternar={alternar} viagens={lista.length} pendentes={pendentes} semMoldura={semMoldura}>
+      <div className="px-4 empty:hidden">
+        <QueryNotice error={viagensQuery.error} loading={viagensQuery.isFetching}
+          onRetry={() => { void refetch() }} message="Não foi possível atualizar as viagens. As localizações em edição foram preservadas." />
+      </div>
       {/* Filtro por vendedor. Ele NÃO substitui a trava do banco — a RPC já nega
           (42501) parada de outro vendedor. É pra o vendedor não ter que caçar as
           dele no meio das dos colegas. */}
@@ -375,6 +385,15 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
   const [erro, setErro] = useState<string | null>(null)
   const [resolvendo, setResolvendo] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [aplicando, setAplicando] = useState(false)
+  const localEmCurso = useRef(false)
+  const montado = useRef(true)
+  const paradaAtual = useRef(p.id)
+  paradaAtual.current = p.id
+  useEffect(() => {
+    montado.current = true
+    return () => { montado.current = false }
+  }, [])
 
   const falta = pendencias(p)
   const e = ESTADO[p.confirmacao]
@@ -421,56 +440,58 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
 
   /** Aceita link do Google, localização do WhatsApp, geo: ou coordenada colada. */
   async function aplicarLocal() {
-    setErro(null)
+    if (localEmCurso.current || !montado.current) return
     const t = texto.trim()
     if (!t) return
+    const paradaId = p.id
+    const atual = () => montado.current && paradaAtual.current === paradaId
+    localEmCurso.current = true
+    setAplicando(true)
+    setErro(null)
+    try {
+      let achado = lerLocal(t)
+      let motivo: string | null = null
 
-    let achado = lerLocal(t)
-    let motivo: string | null = null
-
-    // Link curto do celular não tem coordenada dentro — precisa seguir o
-    // redirecionamento, e isso só dá server-side (o encurtador não manda CORS).
-    if (!achado && ehLinkCurto(t)) {
-      setResolvendo(true)
-      try {
-        const r = await fetch('/api/resolver-link', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: urlCurta(t) }),
-        })
-        const j = await r.json()
-        if (j?.ok) achado = { lat: j.lat, lng: j.lng, fonte: 'link_curto_resolvido' }
-        else motivo = j?.motivo || 'Não consegui abrir esse link.'
-      } catch {
-        motivo = 'Não consegui abrir esse link agora. Tente de novo.'
-      } finally {
-        setResolvendo(false)
+      // Link curto do celular precisa ser resolvido no servidor.
+      if (!achado && ehLinkCurto(t)) {
+        setResolvendo(true)
+        try {
+          const r = await fetch('/api/resolver-link', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: urlCurta(t) }),
+          })
+          const j = await r.json()
+          if (j?.ok) achado = { lat: j.lat, lng: j.lng, fonte: 'link_curto_resolvido' }
+          else motivo = j?.motivo || 'Não consegui abrir esse link.'
+        } catch {
+          motivo = 'Não consegui abrir esse link agora. Tente de novo.'
+        } finally {
+          if (atual()) setResolvendo(false)
+        }
       }
-    }
+      if (!atual()) return
+      if (!achado) {
+        setErro(motivo ?? 'Não achei coordenada aí. Cole o link do Google Maps, a localização do WhatsApp, ou "-7.2297, -44.5561".')
+        return
+      }
 
-    if (!achado) {
-      // `motivo` local, NÃO o state `erro`: dentro desta função o `erro` ainda é
-      // o valor do render anterior. Lendo dele, o motivo específico que o
-      // servidor devolveu ("esse link expirou") era sempre trocado pela
-      // mensagem genérica — e na segunda tentativa a mensagem sumia de vez.
-      setErro(motivo ?? 'Não achei coordenada aí. Cole o link do Google Maps, a localização do WhatsApp, ou "-7.2297, -44.5561".')
-      return
-    }
-
-    // Correção absurda é quase sempre link errado (o vendedor colou o link de
-    // OUTRO cliente). Avisa antes, em vez de mover a propriedade em silêncio.
-    const salto = distanciaKm(p.lat, p.lng, achado.lat, achado.lng)
-    if (salto > 150) {
-      const ok = window.confirm(
+      // Confirma um deslocamento grande antes de gravar outro ponto.
+      const salto = distanciaKm(p.lat, p.lng, achado.lat, achado.lng)
+      if (salto > 150 && !window.confirm(
         `Essa localização fica a ${Math.round(salto)} km de onde o cliente está hoje.\n\n` +
         `Isso costuma ser link de outro cliente. Confirma que é do ${p.nome}?`,
-      )
-      if (!ok) return
-    }
+      )) return
 
-    corrigir.mutate(
-      { paradaId: p.id, cliKeys: p.cliKeys, lat: achado.lat, lng: achado.lng, fonte: achado.fonte },
-      { onSuccess: () => { setColando(false); setTexto('') }, onError: err => setErro(err.message) },
-    )
+      await corrigir.mutateAsync(
+        { paradaId, cliKeys: p.cliKeys, lat: achado.lat, lng: achado.lng, fonte: achado.fonte },
+      )
+      if (atual()) { setColando(false); setTexto('') }
+    } catch (error) {
+      if (atual()) setErro((error as Error).message || 'Não consegui gravar a localização. Tente novamente.')
+    } finally {
+      localEmCurso.current = false
+      if (atual()) setAplicando(false)
+    }
   }
 
   return (
@@ -522,7 +543,7 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
                 className="h-8 px-2.5 rounded-md border border-border text-ink text-[12px] font-semibold hover:bg-surface">
           {copiado ? '✅ copiado' : '💬 Copiar recado pro vendedor'}
         </button>
-        <button onClick={() => { setColando(c => !c); setErro(null) }}
+        <button onClick={() => { setColando(c => !c); setErro(null) }} disabled={aplicando}
                 className="h-8 px-2.5 rounded-md border border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-400 text-[12px] font-semibold">
           📍 {aprox ? 'Colar localização' : 'Corrigir localização'}
         </button>
@@ -553,6 +574,7 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
           <div className="flex gap-1.5">
             <input
               value={texto}
+              disabled={aplicando}
               onChange={ev => setTexto(ev.target.value)}
               onKeyDown={ev => { if (ev.key === 'Enter') { ev.preventDefault(); void aplicarLocal() } }}
               placeholder="Cole o link do Google Maps, a localização do WhatsApp ou -7.2297, -44.5561"
@@ -560,7 +582,7 @@ function LinhaParada({ p, viagem }: { p: ParadaConfirmacao; viagem: ViagemQuadro
               className="flex-1 h-9 px-2.5 rounded-md bg-surface border border-border text-[12.5px] text-ink"
             />
             <button onClick={() => void aplicarLocal()}
-                    disabled={resolvendo || corrigir.isPending || !texto.trim()}
+                    disabled={aplicando || !texto.trim()}
                     className="h-9 px-3 rounded-md bg-accent text-white text-[12.5px] font-bold disabled:opacity-50">
               {resolvendo ? 'abrindo…' : corrigir.isPending ? 'salvando…' : 'Aplicar'}
             </button>

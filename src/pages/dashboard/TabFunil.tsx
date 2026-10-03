@@ -20,6 +20,7 @@ import { JanelaBadge } from './ui/JanelaBadge'
 import { n, brl, brlFull, pct } from './ui/format'
 import { CHART_ETAPA } from './ui/chart-tokens'
 import { useJanela } from './DashboardFilterContext'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 /* ────────────────────────────────────────────────────────────────────────────
    Aba FUNIL — "onde o lead morre?"
@@ -788,14 +789,19 @@ function MotivosTrava({ etq }: { etq: NonNullable<ReturnType<typeof useDashboard
 export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => void } = {}) {
   const { preset, periodoLabel } = useJanela()
 
-  const { data } = useDashboard({ preset })
-  const { data: extra } = useDashboardExtra()
-  const { data: funilEtq } = useFunilEtiquetas()
-  const { data: propStatus } = usePropostasStatus(preset)
-  const { data: orc } = useOrcamentosResumo(preset)
-  const { data: orfaos } = useOrfaosPorVendedor(7)
-  const { data: ciclo } = useCicloVenda(preset)
-  const { data: etq } = useDashboardEtiquetas(preset)
+  const dashboardQuery = useDashboard({ preset })
+  const extraQuery = useDashboardExtra()
+  const funilQuery = useFunilEtiquetas()
+  const propostasQuery = usePropostasStatus(preset)
+  const orcQuery = useOrcamentosResumo(preset)
+  const orfaosQuery = useOrfaosPorVendedor(7)
+  const cicloQuery = useCicloVenda(preset)
+  const etiquetasQuery = useDashboardEtiquetas(preset)
+  const data = dashboardQuery.data, extra = extraQuery.data, funilEtq = funilQuery.data, propStatus = propostasQuery.data
+  const orc = orcQuery.data, orfaos = orfaosQuery.data, ciclo = cicloQuery.data, etq = etiquetasQuery.data
+  const consultas = [dashboardQuery, extraQuery, funilQuery, propostasQuery, orcQuery, orfaosQuery, cicloQuery, etiquetasQuery]
+  const erro = consultas.find(q => q.error)?.error
+  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
   // Funil por etiqueta: SNAPSHOT. Cada telefone entra no seu estágio mais
   // avançado — os estágios não são marcos percorridos, então não existe
@@ -816,9 +822,12 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
   }, [funilEtq])
 
   const aging = (data?.leadAging ?? []).filter(a => a.valor > 0 || a.leads > 0)
+  if (consultas.some(q => q.error && q.data === undefined)) return <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados do funil." onRetry={atualizar} />
+  if (consultas.some(q => q.isLoading && q.data === undefined)) return <p role="status" className="py-8 text-center text-ink-muted">Carregando funil…</p>
 
   return (
     <div className="space-y-5">
+      <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todo o funil. Os dados anteriores permanecem visíveis." onRetry={atualizar} />
       {/* ── 1 + 2 · Etapas abertas (header) + funil por etiqueta ───────────── */}
       <Card id="funil-etiquetas">
         <CardHeader

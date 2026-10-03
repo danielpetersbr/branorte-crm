@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { Select } from '@/components/ui/Select'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { formatNumber } from '@/lib/utils'
 import { useFunilPorVendedor, type FunilStage } from '@/hooks/useFunilPorVendedor'
 import { useEtiquetas, groupEtiquetasByVendedor, type WascriptEtiqueta } from '@/hooks/useEtiquetas'
@@ -104,8 +105,8 @@ function FunilCard({ stage, etiquetas }: { stage: FunilStage; etiquetas?: Wascri
 
 export function FunilRelatorio() {
   const [periodoDias, setPeriodoDias] = useState('30')
-  const { data, isLoading } = useFunilPorVendedor(Number(periodoDias))
-  const { data: etiquetasAll } = useEtiquetas()
+  const { data, isLoading, error, isFetching, refetch } = useFunilPorVendedor(Number(periodoDias))
+  const { data: etiquetasAll, error: etiquetasError, isFetching: etiquetasFetching, refetch: refetchEtiquetas } = useEtiquetas()
   const etiquetasByVendedor = etiquetasAll ? groupEtiquetasByVendedor(etiquetasAll) : null
 
   const totals = (data ?? []).reduce(
@@ -119,6 +120,7 @@ export function FunilRelatorio() {
 
   return (
     <div className="px-6 py-5 space-y-5">
+      <QueryNotice error={error || etiquetasError} loading={isFetching || etiquetasFetching} message="Não foi possível carregar todos os dados do relatório de funil." onRetry={() => { void refetch(); void refetchEtiquetas() }} />
       {/* Header */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
@@ -135,7 +137,7 @@ export function FunilRelatorio() {
                 <span className="font-medium text-ink tabular-nums">{totals.vendedores}</span>
                 <span className="text-ink-faint"> vendedores ativos</span>
               </>
-            ) : 'Carregando...'}
+            ) : error ? 'Dados indisponíveis.' : 'Carregando...'}
           </p>
         </div>
         <div className="flex items-center gap-2">

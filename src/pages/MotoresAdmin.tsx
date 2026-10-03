@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Zap, Search, Save, Check, Loader2, Settings2 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import {
   useMotoresAdmin, useMotoresRedutorAdmin, useAlcanceMotores,
   useUpdateMotor, useUpdateMotorRedutor,
@@ -220,7 +221,7 @@ function TabelaMotorRedutor() {
 }
 
 export function MotoresAdmin() {
-  const { data: motores, isLoading } = useMotoresAdmin()
+  const { data: motores, isLoading, error, refetch, isFetching } = useMotoresAdmin()
   const { data: alcance, isError: alcanceErro } = useAlcanceMotores()
   const [busca, setBusca] = useState('')
 
@@ -254,11 +255,13 @@ export function MotoresAdmin() {
     ? [...new Set(orfaos.map(m => m.polos))].sort((a, b) => a - b)
     : []
 
-  if (isLoading) return <PageLoading />
+  if (error && !motores) return <div className="p-4"><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar o catálogo de motores." /></div>
+  if (isLoading && !motores) return <PageLoading />
 
   return (
     <div className="min-h-screen bg-bg">
       <div className="w-full min-w-0 px-4 sm:px-6 py-6">
+        <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível atualizar o catálogo de motores. Os dados anteriores e os rascunhos de edição foram preservados." />
         {/* Header */}
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">

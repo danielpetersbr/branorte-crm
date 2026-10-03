@@ -13,10 +13,12 @@ import {
 } from '@/hooks/useTransportadorFuncoes'
 
 export default function AdminTransportadorFuncoes() {
-  const { data: funcoes, isLoading } = useTransportadorFuncoes()
+  const { data: funcoes, isLoading, error: queryError, refetch, isFetching } = useTransportadorFuncoes()
   const criar = useCriarTransportadorFuncao()
   const atualizar = useAtualizarTransportadorFuncao()
   const deletar = useDeletarTransportadorFuncao()
+  const busy = criar.isPending || atualizar.isPending || deletar.isPending
+  const [erro, setErro] = useState<string | null>(null)
 
   // Form de adicionar (sempre visível no topo)
   const [novoNome, setNovoNome] = useState('')
@@ -31,39 +33,45 @@ export default function AdminTransportadorFuncoes() {
 
   async function handleCriar() {
     const nome = novoNome.trim()
-    if (!nome) return
+    if (!nome || busy) return
+    setErro(null)
     try {
       await criar.mutateAsync({ nome, nome_curto: novoCurto.trim() || null, polos: novoPolos })
       setNovoNome('')
       setNovoCurto('')
       setNovoPolos(4)
     } catch (e: any) {
-      alert('Erro: ' + (e?.message || e))
+      setErro('Não foi possível criar a função. Seus dados foram mantidos; tente novamente.')
     }
   }
 
   function startEdit(f: TransportadorFuncao) {
+    if (busy) return
+    setErro(null)
     setEditingId(f.id)
     setEditPatch({ nome: f.nome, nome_curto: f.nome_curto, polos: f.polos, ordem: f.ordem })
   }
 
   async function saveEdit() {
-    if (editingId == null) return
+    if (editingId == null || busy) return
+    setErro(null)
     try {
       await atualizar.mutateAsync({ id: editingId, patch: editPatch })
       setEditingId(null)
       setEditPatch({})
     } catch (e: any) {
-      alert('Erro: ' + (e?.message || e))
+      setErro('Não foi possível salvar a função. Seus dados foram mantidos; tente novamente.')
     }
   }
 
   async function handleDelete(f: TransportadorFuncao) {
+    if (busy) return
     if (!confirm(`Desativar "${f.nome}"? (Soft-delete — orçamentos antigos que usam essa função preservam o nome no item.)`)) return
+    setErro(null)
     try {
       await deletar.mutateAsync(f.id)
     } catch (e: any) {
-      alert('Erro: ' + (e?.message || e))
+      setErro('Não foi possível desativar a função. Tente novamente.')
     }
   }
 
@@ -79,15 +87,22 @@ export default function AdminTransportadorFuncoes() {
         </p>
       </header>
 
+      {queryError && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+        Não foi possível carregar as funções.
+        <Button size="sm" className="ml-2" loading={isFetching} onClick={() => { void refetch() }}>Tentar novamente</Button>
+      </div>}
+      {erro && <p role="alert" className="text-sm text-danger">{erro}</p>}
+
       {/* Form de cadastro rápido */}
       <Card className="p-4">
         <h2 className="text-sm font-semibold text-ink mb-3 flex items-center gap-2">
           <Plus className="h-4 w-4 text-accent" /> Cadastrar nova função
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+        <fieldset disabled={busy} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
           <div className="md:col-span-5">
             <label className="text-[10px] uppercase font-bold text-ink-muted">Nome completo *</label>
             <Input
+              aria-label="Nome completo da nova função"
               value={novoNome}
               onChange={e => setNovoNome(e.target.value)}
               placeholder="ex: Coleta de pó (vertical)"
@@ -98,6 +113,7 @@ export default function AdminTransportadorFuncoes() {
               Nome curto <span className="font-normal text-ink-faint">(opcional — usado no nome do item)</span>
             </label>
             <Input
+              aria-label="Nome curto da nova função"
               value={novoCurto}
               onChange={e => setNovoCurto(e.target.value)}
               placeholder="ex: Coleta de pó"
@@ -131,7 +147,7 @@ export default function AdminTransportadorFuncoes() {
               {criar.isPending ? '...' : 'Criar'}
             </Button>
           </div>
-        </div>
+        </fieldset>
       </Card>
 
       {/* Lista */}
@@ -139,7 +155,7 @@ export default function AdminTransportadorFuncoes() {
         <h2 className="text-sm font-semibold text-ink mb-3">
           Funções cadastradas <span className="text-ink-faint font-normal text-[11px]">({funcoes?.length ?? 0})</span>
         </h2>
-        <div className="border border-border rounded-md overflow-hidden">
+        <div className="border border-border rounded-md overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead className="bg-surface-2/60">
               <tr>
@@ -158,6 +174,8 @@ export default function AdminTransportadorFuncoes() {
                     <td className="px-3 py-2">
                       {isEditing ? (
                         <Input
+                          disabled={busy}
+                          aria-label={`Nome completo de ${f.nome}`}
                           value={editPatch.nome ?? ''}
                           onChange={e => setEditPatch(p => ({ ...p, nome: e.target.value }))}
                         />
@@ -168,6 +186,8 @@ export default function AdminTransportadorFuncoes() {
                     <td className="px-3 py-2">
                       {isEditing ? (
                         <Input
+                          disabled={busy}
+                          aria-label={`Nome curto de ${f.nome}`}
                           value={editPatch.nome_curto ?? ''}
                           onChange={e => setEditPatch(p => ({ ...p, nome_curto: e.target.value || null }))}
                           placeholder="(usa o nome completo)"
@@ -185,6 +205,8 @@ export default function AdminTransportadorFuncoes() {
                             <button
                               key={p}
                               type="button"
+                              disabled={busy}
+                              aria-label={`${p} polos em ${f.nome}`}
                               onClick={() => setEditPatch(s => ({ ...s, polos: p }))}
                               className={`text-[11px] px-2 py-1 rounded border font-bold ${
                                 editPatch.polos === p
@@ -204,6 +226,8 @@ export default function AdminTransportadorFuncoes() {
                       {isEditing ? (
                         <Input
                           type="number"
+                          disabled={busy}
+                          aria-label={`Ordem de ${f.nome}`}
                           value={editPatch.ordem ?? 100}
                           onChange={e => setEditPatch(p => ({ ...p, ordem: parseInt(e.target.value, 10) || 100 }))}
                           className="w-16 text-center mx-auto"
@@ -218,16 +242,16 @@ export default function AdminTransportadorFuncoes() {
                           <Button size="sm" variant="primary" onClick={saveEdit} loading={atualizar.isPending}>
                             <Check className="h-3.5 w-3.5" /> Salvar
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => { setEditingId(null); setEditPatch({}) }}>
+                          <Button size="sm" variant="ghost" disabled={busy} aria-label="Cancelar edição" onClick={() => { setEditingId(null); setEditPatch({}) }}>
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       ) : (
                         <div className="flex gap-1 justify-end">
-                          <Button size="sm" variant="secondary" onClick={() => startEdit(f)}>
+                          <Button size="sm" variant="secondary" disabled={busy} aria-label={`Editar ${f.nome}`} onClick={() => startEdit(f)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(f)}>
+                          <Button size="sm" variant="ghost" disabled={busy} aria-label={`Desativar ${f.nome}`} onClick={() => handleDelete(f)}>
                             <Trash2 className="h-3.5 w-3.5 text-danger" />
                           </Button>
                         </div>
@@ -236,7 +260,7 @@ export default function AdminTransportadorFuncoes() {
                   </tr>
                 )
               })}
-              {(funcoes ?? []).length === 0 && (
+              {!queryError && (funcoes ?? []).length === 0 && (
                 <tr>
                   <td colSpan={5} className="text-center py-8 text-ink-faint italic">
                     Nenhuma função cadastrada — use o form acima pra criar.

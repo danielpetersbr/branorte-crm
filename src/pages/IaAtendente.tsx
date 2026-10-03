@@ -8,6 +8,7 @@ import {
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { supabase } from '@/lib/supabase'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
@@ -371,14 +372,16 @@ function SecaoVisaoGeral({ push }: { push: (t: string, tone?: ToastMsg['tone']) 
   })
 
   async function atualizar() {
-    await Promise.all([atendimentos.refetch(), runs.refetch()])
-    push('Dados atualizados', 'success')
+    const resultados = await Promise.all([atendimentos.refetch(), runs.refetch()])
+    push(resultados.some(r => r.isError) ? 'Não foi possível atualizar todos os dados. Tente novamente.' : 'Dados atualizados', resultados.some(r => r.isError) ? 'danger' : 'success')
   }
 
   if (atendimentos.isLoading || runs.isLoading) return <PageLoading />
+  if ((atendimentos.error && !atendimentos.data) || (runs.error && !runs.data)) return <QueryNotice error={atendimentos.error || runs.error} loading={atendimentos.isFetching || runs.isFetching} onRetry={() => { void atualizar() }} />
 
   return (
     <div className="space-y-4">
+      <QueryNotice error={atendimentos.error || runs.error} loading={atendimentos.isFetching || runs.isFetching} message="Os dados exibidos podem estar desatualizados. Não foi possível atualizar todos os atendimentos." onRetry={() => { void atualizar() }} />
       <div className="flex items-center justify-between">
         <p className="text-[12px] text-ink-muted">
           Clientes com a IA ligada agora e as últimas respostas que ela mandou.
@@ -592,7 +595,7 @@ function ConhecimentoEditor({ row, push }: { row: ConhecimentoRow; push: (t: str
 
 function SecaoCerebro({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
   const qc = useQueryClient()
-  const { data: rows, isLoading } = useIaConhecimento()
+  const { data: rows, isLoading, error, isFetching, refetch } = useIaConhecimento()
   const [novoTitulo, setNovoTitulo] = useState('')
 
   const criar = useMutation({
@@ -619,10 +622,12 @@ function SecaoCerebro({ push }: { push: (t: string, tone?: ToastMsg['tone']) => 
   })
 
   if (isLoading) return <PageLoading />
+  if (error && !rows) return <QueryNotice error={error} loading={isFetching} message="Não foi possível carregar a base de conhecimento." onRetry={() => { void refetch() }} />
 
   return (
     <div className="space-y-3">
       {/* Aviso fixo */}
+      <QueryNotice error={error} loading={isFetching} message="Não foi possível atualizar a base de conhecimento. Os dados exibidos podem estar desatualizados." onRetry={() => { void refetch() }} />
       <div className="bg-success/10 border border-success/30 rounded-lg p-3 text-[12px] text-ink flex items-start gap-2">
         <Zap className="h-4 w-4 text-success shrink-0 mt-0.5" />
         <span>
@@ -717,6 +722,7 @@ function SecaoAutoProspeccao({ push }: { push: (t: string, tone?: ToastMsg['tone
   )
 
   const carregando = autoCfg.isLoading || vendedores.isLoading
+  if (autoCfg.error || vendedores.error) return <QueryNotice error={autoCfg.error || vendedores.error} loading={autoCfg.isFetching || vendedores.isFetching} message="Não foi possível carregar o estado da IA automática. Recarregue antes de alterar os controles." onRetry={() => { void autoCfg.refetch(); void vendedores.refetch() }} />
 
   return (
     <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
@@ -798,7 +804,7 @@ function SecaoAutoProspeccao({ push }: { push: (t: string, tone?: ToastMsg['tone
 //  • transferencia_abordagem_texto (string) — texto com {vendedor} e {origem}
 function SecaoTransferenciaAbordagem({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
   const qc = useQueryClient()
-  const { data: cfg, isLoading } = useIaConfig() // reusa a query ['ia-config']
+  const { data: cfg, isLoading, error, isFetching, refetch } = useIaConfig() // reusa a query ['ia-config']
   const [texto, setTexto] = useState<string | null>(null)
 
   const ligado = cfg?.transferencia_auto_abordar === true
@@ -841,6 +847,7 @@ function SecaoTransferenciaAbordagem({ push }: { push: (t: string, tone?: ToastM
     onError: (err: Error) => push('Erro ao salvar: ' + (err?.message ?? 'falha de rede'), 'danger'),
   })
 
+  if (error && texto === null) return <QueryNotice error={error} loading={isFetching} message="Não foi possível carregar a mensagem de abordagem." onRetry={() => { void refetch() }} />
   if (isLoading || texto === null) {
     return (
       <div className="bg-surface border border-border rounded-lg p-4 flex items-center justify-center gap-2 text-[12px] text-ink-faint">
@@ -851,6 +858,7 @@ function SecaoTransferenciaAbordagem({ push }: { push: (t: string, tone?: ToastM
 
   return (
     <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+      <QueryNotice error={error} loading={isFetching} message="Não foi possível confirmar a configuração atual. Recarregue antes de salvar." onRetry={() => { void refetch() }} />
       <div className="flex items-start gap-2">
         <MessageSquare className="h-4 w-4 text-accent shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
@@ -864,7 +872,7 @@ function SecaoTransferenciaAbordagem({ push }: { push: (t: string, tone?: ToastM
 
       {/* Liga/desliga */}
       <div className="flex items-center gap-2">
-        <Toggle on={ligado} onChange={v => toggleAuto.mutate(v)} disabled={toggleAuto.isPending} />
+        <Toggle on={ligado} onChange={v => toggleAuto.mutate(v)} disabled={toggleAuto.isPending || !!error} />
         <span className="text-[12px] text-ink-muted">
           {ligado ? 'Ligada — quem recebe já aborda o cliente' : 'Desligada — a transferência não manda mensagem'}
         </span>
@@ -897,7 +905,7 @@ function SecaoTransferenciaAbordagem({ push }: { push: (t: string, tone?: ToastM
         <span className="text-[10px] text-ink-faint">Vale pra frota toda; muda na hora, sem atualizar extensão.</span>
         <button
           onClick={() => salvarTexto.mutate()}
-          disabled={salvarTexto.isPending || !dirty}
+          disabled={salvarTexto.isPending || !dirty || !!error}
           className={cn(
             'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors shrink-0',
             dirty ? 'bg-accent text-white hover:opacity-90' : 'bg-surface-2 text-ink-faint cursor-default',
@@ -914,7 +922,7 @@ function SecaoTransferenciaAbordagem({ push }: { push: (t: string, tone?: ToastM
 
 function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
   const qc = useQueryClient()
-  const { data: cfg, isLoading } = useIaConfig()
+  const { data: cfg, isLoading, error, isFetching, refetch } = useIaConfig()
   const [form, setForm] = useState<ConfigForm | null>(null)
   const modelosApi = useModelosOpenai()
 
@@ -943,6 +951,7 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
   const salvar = useMutation({
     mutationFn: async () => {
       if (!form) return
+      if (!Number.isFinite(form.max_respostas_dia) || !Number.isInteger(form.max_respostas_dia) || form.max_respostas_dia < 1) throw new Error('O limite diário deve ser um número inteiro maior ou igual a 1.')
       const rows = [
         { chave: 'modelo_openai', valor: { v: form.modelo_openai.trim() } },
         { chave: 'modelo_fallback', valor: { v: form.modelo_fallback.trim() } },
@@ -968,7 +977,8 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
       {/* Abordagem automática na transferência (2 chaves em ia_config) */}
       <SecaoTransferenciaAbordagem push={push} />
 
-      {(isLoading || !form) ? (
+      <QueryNotice error={error} loading={isFetching} message="Não foi possível carregar a configuração da IA. O formulário preenchido permanece na sessão." onRetry={() => { void refetch() }} />
+      {error && !form ? null : (isLoading || !form) ? (
         <PageLoading />
       ) : (
       <>
@@ -1026,7 +1036,7 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
               min="1"
               step="1"
               value={form.max_respostas_dia}
-              onChange={e => setForm({ ...form, max_respostas_dia: Math.max(0, Number(e.target.value) || 0) })}
+              onChange={e => setForm({ ...form, max_respostas_dia: Number(e.target.value) })}
               className="w-32"
             />
             <p className="text-[10px] text-ink-faint mt-1">Chegou no limite, a IA para e devolve pro vendedor.</p>
@@ -1051,7 +1061,7 @@ function SecaoConfig({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
       <div className="flex justify-end">
         <button
           onClick={() => salvar.mutate()}
-          disabled={salvar.isPending}
+          disabled={salvar.isPending || !!error || !form}
           className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-accent text-white text-[13px] font-medium hover:opacity-90 disabled:opacity-60"
         >
           {salvar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1209,7 +1219,7 @@ function MidiaCard({ midia, push }: { midia: MidiaRow; push: (t: string, tone?: 
 
 function SecaoMidias({ push }: { push: (t: string, tone?: ToastMsg['tone']) => void }) {
   const qc = useQueryClient()
-  const { data: midias, isLoading } = useIaMidias()
+  const { data: midias, isLoading, error, isFetching, refetch } = useIaMidias()
   const [enviando, setEnviando] = useState(false)
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1249,10 +1259,12 @@ function SecaoMidias({ push }: { push: (t: string, tone?: ToastMsg['tone']) => v
   }
 
   if (isLoading) return <PageLoading />
+  if (error && !midias) return <QueryNotice error={error} loading={isFetching} message="Não foi possível carregar as mídias cadastradas." onRetry={() => { void refetch() }} />
 
   return (
     <div className="space-y-3">
       {/* Dica */}
+      <QueryNotice error={error} loading={isFetching} message="Não foi possível atualizar as mídias cadastradas. Os dados exibidos podem estar desatualizados." onRetry={() => { void refetch() }} />
       <div className="bg-info/10 border border-info/30 rounded-lg p-3 text-[12px] text-ink flex items-start gap-2">
         <AlertCircle className="h-4 w-4 text-info shrink-0 mt-0.5" />
         <span>
@@ -1506,6 +1518,7 @@ function SecaoHistorico() {
   }, [todos, filtro, busca])
 
   if (runs.isLoading) return <PageLoading />
+  if (runs.error && !runs.data) return <QueryNotice error={runs.error} loading={runs.isFetching} message="Não foi possível carregar o histórico da IA." onRetry={() => { void runs.refetch() }} />
 
   const FILTROS: Array<{ id: typeof filtro; label: string }> = [
     { id: 'todos', label: `Todos (${stats.total})` },
@@ -1519,6 +1532,7 @@ function SecaoHistorico() {
       <p className="text-[12px] text-ink-muted">
         Registro dos atendimentos da IA — clique num pra abrir a conversa, ver o que ela entendeu e o desfecho. Os marcados com ⚠ são os que valem revisar pra melhorar a IA.
       </p>
+      <QueryNotice error={runs.error} loading={runs.isFetching} message="Não foi possível atualizar o histórico da IA. Os dados exibidos podem estar desatualizados." onRetry={() => { void runs.refetch() }} />
 
       {/* Resumo */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

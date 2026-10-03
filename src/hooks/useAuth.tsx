@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { atualizarNomePerfilAtual } from '@/lib/profile-display-name'
 import type { Session } from '@supabase/supabase-js'
 
 export interface UserProfile {
@@ -25,7 +26,7 @@ export interface AuthState {
   profileError: boolean
 }
 
-type AuthContextValue = AuthState & { signOut: () => Promise<void> }
+type AuthContextValue = AuthState & { signOut: () => Promise<void>; updateDisplayName: (confirmedId: string, displayName: string) => void }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
@@ -146,8 +147,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null)
   }
 
+  const updateDisplayName = (confirmedId: string, displayName: string) => {
+    setProfile(current => identity.current === confirmedId ? atualizarNomePerfilAtual(current, confirmedId, displayName) : current)
+  }
+
   return (
-    <AuthContext.Provider value={{ session, profile: profile?.id === userId ? profile : null, loading: loading || (!!userId && !!profile && profile.id !== userId), profileError, signOut }}>
+    <AuthContext.Provider value={{ session, profile: profile?.id === userId ? profile : null, loading: loading || (!!userId && !!profile && profile.id !== userId), profileError, signOut, updateDisplayName }}>
       {children}
     </AuthContext.Provider>
   )

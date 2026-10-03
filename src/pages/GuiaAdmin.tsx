@@ -369,6 +369,7 @@ function EditorImagem({ img, onFechar, autorPadrao }: {
 
 function EditorFonte({ fonte, onFechar }: { fonte: GuiaFonte; onFechar: () => void }) {
   const salvar = useSalvarFonte()
+  const [erro, setErro] = useState<string | null>(null)
   const [f, setF] = useState({
     titulo: fonte.titulo, organizacao: fonte.organizacao ?? '', edicao: fonte.edicao ?? '',
     ano: fonte.ano ?? '', url: fonte.url ?? '', consultada_em: fonte.consultada_em ?? '',
@@ -378,8 +379,9 @@ function EditorFonte({ fonte, onFechar }: { fonte: GuiaFonte; onFechar: () => vo
     <div className="space-y-3 rounded-lg border border-accent/40 bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-[15px] font-bold text-ink">{fonte.chave}</h3>
-        <Button size="sm" onClick={onFechar}><X className="h-3.5 w-3.5" />Fechar</Button>
+        <Button size="sm" disabled={salvar.isPending} onClick={onFechar}><X className="h-3.5 w-3.5" />Fechar</Button>
       </div>
+      <fieldset disabled={salvar.isPending} className="space-y-3 min-w-0">
       <Campo rotulo="Título"><Input value={f.titulo} onChange={e => setF(v => ({ ...v, titulo: e.target.value }))} /></Campo>
       <div className="grid gap-3 sm:grid-cols-2">
         <Campo rotulo="Organização"><Input value={f.organizacao} onChange={e => setF(v => ({ ...v, organizacao: e.target.value }))} /></Campo>
@@ -398,18 +400,25 @@ function EditorFonte({ fonte, onFechar }: { fonte: GuiaFonte; onFechar: () => vo
         variant="primary"
         loading={salvar.isPending}
         onClick={async () => {
-          await salvar.mutateAsync({
+          setErro(null)
+          try {
+            await salvar.mutateAsync({
             id: fonte.id, ...f,
             ano: f.ano ? Number(f.ano) : null,
             organizacao: f.organizacao || null, edicao: f.edicao || null,
             url: f.url || null, consultada_em: f.consultada_em || null,
             observacao: f.observacao || null,
           } as never)
-          onFechar()
+            onFechar()
+          } catch {
+            setErro('Não foi possível salvar a fonte. Seus dados foram mantidos; tente novamente.')
+          }
         }}
       >
         <Save className="h-4 w-4" />Salvar fonte
       </Button>
+      </fieldset>
+      {erro && <p role="alert" className="text-sm text-danger">{erro}</p>}
     </div>
   )
 }
@@ -424,10 +433,12 @@ export function GuiaAdmin() {
   const [status, setStatus] = useState<StatusConteudo | ''>('')
   const [editando, setEditando] = useState<string | null>(null)
 
-  const { data: animais = [], isLoading: cA } = useGuiaAnimais()
-  const { data: materias = [], isLoading: cM } = useGuiaMaterias()
-  const { data: imagens = [], isLoading: cI } = useGuiaImagens()
-  const { data: fontes = [], isLoading: cF } = useGuiaFontes()
+  const animaisQ = useGuiaAnimais(), materiasQ = useGuiaMaterias(), imagensQ = useGuiaImagens(), fontesQ = useGuiaFontes()
+  const { data: animais = [], isLoading: cA } = animaisQ
+  const { data: materias = [], isLoading: cM } = materiasQ
+  const { data: imagens = [], isLoading: cI } = imagensQ
+  const { data: fontes = [], isLoading: cF } = fontesQ
+  const falhasLeitura = [animaisQ, materiasQ, imagensQ, fontesQ].filter(query => query.isError)
 
   const podeEditar = profile?.role === 'admin' || can('guia.editar')
   const autorPadrao = profile?.display_name ?? ''
@@ -487,6 +498,10 @@ export function GuiaAdmin() {
         </Link>
       </header>
 
+      {falhasLeitura.length > 0 && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+        Não foi possível carregar todas as coleções do guia. Os dados exibidos podem estar incompletos.
+        <button disabled={falhasLeitura.some(query => query.isFetching)} onClick={() => { for (const query of falhasLeitura) void query.refetch() }} className="ml-2 underline disabled:opacity-50">Tentar novamente</button>
+      </div>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           { r: 'Conteúdos', v: resumo.total, alerta: false },

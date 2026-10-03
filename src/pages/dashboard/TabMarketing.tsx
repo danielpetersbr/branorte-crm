@@ -21,6 +21,7 @@ import { JanelaBadge } from './ui/JanelaBadge'
 import { CHART, CHART_SERIE, TOOLTIP_STYLE } from './ui/chart-tokens'
 import { brl, n, pct } from './ui/format'
 import { useJanela } from './DashboardFilterContext'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 // ============================================================================
 // ABA MARKETING — "pra onde vai ou corta a verba?"
@@ -1150,11 +1151,16 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
 
 export function TabMarketing() {
   const { preset, periodoLabel } = useJanela()
-  const { data, isLoading } = useDashboard({ preset })
-  const { data: etq } = useDashboardEtiquetas(preset)
-  const { data: orcVendaCriativo } = useDashboardOrcVendaPorCriativo(preset)
-  const { data: orcVendaOrigem } = useDashboardOrcVendaPorOrigem(preset)
-  const { data: motivosFonte } = useMotivosPorFonte(preset)
+  const dashboardQuery = useDashboard({ preset })
+  const etiquetasQuery = useDashboardEtiquetas(preset)
+  const criativoQuery = useDashboardOrcVendaPorCriativo(preset)
+  const origemQuery = useDashboardOrcVendaPorOrigem(preset)
+  const motivosQuery = useMotivosPorFonte(preset)
+  const { data, isLoading } = dashboardQuery
+  const etq = etiquetasQuery.data, orcVendaCriativo = criativoQuery.data, orcVendaOrigem = origemQuery.data, motivosFonte = motivosQuery.data
+  const consultas = [dashboardQuery, etiquetasQuery, criativoQuery, origemQuery, motivosQuery]
+  const erro = consultas.find(q => q.error)?.error
+  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
   const rowsOrigem = useMemo(
     () => linhasDeOrigens(data?.porOrigem ?? [], etq, orcVendaOrigem),
@@ -1202,7 +1208,8 @@ export function TabMarketing() {
     }
   }, [rowsOrigem, rowsCriativo, data?.porOrigem])
 
-  if (isLoading && !data) {
+  if (consultas.some(q => q.error && q.data === undefined)) return <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados de marketing." onRetry={atualizar} />
+  if ((isLoading && !data) || consultas.some(q => q.isLoading && q.data === undefined)) {
     return (
       <div className="space-y-5">
         {[0, 1, 2].map(i => (
@@ -1231,6 +1238,7 @@ export function TabMarketing() {
   return (
     <div className="space-y-5">
       {/* ═══ 1 · RESUMO — a resposta em 4 números ═══ */}
+      <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todos os dados de marketing. O último retrato permanece visível." onRetry={atualizar} />
       <Card id="marketing-resumo">
         <CardHeader
           title="Decisão de verba"

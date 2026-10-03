@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 
@@ -33,33 +33,39 @@ export function Avaliacao() {
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
   const [erro, setErro] = useState('')
+  const envioEmCurso = useRef(false)
 
   const notaBaixa = nota > 0 && nota <= 2
   const legenda = ['', 'Péssimo', 'Ruim', 'Ok', 'Bom', 'Excelente'][hover || nota] || ''
 
   async function enviar() {
+    if (envioEmCurso.current) return
     if (nota < 1) {
       setErro('Toque numa estrela pra dar sua nota 🙂')
       return
     }
+    envioEmCurso.current = true
     setEnviando(true)
     setErro('')
-    const { error } = await supabase.from('atendimento_avaliacoes').insert({
-      vendedor_nome: vendedor || null,
-      telefone: telefone || null,
-      cliente_nome: nome.trim() || null,
-      nota,
-      comentario: comentario.trim() || null,
-      motivo: notaBaixa ? (motivo || null) : null,
-      origem: 'extensao',
-      user_agent: navigator.userAgent.slice(0, 300),
-    })
-    setEnviando(false)
-    if (error) {
+    try {
+      const { error } = await supabase.from('atendimento_avaliacoes').insert({
+        vendedor_nome: vendedor || null,
+        telefone: telefone || null,
+        cliente_nome: nome.trim() || null,
+        nota,
+        comentario: comentario.trim() || null,
+        motivo: notaBaixa ? (motivo || null) : null,
+        origem: 'extensao',
+        user_agent: navigator.userAgent.slice(0, 300),
+      })
+      if (error) throw error
+      setEnviado(true)
+    } catch {
       setErro('Não consegui enviar agora. Tente de novo em instantes.')
-      return
+    } finally {
+      envioEmCurso.current = false
+      setEnviando(false)
     }
-    setEnviado(true)
   }
 
   if (enviado) {
@@ -90,6 +96,7 @@ export function Avaliacao() {
           <p className="text-sm text-ink-muted mt-1">Leva menos de 10 segundos.</p>
         </div>
 
+        <fieldset disabled={enviando}>
         {/* Estrelas — a NOTA */}
         <div className="flex flex-col items-center mb-6">
           <div className="flex gap-1" onMouseLeave={() => setHover(0)}>
@@ -158,7 +165,7 @@ export function Avaliacao() {
           />
         </div>
 
-        {erro && <p className="text-sm text-red-500 mb-3 text-center">{erro}</p>}
+        {erro && <p role="alert" className="text-sm text-red-500 mb-3 text-center">{erro}</p>}
 
         <button
           type="button"
@@ -168,6 +175,7 @@ export function Avaliacao() {
         >
           {enviando ? 'Enviando…' : 'Enviar avaliação'}
         </button>
+        </fieldset>
       </div>
     </div>
   )

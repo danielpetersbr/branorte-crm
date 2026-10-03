@@ -5,6 +5,7 @@ import { Edit3, Search, FileText, FileSignature, Calendar, User, DollarSign, Che
 import { useOrcamentosGerados, type OrcamentoGeradoLista } from '@/hooks/useOrcamentoBuilder'
 import { supabase } from '@/lib/supabase'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { useAuth } from '@/hooks/useAuth'
 import { semSeparadores } from '@/lib/busca-numero-orcamento'
 
@@ -193,17 +194,19 @@ function OrcamentoGroupRow({ group }: { group: OrcamentoGroup }) {
 }
 
 export function OrcamentosSalvos() {
-  const { data, isLoading } = useOrcamentosGerados()
+  const { data, isLoading, error, refetch, isFetching } = useOrcamentosGerados()
   // Vendedor não abre a lista de Orçamentos da pasta (fora do VENDOR_PREFIXES): sem o link.
   const { profile } = useAuth()
   const isVendor = profile?.role === 'vendor'
+  const [searchParams] = useSearchParams()
+  const etqParam = searchParams.get('etiqueta')
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<string>('')
   const [filtroVendedor, setFiltroVendedor] = useState<string>('')
-  const [filtroEtiqueta, setFiltroEtiqueta] = useState<string>('')
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState<string>(() => ETIQUETA_PROP_OPCOES.some(o => o.value === etqParam) ? etqParam! : '')
 
   // IDs das propostas no estágio de funil selecionado (vem da RPC, casado por telefone).
-  const { data: idsEtiqueta } = useQuery({
+  const { data: idsEtiqueta, isLoading: loadingEtiqueta, error: erroEtiqueta, refetch: refetchEtiqueta, isFetching: fetchingEtiqueta } = useQuery({
     queryKey: ['propostas-ids-categoria', filtroEtiqueta],
     queryFn: async (): Promise<Set<number>> => {
       const { data: ids, error } = await supabase.rpc('propostas_ids_por_categoria', { p_categoria: filtroEtiqueta })
@@ -222,7 +225,6 @@ export function OrcamentosSalvos() {
 
   // Pré-filtra por vendedor vindo da URL (?vendedor=PEDRO, do dashboard), casando por
   // PRIMEIRO nome — os nomes variam aqui ("GUSTAVO", "PEDRO DELA GIUSTINA ").
-  const [searchParams] = useSearchParams()
   const vendParam = searchParams.get('vendedor')
   useEffect(() => {
     if (!vendParam || vendedores.length === 0) return
@@ -232,14 +234,13 @@ export function OrcamentosSalvos() {
   }, [vendParam, vendedores])
 
   // Pré-filtra por etiqueta de funil vinda da URL (?etiqueta=aberto, do dashboard).
-  const etqParam = searchParams.get('etiqueta')
   useEffect(() => {
     if (etqParam && ETIQUETA_PROP_OPCOES.some(o => o.value === etqParam)) setFiltroEtiqueta(etqParam)
   }, [etqParam])
 
   // Group by numero_base: parent rows + ALT sub-rows
   const grouped = useMemo((): OrcamentoGroup[] => {
-    if (!data) return []
+    if (!data || (filtroEtiqueta && (loadingEtiqueta || erroEtiqueta || !idsEtiqueta))) return []
     const buscaLower = busca.trim().toLowerCase()
 
     // Filter first
@@ -291,11 +292,12 @@ export function OrcamentosSalvos() {
     }
 
     return order.map(k => map.get(k)!)
-  }, [data, busca, filtroStatus, filtroVendedor, filtroEtiqueta, idsEtiqueta])
+  }, [data, busca, filtroStatus, filtroVendedor, filtroEtiqueta, idsEtiqueta, loadingEtiqueta, erroEtiqueta])
 
   const totalCount = data?.length ?? 0
 
   if (isLoading) return <PageLoading />
+  if (error) return <div className="p-4 lg:p-8 space-y-6"><h1 className="text-2xl font-bold text-text-primary">Orçamentos Salvos</h1><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar os orçamentos salvos." /></div>
 
   return (
     <div className="p-4 lg:p-8 space-y-4">
@@ -363,7 +365,7 @@ export function OrcamentosSalvos() {
       </div>
 
       {/* Lista */}
-      {grouped.length === 0 ? (
+      {filtroEtiqueta && erroEtiqueta ? <QueryNotice error={erroEtiqueta} loading={fetchingEtiqueta} onRetry={() => { void refetchEtiqueta() }} message="Não foi possível conferir as propostas desta etapa do funil." /> : filtroEtiqueta && (loadingEtiqueta || !idsEtiqueta) ? <PageLoading /> : grouped.length === 0 ? (
         <div className="text-center py-12 text-ink-faint">
           <FileText className="h-10 w-10 mx-auto mb-2 opacity-40" />
           <p>Nenhum orçamento encontrado</p>

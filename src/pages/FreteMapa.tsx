@@ -9,6 +9,7 @@ import { geocodificarCidade } from '@/lib/calcFrete'
 import { escHtml } from '@/lib/html-escape'
 import { parseMoeda } from '@/lib/moeda'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 const CENTRO_BR: [number, number] = [-15.78, -47.93]
 const VERDE = '#22c55e', AZUL = '#3b82f6', AMBAR = '#f59e0b'
@@ -141,7 +142,7 @@ function RegistrarFeitoModal({ onClose }: { onClose: () => void }) {
 }
 
 export function FreteMapa() {
-  const { data: pontos = [], isLoading } = useFreteMapa()
+  const { data: pontos = [], isLoading, error, refetch, isFetching } = useFreteMapa()
   const feitos = useFretesFeitos()
   const [modalFeito, setModalFeito] = useState(false)
   const tipos = useTiposCaminhao()
@@ -255,7 +256,11 @@ export function FreteMapa() {
       <div className="flex-1 min-h-0 relative">
         <div ref={divRef} className="h-full w-full rounded-xl border border-border overflow-hidden z-0" style={{ minHeight: 300 }} />
         {isLoading && <div className="absolute inset-0 flex items-center justify-center"><PageLoading /></div>}
-        {!isLoading && filtrados.length === 0 && (
+        {(error || feitos.error) && <div className="absolute left-3 right-3 top-3 z-[400] space-y-2">
+          <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível consultar as cotações no mapa." />
+          <QueryNotice error={feitos.error} loading={feitos.isFetching} onRetry={() => { void feitos.refetch() }} message="Não foi possível consultar os fretes feitos no mapa." />
+        </div>}
+        {!isLoading && !error && !feitos.error && !feitos.isLoading && filtrados.length === 0 && feitosFiltrados.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="bg-surface-1 border border-border rounded-xl px-5 py-3 text-sm text-ink-muted">Sem cotações respondidas ainda. Conforme as transportadoras preenchem, os pontos aparecem aqui.</div>
           </div>

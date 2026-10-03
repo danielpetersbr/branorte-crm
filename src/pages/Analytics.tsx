@@ -6,6 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { ArrowLeft } from 'lucide-react'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 const PRESET_LABELS: { value: DashboardPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -49,17 +50,19 @@ function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
 function usePresetFilter(): [DashboardPreset, (p: DashboardPreset) => void] {
   const [preset, setPreset] = useState<DashboardPreset>(() => {
     if (typeof window === 'undefined') return ''
-    return (localStorage.getItem('dashboard-preset') as DashboardPreset) || ''
+    try { return (localStorage.getItem('dashboard-preset') as DashboardPreset) || '' } catch { return '' }
   })
   useEffect(() => {
-    localStorage.setItem('dashboard-preset', preset)
+    try { localStorage.setItem('dashboard-preset', preset) } catch { /* filtro continua disponível na sessão */ }
   }, [preset])
   return [preset, setPreset]
 }
 
 export function Analytics() {
   const [preset, setPreset] = usePresetFilter()
-  const { data, isLoading } = useDashboard({ preset })
+  const { data, isLoading, error, isFetching, refetch } = useDashboard({ preset })
+
+  if (error && !data) return <div className="p-4 lg:p-6"><h1 className="mb-4 text-2xl font-semibold">Análise detalhada</h1><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} /></div>
 
   if (isLoading || !data) {
     return (
@@ -72,6 +75,7 @@ export function Analytics() {
 
   return (
     <div className="w-full min-w-0 p-4 lg:p-6 space-y-5">
+      <QueryNotice error={error} loading={isFetching} message="Não foi possível atualizar a análise. Os dados anteriores permanecem visíveis." onRetry={() => { void refetch() }} />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Link to="/" className="text-[12px] text-ink-muted hover:text-ink inline-flex items-center gap-1 mb-2">

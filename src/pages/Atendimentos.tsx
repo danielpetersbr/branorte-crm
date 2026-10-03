@@ -479,7 +479,7 @@ export function Atendimentos() {
     setSelecionados(prev => {
       const next = new Map(prev)
       if (next.has(k)) next.delete(k)
-      else next.set(k, { telefone: r.telefone, nome: r.nome ?? null })
+      else if (r.telefone) next.set(k, { telefone: r.telefone, nome: r.nome ?? null })
       return next
     })
   }
@@ -495,7 +495,7 @@ export function Atendimentos() {
       } else {
         rows.forEach(r => {
           const k = selKey(r.telefone)
-          if (k) next.set(k, { telefone: r.telefone, nome: r.nome ?? null })
+          if (k && r.telefone) next.set(k, { telefone: r.telefone, nome: r.nome ?? null })
         })
       }
       return next
@@ -801,7 +801,7 @@ export function Atendimentos() {
       {/* Tabela */}
       {isLoading ? (
         <PageLoading />
-      ) : (
+      ) : atendimentosError && !data ? null : (
         <div className="flex-1 min-h-0 flex flex-col gap-3">
           <CampanhasAtivas />
           <div className="flex items-center justify-between shrink-0">
@@ -862,7 +862,8 @@ export function Atendimentos() {
               const uf = ufFromTelefone(r.telefone)
               const isHot = isHotLead(r.quando_investir ?? null)
               // isFresh removido
-              const status = STATUS_TONE[r.status_real]
+              const statusKey = STATUS_REAL_VALUES.find(value => value === r.status_real)
+              const status = statusKey ? STATUS_TONE[statusKey] : undefined
               const ids = (r.auditoria_ids && r.auditoria_ids.length > 0) ? r.auditoria_ids : [r.id]
               const isFechado = !!r.finished_at
               // Trata "(sem nome)" do webhook como nome vazio pra UI ficar consistente

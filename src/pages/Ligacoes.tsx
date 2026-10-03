@@ -6,7 +6,7 @@ import {
 import {
   useLigacoesResumo, useLigacoesSerie, useLigacoesPorHora, useLigacoesDe,
   useGravacoesDe, urlDoAudio, codigoDaChamada,
-  janelaDoPeriodo, janelaAnterior,
+  janelaDoPeriodo, janelaAnterior, janelaValida,
   type Periodo, type LigacaoResumo, type Janela, type Ligacao, type Gravacao,
 } from '@/hooks/useLigacoes'
 import {
@@ -14,6 +14,7 @@ import {
   PorHorario, fmtDur,
 } from '@/components/ligacoes/GraficosLigacoes'
 import { useAuth } from '@/hooks/useAuth'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 // ============================================================================
 // CENTRAL DE PERFORMANCE DE LIGAÇÕES
@@ -200,10 +201,18 @@ export function Ligacoes() {
   const janela = useMemo(() => janelaDoPeriodo(periodo, custom), [periodo, custom])
   const anterior = useMemo(() => janelaAnterior(periodo, custom), [periodo, custom])
 
-  const { data: linhas = [], isLoading, isError, dataUpdatedAt, isFetching } = useLigacoesResumo(janela, vendedor)
-  const { data: linhasAnt = [] } = useLigacoesResumo(anterior ?? janela, vendedor, !!anterior)
-  const { data: serie = [] } = useLigacoesSerie(janela, vendedor)
-  const { data: horas = [] } = useLigacoesPorHora(janela, vendedor)
+  const resumoQuery = useLigacoesResumo(janela, vendedor)
+  const anteriorQuery = useLigacoesResumo(anterior ?? janela, vendedor, !!anterior)
+  const serieQuery = useLigacoesSerie(janela, vendedor)
+  const horasQuery = useLigacoesPorHora(janela, vendedor)
+  const { data: linhas = [], isLoading, isError, dataUpdatedAt, isFetching } = resumoQuery
+  const { data: linhasAnt = [] } = anteriorQuery
+  const { data: serie = [] } = serieQuery
+  const { data: horas = [] } = horasQuery
+  const erroPeriodo = !janelaValida(janela)
+  const consultas = [resumoQuery, ...(anterior ? [anteriorQuery] : []), serieQuery, horasQuery]
+  const erroConsulta = consultas.find(q => q.error)?.error
+  const atualizar = () => { if (!erroPeriodo) consultas.forEach(q => { void q.refetch() }) }
 
   // A lista de vendedores do filtro tem que vir de FORA do filtro, senão escolher
   // um vendedor esvazia o próprio seletor e não dá pra voltar.
@@ -214,7 +223,7 @@ export function Ligacoes() {
   const nomes = useMemo(() => todos.map(t => t.vendedor).sort(), [todos])
 
   const tot = useMemo(() => somar(linhas), [linhas])
-  const totAnt = useMemo(() => (anterior ? somar(linhasAnt) : null), [linhasAnt, anterior])
+  const totAnt = useMemo(() => (anterior && anteriorQuery.isSuccess ? somar(linhasAnt) : null), [linhasAnt, anterior, anteriorQuery.isSuccess])
 
   // ⚠️ A taxa só aparece com volume. A tela já dizia isso na tabela e no gráfico
   // ("mínimo de 5"), mas o KPI do topo mostrava "0,0% de atendimento" em cima de UMA
@@ -233,8 +242,8 @@ export function Ligacoes() {
   // denominador uma só, e a "média por atendida" saía inflada.
   const durMedia = tot.atendidas > 0 && tot.tempo_seg > 0 ? Math.round(tot.tempo_seg / tot.atendidas) : 0
 
-  // A série do período pode estar cortada no começo: a 1ª leitura de cada
-  // vendedor traz as últimas 500 ligações dele. Avisa em vez de fingir tendência.
+  // Heurística legada para mostrar a ressalva de cobertura; a fonte não fornece
+  // uma flag que confirme se a sincronização do histórico está completa.
   const truncado = serie.length > 20
 
   const filtrando = vendedor !== null || periodo === 'custom'
@@ -301,19 +310,22 @@ export function Ligacoes() {
         <div className="mt-2 flex items-end gap-2 flex-wrap">
           <label className="flex-1 basis-[140px] min-w-0 sm:flex-none text-[11px] text-ink-faint">
             De
-            <input type="date" className="block w-full min-w-0 mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
-              onChange={e => { if (e.target.value) { setCustom(c => ({ ...c, from: new Date(`${e.target.value}T00:00:00-03:00`).toISOString() })); setPeriodo('custom') } }} />
+            <input type="date" value={custom.from?.slice(0, 10) ?? ''} className="block w-full min-w-0 mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
+              onChange={e => { const value = e.target.value; setCustom(c => ({ ...c, from: value ? new Date(`${value}T00:00:00-03:00`).toISOString() : null })); setPeriodo('custom') }} />
           </label>
           <label className="flex-1 basis-[140px] min-w-0 sm:flex-none text-[11px] text-ink-faint">
             Até
-            <input type="date" className="block w-full min-w-0 mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
-              onChange={e => { if (e.target.value) { const d = new Date(`${e.target.value}T00:00:00-03:00`); d.setDate(d.getDate() + 1); setCustom(c => ({ ...c, to: d.toISOString() })); setPeriodo('custom') } }} />
+            <input type="date" value={custom.to ? new Date(Date.parse(custom.to) - 86400000).toISOString().slice(0, 10) : ''} className="block w-full min-w-0 mt-1 h-9 px-2 rounded-lg border border-border bg-surface text-[12.5px] text-ink outline-none focus:border-accent"
+              onChange={e => { const value = e.target.value; setCustom(c => ({ ...c, to: value ? new Date(Date.parse(`${value}T00:00:00-03:00`) + 86400000).toISOString() : null })); setPeriodo('custom') }} />
           </label>
           <p className="text-[10.5px] text-ink-faint pb-2">A data final entra por inteiro.</p>
         </div>
       </details>
+      {erroPeriodo && <p role="alert" className="mb-4 text-sm text-danger">Escolha uma data final igual ou posterior à data inicial.</p>}
+      <QueryNotice error={erroConsulta} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados das ligações. Comparativos indisponíveis não são calculados." onRetry={atualizar} />
 
       {/* ── Linha 1: KPIs ───────────────────────────────────────────────── */}
+      {!erroPeriodo && resumoQuery.data && <>
       {/* ⚠️ 4 POR FILEIRA, não 8 — MEDIDO em 19/08/2026 na tela do Daniel (1920px):
           com `xl:grid-cols-7` o cartão tinha 168px e "Atendidas (que ele ligou)" JÁ
           cortava (127px de texto em 120 de espaço). Em 8 colunas sobrariam ~78px e
@@ -331,8 +343,7 @@ export function Ligacoes() {
             atendido conversou igual. */}
         <Kpi icone={UserCheck} cor="text-success" rotulo="Clientes conversados" valor={tot.clientes_falados}
              nota={[
-               tot.clientes_fez > 0 && tot.clientes_falados > 0
-                 ? `${Math.round((tot.clientes_falados / tot.clientes_fez) * 100)}% dos que chamou` : undefined,
+               'Chamadas feitas e recebidas',
                tot.atendidas > 0 ? `${tot.atendidas} ligações atendidas no total` : undefined,
              ].filter(Boolean).join(' · ') || undefined} />
         <Kpi icone={PhoneCall} cor="text-success" rotulo={pessoal ? 'Atendidas (que você ligou)' : 'Atendidas (que ele ligou)'} valor={tot.atendidas_fez}
@@ -365,16 +376,17 @@ export function Ligacoes() {
              delta={pctDelta(tot.tempo_seg, totAnt?.tempo_seg)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
       </div>
 
-      <ResumoInteligente linhas={linhas} tot={tot} totAnt={totAnt} horas={horas} serie={serie}
-                         rotuloAnterior={ROTULO_ANTERIOR[periodo]} pessoal={pessoal} />
+      {horasQuery.isSuccess && serieQuery.isSuccess && <ResumoInteligente linhas={linhas} tot={tot} totAnt={totAnt} horas={horas} serie={serie}
+                         rotuloAnterior={ROTULO_ANTERIOR[periodo]} pessoal={pessoal} />}
+      </>}
 
-      {isError ? (
-        <p className="text-[13px] text-danger py-10 text-center">Não consegui carregar as ligações.</p>
+      {erroPeriodo || (isError && !resumoQuery.data) ? null : isError ? (
+        <p className="text-[13px] text-danger py-10 text-center">Não foi possível atualizar as ligações.</p>
       ) : isLoading ? (
         <Esqueleto />
       ) : (
         <div className="space-y-3 lg:space-y-4">
-          <EvolucaoLigacoes serie={serie} truncado={truncado} />
+          {serieQuery.data && <EvolucaoLigacoes serie={serie} truncado={truncado} />}
 
           {/* ⚠️ Os dois blocos de ranking (PorVendedor, TaxaPorVendedor) só fazem sentido
               com o time na tela. No modo pessoal a RLS entrega UMA linha, e "ranking de
@@ -383,15 +395,15 @@ export function Ligacoes() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
             <ResultadoLigacoes atendidas={tot.atendidas_fez} perdidas={tot.perdidas} outras={outras}
                                video={tot.video_fez} atendidasRecebeu={atendidasRecebeu} pessoal={pessoal} />
-            {pessoal ? <PorHorario horas={horas} /> : <PorVendedor linhas={linhas} />}
+            {pessoal ? horasQuery.data && <PorHorario horas={horas} /> : <PorVendedor linhas={linhas} />}
           </div>
 
-          <LigacoesNoMes serie={serie} />
+          {serieQuery.data && <LigacoesNoMes serie={serie} />}
 
           {!pessoal && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
               <TaxaPorVendedor linhas={linhas} />
-              <PorHorario horas={horas} />
+              {horasQuery.data && <PorHorario horas={horas} />}
             </div>
           )}
 
@@ -413,8 +425,8 @@ export function Ligacoes() {
         fim: as duas contam igual, porque o cliente ficou sem falar com ninguém dos dois jeitos.{' '}
         <b className="text-ink-muted">Clientes chamados</b> conta contatos
         DIFERENTES — quem liga cinco vezes pro mesmo produtor fez cinco ligações e alcançou um.{' '}
-        <b className="text-ink-muted">Clientes conversados</b> é com quantos desses ele realmente
-        FALOU: contato diferente com pelo menos uma chamada atendida, tendo sido ele a ligar ou o
+        <b className="text-ink-muted">Clientes conversados</b> conta contatos diferentes com pelo
+        menos uma chamada atendida, tendo sido ele a ligar ou o
         cliente — atender quem ligou é conversa igual. Discar 83 números e falar com 30 pessoas é um
         dia; discar 83 e falar com 70 é outro. Somando o time, o produtor que falou com dois
         vendedores conta duas vezes: é total de conversas, não de gente na base.{' '}
@@ -722,7 +734,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
   r: LigacaoResumo; maxFez: number; janela: Janela; aberto: boolean; onToggle: () => void
 }) {
   const [direcao, setDirecao] = useState<'tudo' | 'fez' | 'recebeu'>('tudo')
-  const { data: bruta = [], isLoading } = useLigacoesDe(aberto ? r.vendedor : null, janela)
+  const { data: bruta = [], isLoading, error, isFetching, refetch } = useLigacoesDe(aberto ? r.vendedor : null, janela)
   const { data: gravacoes = {} } = useGravacoesDe(aberto ? r.vendedor : null, janela)
   const lista = useMemo(() => bruta.filter(l =>
     direcao === 'tudo' || (direcao === 'fez' ? l.outgoing === true : l.outgoing === false)), [bruta, direcao])
@@ -825,9 +837,10 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
               ))}
             </div>
           </div>
+          <QueryNotice error={error} loading={isFetching} message="Não foi possível carregar a lista de ligações." onRetry={() => { void refetch() }} />
           {isLoading ? (
             <p className="text-[11.5px] text-ink-faint py-2">Carregando…</p>
-          ) : lista.length === 0 ? (
+          ) : error && bruta.length === 0 ? null : lista.length === 0 ? (
             <p className="text-[11.5px] text-ink-faint py-2">Nenhuma ligação no período.</p>
           ) : (
             <div className="rounded-xl border border-border/60 bg-surface divide-y divide-border/40 max-h-[420px] overflow-y-auto">

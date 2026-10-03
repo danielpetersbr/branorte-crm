@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 // ============================================================================
 // Fluxos do Funil (admin) — editor visual drag-and-drop (React Flow) que grava
@@ -497,9 +498,11 @@ function ListaFluxos({ push, onAbrir }: {
   })
 
   if (fluxos.isLoading) return <PageLoading />
+  if (fluxos.error && !fluxos.data) return <QueryNotice error={fluxos.error} loading={fluxos.isFetching} message="Não foi possível carregar os fluxos." onRetry={() => { void fluxos.refetch() }} />
 
   return (
     <div className="space-y-4">
+      <QueryNotice error={fluxos.error} loading={fluxos.isFetching} message="Não foi possível atualizar os fluxos. Os dados exibidos podem estar desatualizados." onRetry={() => { void fluxos.refetch() }} />
       <div className="flex items-center justify-between">
         <p className="text-[12px] text-ink-muted">
           Desenhe fluxos de acompanhamento do funil: a engine captura os chats da etiqueta do nó Início e segue o desenho.
@@ -787,6 +790,14 @@ function EditorFluxo({ fluxo, vendedores, etiquetas, onVoltar, push }: {
   const [modo, setModo] = useState<ModoFluxo>(fluxo.modo)
   const [escopo, setEscopo] = useState<string>(fluxo.escopo_vendedor ?? '')
   const [selId, setSelId] = useState<string | null>(null)
+  const [salvo, setSalvo] = useState(() => JSON.stringify({ definicao: paraContrato(inicial.nodes, inicial.edges), nome: fluxo.nome, modo: fluxo.modo, escopo: fluxo.escopo_vendedor ?? '' }))
+  const retrato = JSON.stringify({ definicao: paraContrato(nodes, edges), nome, modo, escopo })
+  const sujo = retrato !== salvo
+
+  function voltar() {
+    if (sujo && !window.confirm('Há alterações não salvas neste fluxo. Descartar e voltar?')) return
+    onVoltar()
+  }
 
   // Tela cheia do canvas (pedido do Daniel: "ver o fluxo em tela grande").
   // requestFullscreen no wrapper do ReactFlow + re-fit ao entrar/sair.
@@ -886,24 +897,33 @@ function EditorFluxo({ fluxo, vendedores, etiquetas, onVoltar, push }: {
   }
 
   const salvar = useMutation({
-    mutationFn: async (): Promise<string[]> => {
+    mutationFn: async () => {
+      const modoOriginal = modo
+      const nomeOriginal = nome
       const def = paraContrato(nodes, edges)
       const avisos = validarDefinicao(def)
+      const modoSalvo = avisos.length ? 'desativado' : modoOriginal
+      const nomeSalvo = nomeOriginal.trim() || 'Fluxo sem nome'
+      const retratoSalvo = JSON.stringify({ definicao: def, nome: nomeSalvo, modo: modoSalvo, escopo })
       const { error } = await supabase
         .from('funil_fluxos')
         .update({
-          nome: nome.trim() || 'Fluxo sem nome',
-          modo,
+          nome: nomeSalvo,
+          modo: modoSalvo,
+          ...(avisos.length ? { ativo: false } : {}),
           escopo_vendedor: escopo || null,
           definicao: def,
           atualizado_em: new Date().toISOString(),
         })
         .eq('id', fluxo.id)
       if (error) throw error
-      return avisos
+      return { avisos, modoOriginal, modoSalvo, nomeOriginal, nomeSalvo, retratoSalvo }
     },
-    onSuccess: (avisos) => {
+    onSuccess: ({ avisos, modoOriginal, modoSalvo, nomeOriginal, nomeSalvo, retratoSalvo }) => {
       qc.invalidateQueries({ queryKey: ['funil-fluxos'] })
+      setModo(atual => atual === modoOriginal ? modoSalvo : atual)
+      setNome(atual => atual === nomeOriginal ? nomeSalvo : atual)
+      setSalvo(retratoSalvo)
       if (avisos.length) {
         push('Salvo como rascunho — ' + avisos.join(' · '), 'info')
       } else {
@@ -920,7 +940,8 @@ function EditorFluxo({ fluxo, vendedores, etiquetas, onVoltar, push }: {
       {/* Toolbar */}
       <div className="bg-surface border border-border rounded-lg p-2.5 flex flex-wrap items-center gap-2">
         <button
-          onClick={onVoltar}
+          onClick={voltar}
+          disabled={salvar.isPending}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-border text-[12px] font-medium text-ink hover:bg-surface-2 transition-colors shrink-0"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar
@@ -1079,6 +1100,7 @@ export function FluxosFunil() {
   return (
     <div className="min-h-screen bg-bg">
       <div className="w-full min-w-0 px-4 sm:px-6 py-6">
+        <QueryNotice error={listas.error} loading={listas.isFetching} message="Não foi possível carregar as etiquetas e os vendedores. Os valores já configurados permanecem no editor." onRetry={() => { void listas.refetch() }} />
         {/* Header */}
         <div className="mb-5">
           <div className="flex items-center gap-2 mb-1">

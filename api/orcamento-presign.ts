@@ -11,7 +11,7 @@
 //   3. Retorna { docx: url, pdf: url, txt: url, envio?: url }
 //   4. Cliente faz PUT em paralelo pras URLs (Supabase aceita sem limite Vercel)
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { exigirAprovado, exigirPermissaoDoPapel, nomeDeArquivoSeguro } from './_lib/exigir-aprovado.js'
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!
@@ -39,7 +39,7 @@ interface PresignResponse {
   envio?: PresignedFile  // so se withWhatsApp
 }
 
-async function makeSigned(supa: ReturnType<typeof createClient>, path: string): Promise<PresignedFile> {
+async function makeSigned(supa: SupabaseClient, path: string): Promise<PresignedFile> {
   // SEM remove() antes (29/09/2026). Ele existia porque createSignedUploadUrl
   // sem upsert exige path livre — mas era um DELETE com service role, e no
   // bucket só admin apaga (policy orcamentos_pendentes_delete). Com isso qualquer

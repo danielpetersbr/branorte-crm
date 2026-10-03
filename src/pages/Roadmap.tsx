@@ -45,7 +45,7 @@ function formatDate(s: string): string {
 export function Roadmap() {
   const [filtroStatus, setFiltroStatus] = useState<RoadmapStatus | 'todos'>('novo')
   const [expandido, setExpandido] = useState<number | null>(null)
-  const { data: feedbacks, isLoading } = useFeedbacks(filtroStatus)
+  const { data: feedbacks, isLoading, error: feedbackError, refetch, isFetching } = useFeedbacks(filtroStatus)
   const atualizar = useAtualizarFeedback()
 
   /*
@@ -64,20 +64,20 @@ export function Roadmap() {
    */
   const can = useCan()
   const podeVerHeatmap = can('menu.dashboard')
-  const { data: heatmap30d } = useHeatmapSemanal(podeVerHeatmap)
+  const { data: heatmap30d, error: heatmapError, refetch: retryHeatmap, isFetching: fetchingHeatmap } = useHeatmapSemanal(podeVerHeatmap)
 
   if (isLoading) return <PageLoading />
 
   const lista = feedbacks ?? []
 
-  async function trocarStatus(id: number, status: RoadmapStatus) {
-    await atualizar.mutateAsync({ id, patch: { status } })
+  function trocarStatus(id: number, status: RoadmapStatus) {
+    atualizar.mutate({ id, patch: { status } })
   }
-  async function trocarPrioridade(id: number, prioridade: RoadmapPrioridade) {
-    await atualizar.mutateAsync({ id, patch: { prioridade } })
+  function trocarPrioridade(id: number, prioridade: RoadmapPrioridade) {
+    atualizar.mutate({ id, patch: { prioridade } })
   }
-  async function salvarNotas(id: number, notas_admin: string) {
-    await atualizar.mutateAsync({ id, patch: { notas_admin } })
+  function salvarNotas(id: number, notas_admin: string) {
+    atualizar.mutate({ id, patch: { notas_admin } })
   }
 
   return (
@@ -92,6 +92,12 @@ export function Roadmap() {
           </div>
         </div>
 
+        {feedbackError && <div role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+          Não foi possível carregar os feedbacks.
+          <button disabled={isFetching} onClick={() => { void refetch() }} className="ml-2 underline disabled:opacity-50">Tentar novamente</button>
+        </div>}
+        {atualizar.isError && <p role="alert" className="mb-4 text-sm text-danger">A alteração não foi salva. Suas notas foram mantidas; tente a ação novamente.</p>}
+
         {/* Quando chegam os leads — janela fixa de 30 dias, independente de
             qualquer filtro desta página (o de status vale só pros feedbacks). */}
         {podeVerHeatmap && (
@@ -105,7 +111,7 @@ export function Roadmap() {
                 Dia da semana × hora. Serve pra escalar plantão e turno de atendimento.
               </p>
             </div>
-            {heatmap30d && heatmap30d.length > 0
+            {heatmapError ? <p role="alert" className="text-sm text-danger">Não foi possível carregar os horários dos leads. <button disabled={fetchingHeatmap} onClick={() => { void retryHeatmap() }} className="underline">Tentar novamente</button></p> : heatmap30d && heatmap30d.length > 0
               ? <HeatmapDiaHora heatmap={heatmap30d} />
               : <p className="text-[12px] text-ink-faint">Sem dados no período.</p>}
           </section>
@@ -271,6 +277,8 @@ function FeedbackDetalhes({ fb, onStatus, onPrioridade, onNotas, saving }: Detal
       <div>
         <div className="text-[10px] uppercase font-bold text-ink-muted mb-1">Notas internas</div>
         <textarea
+          aria-label="Notas internas"
+          disabled={saving}
           value={notas}
           onChange={e => setNotas(e.target.value)}
           onBlur={() => notas !== (fb.notas_admin ?? '') && onNotas(notas)}
@@ -279,6 +287,7 @@ function FeedbackDetalhes({ fb, onStatus, onPrioridade, onNotas, saving }: Detal
           className="w-full text-[12px] px-3 py-2 bg-surface border border-border rounded text-ink placeholder:text-ink-faint resize-none"
         />
         {saving && <div className="text-[10px] text-ink-faint flex items-center gap-1 mt-1"><Loader2 className="w-3 h-3 animate-spin" /> salvando…</div>}
+        <button disabled={saving || notas === (fb.notas_admin ?? '')} onClick={() => onNotas(notas)} className="mt-2 text-xs text-accent underline disabled:opacity-50">Salvar notas</button>
       </div>
     </div>
   )

@@ -5,7 +5,7 @@
 // e fica visível direto pras transportadoras dos estados de destino no portal.
 // Aceita prefill por querystring (vindo da extensão/orçamento):
 //   ?cliente=&telefone=&uf=&cidade=&vendedor=&origem=extensao
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Truck, Plus, X, MapPin, Loader2, ArrowLeft, CheckCircle2, Package, Copy, Check, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -121,6 +121,24 @@ export function FreteSolicitar() {
   const [distancia, setDistancia] = useState<number | null>(null)
   const [calcLoading, setCalcLoading] = useState(false)
   const [calcMsg, setCalcMsg] = useState('')
+  const consultaDestino = useRef<AbortController | null>(null)
+  const envioController = useRef<AbortController | null>(null)
+  const envioEmCurso = useRef(false)
+  const montado = useRef(true)
+  const [enviando, setEnviando] = useState(false)
+  useEffect(() => {
+    montado.current = true
+    return () => {
+      montado.current = false
+      consultaDestino.current?.abort(); envioController.current?.abort()
+    }
+  }, [])
+
+  function invalidarDestino() {
+    consultaDestino.current?.abort(); envioController.current?.abort()
+    consultaDestino.current = null
+    setLatLng(null); setDistancia(null); setCalcMsg(''); setCalcLoading(false)
+  }
 
   // cliente / extras
   const [clienteNome, setClienteNome] = useState(params.get('cliente') || '')
@@ -225,43 +243,60 @@ export function FreteSolicitar() {
 
   async function calcularDestino() {
     if (!cidade.trim() || !uf) { setCalcMsg('Informe UF e cidade.'); return }
+    consultaDestino.current?.abort()
+    const controller = new AbortController()
+    consultaDestino.current = controller
+    const vigente = () => montado.current && consultaDestino.current === controller && !controller.signal.aborted
     setCalcLoading(true); setCalcMsg(''); setLatLng(null); setDistancia(null)
-    const coords = await geocodificarCidade(cidade.trim(), uf)
-    if (coords) {
-      setLatLng(coords)
-      const d = await calcularDistanciaOSRM(GRAO_PARA, coords)
-      if (d) setDistancia(Math.round(d.distancia_km))
-      setCalcMsg(d ? '' : 'Localizei a cidade, mas não calculei a distância. Pode digitar o km manual.')
-    } else {
-      setCalcMsg('Não localizei essa cidade. Confira o nome ou digite o km manual.')
+    try {
+      const coords = await geocodificarCidade(cidade.trim(), uf, controller.signal)
+      if (!vigente()) return
+      if (coords) {
+        setLatLng(coords)
+        const d = await calcularDistanciaOSRM(GRAO_PARA, coords, controller.signal)
+        if (!vigente()) return
+        if (d) setDistancia(Math.round(d.distancia_km))
+        setCalcMsg(d ? '' : 'Localizei a cidade, mas não calculei a distância. Pode digitar o km manual.')
+      } else {
+        setCalcMsg('Não localizei essa cidade. Confira o nome ou digite o km manual.')
+      }
+    } catch {
+      if (vigente()) setCalcMsg('Não consegui consultar o destino. Tente novamente ou digite o km manual.')
+    } finally {
+      if (vigente()) { consultaDestino.current = null; setCalcLoading(false) }
     }
-    setCalcLoading(false)
   }
 
   async function enviar() {
+    if (envioEmCurso.current) return
     setErro('')
     if (!uf || !cidade.trim()) { setErro('Informe o destino (UF + cidade).'); return }
     if (!clienteNome.trim()) { setErro('Informe o nome do cliente.'); return }
     if (!valorNota.trim() || !(parseBRL(valorNota)! > 0)) { setErro('Informe o valor da nota fiscal.'); return }
     if (!itens.length) { setErro('Adicione ao menos um item a transportar.'); return }
-    const equipamentos_itens: FreteEquipItem[] = itens.map(it => ({
-      catalogo_item_id: it.catalogo_item_id,
-      nome: it.nome,
-      qtd: it.qtd,
-      peso_kg: it.peso_kg || null,
-      comprimento_m: it.comprimento_m || null,
-      largura_m: it.largura_m || null,
-      altura_m: it.altura_m || null,
-      indivisivel: it.indivisivel,
-      foto_url: it.foto_url,
-    }))
-    // Geocodifica o destino mesmo se o vendedor não clicou em "Calcular distância" —
-    // senão o frete entra sem coordenada e some do Mapa de Fretes.
-    let coords = latLng
-    if (!coords) {
-      try { coords = await geocodificarCidade(cidade.trim(), uf) } catch { /* segue sem coord */ }
-    }
+    envioEmCurso.current = true
+    const controller = new AbortController()
+    envioController.current = controller
+    setEnviando(true)
     try {
+      const equipamentos_itens: FreteEquipItem[] = itens.map(it => ({
+        catalogo_item_id: it.catalogo_item_id,
+        nome: it.nome,
+        qtd: it.qtd,
+        peso_kg: it.peso_kg || null,
+        comprimento_m: it.comprimento_m || null,
+        largura_m: it.largura_m || null,
+        altura_m: it.altura_m || null,
+        indivisivel: it.indivisivel,
+        foto_url: it.foto_url,
+      }))
+      // Geocodifica o destino mesmo se o vendedor não clicou em "Calcular distância" —
+      // senão o frete entra sem coordenada e some do Mapa de Fretes.
+      let coords = latLng
+      if (!coords) {
+        try { coords = await geocodificarCidade(cidade.trim(), uf, controller.signal) } catch { /* segue sem coord quando a consulta falha */ }
+      }
+      if (controller.signal.aborted || !montado.current) return
       const res = await criar.mutateAsync({
         origem,
         solicitante_nome: profile?.display_name ?? null,
@@ -296,8 +331,6 @@ export function FreteSolicitar() {
         aprovado_em: new Date().toISOString(),
         aprovado_por_nome: 'Automático',
       })
-      setOkCodigo(res.codigo ?? '✓')
-      setOkSolicId(res.id ?? null)
       // Auto-envia a cotação pras transportadoras AUTORIZADAS da UF, pelo WhatsApp do
       // vendedor (não é mais só link manual). O frete-enfileirar casa o nome pela 1ª palavra.
       const aptas = (transportadoras.data ?? []).filter(
@@ -306,17 +339,24 @@ export function FreteSolicitar() {
       if (res.id && aptas.length) {
         try {
           const r = await enfileirar.mutateAsync({ solicitacao_id: res.id, transportadora_ids: aptas.map(t => t.id) })
-          setOkEnviado((r as any)?.enfileirados ?? aptas.length)
-        } catch { setOkEnviado(0) }
+          if (montado.current) setOkEnviado((r as any)?.enfileirados ?? aptas.length)
+        } catch { if (montado.current) setOkEnviado(0) }
       } else {
-        setOkEnviado(0)
+        if (montado.current) setOkEnviado(0)
       }
+      if (montado.current) { setOkCodigo(res.codigo ?? '✓'); setOkSolicId(res.id ?? null) }
     } catch (e: any) {
-      setErro(`Não consegui salvar: ${e?.message ?? e}`)
+      if (montado.current) setErro(`Não consegui salvar: ${e?.message ?? e}`)
+    } finally {
+      envioEmCurso.current = false
+      if (envioController.current === controller) envioController.current = null
+      if (montado.current) setEnviando(false)
     }
   }
 
   function novaSolicitacao() {
+    if (envioEmCurso.current) return
+    invalidarDestino()
     setItens([]); setForm(FORM_VAZIO)
     setUf(''); setCidade(''); setLatLng(null); setDistancia(null); setCalcMsg('')
     setClienteNome(''); setDescricao(''); setObs(''); setValorNota(''); setTipoCotacao('cotacao'); setUrgente(false)
@@ -338,7 +378,7 @@ export function FreteSolicitar() {
         </p>
         {okEnviado === 0 && okSolicId && <LinkRapido solicId={okSolicId} />}
         <div className="flex items-center justify-center gap-2 mt-6">
-          <button onClick={novaSolicitacao} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">Novo pedido</button>
+          <button onClick={novaSolicitacao} disabled={enviando} className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-60">Novo pedido</button>
           <Link to="/frete/cotacoes" className="px-4 py-2 rounded-lg border border-border text-sm text-ink-muted hover:text-ink">Ver cotações</Link>
         </div>
       </div>
@@ -352,6 +392,7 @@ export function FreteSolicitar() {
 
   return (
     <div className="w-full min-w-0 px-5 lg:px-8 py-5 pb-24">
+      <fieldset disabled={enviando} className="min-w-0">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <Link to="/frete" className="text-ink-faint hover:text-ink"><ArrowLeft className="h-5 w-5" /></Link>
@@ -426,12 +467,12 @@ export function FreteSolicitar() {
           <h2 className={secLabel}><MapPin className="h-4 w-4 text-accent" /> Destino <span className="text-red-500 ml-0.5">*</span></h2>
           <div className="space-y-2">
             <div className="flex gap-2">
-              <select value={uf} onChange={e => { setUf(e.target.value); setLatLng(null); setDistancia(null) }}
+              <select value={uf} onChange={e => { invalidarDestino(); setUf(e.target.value) }}
                 className={`w-24 px-3 py-2 rounded-lg bg-bg border text-ink text-sm outline-none focus:border-accent ${reqRing(!uf)}`}>
                 <option value="">UF</option>
                 {UFS_BR.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
-              <input list="municipios-frete" value={cidade} onChange={e => { setCidade(e.target.value); setLatLng(null); setDistancia(null) }}
+              <input list="municipios-frete" value={cidade} onChange={e => { invalidarDestino(); setCidade(e.target.value) }}
                 placeholder="Cidade de destino" disabled={!uf}
                 className={`flex-1 min-w-0 px-3 py-2 rounded-lg bg-bg border text-ink text-sm placeholder:text-ink-faint outline-none focus:border-accent disabled:opacity-50 ${reqRing(!cidade.trim())}`} />
               <datalist id="municipios-frete">{(municipios.data ?? []).map(m => <option key={m} value={m} />)}</datalist>
@@ -582,11 +623,12 @@ export function FreteSolicitar() {
             : 'Nenhum item adicionado ainda'}
         </div>
         {erro && <span className="text-xs text-red-500">{erro}</span>}
-        <button onClick={enviar} disabled={criar.isPending}
+        <button onClick={enviar} disabled={enviando}
           className="ml-auto px-6 py-2.5 rounded-lg bg-accent text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60">
-          {criar.isPending ? 'Enviando…' : 'Enviar pedido de frete'}
+          {enviando ? 'Enviando…' : 'Enviar pedido de frete'}
         </button>
       </div>
+      </fieldset>
     </div>
   )
 }

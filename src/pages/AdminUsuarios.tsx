@@ -37,8 +37,8 @@ function useUsers() {
 }
 
 export function AdminUsuarios() {
-  const { data, isLoading } = useUsers()
-  const { data: vendorsData } = useVendors({ incluirInativos: true })
+  const { data, isLoading, error: usersError, refetch, isFetching } = useUsers()
+  const { data: vendorsData, error: vendorsError, refetch: refetchVendors, isFetching: fetchingVendors } = useVendors({ incluirInativos: true })
   const qc = useQueryClient()
   const [editing, setEditing] = useState<UserRow | null>(null)
   const [role, setRole] = useState<AssignableRole>('vendor')
@@ -47,6 +47,7 @@ export function AdminUsuarios() {
   const [newPwd, setNewPwd] = useState('')
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [resettingPwd, setResettingPwd] = useState(false)
+  const [statusMsg, setStatusMsg] = useState<string | null>(null)
 
   const updateUser = useMutation({
     mutationFn: async (u: { id: string; role: AnyRole; vendor_id?: string | null }) => {
@@ -61,16 +62,18 @@ export function AdminUsuarios() {
         .eq('id', u.id)
       if (error) throw error
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: ['user_profiles'] })
-      setEditing(null)
+      setEditing(current => current?.id === variables.id ? null : current)
       setShowPwdReset(false)
       setPwdMsg(null)
       setNewPwd('')
+      setStatusMsg('Usuário atualizado.')
     },
   })
 
   const resetPassword = async (userId: string) => {
+    if (resettingPwd || updateUser.isPending) return
     if (newPwd.length < 6) {
       setPwdMsg({ ok: false, text: 'Mínimo 6 caracteres' })
       return
@@ -93,17 +96,32 @@ export function AdminUsuarios() {
       } else {
         setPwdMsg({ ok: true, text: 'Senha alterada!' })
         setNewPwd('')
-        setTimeout(() => { setPwdMsg(null); setShowPwdReset(false) }, 2000)
       }
     } catch {
       setPwdMsg({ ok: false, text: 'Erro de conexão' })
+    } finally {
+      setResettingPwd(false)
     }
-    setResettingPwd(false)
+  }
+
+  const busy = updateUser.isPending || resettingPwd
+  const closeEditor = () => { if (!busy) setEditing(null) }
+  const openEditor = (u: UserRow, approving = false) => {
+    if (busy) return
+    updateUser.reset()
+    setStatusMsg(null)
+    setShowPwdReset(false)
+    setPwdMsg(null)
+    setNewPwd('')
+    setEditing(u)
+    setRole(approving ? 'vendor' : (u.role === 'admin' || u.role === 'marketing' || u.role === 'visualizador') ? u.role : 'vendor')
+    setVendorId(approving ? '' : u.vendor_id ?? '')
   }
 
   if (isLoading) return <PageLoading />
 
   const users = data ?? []
+  const hasUsers = data !== undefined
   const pending = users.filter(u => u.role === 'pending')
   const approved = users.filter(u => u.role === 'admin' || u.role === 'vendor' || u.role === 'marketing' || u.role === 'visualizador')
   const rejected = users.filter(u => u.role === 'rejected')
@@ -113,34 +131,33 @@ export function AdminUsuarios() {
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Usuários</h1>
         <p className="text-sm text-text-secondary mt-1">
-          {pending.length} pendente{pending.length !== 1 ? 's' : ''} de aprovação · {approved.length} ativo{approved.length !== 1 ? 's' : ''} · {rejected.length} rejeitado{rejected.length !== 1 ? 's' : ''}
+          {hasUsers ? <>{pending.length} pendente{pending.length !== 1 ? 's' : ''} de aprovação · {approved.length} ativo{approved.length !== 1 ? 's' : ''} · {rejected.length} rejeitado{rejected.length !== 1 ? 's' : ''}</> : 'Contagem de usuários indisponível.'}
         </p>
       </div>
 
+      {usersError && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger flex flex-wrap items-center gap-3">
+        <span>Não foi possível carregar os usuários. {hasUsers ? 'Os registros exibidos podem estar desatualizados.' : 'Tente novamente.'}</span>
+        <Button size="sm" onClick={() => { void refetch() }} loading={isFetching}>Tentar novamente</Button>
+      </div>}
+      {updateUser.isError && <p role="alert" className="text-sm text-danger">Não foi possível atualizar o usuário. Tente a ação novamente.</p>}
+      {statusMsg && <p role="status" className="text-sm text-success">{statusMsg}</p>}
+
       {pending.length > 0 && (
-        <Section title="Pendentes de aprovação" rows={pending} onApprove={u => {
-          setEditing(u)
-          setRole('vendor')
-          setVendorId('')
-        }} onReject={u => updateUser.mutate({ id: u.id, role: 'rejected' })} />
+        <Section title="Pendentes de aprovação" rows={pending} busy={busy} onApprove={u => openEditor(u, true)} onReject={u => { setStatusMsg(null); updateUser.mutate({ id: u.id, role: 'rejected' }) }} />
       )}
 
-      <Section title="Usuários ativos" rows={approved} onEdit={u => {
-        setEditing(u)
-        setRole((u.role === 'admin' || u.role === 'marketing' || u.role === 'visualizador') ? u.role : 'vendor')
-        setVendorId(u.vendor_id ?? '')
-      }} />
+      {hasUsers && <Section title="Usuários ativos" rows={approved} busy={busy} onEdit={u => openEditor(u)} />}
 
       {rejected.length > 0 && (
-        <Section title="Rejeitados" rows={rejected} muted onRestore={u => updateUser.mutate({ id: u.id, role: 'pending' })} />
+        <Section title="Rejeitados" rows={rejected} muted busy={busy} onRestore={u => { setStatusMsg(null); updateUser.mutate({ id: u.id, role: 'pending' }) }} />
       )}
 
       {editing && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={() => setEditing(null)}>
-          <Card className="p-6 max-w-md w-full" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+        <div role="dialog" aria-modal="true" aria-label={`Editar acesso de ${editing.display_name || editing.email}`} className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={closeEditor}>
+          <Card className="p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
             <h2 className="font-bold text-text-primary mb-1">{editing.display_name || editing.email}</h2>
             <p className="text-xs text-text-muted mb-4">{editing.email}</p>
-            <div className="space-y-3">
+            <fieldset disabled={busy} className="space-y-3">
               <label className="block">
                 <span className="text-xs text-text-muted">Role</span>
                 <Select
@@ -167,20 +184,26 @@ export function AdminUsuarios() {
                   />
                 </label>
               )}
+              {role === 'vendor' && vendorsError && <div role="alert" className="text-xs text-danger flex flex-wrap items-center gap-2">
+                Não foi possível carregar os vendedores.
+                <Button size="sm" onClick={() => { void refetchVendors() }} loading={fetchingVendors}>Tentar novamente</Button>
+              </div>}
+              {updateUser.isError && <p role="alert" className="text-xs text-danger">A alteração não foi salva. Seus dados foram mantidos; tente novamente.</p>}
               <div className="flex gap-2 pt-2">
                 <Button
                   variant="primary"
                   size="md"
-                  disabled={role === 'vendor' && !vendorId}
+                  disabled={role === 'vendor' && (!vendorId || !!vendorsError)}
+                  loading={updateUser.isPending}
                   onClick={() => updateUser.mutate({
                     id: editing.id,
                     role,
                     vendor_id: role === 'vendor' ? vendorId : null,
                   })}
                 >
-                  Salvar
+                  {updateUser.isPending ? 'Salvando…' : 'Salvar'}
                 </Button>
-                <Button variant="secondary" size="md" onClick={() => setEditing(null)}>
+                <Button variant="secondary" size="md" onClick={closeEditor}>
                   Cancelar
                 </Button>
               </div>
@@ -226,7 +249,7 @@ export function AdminUsuarios() {
                   </div>
                 )}
               </div>
-            </div>
+            </fieldset>
           </Card>
         </div>
       )}
@@ -242,9 +265,10 @@ interface SectionProps {
   onReject?: (u: UserRow) => void
   onEdit?: (u: UserRow) => void
   onRestore?: (u: UserRow) => void
+  busy?: boolean
 }
 
-function Section({ title, rows, muted, onApprove, onReject, onEdit, onRestore }: SectionProps) {
+function Section({ title, rows, muted, onApprove, onReject, onEdit, onRestore, busy }: SectionProps) {
   if (rows.length === 0) return null
   return (
     <Card className={`overflow-hidden ${muted ? 'opacity-70' : ''}`}>
@@ -275,22 +299,22 @@ function Section({ title, rows, muted, onApprove, onReject, onEdit, onRestore }:
                 <td className="px-4 py-2 text-right">
                   <div className="flex items-center justify-end gap-1">
                     {onApprove && (
-                      <Button variant="primary" size="sm" onClick={() => onApprove(u)}>
+                      <Button variant="primary" size="sm" disabled={busy} onClick={() => onApprove(u)}>
                         <Check className="h-4 w-4" /> Aprovar
                       </Button>
                     )}
                     {onReject && (
-                      <Button variant="ghost" size="sm" onClick={() => onReject(u)}>
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => onReject(u)}>
                         <X className="h-4 w-4" /> Rejeitar
                       </Button>
                     )}
                     {onEdit && (
-                      <Button variant="secondary" size="sm" onClick={() => onEdit(u)}>
+                      <Button variant="secondary" size="sm" disabled={busy} onClick={() => onEdit(u)}>
                         Editar
                       </Button>
                     )}
                     {onRestore && (
-                      <Button variant="ghost" size="sm" onClick={() => onRestore(u)}>
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => onRestore(u)}>
                         Reativar
                       </Button>
                     )}

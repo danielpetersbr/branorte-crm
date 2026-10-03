@@ -5,7 +5,7 @@
 //     e cliente/numero/data/terms preenchidos. Esconde os botões interativos.
 
 import { Search, X } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BRLInput } from '@/components/ui/BRLInput'
 import {
@@ -614,151 +614,8 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
     mq.addEventListener('change', handler)
     return () => mq.removeEventListener('change', handler)
   }, [])
+  // A4 markers remain disabled; PDF pagination is handled by the document renderer.
 
-  useLayoutEffect(() => {
-    // Skip em mobile — marcadores poluem visual sem agregar valor.
-    // Skip sempre (DESABILITADO): bug pre-existente no algoritmo insere spacers
-    // vazios no topo do container, criando "5 folhas A4" fantasmas. Investigar
-    // depois — por hora, sem marcadores visuais (PDF gerado pelo Puppeteer nao
-    // depende disso).
-    return
-    if (renderMode || isMobile || !containerRef.current || !innerRef.current) return
-
-    let isInternalMutation = false
-    let lastWidth = 0
-    let pendingTimer: any = null
-
-    const cleanGaps = () => {
-      innerRef.current?.querySelectorAll('.page-gap-spacer').forEach(el => el.remove())
-    }
-
-    const recalc = () => {
-      if (!innerRef.current) return
-      isInternalMutation = true
-      cleanGaps()
-      const w = innerRef.current.offsetWidth
-      const h = innerRef.current.offsetHeight
-      lastWidth = w
-      const A4_H = w * (297 / 210)
-      setPageHeight(A4_H)
-
-      const breaks: number[] = []
-      const containerTop = innerRef.current.getBoundingClientRect().top + window.scrollY
-
-      // Foto principal força quebra imediatamente após ela
-      const heroEl = innerRef.current.querySelector('[data-hero-photo]') as HTMLElement | null
-      let y: number
-      if (heroEl) {
-        const heroBottom = heroEl.getBoundingClientRect().bottom + window.scrollY - containerTop
-        breaks.push(heroBottom + 8)
-        y = heroBottom + 8 + A4_H
-      } else {
-        y = A4_H
-      }
-
-      let safety = 0
-      while (y < h && safety++ < 20) {
-        // Tolerance 15% (era 10%) — janela maior pra encontrar o fim de bloco
-        // certo, evita break colado no proximo item.
-        const adjusted = findBreakNear(innerRef.current, y, A4_H * 0.15)
-        breaks.push(adjusted)
-        y = adjusted + A4_H
-      }
-      setPageBreaks(breaks)
-
-      // Insere SPACERS reais entre folhas
-      const allEls = Array.from(innerRef.current.querySelectorAll('div, table')) as HTMLElement[]
-      const spacerHeight = 80  // px — gap visual entre folhas (incluindo respiro topo/baixo)
-      // Posicoes Y atuais de cada spacer DEPOIS de inserido (acumulam offset)
-      const spacerYs: number[] = []
-      let acumOffset = 0
-      for (let i = 0; i < breaks.length; i++) {
-        const breakY = breaks[i]
-        let bestEl: HTMLElement | null = null
-        let bestBottom = -1
-        for (const el of allEls) {
-          if (el.classList.contains('page-gap-spacer')) continue
-          const noBreakParent = el.closest('[data-no-break]')
-          if (noBreakParent && noBreakParent !== el) continue
-          const r = el.getBoundingClientRect()
-          const bottom = r.bottom + window.scrollY - containerTop
-          if (bottom <= breakY + 4 && bottom > bestBottom) {
-            bestBottom = bottom
-            bestEl = el
-          }
-        }
-        if (bestEl && bestEl.parentNode) {
-          const gap = document.createElement('div')
-          gap.className = 'page-gap-spacer'
-          gap.style.cssText = [
-            `height: ${spacerHeight}px`,
-            'box-sizing: border-box',
-            'background: transparent',  // deixa o BG da app aparecer (gap real entre folhas)
-            'margin: 0 -28px',  // estende ALEM da moldura
-            'padding: 28px 0',  // ↑ desgruda o texto do conteudo da folha (28 acima + 28 abaixo + ~24 do texto)
-            'display: flex',
-            'align-items: center',
-            'justify-content: center',
-            'font-size: 10px',
-            'font-weight: bold',
-            'color: #6b7280',
-            'letter-spacing: 0.15em',
-            'text-transform: uppercase',
-          ].join(';')
-          gap.textContent = `↓ Folha ${i + 2} / ${breaks.length + 1} ↓`
-          bestEl.parentNode.insertBefore(gap, bestEl.nextSibling)
-          // Calcula Y do spacer (posicao top apos insert) — sera usada pra desenhar moldura
-          spacerYs.push(bestBottom + acumOffset)
-          acumOffset += spacerHeight
-        }
-      }
-      // Calcula folhas (top, bottom) LENDO POSICAO REAL dos spacers no DOM
-      // (depois do reflow os spacers ja estao na posicao final)
-      requestAnimationFrame(() => {
-        if (!innerRef.current) return
-        void spacerYs  // valores antigos calculados pre-insert ficam pra reference
-        const containerTopReal = innerRef.current.getBoundingClientRect().top + window.scrollY
-        const totalH = innerRef.current.offsetHeight
-        const spacersReal = Array.from(innerRef.current.querySelectorAll('.page-gap-spacer')) as HTMLElement[]
-        const novasFolhas: Array<{ top: number; bottom: number }> = []
-        let prevBottom = 0
-        for (const sp of spacersReal) {
-          const r = sp.getBoundingClientRect()
-          const spTop = r.top + window.scrollY - containerTopReal
-          const spBot = r.bottom + window.scrollY - containerTopReal
-          novasFolhas.push({ top: prevBottom, bottom: spTop })
-          prevBottom = spBot
-        }
-        // Ultima folha (apos ultimo spacer ate o fim)
-        novasFolhas.push({ top: prevBottom, bottom: totalH })
-        setFolhas(novasFolhas)
-      })
-      // Libera observer DEPOIS do paint
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => { isInternalMutation = false })
-      })
-    }
-
-    const debouncedRecalc = () => {
-      clearTimeout(pendingTimer)
-      pendingTimer = setTimeout(recalc, 50)
-    }
-
-    // Observer SO reage a mudanca de LARGURA (nao altura — altura muda quando inserimos spacers)
-    const ro = new ResizeObserver(() => {
-      if (isInternalMutation) return
-      const newW = innerRef.current?.offsetWidth ?? 0
-      if (Math.abs(newW - lastWidth) < 2) return  // ignora pequenas variacoes
-      debouncedRecalc()
-    })
-    ro.observe(innerRef.current)
-    recalc()
-    return () => {
-      ro.disconnect()
-      clearTimeout(pendingTimer)
-      cleanGaps()
-    }
-  }, [renderMode, isMobile, carrinho, motoresAgrupados, acessorios, fotoPrincipal])
 
   return (
     <div

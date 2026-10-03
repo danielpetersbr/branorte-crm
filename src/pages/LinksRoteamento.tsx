@@ -27,6 +27,7 @@
 
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -118,39 +119,46 @@ export function LinksRoteamento() {
   const [copiado, setCopiado] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
-  const { data: links } = useQuery<Resumo[]>({
+  const linksQuery = useQuery<Resumo[]>({
     queryKey: ['link-rota-resumo'],
     queryFn: async () => {
-      const { data } = await supabase.from('link_rota_resumo').select('*').order('nome')
+      const { data, error } = await supabase.from('link_rota_resumo').select('*').order('nome')
+      if (error) throw error
       return (data as Resumo[]) || []
     },
     refetchInterval: 30_000,
   })
 
   // Detalhe completo (criativo, pixel, utm) — o resumo não traz.
-  const { data: detalhes } = useQuery<LinkRota[]>({
+  const detalhesQuery = useQuery<LinkRota[]>({
     queryKey: ['link-rota-detalhe'],
     queryFn: async () => {
-      const { data } = await supabase.from('link_rota').select('*')
+      const { data, error } = await supabase.from('link_rota').select('*')
+      if (error) throw error
       return (data as LinkRota[]) || []
     },
     refetchInterval: 60_000,
   })
 
-  const { data: cliques } = useQuery<Clique[]>({
+  const cliquesQuery = useQuery<Clique[]>({
     queryKey: ['link-rota-cliques'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('link_rota_click')
         .select(
           'id, link_id, codigo, vendedor_nome, fallback, created_at, matched_at, match_via, cliente_telefone, utm_source, utm_campaign, utm_content, fbclid, referer'
         )
         .order('created_at', { ascending: false })
         .limit(60)
+      if (error) throw error
       return (data as Clique[]) || []
     },
     refetchInterval: 30_000,
   })
+
+  const links = linksQuery.data
+  const detalhes = detalhesQuery.data
+  const cliques = cliquesQuery.data
 
   const nomePorId = useMemo(() => {
     const m: Record<string, string> = {}
@@ -227,7 +235,10 @@ export function LinksRoteamento() {
       const { error } = await supabase.from('link_rota').update({ ativo: !l.ativo }).eq('id', l.id)
       if (error) throw new Error(error.message)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['link-rota-resumo'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['link-rota-resumo'] })
+      qc.invalidateQueries({ queryKey: ['link-rota-detalhe'] })
+    },
     onError: (e: Error) => setErro(e.message),
   })
 
@@ -263,7 +274,13 @@ export function LinksRoteamento() {
       })
       return
     }
-    setEditando(detalhePorId[l.id] ?? (l as unknown as LinkRota))
+    const detalhe = detalhePorId[l.id]
+    if (detalhesQuery.isError || !detalhe) {
+      setErro('Carregue o detalhe completo antes de editar este link. Tente novamente para preservar criativo, pixel e parâmetros da campanha.')
+      void detalhesQuery.refetch()
+      return
+    }
+    setEditando(detalhe)
   }
 
   return (
@@ -286,6 +303,9 @@ export function LinksRoteamento() {
         </Button>
       </div>
 
+      <QueryNotice error={linksQuery.error || detalhesQuery.error || cliquesQuery.error} loading={linksQuery.isFetching || detalhesQuery.isFetching || cliquesQuery.isFetching}
+        message="Não foi possível carregar todos os dados dos links. A edição exige o detalhe completo."
+        onRetry={() => { void linksQuery.refetch(); void detalhesQuery.refetch(); void cliquesQuery.refetch() }} />
       {erro && (
         <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300 flex items-start justify-between gap-2">
           <span>{erro}</span>
@@ -484,7 +504,8 @@ export function LinksRoteamento() {
       <Card className="p-4">
         <h2 className="text-[13px] font-semibold text-ink mb-3">Links criados</h2>
         <div className="space-y-2">
-          {(links ?? []).length === 0 && !editando && (
+          {linksQuery.isPending && <p role="status" className="py-6 text-center text-sm text-ink-muted">Carregando links…</p>}
+          {linksQuery.isSuccess && (links ?? []).length === 0 && !editando && (
             <div className="text-center py-6 text-ink-muted text-[12px]">
               Nenhum link ainda. Clique em <b>Novo link</b> pra criar o primeiro.
             </div>

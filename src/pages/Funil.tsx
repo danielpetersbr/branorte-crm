@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Phone, Flame, X, AlertCircle, BarChart3 } from 'lucide-react'
+import { Search, Phone, Flame, X, BarChart3 } from 'lucide-react'
 import { useAtendimentosFunil, useAtendimentoResponsaveis, useUpdateStatusVendedor, type DataPreset } from '@/hooks/useAtendimentos'
 import { STATUS_VENDEDOR_VALUES, STATUS_VENDEDOR_MAP, type StatusVendedor, type Atendimento } from '@/types/atendimento'
 import { ESTADOS_BR } from '@/types'
 import { ufFromTelefone } from '@/lib/ddd-uf'
 import { Avatar } from '@/components/ui/Avatar'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 const DATE_PRESETS: { value: DataPreset; label: string }[] = [
   { value: '',     label: 'Tudo' },
@@ -45,11 +46,11 @@ function colunaDoLead(a: Atendimento): ColMeta['key'] {
 }
 
 export function Funil() {
-  const [filters, setFilters] = useState({ search: '', responsavel: '', uf: '', data: '' as DataPreset, origem: '', criativo: '' })
+  const [filters, setFilters] = useState({ search: '', responsavel: '', uf: '', data: '' as DataPreset, origem: '', criativo: '', etiqueta: '', comOrcamento: false })
   const [searchInput, setSearchInput] = useState('')
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
-  const { data: rows, isLoading, error } = useAtendimentosFunil(filters)
+  const { data: rows, isLoading, error, isFetching, refetch } = useAtendimentosFunil(filters)
   const { data: vendedores } = useAtendimentoResponsaveis()
   const updateStatus = useUpdateStatusVendedor()
 
@@ -71,11 +72,11 @@ export function Funil() {
 
   const onDropOnColuna = (col: ColMeta['key'], lead: Atendimento) => {
     setDraggingId(null)
-    if (col === 'sem_atribuir') return
+    if (col === 'sem_atribuir' || updateStatus.isPending || error) return
     const auditoriaIds = (lead.auditoria_ids && lead.auditoria_ids.length > 0) ? lead.auditoria_ids : [lead.id]
     const currentCol = colunaDoLead(lead)
     if (currentCol === col) return
-    updateStatus.mutate({ auditoria_ids: auditoriaIds, status: col as StatusVendedor })
+    updateStatus.mutate({ auditoria_ids: auditoriaIds, status: col })
   }
 
   return (
@@ -85,8 +86,7 @@ export function Funil() {
         <div>
           <h1 className="text-[22px] font-semibold text-ink tracking-tight leading-tight">Funil de vendas</h1>
           <p className="text-[13px] text-ink-muted mt-0.5">
-            <span className="font-medium text-ink tabular-nums">{totalLeads}</span>
-            <span className="text-ink-faint"> leads · arraste pra mover entre colunas</span>
+            {rows ? <><span className="font-medium text-ink tabular-nums">{totalLeads}</span><span className="text-ink-faint"> leads · arraste ou use “Mover para…”</span></> : error ? 'Dados indisponíveis.' : 'Carregando leads…'}
           </p>
         </div>
         <Link
@@ -153,7 +153,7 @@ export function Funil() {
 
         {hasFilters && (
           <button
-            onClick={() => { setFilters({ search: '', responsavel: '', uf: '', data: '', origem: '', criativo: '' }); setSearchInput('') }}
+            onClick={() => { setFilters({ search: '', responsavel: '', uf: '', data: '', origem: '', criativo: '', etiqueta: '', comOrcamento: false }); setSearchInput('') }}
             className="h-9 px-3 inline-flex items-center gap-1 text-[12px] text-ink-muted hover:text-danger"
           >
             <X className="h-3 w-3" /> Limpar
@@ -161,14 +161,11 @@ export function Funil() {
         )}
       </div>
 
-      {error && (
-        <div className="border border-danger/30 bg-danger-bg rounded-md p-3 text-[12px] text-danger flex items-center gap-2 shrink-0">
-          <AlertCircle className="h-4 w-4" /> Erro ao carregar leads.
-        </div>
-      )}
+      <QueryNotice error={error || updateStatus.error} loading={isFetching || updateStatus.isPending} message={error ? 'Não foi possível carregar os leads. Recarregue antes de mover um cartão.' : 'Não foi possível confirmar a mudança de status. Recarregue para conferir o cartão.'} onRetry={() => { updateStatus.reset(); void refetch() }} />
+      {totalLeads >= 1000 && <p role="status" className="text-xs text-warning shrink-0">Cobertura limitada aos 1.000 leads mais recentes deste filtro. Restrinja o período ou a busca para conferir os demais.</p>}
 
       {/* Board */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden -mx-4 lg:-mx-6 px-4 lg:px-6 pb-2 min-h-0">
+      {!(error && !rows) && <div className="flex-1 overflow-x-auto overflow-y-hidden -mx-4 lg:-mx-6 px-4 lg:px-6 pb-2 min-h-0">
         <div className="flex gap-3 h-full">
           {COLUNAS.map(col => {
             const items = grouped.get(col.key) ?? []
@@ -213,14 +210,14 @@ export function Funil() {
                     <div className="text-center py-4 text-[11px] text-ink-faint italic">vazio</div>
                   )}
                   {items.map(lead => (
-                    <LeadCard key={lead.id} lead={lead} onDragStart={onDragStart} onDragEnd={onDragEnd} />
+                    <LeadCard key={lead.id} lead={lead} onDragStart={onDragStart} onDragEnd={onDragEnd} onMove={status => onDropOnColuna(status, lead)} disabled={updateStatus.isPending || !!error} />
                   ))}
                 </div>
               </div>
             )
           })}
         </div>
-      </div>
+      </div>}
 
       {isLoading && totalLeads === 0 && (
         <div className="text-center py-8 text-ink-faint text-[12px]">Carregando…</div>
@@ -230,10 +227,12 @@ export function Funil() {
 }
 
 // ============================================================================
-function LeadCard({ lead, onDragStart, onDragEnd }: {
+function LeadCard({ lead, onDragStart, onDragEnd, onMove, disabled }: {
   lead: Atendimento
   onDragStart: (id: string) => void
   onDragEnd: () => void
+  onMove: (status: StatusVendedor) => void
+  disabled: boolean
 }) {
   const phone = (lead.telefone || '').trim()
   const ufNome = phone ? ufFromTelefone(phone) : ''
@@ -245,7 +244,7 @@ function LeadCard({ lead, onDragStart, onDragEnd }: {
 
   return (
     <div
-      draggable
+      draggable={!disabled}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move'
         onDragStart(lead.id)
@@ -289,6 +288,13 @@ function LeadCard({ lead, onDragStart, onDragEnd }: {
           {[lead.qual_animal, lead.quantos_animais, lead.capacidade_producao].filter(Boolean).join(' · ')}
         </div>
       )}
+      <select aria-label={`Mover ${lead.nome || 'lead sem nome'} para outra etapa`} value="" disabled={disabled} draggable={false} onChange={event => {
+        const status = STATUS_VENDEDOR_VALUES.find(value => value === event.target.value)
+        if (status) onMove(status)
+      }} className="mt-2 min-h-[36px] w-full rounded border border-border bg-surface px-2 text-xs text-ink outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-40">
+        <option value="">Mover para…</option>
+        {STATUS_VENDEDOR_VALUES.filter(status => status !== colunaDoLead(lead)).map(status => <option key={status} value={status}>{STATUS_VENDEDOR_MAP[status].label}</option>)}
+      </select>
     </div>
   )
 }

@@ -206,8 +206,12 @@ export function Campanhas() {
   const totalOrc = (origens.data ?? []).reduce((s, o) => s + Number(o.orcamentos || 0), 0)
   const totalVendas = (origens.data ?? []).reduce((s, o) => s + Number(o.vendas || 0), 0)
 
-  const carregando = origens.isLoading || criativos.isLoading
-  const erro = origens.error || criativos.error || campanhas.error || reais.error
+  const consultas = [origens, criativos, campanhas, reais, porCampanha, estrutura, cliques, ondeRoda]
+  const carregando = origens.isLoading
+  const erro = consultas.find(q => q.error)?.error
+  const semDados = consultas.some(q => q.error && q.data === undefined)
+  const aguardandoDados = consultas.some(q => q.isPending && q.data === undefined)
+  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
   return (
     <div className="w-full min-w-0 p-6 space-y-8">
@@ -237,9 +241,10 @@ export function Campanhas() {
       </header>
 
       {erro && (
-        <Aviso>Não consegui carregar: {String((erro as Error).message).slice(0, 200)}</Aviso>
+        <Aviso><span role="alert">Não consegui carregar todos os dados da análise.</span> <button type="button" className="underline" disabled={consultas.some(q => q.isFetching)} onClick={atualizar}>Tentar novamente</button></Aviso>
       )}
 
+      {semDados ? null : aguardandoDados ? <p role="status" className="text-sm text-muted-foreground">Carregando análise…</p> : <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <p className="text-sm text-muted-foreground">Leads no período</p>
@@ -461,6 +466,7 @@ export function Campanhas() {
         Orçamento e venda são casados pelo telefone do cliente. Lead sem telefone não entra em
         nenhuma conta — antes de 18/09/2026 ele casava com qualquer outro lead sem telefone.
       </p>
+      </>}
     </div>
   )
 }

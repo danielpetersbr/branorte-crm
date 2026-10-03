@@ -66,7 +66,7 @@ export async function gerarPdfDoPreview(
   if (wasDark) htmlEl.classList.remove('dark')
   document.body.appendChild(host)
 
-  let root: ReturnType<typeof createRoot> | null = null
+  const root: { current: ReturnType<typeof createRoot> | null } = { current: null }
 
   // Timeout total de 90s: se algum await ficar pendente eterno (img cross-origin
   // sem CORS, RAF não dispara, fetch logo travado, etc), o catch externo pega
@@ -79,8 +79,8 @@ export async function gerarPdfDoPreview(
   const work = async (): Promise<Blob> => {
     console.log(`[pdf] starting (${Date.now() - tStart}ms)`)
     // 2) Renderiza preview em renderMode (sem botoes)
-    root = createRoot(host)
-    root.render(createElement(OrcamentoPreview, { ...previewProps, renderMode: true }))
+    root.current = createRoot(host)
+    root.current.render(createElement(OrcamentoPreview, { ...previewProps, renderMode: true }))
 
     // 3) Aguarda render + carregamento de imagens (logo + fotos dos equipamentos)
     console.log(`[pdf] waitForImagesAndPaint (${Date.now() - tStart}ms)`)
@@ -416,7 +416,7 @@ export async function gerarPdfDoPreview(
   try {
     return await Promise.race([work(), timeoutPromise])
   } finally {
-    try { root?.unmount() } catch {}
+    try { root.current?.unmount() } catch {}
     try { document.body.removeChild(host) } catch {}
     // Restaura dark mode se estava ativo
     if (wasDark) htmlEl.classList.add('dark')

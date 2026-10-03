@@ -1453,7 +1453,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           whatsappEnviado = true
           whatsappMensagem = fnData?.msg || `PDF enviado ao WhatsApp de ${vendedorResponsavel.nome}. Chega em até 30s.`
           setWaStatus('sent')
-          setWaMsg(whatsappMensagem)
+          setWaMsg(whatsappMensagem ?? '')
         } catch (e) {
           const m = (e as Error).message
           console.warn('Falha enviar pro WhatsApp do vendedor:', m)

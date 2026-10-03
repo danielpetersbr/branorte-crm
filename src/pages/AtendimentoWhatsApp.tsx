@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
 import { ArrowLeft, BarChart3, Check, CheckCircle2, ChevronDown, FileText, Image as ImageIcon, Info, Loader2, Lock, MessageSquare, Mic, Music, Paperclip, Plus, Reply, Search, Send, SlidersHorizontal, Square, Tag, Upload, Users, Video, X } from 'lucide-react'
 import * as Popover from '@radix-ui/react-popover'
+import * as Dialog from '@radix-ui/react-dialog'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
@@ -65,6 +66,7 @@ export function AtendimentoWhatsApp() {
   const chatGeneration=useRef(0),fileInput=useRef<HTMLInputElement>(null),bottom=useRef<HTMLDivElement>(null),scrollArea=useRef<HTMLDivElement>(null)
   const stickToBottom=useRef(true),prependHeight=useRef<number|null>(null)
   const messageInput=useRef<HTMLTextAreaElement>(null)
+  const newConversationButton=useRef<HTMLButtonElement>(null)
   const focusAfterClaim=useRef<number|null>(null)
   const closeButton=useRef<HTMLButtonElement>(null)
   const chat=useAtendimentoChat({search:debounced,status,vendor,tag,ana_tag:anaTag,queue},selected,historyDebounced)
@@ -254,7 +256,7 @@ export function AtendimentoWhatsApp() {
                 </div>
               </Popover.Content></Popover.Portal>
             </Popover.Root>
-            <button className="shrink-0 rounded-lg p-2 text-accent hover:bg-accent/10" aria-label="Nova conversa" onClick={()=>setShowNew(true)}><Plus size={18}/></button>
+            <button ref={newConversationButton} className="shrink-0 rounded-lg p-2 text-accent hover:bg-accent/10" aria-label="Nova conversa" onClick={()=>setShowNew(true)}><Plus size={18}/></button>
           </div>
           <div className="relative"><Search size={16} className="absolute left-3 top-3 text-ink-faint"/><input aria-label="Buscar conversa" className={cn(inputClass,'pl-9')} placeholder="Buscar nome ou telefone" value={search} onChange={e=>setSearch(e.target.value)}/></div>
         </div>
@@ -339,6 +341,24 @@ export function AtendimentoWhatsApp() {
       </aside>}
     </div>
     {c&&closing?.id===c.id&&closing.identity===recordContext.current&&closing.generation===chatGeneration.current&&<ChatCloseDialog conversationId={c.id} conversationName={name} userIdentity={closing.identity} open onOpenChange={open=>{if(!open)closeDialog()}} onCloseAutoFocus={()=>{if(closing.identity===recordContext.current&&closing.generation===chatGeneration.current)closeButton.current?.focus()}} onConfirm={confirmClose}/>}
-    {showNew&&<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Nova conversa"><div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-5 shadow-xl"><div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Nova conversa</h2><button aria-label="Fechar nova conversa" onClick={()=>setShowNew(false)}><X size={20}/></button></div><p className="mb-3 text-xs text-ink-muted">Selecione um contato {isAdmin?'do CRM':'da sua carteira'}. O envio começa somente após assumir o atendimento.</p><input autoFocus className={inputClass} aria-label="Buscar contato para nova conversa" value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Nome ou telefone"/><div className="mt-3 max-h-72 overflow-y-auto">{contacts.isPending&&<p className="p-4 text-sm">Buscando contatos…</p>}{contacts.isError&&<p role="alert" className="p-4 text-sm text-danger">{contacts.error.message}</p>}{contacts.data?.map(ct=><button className="w-full border-b border-border p-3 text-left hover:bg-surface-2" key={ct.id} disabled={chat.action.isPending} onClick={async()=>{try{const r=await chatRpc<{id:string}>('start',{contact:ct.id});setSelected(r.id);setQueue('all');setStatus('');setShowNew(false);await chat.invalidate()}catch(e){toast.error((e as Error).message)}}}><p className="text-sm font-medium">{ct.name}</p><p className="text-xs text-ink-muted">{ct.phone}</p></button>)}{contacts.data?.length===0&&<p className="p-4 text-sm text-ink-muted">Nenhum contato encontrado.</p>}</div></div></div>}
+    <Dialog.Root open={showNew} onOpenChange={setShowNew}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[1000] bg-black/50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-[1001] max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-xl" onCloseAutoFocus={event=>{event.preventDefault();const button=newConversationButton.current;if(button&&button.offsetParent!==null)button.focus();else messageInput.current?.focus()}}>
+          <div className="mb-4 flex items-center justify-between">
+            <Dialog.Title className="font-semibold">Nova conversa</Dialog.Title>
+            <Dialog.Close asChild><button type="button" className="rounded p-2 hover:bg-surface-2" aria-label="Fechar nova conversa"><X size={20}/></button></Dialog.Close>
+          </div>
+          <Dialog.Description className="mb-3 text-xs text-ink-muted">Selecione um contato {isAdmin?'do CRM':'da sua carteira'}. O envio começa somente após assumir o atendimento.</Dialog.Description>
+          <input autoFocus className={inputClass} aria-label="Buscar contato para nova conversa" value={contactSearch} onChange={e=>setContactSearch(e.target.value)} placeholder="Nome ou telefone"/>
+          <div className="mt-3 max-h-72 overflow-y-auto">
+            {contacts.isPending&&<p className="p-4 text-sm">Buscando contatos…</p>}
+            {contacts.isError&&<div role="alert" className="p-4 text-sm text-danger"><p>Não foi possível buscar os contatos.</p><button type="button" className={cn(buttonClass,'mt-2')} disabled={contacts.isFetching} onClick={()=>{void contacts.refetch()}}>Tentar novamente</button></div>}
+            {contacts.data?.map(ct=><button className="w-full border-b border-border p-3 text-left hover:bg-surface-2" key={ct.id} disabled={chat.action.isPending||contacts.isError} onClick={async()=>{try{const r=await chatRpc<{id:string}>('start',{contact:ct.id});setSelected(r.id);setQueue('all');setStatus('');setShowNew(false);await chat.invalidate()}catch(e){toast.error((e as Error).message)}}}><p className="text-sm font-medium">{ct.name}</p><p className="text-xs text-ink-muted">{ct.phone}</p></button>)}
+            {contacts.isSuccess&&contacts.data.length===0&&<p className="p-4 text-sm text-ink-muted">Nenhum contato encontrado.</p>}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   </div>
 }

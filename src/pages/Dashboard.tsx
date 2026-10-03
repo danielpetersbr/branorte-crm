@@ -35,7 +35,7 @@ function CarregandoAba() {
  */
 export function Dashboard() {
   const [preset, setPreset] = usePresetFilter()
-  const [tab, setTab] = useDashboardTab()
+  const [tab, setTab] = useDashboardTab({ ownsNavigation: true })
   const qc = useQueryClient()
   const [atualizando, setAtualizando] = useState(false)
 

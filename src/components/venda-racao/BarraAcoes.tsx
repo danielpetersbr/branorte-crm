@@ -54,6 +54,7 @@ interface ItemMenu {
   label: string
   icone: typeof Copy
   onClick: () => void
+  disabled?: boolean
 }
 
 export function BarraAcoes({
@@ -76,8 +77,8 @@ export function BarraAcoes({
 
   const itens: ItemMenu[] = [
     { chave: 'premissas', label: 'Revisar premissas', icone: ListChecks, onClick: onRevisarPremissas },
-    { chave: 'duplicar', label: 'Duplicar estudo', icone: Copy, onClick: onDuplicar },
-    { chave: 'novo', label: 'Novo estudo', icone: FilePlus2, onClick: onNovoEstudo },
+    { chave: 'duplicar', label: 'Duplicar estudo', icone: Copy, onClick: onDuplicar, disabled: salvando },
+    { chave: 'novo', label: 'Novo estudo', icone: FilePlus2, onClick: onNovoEstudo, disabled: salvando },
   ]
 
   const fechar = (devolverFoco = true) => {
@@ -156,6 +157,7 @@ export function BarraAcoes({
   }
 
   const escolher = (item: ItemMenu) => {
+    if (item.disabled) return
     fechar()
     item.onClick()
   }
@@ -265,6 +267,7 @@ export function BarraAcoes({
                   ref={el => { itensRef.current[i] = el }}
                   type="button"
                   role="menuitem"
+                  aria-disabled={!!item.disabled}
                   // Um único tab stop no conjunto (o gatilho). Dentro do menu a
                   // navegação é por setas — Tab tem que sair, não passear item a item.
                   tabIndex={-1}
@@ -272,6 +275,7 @@ export function BarraAcoes({
                   style={{
                     display: 'flex', alignItems: 'center', gap: 9, width: '100%',
                     padding: '9px 11px', border: 0, borderRadius: 7,
+                    opacity: item.disabled ? 0.45 : 1,
                     background: foco === i ? 'var(--vr-green-l)' : 'transparent',
                     color: 'var(--vr-ink)',
                     font: '600 13px/1.2 inherit', textAlign: 'left', cursor: 'pointer',

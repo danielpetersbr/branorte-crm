@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Bell, Check, Clock, X, User } from 'lucide-react'
+import { Bell, Check, Clock, X, User, Loader2 } from 'lucide-react'
 import { useLembretesDueNotifier } from '@/hooks/useLembretesDueNotifier'
 import { parseLocalDateTime } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
@@ -43,7 +43,7 @@ function quandoTexto(data: string | null, hora: string | null): string {
 }
 
 export function LembretesNotifier() {
-  const { cards, concluir, adiar1h, dispensar } = useLembretesDueNotifier()
+  const { cards, pendingIds, actionErrors, concluir, adiar1h, dispensar } = useLembretesDueNotifier()
   const contadorRef = useRef(0)
 
   // Toca o beep quando surge um card novo (a contagem aumentou).
@@ -55,12 +55,14 @@ export function LembretesNotifier() {
   if (cards.length === 0) return null
 
   return (
-    <div className="fixed right-3 sm:right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-[var(--z-toast)] flex flex-col gap-2 w-[calc(100vw-1.5rem)] max-w-[340px] pointer-events-none">
+    <div aria-label="Lembretes vencidos" className="fixed right-3 sm:right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-[var(--z-toast)] flex flex-col gap-2 w-[calc(100vw-1.5rem)] max-w-[340px] max-h-[calc(100dvh-8rem)] overflow-y-auto pointer-events-none">
       {cards.map(item => {
         const compromisso = item.tipo === 'compromisso'
+        const pending = pendingIds.includes(item.id)
         return (
           <div
             key={item.id}
+            aria-busy={pending}
             className={cn(
               'pointer-events-auto rounded-xl border bg-surface shadow-xl overflow-hidden',
               'animate-[lembretePulse_1.6s_ease-out] ',
@@ -77,6 +79,8 @@ export function LembretesNotifier() {
               <button
                 onClick={() => dispensar(item.id)}
                 title="Dispensar"
+                aria-label={`Dispensar ${item.titulo}`}
+                disabled={pending}
                 className="shrink-0 -mr-1 h-5 w-5 inline-flex items-center justify-center rounded hover:bg-white/20 transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
@@ -104,21 +108,25 @@ export function LembretesNotifier() {
                 </div>
               )}
 
+              {actionErrors[item.id] && <p role="alert" className="mt-2 text-[12px] text-danger">{actionErrors[item.id]}</p>}
               <div className="mt-2.5 flex items-center gap-1.5">
                 <button
                   onClick={() => concluir(item)}
+                  disabled={pending}
                   className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-md bg-accent text-white text-[12px] font-semibold hover:opacity-90 transition-opacity"
                 >
-                  <Check className="h-3.5 w-3.5" /> Concluir
+                  {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Concluir
                 </button>
                 <button
                   onClick={() => adiar1h(item)}
+                  disabled={pending}
                   className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-md border border-border text-ink-muted text-[12px] font-medium hover:bg-surface-2 hover:text-ink transition-colors"
                 >
                   <Clock className="h-3.5 w-3.5" /> Adiar 1h
                 </button>
                 <button
                   onClick={() => dispensar(item.id)}
+                  disabled={pending}
                   className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-md border border-border text-ink-muted text-[12px] font-medium hover:bg-surface-2 hover:text-ink transition-colors"
                 >
                   OK

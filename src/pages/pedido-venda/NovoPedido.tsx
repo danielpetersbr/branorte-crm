@@ -5,7 +5,7 @@ import { Card } from "@/components/pedido-ui/card";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/pedido-venda/auth-shim";
 import { toast } from "sonner";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/controle-supabase/client";
 import type { Database } from "@/lib/controle-supabase/types";
 
@@ -28,8 +28,14 @@ const Index = () => {
   const [searchParams] = useSearchParams();
   // Linha do `pedidos_venda` do controle, no modo edicao. `useState(null)` cru era
   // inferido como `null` e recusava a linha do banco sob os tipos estritos do CRM.
-  const [pedidoData, setPedidoData] = useState<PedidoVendaRow | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [estadoPedido, setEstadoPedido] = useState<{ id: string; data: PedidoVendaRow | null; erro: string | null; loading: boolean } | null>(null);
+  const consultaPedido = useRef<AbortController | null>(null);
+  const idAtual = useRef(id);
+  idAtual.current = id;
+  const consulta = estadoPedido?.id === id ? estadoPedido : null;
+  const pedidoData = consulta?.data ?? null;
+  const loading = !!id && (!consulta || consulta.loading);
+  const erroPedido = consulta?.erro;
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<'simples' | 'acessorios' | 'completo' | 'garantia' | null>(null);
   
@@ -39,27 +45,33 @@ const Index = () => {
     if (id) {
       carregarPedido();
     }
+    return () => { consultaPedido.current?.abort(); };
   }, [id]);
 
   const carregarPedido = async () => {
     // `id` vem de useParams() como string | undefined. So chegamos aqui com ele
     // preenchido (o useEffect acima checa), mas o compilador nao sabe disso.
-    if (!id) return;
+    if (!id || idAtual.current !== id) return;
+    consultaPedido.current?.abort();
+    const controller = new AbortController();
+    consultaPedido.current = controller;
+    const vigente = () => consultaPedido.current === controller && idAtual.current === id && !controller.signal.aborted;
     try {
-      setLoading(true);
+      setEstadoPedido({ id, data: null, erro: null, loading: true });
       const { data, error } = await supabase
         .from("pedidos_venda")
         .select("*")
         .eq("id", id)
-        .single();
+        .abortSignal(controller.signal)
+        .maybeSingle();
 
+      if (!vigente()) return;
       if (error) throw error;
-      setPedidoData(data);
+      setEstadoPedido({ id, data, erro: data ? null : "Pedido não encontrado.", loading: false });
     } catch (error) {
+      if (!vigente()) return;
       console.error("Erro ao carregar pedido:", error);
-      toast.error("Erro ao carregar pedido para edição");
-    } finally {
-      setLoading(false);
+      setEstadoPedido({ id, data: null, erro: "Não foi possível carregar o pedido para edição.", loading: false });
     }
   };
 
@@ -109,13 +121,21 @@ const Index = () => {
   };
 
   // Se está carregando OU se tem ID mas ainda não tem dados, mostra loading
-  if (loading || (id && !pedidoData)) {
+  if (loading) {
     return (
       <div className="min-h-full flex items-center justify-center">
         <p>Carregando pedido...</p>
       </div>
     );
   }
+
+  if (id && erroPedido) return (
+    <div className="p-6 space-y-3" role="alert">
+      <p>{erroPedido}</p>
+      <Button variant="outline" onClick={() => carregarPedido()}>Tentar novamente</Button>
+      <Button variant="ghost" onClick={() => navigate('/controle/pedidos')}>Voltar aos pedidos</Button>
+    </div>
+  );
 
   return (
     <div className="min-h-full">

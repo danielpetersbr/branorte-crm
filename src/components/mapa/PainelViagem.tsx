@@ -31,6 +31,7 @@ interface Props {
   escolhendoOrigem: boolean
   onSalvar: () => void
   salvando: boolean
+  salvarBloqueado?: boolean
   salvoEm: string | null
   onPDF: () => void
   gerandoPdf: boolean
@@ -332,10 +333,10 @@ export function PainelViagem(p: Props) {
           </button>
         </div>
         <div className="flex gap-1.5">
-          <button onClick={p.onSalvar} disabled={p.salvando || !p.cfg.nome.trim()}
-                  title={!p.cfg.nome.trim() ? 'Dê um nome à viagem primeiro' : 'Salvar no banco'}
+          <button onClick={p.onSalvar} disabled={p.salvando || p.carregando || p.salvarBloqueado || !p.cfg.nome.trim()}
+                  title={p.salvarBloqueado ? 'Resolva a abertura da viagem ou escolha manter o planejamento atual antes de salvar' : !p.cfg.nome.trim() ? 'Dê um nome à viagem primeiro' : 'Salvar no banco'}
                   className="flex-1 h-8 rounded-lg bg-surface border border-border text-[12px] font-semibold text-ink disabled:opacity-50">
-            {p.salvando ? 'Salvando…' : p.salvoEm ? '💾 Salvo' : '💾 Salvar'}
+            {p.salvando ? 'Salvando…' : p.carregando ? 'Abrindo…' : p.salvarBloqueado ? 'Abertura pendente' : p.salvoEm ? '💾 Salvo' : '💾 Salvar'}
           </button>
           <button onClick={copiarWhatsApp} disabled={!p.prog.dias.length}
                   className="flex-1 h-8 rounded-lg bg-surface border border-border text-[12px] font-semibold text-ink disabled:opacity-50">

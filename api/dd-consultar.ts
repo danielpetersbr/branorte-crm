@@ -344,7 +344,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Evita o cliente mandar codigo random e a API SPC retornar 4xx la na frente.
   // So roda quando pacote=custom (em outros pacotes o array eh ignorado).
   if (pacote === 'custom' && body.insumos_custom) {
-    const codigosValidos = new Set(
+    const codigosValidos = new Set<number>(
       Object.values(INSUMOS_OPCIONAIS).map(i => i.codigo),
     )
     const todosCustomCodigos = [
@@ -620,8 +620,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           razaoSocial: opencnpjResultado.razao_social,
           nomeFantasia: opencnpjResultado.nome_fantasia,
           cnpj: cnpj,
-          cidade: opencnpjResultado.endereco?.municipio,
-          uf: opencnpjResultado.endereco?.uf,
+          cidade: opencnpjResultado.endereco?.municipio ?? undefined,
+          uf: opencnpjResultado.endereco?.uf ?? undefined,
           emailCadastral: opencnpjResultado.email,
           timeoutMs: 25_000,
         }).catch(e => ({

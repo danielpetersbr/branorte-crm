@@ -195,7 +195,7 @@ export function useBulkAssign() {
         )
       }
     },
-    onSuccess: () => {
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['contacts'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
     },

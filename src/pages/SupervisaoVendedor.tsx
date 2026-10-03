@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { Select } from '@/components/ui/Select'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -19,6 +20,7 @@ import {
   MOTIVOS_FEEDBACK, TIPOS_INTERACAO,
   useAchadosDoVendedor, useCarteiraDoVendedor, useChatInfo, useEncerrarAchado,
   useRegistrarInteracao, useRegrasSupervisao, useReportarIaErrada, useVendedoresComAchados,
+  RegistroParcialSupervisao,
   type MotivoFeedback, type Severidade, type SupervisaoAchado, type TipoInteracao,
 } from '@/hooks/useSupervisaoVendedor'
 import { cn, formatPhone, whatsappLink } from '@/lib/utils'
@@ -295,6 +297,7 @@ export function SupervisaoVendedor() {
         <ModalLigacao
           achado={modalLigacao}
           salvando={registrar.isPending}
+          registrado={registrar.error instanceof RegistroParcialSupervisao && registrar.variables?.achadoId === modalLigacao.id}
           onCancelar={() => setModalLigacao(null)}
           onConfirmar={async (tipo, ocorridoEm, observacao) => {
             try {
@@ -318,6 +321,7 @@ export function SupervisaoVendedor() {
         <ModalIaErrada
           achado={modalIaErrada}
           salvando={reportar.isPending}
+          registrado={reportar.error instanceof RegistroParcialSupervisao && reportar.variables?.achado.id === modalIaErrada.id}
           onCancelar={() => setModalIaErrada(null)}
           onConfirmar={async (motivo, detalhe) => {
             try {
@@ -657,7 +661,7 @@ function ConversaDrawer(props: {
   const { vendedorNome, chatId, titulo, onClose } = props
   const aberto = !!chatId
   const { data: info } = useChatInfo(vendedorNome, chatId)
-  const { data: conversa, isLoading } = useWaMensagens(vendedorNome, chatId, aberto, 30)
+  const { data: conversa, isLoading, error, isFetching, refetch } = useWaMensagens(vendedorNome, chatId, aberto, 30)
   const mensagens = conversa?.mensagens ?? []
 
   return (
@@ -703,9 +707,10 @@ function ConversaDrawer(props: {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+          <QueryNotice error={error} loading={isFetching} message="Não foi possível carregar a conversa." onRetry={() => { void refetch() }} />
           {isLoading ? (
             <p className="text-[13px] text-ink-muted text-center py-6">Carregando a conversa…</p>
-          ) : mensagens.length === 0 ? (
+          ) : error && !conversa ? null : mensagens.length === 0 ? (
             <p className="text-[13px] text-ink-muted text-center py-6">
               Nenhuma mensagem gravada deste chat no espelho.
             </p>
@@ -785,6 +790,7 @@ function ModalShell(props: { titulo: string; subtitulo?: string; onCancelar: () 
 function ModalLigacao(props: {
   achado: SupervisaoAchado
   salvando: boolean
+  registrado: boolean
   onCancelar: () => void
   onConfirmar: (tipo: TipoInteracao, ocorridoEm: string, observacao: string | null) => void
 }) {
@@ -807,6 +813,8 @@ function ModalLigacao(props: {
   return (
     <ModalShell titulo="Registrar contato fora do WhatsApp" subtitulo={props.achado.titulo} onCancelar={props.onCancelar}>
       <div className="space-y-3.5">
+        {props.registrado && <p role="status" className="text-sm text-warning">O contato já foi registrado. Tentar novamente apenas encerra o apontamento.</p>}
+        <fieldset disabled={props.registrado || props.salvando} className="min-w-0 space-y-3.5">
         <div>
           <label className="text-[11px] font-medium text-ink-muted block mb-1">O que aconteceu</label>
           <Select
@@ -839,12 +847,13 @@ function ModalLigacao(props: {
           </p>
         </div>
 
+        </fieldset>
         {erro && <p className="text-[12px] text-danger">{erro}</p>}
 
         <div className="flex gap-2 justify-end pt-1">
           <Button size="sm" variant="ghost" onClick={props.onCancelar}>Cancelar</Button>
           <Button size="sm" variant="primary" loading={props.salvando} onClick={confirmar}>
-            Registrar e encerrar
+            {props.registrado ? 'Tentar encerrar novamente' : 'Registrar e encerrar'}
           </Button>
         </div>
       </div>
@@ -855,6 +864,7 @@ function ModalLigacao(props: {
 function ModalIaErrada(props: {
   achado: SupervisaoAchado
   salvando: boolean
+  registrado: boolean
   onCancelar: () => void
   onConfirmar: (motivo: MotivoFeedback, detalhe: string | null) => void
 }) {
@@ -871,6 +881,8 @@ function ModalIaErrada(props: {
   return (
     <ModalShell titulo="A IA está errada — por quê?" subtitulo={props.achado.titulo} onCancelar={props.onCancelar}>
       <div className="space-y-3.5">
+        {props.registrado && <p role="status" className="text-sm text-warning">O motivo já foi registrado. Tentar novamente apenas encerra o apontamento.</p>}
+        <fieldset disabled={props.registrado || props.salvando} className="min-w-0 space-y-3.5">
         <div>
           <label className="text-[11px] font-medium text-ink-muted block mb-1">Motivo</label>
           <Select
@@ -901,12 +913,13 @@ function ModalIaErrada(props: {
           </p>
         </div>
 
+        </fieldset>
         {erro && <p className="text-[12px] text-danger">{erro}</p>}
 
         <div className="flex gap-2 justify-end pt-1">
           <Button size="sm" variant="ghost" onClick={props.onCancelar}>Cancelar</Button>
           <Button size="sm" variant="primary" loading={props.salvando} onClick={confirmar}>
-            Enviar e descartar
+            {props.registrado ? 'Tentar encerrar novamente' : 'Enviar e descartar'}
           </Button>
         </div>
       </div>

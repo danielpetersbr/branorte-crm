@@ -16,7 +16,7 @@ import {
 import { valorPorVoltagem } from '@/lib/motor-do-preco'
 import { valorCobradoDoMotor, linhasDoMotor, embutirMotorNoItem, devolverMotorDoItem, ajustarEmbutidoPorRedutor, totalEmbutidoNoItem } from '@/lib/motor-no-equipamento'
 import { FinalizarMontarModal, type CarrinhoSnapshot } from '@/components/FinalizarMontarModal'
-import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados } from '@/components/OrcamentoPreview'
+import { OrcamentoPreview, type ParcelaPagamento, type PreviewClienteDados, type MotorCatalogoOption } from '@/components/OrcamentoPreview'
 import { montarItensFiname, aplicarAcrescimoFiname, FINAME_TIPOS, type FinameBloqueio } from '@/lib/finame'
 import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
@@ -2470,7 +2470,7 @@ export function OrcamentoMontar() {
     setMotoresAvulsos(ms => [...ms, { id, cv: Number(novoMotor.cv), polos: novoMotor.polos, qtd: 1 }])
   }
 
-  function trocarMotorDoItem(itemUid: string, novoMotor: CatalogoMotor, motorIndex?: number) {
+  function trocarMotorDoItem(itemUid: string, novoMotor: MotorCatalogoOption, motorIndex?: number) {
     // Motor AVULSO: troca cv/polos da entrada (preço re-resolve pelo catálogo).
     if (itemUid.startsWith('avulso:')) {
       const id = itemUid.slice('avulso:'.length)

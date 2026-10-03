@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { BRLInput } from '@/components/ui/BRLInput'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { cn } from '@/lib/utils'
 import {
   useMinhasVisitas, useMinhasAtividades, useCheckin, useCheckout,
@@ -93,7 +94,8 @@ export function MinhasVisitas() {
     return { de: ini, ate: fim }
   }, [periodo])
 
-  const { data: visitas = [], isLoading, isError } = useMinhasVisitas(de, ate)
+  const visitasQuery = useMinhasVisitas(de, ate)
+  const { data: visitas = [], isLoading, isError } = visitasQuery
   const { data: atividades = [] } = useMinhasAtividades()
   const concluir = useConcluirAtividade()
 
@@ -172,14 +174,15 @@ export function MinhasVisitas() {
         </div>
       )}
 
+      <div className="mb-4 empty:hidden">
+        <QueryNotice error={visitasQuery.error} loading={visitasQuery.isFetching}
+          onRetry={() => { void visitasQuery.refetch() }}
+          message={visitasQuery.data === undefined ? 'Não foi possível carregar suas visitas.' : 'Não foi possível atualizar suas visitas. Os relatórios em edição foram preservados.'} />
+      </div>
+
       {isLoading ? (
         <p className="text-[13px] text-ink-muted py-10 text-center">Carregando…</p>
-      ) : isError ? (
-        <div className="rounded-xl border border-danger/30 bg-danger/5 py-8 text-center">
-          <AlertCircle className="h-7 w-7 text-danger mx-auto mb-2" />
-          <p className="text-[13px] text-ink-muted">Não consegui carregar suas visitas. Tente de novo em instantes.</p>
-        </div>
-      ) : visitas.length === 0 ? (
+      ) : isError && visitasQuery.data === undefined ? null : visitas.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-14 text-center">
           <MapPin className="h-8 w-8 text-ink-faint mx-auto mb-2" />
           <p className="text-[13px] text-ink-muted">Nenhuma visita no período.</p>

@@ -48,8 +48,7 @@ export function labelDoPreset(p: DashboardPreset): string {
 export function usePresetFilter(): [DashboardPreset, (p: DashboardPreset) => void] {
   const [preset, setPreset] = useState<DashboardPreset>(() => {
     if (typeof window === 'undefined') return '30d'
-    const stored = localStorage.getItem('dashboard-preset')
-    return stored !== null ? (stored as DashboardPreset) : '30d'
+    try { const stored = localStorage.getItem('dashboard-preset'); return stored !== null ? (stored as DashboardPreset) : '30d' } catch { return '30d' }
   })
   useEffect(() => {
     try { localStorage.setItem('dashboard-preset', preset) } catch { /* quota */ }

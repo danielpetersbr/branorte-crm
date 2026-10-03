@@ -616,13 +616,14 @@ export function Contacts() {
       orcamento_mes: filters.orcamento_mes, search: filters.search,
       faixa: filters.faixa, etiqueta: filters.etiqueta,
       estado: filters.estado, status: filters.status, temperatura: filters.temperatura,
+      com_whatsapp: filters.com_whatsapp, esperando_resposta: filters.esperando_resposta,
     })
     setSearchInput('')
     // Recorte INTEIRO: zera tambem estado/status/temperatura, senao o card diz
     // 167.741 e a lista abre 43 mil por causa de um "SP" que ficou de pe.
     setFilters(f => ({ ...f, vendor_id: 'unassigned', sem_orcamento: false, orcamento: false,
       orcamento_ano: '', orcamento_mes: '', search: '', faixa: '', etiqueta: '',
-      estado: '', status: '', temperatura: '', page: 0 }))
+      estado: '', status: '', temperatura: '', com_whatsapp: false, esperando_resposta: false, page: 0 }))
   }
 
   // Busca só aplica no submit (Enter). Sem uma dica, o usuário digitava e
@@ -1020,7 +1021,7 @@ export function Contacts() {
                       </>
                     )}
                     {bulkAssign.isError && (
-                      <span className="text-[13px] text-danger">Nao deu pra atribuir. Tente de novo.</span>
+                      <span role="alert" className="text-[13px] text-danger">{bulkAssign.error?.message ?? 'Não foi possível atribuir os contatos. Tente novamente.'}</span>
                     )}
                   </>
                 )}

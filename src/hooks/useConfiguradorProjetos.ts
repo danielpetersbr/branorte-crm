@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { idExternoProjeto } from '@/lib/projeto-3d-identidade'
 
 // Projetos 3D do configurador (branorte-configurador-3d), salvos no Supabase pra
 // sincronizar entre dispositivos e (opcionalmente) ficarem ligados a um cliente.
@@ -62,13 +63,18 @@ export interface SalvarProjetoInput {
 
 const META_COLS = 'id,nome,contact_id,cliente_nome,created_by_nome,created_at,updated_at'
 
+export async function fetchConfiguradorProjetoMetaAtual(project: unknown): Promise<ConfiguradorProjetoMeta | null> {
+  const extId = idExternoProjeto(project)
+  if (!extId) throw new Error('O projeto aberto não informou sua identidade. Reabra o editor e tente novamente.')
+  const { data, error } = await supabase.from('configurador_projetos').select(META_COLS).eq('ext_id', extId).maybeSingle()
+  if (error) throw error
+  return data as ConfiguradorProjetoMeta | null
+}
+
 // ext_id = id interno do projeto no configurador (fica dentro do JSON `data`). É a chave
 // que a GALERIA COMPARTILHADA do iframe usa pra upsert — o modal Salvar precisa respeitá-la
 // pra não criar linha duplicada de um projeto que o autosave já gravou.
-const extIdOf = (data: unknown): string | null => {
-  const id = (data as { id?: unknown } | null)?.id
-  return typeof id === 'string' && id ? id : null
-}
+const extIdOf = idExternoProjeto
 
 // Upsert: com id → UPDATE; sem id → tenta UPDATE por ext_id (autosave da galeria pode já
 // ter criado a linha) e só então INSERT. Retorna o meta salvo.

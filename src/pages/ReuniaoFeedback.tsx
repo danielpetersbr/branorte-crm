@@ -6,9 +6,11 @@
 // que resolvem o token (reuniao_publica / reuniao_feedback_enviar). Por isso a
 // página nunca conhece o id da reunião, nem as tarefas (que têm responsável),
 // nem as gravações.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { readBrowserPreference, writeBrowserPreference } from '@/lib/browser-preferences'
 
 interface ReuniaoPublica {
   titulo: string
@@ -30,56 +32,76 @@ function fmtData(iso: string): string {
 
 export function ReuniaoFeedback() {
   const { pathname, search } = useLocation()
-  const token = decodeURIComponent((pathname.split('/reuniao/')[1] || '').replace(/\/+$/, ''))
+  let token = ''
+  try { token = decodeURIComponent((pathname.split('/reuniao/')[1] || '').replace(/\/+$/, '')) }
+  catch { /* Link malformado recebe a mesma tela de link inválido. */ }
   // ?v=Nome pré-preenche — dá pra mandar um link personalizado por vendedor. O
   // que ele digitar continua valendo (o campo é editável).
   const nomeUrl = (new URLSearchParams(search).get('v') || '').trim()
+  return <FormularioFeedback key={token} token={token} nomeUrl={nomeUrl} />
+}
 
-  const [carregando, setCarregando] = useState(true)
-  const [reuniao, setReuniao] = useState<ReuniaoPublica | null>(null)
+function FormularioFeedback({ token, nomeUrl }: { token: string; nomeUrl: string }) {
+  const { data: reuniao = null, isLoading: carregando, error: erroLeitura, refetch } = useQuery({
+    queryKey: ['reuniao-publica', token],
+    enabled: !!token,
+    queryFn: async (): Promise<ReuniaoPublica | null> => {
+      const { data, error } = await supabase.rpc('reuniao_publica', { p_token: token })
+      if (error) throw error
+      return data as ReuniaoPublica | null
+    },
+  })
   const [nome, setNome] = useState('')
   const [tipo, setTipo] = useState('')
   const [comentario, setComentario] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
   const [erro, setErro] = useState('')
+  const envioEmCurso = useRef(false)
 
   useEffect(() => {
     // Lembra quem é entre uma reunião e outra — o vendedor não redigita o nome
     // toda semana. A URL manda mais que o localStorage.
-    setNome(nomeUrl || localStorage.getItem(LS_NOME) || '')
+    setNome(nomeUrl || readBrowserPreference(LS_NOME) || '')
   }, [nomeUrl])
 
-  useEffect(() => {
-    let vivo = true
-    supabase.rpc('reuniao_publica', { p_token: token }).then(({ data, error }) => {
-      if (!vivo) return
-      if (!error && data) setReuniao(data as ReuniaoPublica)
-      setCarregando(false)
-    })
-    return () => { vivo = false }
-  }, [token])
-
   async function enviar() {
+    if (envioEmCurso.current) return
     const n = nome.trim(), c = comentario.trim()
     if (!n) { setErro('Escreve seu nome pra gente saber de quem veio 🙂'); return }
     if (!c) { setErro('Escreve o comentário antes de enviar.'); return }
+    envioEmCurso.current = true
     setEnviando(true); setErro('')
-    const { data, error } = await supabase.rpc('reuniao_feedback_enviar', {
-      p_token: token,
-      p_nome: n,
-      p_comentario: c,
-      p_tipo: tipo || null,
-      p_user_agent: navigator.userAgent.slice(0, 300),
-    })
-    setEnviando(false)
-    const ok = !error && (data as { ok?: boolean } | null)?.ok === true
-    if (!ok) {
+    try {
+      const { data, error } = await supabase.rpc('reuniao_feedback_enviar', {
+        p_token: token,
+        p_nome: n,
+        p_comentario: c,
+        p_tipo: tipo || null,
+        p_user_agent: navigator.userAgent.slice(0, 300),
+      })
+      if (error || (data as { ok?: boolean } | null)?.ok !== true) throw error ?? new Error('envio_nao_confirmado')
+      writeBrowserPreference(LS_NOME, n)
+      setEnviado(true)
+    } catch {
       setErro('Não consegui enviar agora. Tenta de novo em instantes.')
-      return
+    } finally {
+      envioEmCurso.current = false
+      setEnviando(false)
     }
-    localStorage.setItem(LS_NOME, n)
-    setEnviado(true)
+  }
+
+  if (erroLeitura) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-bg">
+        <div role="alert" className="w-full max-w-md bg-surface border border-border rounded-2xl p-8 text-center">
+          <h1 className="text-lg font-bold text-ink mb-2">Não foi possível carregar a reunião</h1>
+          <p className="text-[13px] text-ink-muted">Confira sua conexão e tente novamente.</p>
+          <button type="button" onClick={() => void refetch()} className="mt-5 px-4 py-2 rounded-lg bg-accent text-white font-semibold">Tentar novamente</button>
+          <p className="mt-6 text-xs font-semibold tracking-widest text-ink-faint">BRANORTE</p>
+        </div>
+      </div>
+    )
   }
 
   if (carregando) {
@@ -167,6 +189,7 @@ export function ReuniaoFeedback() {
             Escreve aqui o que você mudaria, o que faltou tratar ou o que quer acrescentar. Vai direto pra reunião.
           </p>
 
+          <fieldset disabled={enviando}>
           <label className="block text-[13px] font-medium text-ink mb-1.5">Seu nome</label>
           <input
             value={nome}
@@ -206,7 +229,7 @@ export function ReuniaoFeedback() {
             className="w-full px-3 py-2.5 rounded-lg bg-bg border border-border text-ink text-[14px] leading-relaxed placeholder:text-ink-faint outline-none focus:border-accent resize-y"
           />
 
-          {erro && <p className="text-[13px] text-danger mt-3 text-center">{erro}</p>}
+          {erro && <p role="alert" className="text-[13px] text-danger mt-3 text-center">{erro}</p>}
 
           <button
             type="button"
@@ -216,6 +239,7 @@ export function ReuniaoFeedback() {
           >
             {enviando ? 'Enviando…' : 'Enviar'}
           </button>
+          </fieldset>
         </div>
 
         <p className="text-center text-[11px] text-ink-faint mt-5">Branorte · Adm de Reunião</p>

@@ -15,6 +15,7 @@ export interface DDConsultaInput {
   cpf_socio?: string | null
   pacote: Pacote
   force_refresh?: boolean
+  insumos_custom?: { pj?: number[]; pf?: number[] }
 }
 
 export interface DDConsulta {

@@ -17,7 +17,7 @@ test('snapshot accepts empty results, but refuses incompatible or truncated rows
 })
 
 test('snapshot preserves row order without retaining compact row arrays', () => {
-  const row = DASHBOARD_COLUMNS.map(k => k === 'id' ? 'first' : null)
+  const row: Array<string | null> = DASHBOARD_COLUMNS.map(k => k === 'id' ? 'first' : null)
   const second = [...row]; second[0] = 'second'
   const decoded = decodeDashboardSnapshot({ columns: DASHBOARD_COLUMNS, rows: [row, second] })
   row[0] = 'changed'

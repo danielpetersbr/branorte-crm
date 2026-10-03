@@ -4,8 +4,9 @@
 // Frete estimado = piso ANTT + regra ida/volta (carga completa) x margem; comparado com
 // Transportadoras parceiras e Historico (mediana de cotacoes salvas).
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import {
   Truck, MapPin, Loader2, AlertTriangle, Plus, Trash2,
   Package, Scale, Sparkles, History, Building2, Save, FileText,
@@ -101,6 +102,9 @@ export default function FreteCotacao() {
   const modeloBN = useModeloBranorte()
   const parceiras = useTransportadoras()
   const catFrete = useFreteCatalogoItens()
+  const erroConfig = tipos.error || antts.error || modeloBN.error
+  const loadingConfig = tipos.isLoading || antts.isLoading || modeloBN.isLoading
+  const configConfirmada = !erroConfig && !loadingConfig && !!tipos.data && !!antts.data && !!modeloBN.data
   // Seletor de equipamento usa SÓ os "Itens de frete" cadastrados (frete_catalogo_itens),
   // não o catálogo inteiro de Compactas. Mapeia pro shape do seletor.
   const catalogo = useMemo(() => ({
@@ -121,6 +125,14 @@ export default function FreteCotacao() {
   const [loadingDist, setLoadingDist] = useState(false)
   const [errDist, setErrDist] = useState<string | null>(null)
   const [kmManual, setKmManual] = useState<string>('')
+  const consultaDestino = useRef<AbortController | null>(null)
+  useEffect(() => () => { consultaDestino.current?.abort() }, [])
+
+  function invalidarDestino() {
+    consultaDestino.current?.abort()
+    consultaDestino.current = null
+    setDestino(null); setKmManual(''); setErrDist(null); setLoadingDist(false)
+  }
 
   // ── Modo de busca de destino: por CEP ou por cidade ──
   const [modoBusca, setModoBusca] = useState<'cep' | 'cidade'>('cep')
@@ -169,11 +181,17 @@ export default function FreteCotacao() {
       setErrDist('CEP precisa ter 8 dígitos')
       return
     }
+    consultaDestino.current?.abort()
+    const controller = new AbortController()
+    consultaDestino.current = controller
+    const vigente = () => consultaDestino.current === controller && !controller.signal.aborted
     setLoadingDist(true)
     setErrDist(null)
     setDestino(null)
+    setKmManual('')
     try {
-      const res = await resolverDestino(cep)
+      const res = await resolverDestino(cep, controller.signal)
+      if (!vigente()) return
       if (!res) {
         setErrDist('CEP não encontrado. Confira os 8 dígitos.')
       } else {
@@ -187,9 +205,9 @@ export default function FreteCotacao() {
         }
       }
     } catch {
-      setErrDist('Erro ao consultar o CEP. Tente novamente.')
+      if (vigente()) setErrDist('Erro ao consultar o CEP. Tente novamente.')
     } finally {
-      setLoadingDist(false)
+      if (vigente()) { consultaDestino.current = null; setLoadingDist(false) }
     }
   }
 
@@ -203,11 +221,17 @@ export default function FreteCotacao() {
       setErrDist('Digite o nome da cidade.')
       return
     }
+    consultaDestino.current?.abort()
+    const controller = new AbortController()
+    consultaDestino.current = controller
+    const vigente = () => consultaDestino.current === controller && !controller.signal.aborted
     setLoadingDist(true)
     setErrDist(null)
     setDestino(null)
+    setKmManual('')
     try {
-      const res = await resolverDestinoPorCidade(cidade, ufInput)
+      const res = await resolverDestinoPorCidade(cidade, ufInput, controller.signal)
+      if (!vigente()) return
       setDestino(res)
       if (res.distancia_km != null) {
         setKmManual(String(res.distancia_km))
@@ -216,9 +240,9 @@ export default function FreteCotacao() {
         setErrDist(`${res.cidade}/${res.uf} selecionado, mas não consegui calcular o km automaticamente. Digite manualmente abaixo.`)
       }
     } catch {
-      setErrDist('Erro ao calcular a distância. Digite o km manual abaixo.')
+      if (vigente()) setErrDist('Erro ao calcular a distância. Digite o km manual abaixo.')
     } finally {
-      setLoadingDist(false)
+      if (vigente()) { consultaDestino.current = null; setLoadingDist(false) }
     }
   }
 
@@ -296,18 +320,19 @@ export default function FreteCotacao() {
 
   // ── Recomendar caminhao ──
   const caminhao = useMemo(() => {
-    if (!carga || !tipos.data) return null
+    if (!configConfirmada || (aba === 'equipamento' && (catFrete.error || catFrete.isLoading || !catFrete.data)) || !carga || !tipos.data) return null
     return recomendarCaminhao(carga, tipos.data)
-  }, [carga, tipos.data])
+  }, [configConfirmada, aba, catFrete.error, catFrete.isLoading, catFrete.data, carga, tipos.data])
 
   // Na aba "fechada" o caminhão é o que o vendedor escolheu (por id).
   const caminhaoEfetivo = useMemo(() => {
+    if (!configConfirmada) return null
     if (aba === 'fechada' && tipos.data) {
       const t = tipos.data.find(t => t.id === fechadaCaminhaoId)
       return t ?? caminhao
     }
     return caminhao
-  }, [aba, fechadaCaminhaoId, tipos.data, caminhao])
+  }, [configConfirmada, aba, fechadaCaminhaoId, tipos.data, caminhao])
 
   const distanciaKm = useMemo(() => {
     const m = Number(kmManual)
@@ -364,7 +389,7 @@ export default function FreteCotacao() {
 
   // ── Estimativa: Parceiras (sempre só a ida — sem ida+volta) ──
   const estimativasParceiras = useMemo(() => {
-    if (!caminhaoEfetivo || !distanciaKm || !parceiras.data || !destino) return []
+    if (parceiras.error || parceiras.isLoading || !caminhaoEfetivo || !distanciaKm || !parceiras.data || !destino) return []
     return parceiras.data
       .filter(p => p.ativo)
       .map(p => ({
@@ -373,7 +398,7 @@ export default function FreteCotacao() {
       }))
       .filter(x => x.valor != null)
       .sort((a, b) => (a.valor ?? 0) - (b.valor ?? 0))
-  }, [caminhaoEfetivo, distanciaKm, parceiras.data, destino])
+  }, [caminhaoEfetivo, distanciaKm, parceiras.data, parceiras.error, parceiras.isLoading, destino])
 
   // ── Estimativa 4: Histórico ──
   const mediaHist = useMediaHistorica(caminhaoEfetivo?.id ?? null, destino?.uf ?? null, distanciaKm)
@@ -386,16 +411,16 @@ export default function FreteCotacao() {
   const baseItem = useFreteBaseItem(itemNomes)
   // R$/km mediano das cotações reais × km da rota = valor comparável pra negociar.
   const baseItemValor = useMemo(() => {
-    if (baseItem.data?.rs_km_mediano == null || !distanciaKm) return null
+    if (baseItem.error || baseItem.isLoading || baseItem.data?.rs_km_mediano == null || !distanciaKm) return null
     return baseItem.data.rs_km_mediano * distanciaKm
-  }, [baseItem.data, distanciaKm])
+  }, [baseItem.data, baseItem.error, baseItem.isLoading, distanciaKm])
 
   // Peso efetivo (real vs cubado) — mostrado pro vendedor entender a cubagem
   const pesoEfetivo = useMemo(() => (carga ? pesoEfetivoKg(carga) : null), [carga])
   const cargaIndivisivel = carga?.indivisivel ?? false
 
   async function handleSalvar() {
-    if (!carga || !caminhaoEfetivo || !destino || !distanciaKm) {
+    if (!configConfirmada || loadingDist || consultaDestino.current || !carga || !caminhaoEfetivo || !destino || !distanciaKm) {
       alert('Faltam dados pra salvar: cliente, CEP, carga e caminhão recomendado.')
       return
     }
@@ -407,7 +432,7 @@ export default function FreteCotacao() {
     try {
       await salvar.mutateAsync({
         cliente_nome: clienteNome || null,
-        cep_destino: cep,
+        cep_destino: modoBusca === 'cep' ? cep : null,
         cidade_destino: destino.cidade,
         uf_destino: destino.uf,
         distancia_km: distanciaKm,
@@ -436,7 +461,7 @@ export default function FreteCotacao() {
         valor_parceira_escolhida: parceiraEscolhidaId
           ? estimativasParceiras.find(x => x.parceira.id === parceiraEscolhidaId)?.valor ?? null
           : null,
-        valor_historico_medio: mediaHist.data ?? null,
+        valor_historico_medio: mediaHist.error || mediaHist.isLoading ? null : mediaHist.data ?? null,
         margem_aplicada: Number(margem) || null,
         valor_final: vf,
         observacoes: observacoes || null,
@@ -504,6 +529,8 @@ export default function FreteCotacao() {
           </div>
         </div>
 
+        {erroConfig ? <div className="mb-5"><QueryNotice error={erroConfig} loading={tipos.isFetching || antts.isFetching || modeloBN.isFetching} onRetry={() => { void tipos.refetch(); void antts.refetch(); void modeloBN.refetch() }} message="Não foi possível confirmar caminhões e tabelas de cálculo. A estimativa fica indisponível até a leitura ser concluída." /></div> : loadingConfig ? <p role="status" className="mb-5 text-sm text-ink-muted">Carregando caminhões e tabelas de cálculo…</p> : null}
+
         {/* Layout 2 colunas no desktop: inputs (esquerda, sticky) · resultado (direita) */}
         <div className="lg:grid lg:grid-cols-[minmax(0,400px)_1fr] lg:gap-6 lg:items-start">
           {/* ── Coluna esquerda: entradas ── */}
@@ -517,14 +544,14 @@ export default function FreteCotacao() {
         <div className="inline-flex p-1 bg-surface-2/40 rounded-xl gap-1">
           <button
             type="button"
-            onClick={() => { setModoBusca('cep'); setErrDist(null) }}
+            onClick={() => { invalidarDestino(); setModoBusca('cep') }}
             className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cep' ? 'bg-bg text-ink shadow' : 'text-ink-muted hover:text-ink'}`}
           >
             Por CEP
           </button>
           <button
             type="button"
-            onClick={() => { setModoBusca('cidade'); setErrDist(null) }}
+            onClick={() => { invalidarDestino(); setModoBusca('cidade') }}
             className={`px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${modoBusca === 'cidade' ? 'bg-bg text-ink shadow' : 'text-ink-muted hover:text-ink'}`}
           >
             Por cidade
@@ -540,7 +567,7 @@ export default function FreteCotacao() {
               <input
                 type="text"
                 value={cep}
-                onChange={e => setCep(e.target.value)}
+                onChange={e => { invalidarDestino(); setCep(e.target.value) }}
                 onKeyDown={e => { if (e.key === 'Enter') buscarDistancia() }}
                 placeholder="00000-000"
                 className="w-full border-2 border-border/60 rounded-xl px-4 py-3 text-base font-bold tabular-nums tracking-wider bg-bg/60 focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent transition-all placeholder:text-ink-muted/40 placeholder:font-normal placeholder:tracking-normal"
@@ -569,7 +596,7 @@ export default function FreteCotacao() {
               </label>
               <select
                 value={ufInput}
-                onChange={e => { setUfInput(e.target.value); setCidadeInput('') }}
+                onChange={e => { invalidarDestino(); setUfInput(e.target.value); setCidadeInput('') }}
                 className="w-full border-2 border-border/60 rounded-xl px-3 py-3 text-base font-bold bg-bg/60 focus:outline-none focus:ring-4 focus:ring-accent/15 focus:border-accent transition-all"
               >
                 <option value="">—</option>
@@ -584,7 +611,7 @@ export default function FreteCotacao() {
                 type="text"
                 list="lista-municipios"
                 value={cidadeInput}
-                onChange={e => setCidadeInput(e.target.value)}
+                onChange={e => { invalidarDestino(); setCidadeInput(e.target.value) }}
                 onKeyDown={e => { if (e.key === 'Enter') buscarPorCidade() }}
                 disabled={!ufInput}
                 placeholder={ufInput ? 'Comece a digitar a cidade…' : 'Escolha a UF primeiro'}
@@ -690,14 +717,15 @@ export default function FreteCotacao() {
         {/* Aba: por equipamento (Compactas + avulsos com medida) */}
         {aba === 'equipamento' && (
           <div className="space-y-2">
-            <div className="text-xs text-ink-muted mb-2">
+            {catFrete.error ? <QueryNotice error={catFrete.error} loading={catFrete.isFetching} onRetry={() => { void catFrete.refetch() }} message="Não foi possível carregar os itens de frete cadastrados." /> : catFrete.isLoading ? <p role="status" className="text-xs text-ink-muted">Carregando itens de frete…</p> : <div className="text-xs text-ink-muted mb-2">
               Itens de frete cadastrados ({catalogo.data?.length ?? 0}). Cadastre/edite em "Itens de frete".
               Pra algo fora do cadastro, use "Por dimensões".
-            </div>
+            </div>}
             {linhasEquip.map((l, i) => (
               <div key={l.uid} className="border border-border/70 rounded-xl p-2.5 space-y-2 bg-surface/40">
                 <div className="flex items-center gap-2">
                   <select
+                    disabled={catFrete.isLoading || !!catFrete.error}
                     value={l.item?.id ?? ''}
                     onChange={e => {
                       const id = e.target.value
@@ -777,7 +805,7 @@ export default function FreteCotacao() {
             >
               <Plus className="h-3 w-3" /> Adicionar equipamento
             </button>
-            {catalogo.data && catalogo.data.length === 0 && (
+            {!catFrete.isLoading && !catFrete.error && catalogo.data && catalogo.data.length === 0 && (
               <div className="text-xs text-amber-600 mt-2">
                 Nenhum item de frete cadastrado ainda. Cadastre em "Itens de frete".
               </div>
@@ -1028,7 +1056,7 @@ export default function FreteCotacao() {
                   Cotações reais deste item
                 </span>
               </div>
-              {baseItemValor != null ? (
+              {baseItem.error ? <QueryNotice error={baseItem.error} loading={baseItem.isFetching} onRetry={() => { void baseItem.refetch() }} message="Não foi possível conferir as cotações reais deste item." /> : baseItem.isLoading ? <p role="status" className="text-xs text-ink-muted">Consultando cotações reais…</p> : baseItemValor != null ? (
                 <>
                   <div className="text-4xl font-black tabular-nums text-violet-700 dark:text-violet-300 leading-none tracking-tighter">
                     {formatBRL(baseItemValor)}
@@ -1059,7 +1087,7 @@ export default function FreteCotacao() {
                 </div>
                 <span className="text-xs font-black uppercase tracking-wider text-ink-muted">Transportadoras parceiras</span>
               </div>
-              {estimativasParceiras.length > 0 ? (
+              {parceiras.error ? <QueryNotice error={parceiras.error} loading={parceiras.isFetching} onRetry={() => { void parceiras.refetch() }} message="Não foi possível conferir as transportadoras parceiras." /> : parceiras.isLoading ? <p role="status" className="text-xs text-ink-muted">Consultando parceiras…</p> : estimativasParceiras.length > 0 ? (
                 <div className="space-y-1.5">
                   {estimativasParceiras.map(({ parceira, valor }) => (
                     <div key={parceira.id} className="flex items-center justify-between gap-2 text-sm">
@@ -1083,7 +1111,7 @@ export default function FreteCotacao() {
                 </div>
                 <span className="text-xs font-black uppercase tracking-wider text-ink-muted">Histórico (mediana)</span>
               </div>
-              {mediaHist.data != null ? (
+              {mediaHist.error ? <QueryNotice error={mediaHist.error} loading={mediaHist.isFetching} onRetry={() => { void mediaHist.refetch() }} message="Não foi possível conferir o histórico desta rota." /> : mediaHist.isLoading ? <p role="status" className="text-xs text-ink-muted">Consultando histórico…</p> : mediaHist.data != null ? (
                 <>
                   <div className="text-2xl font-black tabular-nums text-ink">{formatBRL(mediaHist.data)}</div>
                   <div className="text-[11px] text-ink-muted mt-1">Mediana de cotações salvas pra {caminhaoEfetivo.nome}{destino ? ` → ${destino.uf}` : ''} em distância parecida.</div>

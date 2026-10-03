@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { CHAVE_NOVO_PEDIDO, permissaoNovoPedido } from '@/lib/novo-pedido-acesso'
+import { matrizesPermissoesIguais, reconciliarRascunhoPermissoes, type RascunhoPermissoes } from '@/lib/admin-permissoes-draft'
 import {
   ASSIGNABLE_ROLES,
   FEATURE_CATALOG,
@@ -14,6 +15,7 @@ import {
 } from '@/hooks/usePermissions'
 
 type PermMatrix = Record<AssignableRole, Record<string, boolean>>
+const FEATURE_KEYS = FEATURE_CATALOG.map(f => f.key)
 
 // Derivado de ASSIGNABLE_ROLES: papel novo entra sozinho. A lista escrita à mão
 // já estava desatualizada (faltava 'visualizador') e o tsc reclamava disso desde
@@ -23,49 +25,39 @@ function emptyMatrix(): PermMatrix {
 }
 
 export function AdminPermissoes() {
-  const { data, isLoading } = useRolePermissions()
+  const { data, isLoading, error, refetch, isFetching } = useRolePermissions()
   const qc = useQueryClient()
-  const [draft, setDraft] = useState<PermMatrix>(emptyMatrix)
+  const [editor, setEditor] = useState<RascunhoPermissoes>(() => ({ base: null, draft: emptyMatrix() }))
+  const draft = editor.draft
   const [savedAt, setSavedAt] = useState<string | null>(null)
 
-  // Hidrata o draft sempre que a query atualizar (e antes do primeiro save).
+  // Refetch mantém as edições locais até salvar; formulário limpo segue a query.
   useEffect(() => {
     if (!data) return
     const next = emptyMatrix()
     for (const row of data) {
       next[row.role as AssignableRole] = { ...row.permissions, [CHAVE_NOVO_PEDIDO]: permissaoNovoPedido(row.permissions) }
     }
-    setDraft(next)
+    setEditor(current => reconciliarRascunhoPermissoes(current, next, ASSIGNABLE_ROLES, FEATURE_KEYS))
   }, [data])
 
-  const dirty = useMemo(() => {
-    if (!data) return false
-    for (const role of ASSIGNABLE_ROLES) {
-      const original = data.find(r => r.role === role)?.permissions ?? {}
-      const current = draft[role] ?? {}
-      const allKeys = new Set([...Object.keys(original), ...Object.keys(current), ...FEATURE_CATALOG.map(f => f.key)])
-      for (const k of allKeys) {
-        const originalPermitido = k === CHAVE_NOVO_PEDIDO ? permissaoNovoPedido(original) : !!original[k]
-        if (originalPermitido !== !!current[k]) return true
-      }
-    }
-    return false
-  }, [data, draft])
+  const dirty = !!editor.base && !matrizesPermissoesIguais(editor.base, draft, ASSIGNABLE_ROLES, FEATURE_KEYS)
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (snapshot: typeof draft) => {
       // Salva uma role por vez (UPSERT). Mais simples que monta payload bulk e
       // ainda dá pra ver erro por role no log.
       for (const role of ASSIGNABLE_ROLES) {
         const perms: Record<string, boolean> = {}
-        for (const f of FEATURE_CATALOG) perms[f.key] = !!draft[role][f.key]
+        for (const f of FEATURE_CATALOG) perms[f.key] = !!snapshot[role][f.key]
         const { error } = await supabase
           .from('role_permissions')
           .upsert({ role, permissions: perms }, { onConflict: 'role' })
         if (error) throw error
       }
     },
-    onSuccess: () => {
+    onSuccess: (_result, snapshot) => {
+      setEditor(current => ({ ...current, base: snapshot }))
       qc.invalidateQueries({ queryKey: ['role_permissions'] })
       setSavedAt(new Date().toLocaleTimeString('pt-BR'))
     },
@@ -74,13 +66,13 @@ export function AdminPermissoes() {
   if (isLoading) return <PageLoading />
 
   const toggle = (role: AssignableRole, key: string) => {
-    setDraft(d => ({ ...d, [role]: { ...d[role], [key]: !d[role][key] } }))
+    setEditor(current => ({ ...current, draft: { ...current.draft, [role]: { ...current.draft[role], [key]: !current.draft[role][key] } } }))
   }
 
   const setAll = (role: AssignableRole, value: boolean) => {
     const next: Record<string, boolean> = {}
     for (const f of FEATURE_CATALOG) next[f.key] = value
-    setDraft(d => ({ ...d, [role]: next }))
+    setEditor(current => ({ ...current, draft: { ...current.draft, [role]: next } }))
   }
 
   const groups = Array.from(new Set(FEATURE_CATALOG.map(f => f.group)))
@@ -99,20 +91,25 @@ export function AdminPermissoes() {
             <span className="text-xs text-text-muted">Salvo às {savedAt}</span>
           )}
           {saveMutation.isError && (
-            <span className="text-xs text-red-600">Erro ao salvar</span>
+            <span role="alert" className="text-xs text-red-600">Não foi possível salvar todas as funções. Suas alterações foram mantidas; tente novamente.</span>
           )}
           <Button
             variant="primary"
             size="md"
-            disabled={!dirty || saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}
+            disabled={!dirty || saveMutation.isPending || !data}
+            onClick={() => saveMutation.mutate(draft)}
           >
             {saveMutation.isPending ? 'Salvando…' : 'Salvar alterações'}
           </Button>
         </div>
       </div>
 
-      <Card className="overflow-hidden">
+      {error && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger flex flex-wrap items-center gap-3">
+        <span>Não foi possível carregar as permissões. {editor.base ? 'As alterações locais foram mantidas.' : 'A matriz será exibida quando a leitura for concluída.'}</span>
+        <Button size="sm" onClick={() => { void refetch() }} loading={isFetching}>Tentar novamente</Button>
+      </div>}
+
+      {editor.base && <Card className="overflow-hidden">
         {/* 29/09/2026: no celular (390px) a tabela passava da tela e o layout, que
             tem overflow-x: clip, cortava as colunas da direita sem deixar rolar. Rola
             só aqui dentro; no desktop ela cabe e nada muda. */}
@@ -126,6 +123,7 @@ export function AdminPermissoes() {
                     <div>{ROLE_LABELS[role]}</div>
                     <div className="flex justify-center gap-1 mt-1">
                       <button
+                        disabled={saveMutation.isPending}
                         onClick={() => setAll(role, true)}
                         className="text-[10px] px-1.5 py-0.5 rounded bg-surface-border hover:bg-text-muted/20"
                         title="Marcar tudo"
@@ -133,6 +131,7 @@ export function AdminPermissoes() {
                         tudo
                       </button>
                       <button
+                        disabled={saveMutation.isPending}
                         onClick={() => setAll(role, false)}
                         className="text-[10px] px-1.5 py-0.5 rounded bg-surface-border hover:bg-text-muted/20"
                         title="Desmarcar tudo"
@@ -152,12 +151,13 @@ export function AdminPermissoes() {
                   features={FEATURE_CATALOG.filter(f => f.group === group)}
                   draft={draft}
                   onToggle={toggle}
+                  disabled={saveMutation.isPending}
                 />
               ))}
             </tbody>
           </table>
         </div>
-      </Card>
+      </Card>}
 
       <Card className="p-4 bg-surface-secondary">
         <h2 className="text-sm font-semibold text-text-primary mb-1">Como funciona</h2>
@@ -174,11 +174,12 @@ export function AdminPermissoes() {
 interface GroupProps {
   title: string
   features: typeof FEATURE_CATALOG
-  draft: PermMatrix
+  draft: RascunhoPermissoes['draft']
   onToggle: (role: AssignableRole, key: string) => void
+  disabled: boolean
 }
 
-function FeatureGroup({ title, features, draft, onToggle }: GroupProps) {
+function FeatureGroup({ title, features, draft, onToggle, disabled }: GroupProps) {
   return (
     <>
       <tr className="bg-surface-secondary/50">
@@ -196,6 +197,8 @@ function FeatureGroup({ title, features, draft, onToggle }: GroupProps) {
             <td key={role} className="px-4 py-2 text-center">
               <input
                 type="checkbox"
+                aria-label={`${f.label} — ${ROLE_LABELS[role]}`}
+                disabled={disabled}
                 checked={!!draft[role]?.[f.key]}
                 onChange={() => onToggle(role, f.key)}
                 className="h-4 w-4 cursor-pointer accent-accent"

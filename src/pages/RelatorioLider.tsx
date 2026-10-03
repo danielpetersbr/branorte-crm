@@ -8,6 +8,7 @@ import {
   Check, Plus, X, TrendingUp, Trophy, Loader2, ChevronRight, Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import {
   TIMES,
   usePainelTime, useSerieTime, useVendasTime, useAtencaoTime,
@@ -324,20 +325,28 @@ export function RelatorioLider() {
   const time = TIMES.find(t => t.slug === timeSlug) ?? null
 
   const [periodo, setPeriodo] = useState<Periodo>('dia')
-  const { data: painel = [], isLoading } = usePainelTime(timeSlug, periodo)
-  const { data: serie = [] } = useSerieTime(timeSlug, periodo === 'mes' ? 30 : 14)
-  const { data: vendas } = useVendasTime(timeSlug)
-  const { data: atencao = [], isLoading: carregandoAtencao } = useAtencaoTime(timeSlug)
+  const painelQuery = usePainelTime(timeSlug, periodo)
+  const serieQuery = useSerieTime(timeSlug, periodo === 'mes' ? 30 : 14)
+  const vendasQuery = useVendasTime(timeSlug)
+  const atencaoQuery = useAtencaoTime(timeSlug)
+  const { data: painel = [], isLoading } = painelQuery
+  const { data: serie = [] } = serieQuery
+  const { data: vendas } = vendasQuery
+  const { data: atencao = [], isLoading: carregandoAtencao } = atencaoQuery
 
   // Quem está mexendo — só pra assinar as marcações. NÃO é líder: o modelo de
   // líder fixo acabou. Fica no localStorage pra não perguntar toda vez.
-  const [euSou, setEuSou] = useState(() => localStorage.getItem('painel-time-eu') ?? '')
-  const escolherEu = (n: string) => { setEuSou(n); localStorage.setItem('painel-time-eu', n) }
+  const [euSou, setEuSou] = useState(() => { try { return localStorage.getItem('painel-time-eu') ?? '' } catch { return '' } })
+  const escolherEu = (n: string) => { setEuSou(n); try { localStorage.setItem('painel-time-eu', n) } catch { /* escolha preservada na sessão */ } }
 
   const [lista, setLista] = useState<'orcamentos' | 'quentes' | null>(null)
-  const { data: orcs = [], isLoading: carregandoOrcs } =
-    useOrcamentosTime(timeSlug, periodo, lista === 'orcamentos')
-  const { data: quentes = [] } = useQuentesTime(timeSlug)
+  const orcsQuery = useOrcamentosTime(timeSlug, periodo, lista === 'orcamentos')
+  const quentesQuery = useQuentesTime(timeSlug)
+  const { data: orcs = [], isLoading: carregandoOrcs } = orcsQuery
+  const { data: quentes = [] } = quentesQuery
+  const consultas = [painelQuery, serieQuery, vendasQuery, atencaoQuery, quentesQuery]
+  const erroLeitura = consultas.find(q => q.error)?.error
+  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
   const marcar = useMarcarAndamento()
 
   const marcarLinha = (
@@ -392,9 +401,13 @@ export function RelatorioLider() {
   }
 
   const membros = time.membros as unknown as string[]
+  if (consultas.some(q => q.error && q.data === undefined)) return <div className="p-4"><h1 className="mb-4 text-xl font-semibold">{time.nome}</h1><QueryNotice error={erroLeitura} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados do time." onRetry={atualizar} /></div>
+  if (consultas.some(q => q.isLoading && q.data === undefined)) return <div role="status" className="p-8 text-center text-ink-muted">Carregando painel do time…</div>
 
   return (
     <div className="w-full min-w-0 px-3 sm:px-5 py-4 sm:py-6">
+      <QueryNotice error={erroLeitura} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todos os dados do time. O último retrato permanece visível." onRetry={atualizar} />
+      <QueryNotice error={marcar.error} loading={marcar.isPending} message="Não foi possível salvar a marcação." onRetry={() => { if (marcar.variables) marcar.mutate(marcar.variables) }} />
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -536,11 +549,12 @@ export function RelatorioLider() {
         <PainelLista onFechar={() => setLista(null)}
           titulo={`Orçamentos ${rotuloPeriodo} · ${orcs.length}`}
           subtitulo="Marque como está cada um — é assim que o time se acompanha.">
+          <QueryNotice error={orcsQuery.error} loading={orcsQuery.isFetching} message="Não foi possível carregar os orçamentos do time." onRetry={() => { void orcsQuery.refetch() }} />
           {carregandoOrcs ? (
             <div className="h-24 grid place-items-center text-ink-muted">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
-          ) : orcs.length === 0 ? (
+          ) : orcsQuery.error && !orcsQuery.data ? null : orcs.length === 0 ? (
             <p className="text-[13px] text-ink-muted p-4 text-center">Nenhum orçamento {rotuloPeriodo}.</p>
           ) : orcs.map(o => (
             <div key={o.id} className="rounded-md border border-border bg-surface-2/30 p-3">

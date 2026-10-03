@@ -116,11 +116,12 @@ export function useNovaSessao() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: { userId: string; vendedorNome: string; nomeContato: string }): Promise<SessaoTeste> => {
-      await supabase
+      const { error: erroEncerrar } = await supabase
         .from('ia_teste_sessoes')
         .update({ encerrada_em: new Date().toISOString(), ativo: false })
         .eq('criado_por', input.userId)
         .is('encerrada_em', null)
+      if (erroEncerrar) throw erroEncerrar
 
       const chatId = 'teste:' + crypto.randomUUID()
       const { data, error } = await supabase
@@ -139,7 +140,7 @@ export function useNovaSessao() {
       if (error) throw error
       return data as SessaoTeste
     },
-    onSuccess: () => {
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['ia-teste-sessao'] })
       qc.invalidateQueries({ queryKey: ['ia-teste-msgs'] })
     },
@@ -181,6 +182,10 @@ export function useMensagens(chatId: string | null) {
   })
 }
 
+export class MensagemTestePersistida extends Error {
+  readonly mensagemPersistida = true
+}
+
 export function useEnviarTurno() {
   const qc = useQueryClient()
   return useMutation({
@@ -202,7 +207,7 @@ export function useEnviarTurno() {
         .select('*')
         .single()
       if (e1) throw e1
-
+      try {
       const mensagensChat = [...input.historico, minha as MsgTeste]
         .filter(m => m.papel !== 'sistema')
         .map(m => ({ body: m.texto, fromMe: m.papel === 'ia', t: Number(m.t), type: 'chat' }))
@@ -235,8 +240,11 @@ export function useEnviarTurno() {
       })
       if (e2) throw e2
       return resp
+      } catch {
+        throw new MensagemTestePersistida('Mensagem salva; resposta da IA não confirmada. Confira o histórico antes de continuar. O envio não foi repetido.')
+      }
     },
-    onSuccess: () => {
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['ia-teste-msgs'] })
       qc.invalidateQueries({ queryKey: ['ia-teste-sessao'] })
     },

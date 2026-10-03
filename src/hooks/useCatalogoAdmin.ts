@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
 import type { CatalogoItem } from './useCatalogo'
 
 // Item do catálogo com todos os campos de curadoria.
@@ -29,10 +30,10 @@ function extrairModeloId(notas: string | null | undefined): number | null {
 
 // Propaga foto_url e/ou valor de um catalogo_item para o orcamento_modelo vinculado.
 // Chamada após qualquer mutação que altere foto_url ou valor de um item COMPACTA.
-// Silenciosa: erros de propagação são logados mas NÃO bloqueiam o save principal.
-async function propagarParaModeloVinculado(item: CatalogoItemAdmin): Promise<void> {
+// Falha de propagação não desfaz o item já salvo: o chamador informa o resultado parcial.
+async function propagarParaModeloVinculado(item: CatalogoItemAdmin): Promise<boolean> {
   const modeloId = extrairModeloId(item.notas_curadoria)
-  if (!modeloId) return
+  if (!modeloId) return true
   try {
     const updatePayload: Record<string, unknown> = {}
     // Sempre propaga foto (pode ser null = remoção)
@@ -43,13 +44,16 @@ async function propagarParaModeloVinculado(item: CatalogoItemAdmin): Promise<voi
     if (item.valor != null) {
       updatePayload.total_equipamentos = item.valor
     }
-    if (Object.keys(updatePayload).length === 0) return
-    await supabase
+    if (Object.keys(updatePayload).length === 0) return true
+    const { error } = await supabase
       .from('orcamento_modelos')
       .update(updatePayload)
       .eq('id', modeloId)
+    if (error) throw error
+    return true
   } catch (err) {
     console.warn('[propagarParaModeloVinculado] Falha ao propagar para modelo', modeloId, err)
+    return false
   }
 }
 
@@ -109,6 +113,7 @@ function precoToVirtualItem(preco: {
     ocultar_funcao_no_pdf: false,
     motor_id: null,
     preco_branorte_id: preco.id,
+    motores_extras: [],
     is_virtual: true,
   }
 }
@@ -237,7 +242,7 @@ export function useAtualizarItemCatalogo() {
           .single()
         if (error) throw error
         const saved = data as CatalogoItemAdmin
-        await propagarParaModeloVinculado(saved)
+        if (!await propagarParaModeloVinculado(saved)) toast.warning('Item salvo no catálogo, mas o modelo de orçamento vinculado não foi atualizado. Confira o modelo antes de usar o novo valor ou foto.', { duration: 12000 })
         return saved
       }
       const payload = {
@@ -253,7 +258,7 @@ export function useAtualizarItemCatalogo() {
       if (error) throw error
       const saved = data as CatalogoItemAdmin
       // Propaga foto/valor para orcamento_modelo vinculado (se houver)
-      await propagarParaModeloVinculado(saved)
+      if (!await propagarParaModeloVinculado(saved)) toast.warning('Item salvo no catálogo, mas o modelo de orçamento vinculado não foi atualizado. Confira o modelo antes de usar o novo valor ou foto.', { duration: 12000 })
       return saved
     },
     onSuccess: () => {

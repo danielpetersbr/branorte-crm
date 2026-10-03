@@ -57,6 +57,9 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="Avisar no meu WhatsApp na hora"
       onClick={() => onChange(!on)}
       disabled={disabled}
       className={cn(
@@ -468,8 +471,9 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
 }) {
   const editando = form.id != null
   const tituloOk = form.titulo.trim().length > 0
+  const busy = salvando || excluindo
   return (
-    <div className="fixed inset-0 z-[1250] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onFechar}>
+    <div role="dialog" aria-modal="true" aria-label={editando ? 'Editar item da agenda' : 'Novo item da agenda'} className="fixed inset-0 z-[1250] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => { if (!busy) onFechar() }}>
       <div className="absolute inset-0 bg-black/50" />
       <div
         className="relative w-full sm:max-w-lg bg-surface border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto animate-[modalIn_.18s_ease-out]"
@@ -477,12 +481,12 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
       >
         <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
           <h3 className="text-[15px] font-semibold text-ink">{editando ? 'Editar item' : 'Novo item'}</h3>
-          <button onClick={onFechar} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 transition-colors">
+          <button onClick={onFechar} disabled={busy} aria-label="Fechar formulário" className="h-8 w-8 inline-flex items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 transition-colors">
             <X className="h-4.5 w-4.5" />
           </button>
         </div>
 
-        <div className="p-4 space-y-3.5">
+        <fieldset disabled={busy} className="p-4 space-y-3.5">
           {/* Tipo */}
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1.5">Tipo</label>
@@ -511,6 +515,7 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Título *</label>
             <Input
+              aria-label="Título"
               value={form.titulo}
               onChange={e => setForm({ ...form, titulo: e.target.value })}
               placeholder="Ex: Ligar pro cliente sobre o orçamento"
@@ -522,6 +527,7 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Descrição (opcional)</label>
             <textarea
+              aria-label="Descrição"
               value={form.descricao}
               onChange={e => setForm({ ...form, descricao: e.target.value })}
               placeholder="Detalhes que você não quer esquecer…"
@@ -537,11 +543,11 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Data</label>
-              <input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} className={inputCls} />
+              <input type="date" aria-label="Data" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} className={inputCls} />
             </div>
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Hora</label>
-              <input type="time" value={form.hora} onChange={e => setForm({ ...form, hora: e.target.value })} className={inputCls} />
+              <input type="time" aria-label="Hora" value={form.hora} onChange={e => setForm({ ...form, hora: e.target.value })} className={inputCls} />
             </div>
           </div>
           <p className="-mt-1.5 text-[11px] text-ink-faint">Sem hora, o lembrete considera 09:00 do dia.</p>
@@ -550,6 +556,7 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1">Contato (opcional)</label>
             <Input
+              aria-label="Contato"
               value={form.contato_nome}
               onChange={e => setForm({ ...form, contato_nome: e.target.value })}
               placeholder="Ex: João da Fazenda Boa Vista"
@@ -567,14 +574,14 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
               </div>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {/* Rodapé */}
         <div className="sticky bottom-0 flex items-center gap-2 px-4 py-3 border-t border-border bg-surface">
           {editando && (
             <button
               onClick={onExcluir}
-              disabled={excluindo}
+              disabled={busy}
               className="inline-flex items-center gap-1 px-2.5 py-2 rounded-md border border-danger/40 text-danger text-[12px] font-medium hover:bg-danger/10 transition-colors disabled:opacity-60"
             >
               {excluindo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -582,12 +589,12 @@ function FormModal({ form, setForm, onSalvar, onExcluir, onFechar, salvando, exc
             </button>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={onFechar} className="px-3 py-2 rounded-md border border-border text-[13px] font-medium text-ink-muted hover:bg-surface-2 transition-colors">
+            <button onClick={onFechar} disabled={busy} className="px-3 py-2 rounded-md border border-border text-[13px] font-medium text-ink-muted hover:bg-surface-2 transition-colors">
               Cancelar
             </button>
             <button
               onClick={onSalvar}
-              disabled={salvando || !tituloOk}
+              disabled={busy || !tituloOk}
               className={cn(
                 'inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium transition-colors',
                 tituloOk ? 'bg-accent text-white hover:opacity-90' : 'bg-surface-2 text-ink-faint cursor-default',
@@ -619,7 +626,7 @@ export function Agenda() {
   const [drawerDia, setDrawerDia] = useState<string | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
 
-  const { data: itens, isLoading } = useAgendaItens(nome)
+  const { data: itens, isLoading, error: itensError, refetch, isFetching } = useAgendaItens(nome)
 
   const invalidar = () => qc.invalidateQueries({ queryKey: ['agenda-itens'] })
 
@@ -706,6 +713,7 @@ export function Agenda() {
   const abrirNovo = (dataInicial = '') => setForm(formVazio(dataInicial))
   const abrirEditar = (item: AgendaItem) => setForm(formDeItem(item))
   const abrirNovoDoDrawer = (dataInicial: string) => { setDrawerDia(null); abrirNovo(dataInicial) }
+  const fecharForm = () => { if (!salvar.isPending && !excluir.isPending) setForm(null) }
 
   // ── Estados de carregamento / vazio ──
   if (nomeLoading || (nome && isLoading)) {
@@ -724,6 +732,7 @@ export function Agenda() {
             </p>
           </div>
         </div>
+
       </div>
     )
   }
@@ -749,6 +758,11 @@ export function Agenda() {
             <Plus className="h-4 w-4" /> Novo
           </button>
         </div>
+
+        {itensError && <div role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/5 p-4 flex flex-wrap items-center gap-3 text-sm text-danger">
+          <span>Não foi possível carregar a agenda. {itens ? 'Os itens abaixo podem estar desatualizados.' : 'Tente novamente para consultar seus itens.'}</span>
+          <button onClick={() => { void refetch() }} disabled={isFetching} className="px-3 py-2 rounded-md border border-danger/30 disabled:opacity-50">{isFetching ? 'Carregando…' : 'Tentar novamente'}</button>
+        </div>}
 
         {/* Legenda */}
         <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -804,7 +818,7 @@ export function Agenda() {
           setForm={setForm}
           onSalvar={() => salvar.mutate(form)}
           onExcluir={() => { if (form.id != null && window.confirm('Excluir este item?')) excluir.mutate(form.id) }}
-          onFechar={() => setForm(null)}
+          onFechar={fecharForm}
           salvando={salvar.isPending}
           excluindo={excluir.isPending}
         />

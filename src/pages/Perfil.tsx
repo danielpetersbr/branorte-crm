@@ -15,7 +15,7 @@ const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
 }
 
 export function Perfil() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, updateDisplayName } = useAuth()
   const vendorMap = useVendorMap()
 
   const [name, setName] = useState(profile?.display_name ?? '')
@@ -38,17 +38,22 @@ export function Perfil() {
   const vendorName = profile.vendor_id ? vendorMap[profile.vendor_id] : null
 
   const saveName = async () => {
-    if (!name.trim() || name === profile.display_name) return
+    if (savingName || !name.trim() || name === profile.display_name) return
+    const confirmedId = profile.id
+    const displayName = name.trim()
     setSavingName(true)
     setNameMsg(null)
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ display_name: name.trim() })
-      .eq('id', profile.id)
-    setSavingName(false)
-    if (error) setNameMsg('Erro: ' + error.message)
-    else setNameMsg('Salvo!')
-    setTimeout(() => setNameMsg(null), 2500)
+    try {
+      const { error } = await supabase.from('user_profiles')
+        .update({ display_name: displayName }).eq('id', confirmedId).select('id').single()
+      if (error) throw error
+      updateDisplayName(confirmedId, displayName)
+      setNameMsg('Salvo!')
+    } catch {
+      setNameMsg('Erro ao salvar o nome. Tente novamente.')
+    } finally {
+      setSavingName(false)
+    }
   }
 
   const changePwd = async (e: React.FormEvent) => {
@@ -96,7 +101,7 @@ export function Perfil() {
       <Card className="p-6 space-y-4">
         <div className="flex items-center gap-3 pb-4 border-b border-surface-border">
           <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center text-white font-bold text-lg">
-            {(profile.display_name ?? profile.email)[0].toUpperCase()}
+            {(profile.display_name?.trim() || profile.email).charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-text-primary truncate">{profile.display_name ?? '—'}</p>
@@ -120,6 +125,7 @@ export function Perfil() {
             ) : null
           }
           msg={nameMsg}
+          disabled={savingName}
         />
 
         {profile.role === 'vendor' && vendorName && (
@@ -203,9 +209,10 @@ interface FieldProps {
   action?: React.ReactNode
   hint?: string
   msg?: string | null
+  disabled?: boolean
 }
 
-function Field({ icon, label, value, readOnly, onChange, action, hint, msg }: FieldProps) {
+function Field({ icon, label, value, readOnly, onChange, action, hint, msg, disabled }: FieldProps) {
   return (
     <div>
       <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
@@ -220,6 +227,8 @@ function Field({ icon, label, value, readOnly, onChange, action, hint, msg }: Fi
         ) : (
           <input
             type="text"
+            aria-label={label}
+            disabled={disabled}
             value={value}
             onChange={e => onChange?.(e.target.value)}
             className="flex-1 px-3 py-2 rounded-md border border-surface-border bg-bg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
@@ -228,7 +237,7 @@ function Field({ icon, label, value, readOnly, onChange, action, hint, msg }: Fi
         {action}
       </div>
       {hint && <p className="text-xs text-text-muted mt-1">{hint}</p>}
-      {msg && <p className="text-xs text-green-600 mt-1">{msg}</p>}
+      {msg && <p role={msg.startsWith('Erro') ? 'alert' : 'status'} className={`text-xs mt-1 ${msg.startsWith('Erro') ? 'text-danger' : 'text-success'}`}>{msg}</p>}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { Search, Loader2, Check, Tags, BookOpen, RefreshCw, AlertCircle, Camera,
 import { Input } from '@/components/ui/Input'
 import { useCan } from '@/hooks/usePermissions'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import {
   usePrecosBranorte, useUpdatePrecoBranorte, useSyncTodosModelos, usePrecosAudit,
   type PrecoBranorte,
@@ -1189,7 +1190,11 @@ function BotaoSincronizarModelos() {
 
 // Painel de auditoria — mostra quanto do catálogo oficial tá íntegro
 function PainelAuditoria() {
-  const { data: audit } = usePrecosAudit()
+  const { data: audit, error, isFetching, refetch } = usePrecosAudit()
+  if (error) return <div role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+    <p>Não foi possível conferir a integridade do catálogo.</p>
+    <button type="button" disabled={isFetching} onClick={() => { void refetch() }} className="mt-2 underline disabled:opacity-50">{isFetching ? 'Tentando novamente…' : 'Tentar novamente'}</button>
+  </div>
   if (!audit) return null
   const cards = [
     { label: 'Itens oficiais ativos', valor: audit.total_ativos, icon: BookOpen, color: 'text-accent', alerta: false },
@@ -1225,7 +1230,7 @@ export function PrecosBranorte() {
   // painel de auditoria). Quem so tem `precos.consultar` chega aqui pelo menu
   // Comercial e ve a tabela como referencia, sem nenhum caminho de escrita.
   const podeEditar = useCan()('precos.editar')
-  const { data: precos, isLoading } = usePrecosBranorte()
+  const { data: precos, isLoading, error, refetch, isFetching } = usePrecosBranorte()
   // Motores do catálogo central — a MESMA fonte de onde o orçamento puxa o
   // preço do motor avulso. Sem isto a tela mostra o equipamento pelado.
   const { data: motores } = useCatalogoMotores()
@@ -1307,7 +1312,8 @@ export function PrecosBranorte() {
     return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [precos, grupoSel])
 
-  if (isLoading) return <PageLoading />
+  if (error && !precos) return <div className="p-4 sm:p-6 space-y-4"><h1 className="text-lg font-semibold text-ink">Tabela de Preços Branorte</h1><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar o catálogo oficial de preços. A edição e a sincronização ficam indisponíveis até a leitura ser concluída." /></div>
+  if (!precos) return <PageLoading />
 
   const totalGeral = precos?.length ?? 0
   const totalFiltrados = filtrados.length
@@ -1317,6 +1323,7 @@ export function PrecosBranorte() {
     <div className="min-h-screen bg-bg">
       {/* A matriz do transportador ocupa a largura disponível para as 7 colunas. */}
       <div className="w-full min-w-0 px-4 sm:px-6 py-6">
+        <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível atualizar os preços. Os dados anteriores e os rascunhos de edição foram preservados." />
         <div className="mb-3 flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1">

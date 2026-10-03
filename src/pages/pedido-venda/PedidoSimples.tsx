@@ -208,6 +208,7 @@ export default function PedidoSimples() {
       }
 
       // 5. Enviar para App2 (fábrica) - sem DOCX, apenas dados estruturados
+      let envioFabricaConfirmado = false;
       try {
         const equipamentosFormatados = [{
           numero: 1,
@@ -216,7 +217,7 @@ export default function PedidoSimples() {
           unidade: 'UN'
         }];
 
-        await supabase.functions.invoke('enviar-docx-app2', {
+        const { data: envio, error: envioError } = await supabase.functions.invoke('enviar-docx-app2', {
           body: {
             pedidoId: pedidoInserido.id,
             clienteNome: data.cliente,
@@ -232,13 +233,16 @@ export default function PedidoSimples() {
             motorMarca: checklistCompras.motor_marca
           }
         });
+        if (envioError || envio?.ok !== true) throw envioError || new Error(envio?.error || "A fábrica não confirmou o recebimento");
+        envioFabricaConfirmado = true;
         console.log("Pedido enviado para App2 (fábrica)");
       } catch (app2Error) {
         console.warn("Não foi possível enviar para App2:", app2Error);
         // Não bloqueia - pedido já foi criado localmente
       }
 
-      toast.success("Pedido cadastrado com sucesso!");
+      if (envioFabricaConfirmado) toast.success("Pedido cadastrado e enviado à fábrica!");
+      else toast.warning("Pedido cadastrado, mas o envio à fábrica não foi confirmado. Confira o pedido salvo antes de tentar reenviar.", { duration: 12000 });
       reset();
       navigate(destinoAposCriarPedido(identidadeVendedor.fixo, pedidoInserido.id));
     } catch (error: any) {

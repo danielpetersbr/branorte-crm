@@ -118,33 +118,25 @@ export function useSalvarReuniao() {
       funcionando: string; melhorar: string; proximos_passos: string
       perdas: PerdaForm[]
     }) => {
-      // upsert por (time_slug, data): reabrir no mesmo dia CORRIGE em vez de
-      // criar uma segunda reunião do mesmo time.
-      const { data: r, error: e1 } = await supabase.from('reuniao_time').upsert({
-        time_slug: f.time_slug, data: hojeSP(),
-        conduzida_por: f.conduzida_por || null,
-        funcionando: f.funcionando || null,
-        melhorar: f.melhorar || null,
-        proximos_passos: f.proximos_passos || null,
-        atualizado_em: new Date().toISOString(),
-      }, { onConflict: 'time_slug,data' }).select('id').single()
-      if (e1) throw e1
-
-      const { error: e2 } = await supabase.from('reuniao_perda').delete().eq('reuniao_id', r.id)
-      if (e2) throw e2
-
-      const validas = f.perdas.filter(p => p.cliente.trim())
-      if (validas.length) {
-        const { error: e3 } = await supabase.from('reuniao_perda').insert(
-          validas.map(p => ({
-            reuniao_id: r.id, cliente: p.cliente, vendedor_nome: p.vendedor_nome || null,
-            valor: p.valor, motivo: p.motivo || null,
-            concorrente: p.motivo.includes('concorrente') ? (p.concorrente || null) : null,
-          })),
-        )
-        if (e3) throw e3
+      // A ata e a substituição das perdas são uma só transação. A função
+      // respeita as permissões do chamador e conserva tudo se houver falha.
+      const { data, error } = await supabase.rpc('reuniao_salvar_atomicamente', {
+        p_time_slug: f.time_slug, p_data: hojeSP(),
+        p_conduzida_por: f.conduzida_por || null,
+        p_funcionando: f.funcionando || null,
+        p_melhorar: f.melhorar || null,
+        p_proximos_passos: f.proximos_passos || null,
+        p_perdas: f.perdas.filter(p => p.cliente.trim()).map(p => ({
+          cliente: p.cliente, vendedor_nome: p.vendedor_nome || null,
+          valor: p.valor, motivo: p.motivo || null,
+          concorrente: p.motivo.includes('concorrente') ? (p.concorrente || null) : null,
+        })),
+      })
+      if (error) throw error
+      if (typeof data !== 'number' || !Number.isSafeInteger(data) || data <= 0) {
+        throw new Error('O salvamento da reunião não foi confirmado. Tente novamente.')
       }
-      return r.id as number
+      return data
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reuniao-dia'] })

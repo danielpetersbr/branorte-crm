@@ -13,6 +13,8 @@ export const TABS: { id: TabId; label: string; pergunta: string }[] = [
 ]
 
 const LS_KEY = 'dashboard-tab'
+let cancelarSalto: (() => void) | undefined
+let abaDoSalto: TabId | undefined
 
 function ehTab(v: string | null): v is TabId {
   return !!v && (TAB_IDS as readonly string[]).includes(v)
@@ -30,7 +32,7 @@ function ehTab(v: string | null): v is TabId {
  * localStorage entra só como preferência inicial quando a URL vem sem ?tab —
  * assim quem sempre olha "Equipe" cai lá, mas um link explícito sempre vence.
  */
-export function useDashboardTab(): [TabId, (t: TabId, opts?: { replace?: boolean }) => void] {
+export function useDashboardTab({ ownsNavigation = false }: { ownsNavigation?: boolean } = {}): [TabId, (t: TabId, opts?: { replace?: boolean }) => void] {
   const [params, setParams] = useSearchParams()
   const naUrl = params.get('tab')
 
@@ -38,8 +40,7 @@ export function useDashboardTab(): [TabId, (t: TabId, opts?: { replace?: boolean
     ? naUrl
     : (() => {
         if (typeof window === 'undefined') return 'geral'
-        const salvo = localStorage.getItem(LS_KEY)
-        return ehTab(salvo) ? salvo : 'geral'
+        try { const salvo = localStorage.getItem(LS_KEY); return ehTab(salvo) ? salvo : 'geral' } catch { return 'geral' }
       })()
 
   // Espelha a aba resolvida na URL sem criar entrada no histórico — senão o
@@ -57,33 +58,52 @@ export function useDashboardTab(): [TabId, (t: TabId, opts?: { replace?: boolean
   }, [tab])
 
   const set = useCallback((t: TabId, opts?: { replace?: boolean }) => {
+    cancelarSalto?.()
     const p = new URLSearchParams(window.location.search)
     p.set('tab', t)
     setParams(p, { replace: opts?.replace ?? false })
   }, [setParams])
+  // Só o shell permanece montado durante a troca de abas; o cleanup da aba
+  // Geral não pode cancelar um salto cujo destino ainda está sendo carregado.
+  useEffect(() => {
+    if (!ownsNavigation) return
+    return () => { cancelarSalto?.() }
+  }, [ownsNavigation])
+  useEffect(() => { if (ownsNavigation && abaDoSalto && abaDoSalto !== tab) cancelarSalto?.() }, [tab, ownsNavigation])
 
   return [tab, set]
 }
 
 /**
  * Troca de aba e rola até um bloco. Usado pelos atalhos das Ações prioritárias.
- * O scroll espera o próximo frame porque a aba alvo só monta depois do setState.
+ * O scroll aguarda a seção da aba lazy, com prazo e cancelamento ao sair da aba.
  */
 export function irPara(
   set: (t: TabId) => void,
   tab: TabId,
   anchorId?: string,
 ) {
+  cancelarSalto?.()
   set(tab)
   if (!anchorId) return
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const el = document.getElementById(anchorId)
-      if (!el) return
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      // foco pra quem navega por teclado acompanhar o salto
-      el.setAttribute('tabindex', '-1')
-      ;(el as HTMLElement).focus({ preventScroll: true })
-    })
-  })
+  const rolar = () => {
+    const el = document.getElementById(anchorId)
+    if (!el) return false
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    el.setAttribute('tabindex', '-1')
+    el.focus({ preventScroll: true })
+    return true
+  }
+  if (rolar()) return
+  // A aba pode aguardar um chunk lazy e os dados; dois frames não garantem a montagem.
+  const cancelar = () => {
+    observer.disconnect()
+    clearTimeout(timeout)
+    if (cancelarSalto === cancelar) { cancelarSalto = undefined; abaDoSalto = undefined }
+  }
+  const observer = new MutationObserver(() => { if (rolar()) cancelar() })
+  const timeout = setTimeout(cancelar, 15_000)
+  cancelarSalto = cancelar
+  abaDoSalto = tab
+  observer.observe(document.body, { childList: true, subtree: true })
 }

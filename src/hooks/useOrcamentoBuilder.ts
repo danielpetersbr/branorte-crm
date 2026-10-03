@@ -505,10 +505,23 @@ export async function obterProximoNumero(): Promise<{ ano: number; sequencial: n
   // Dispara scan da pasta Z em background (pra próxima vez) — fire and forget
   try {
     const ch = supabase.channel('force-scan-pasta')
-    ch.subscribe().then(() => {
-      ch.send({ type: 'broadcast', event: 'scan-now', payload: { ts: Date.now() } })
-      setTimeout(() => { try { supabase.removeChannel(ch) } catch {} }, 3000)
-    })
+    let encerrado = false, enviado = false
+    const encerrar = () => {
+      if (encerrado) return
+      encerrado = true
+      clearTimeout(limite)
+      void supabase.removeChannel(ch).catch(() => {})
+    }
+    const limite = setTimeout(encerrar, 3000)
+    try {
+      ch.subscribe(status => {
+        if (encerrado) return
+        if (status === 'SUBSCRIBED' && !enviado) {
+          enviado = true
+          void ch.send({ type: 'broadcast', event: 'scan-now', payload: { ts: Date.now() } }).then(encerrar, encerrar)
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') encerrar()
+      })
+    } catch { encerrar() }
   } catch { /* non-blocking */ }
 
   return {

@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useDueDiligence'
 import { useCan } from '@/hooks/usePermissions'
 import { DossieDetetiveCard, type DossieDetetive } from './DossieDetetiveCard'
+import { selecionarConsultaVisivel } from '@/lib/dd-resultado-visivel'
 
 // Custos calculados a partir da tabela FCDL/SC jan/2026 com codigos API
 // CORRIGIDOS (descobertos em 29/05/2026 — codigos REST sao diferentes
@@ -210,10 +211,11 @@ interface FormProps {
    * Quando setado, o form renderiza esta consulta ja persistida (vinda do
    * historico/drawer) no lugar do `consultar.data`. Hidrata os campos
    * cnpj/cpf/pacote pra que o botao "Reconsultar" do ResultadoBox funcione.
-   * NOTA: `consultar.data` (nova consulta feita pelo usuario) tem PRIORIDADE
-   * sobre `viewConsulta` no render.
+   * O histórico selecionado tem prioridade até onNewConsulta limpar a seleção.
    */
   viewConsulta?: DDConsulta | null
+  /** Mantém a identidade do histórico durante leitura pendente ou com falha. */
+  viewConsultaId?: string | null
   /**
    * Callback disparado ANTES de qualquer nova consulta (handleSubmit).
    * Usado pela pagina pra limpar o `consultaSelecionada` quando o usuario
@@ -226,7 +228,7 @@ interface FormProps {
 type TipoConsulta = 'pj' | 'pf' | 'ambos'
 
 export function DueDiligenceForm({
-  contactId, contactName, initialCnpj, viewConsulta, onNewConsulta,
+  contactId, contactName, initialCnpj, viewConsulta, viewConsultaId, onNewConsulta,
 }: FormProps) {
   const [tipoConsulta, setTipoConsulta] = useState<TipoConsulta>('pj')
   const [cnpj, setCnpj] = useState(initialCnpj ?? '')
@@ -239,6 +241,10 @@ export function DueDiligenceForm({
     INSUMOS_INFO.filter(i => i.default).map(i => i.codigo),
   )
   const consultar = useConsultarDueDiligence()
+  const historicoSelecionadoId = viewConsultaId ?? viewConsulta?.id ?? null
+  const resetConsulta = consultar.reset
+  useEffect(() => { if (historicoSelecionadoId) resetConsulta() }, [historicoSelecionadoId, resetConsulta])
+  const consultaParaRenderizar = selecionarConsultaVisivel(consultar.data, viewConsulta, viewConsultaId)
   const { data: historico = [] } = useDDHistorico(contactId ?? null)
 
   // Hidrata form quando uma consulta do historico e selecionada (via drawer).
@@ -305,6 +311,7 @@ export function DueDiligenceForm({
     // o resultado da nova mutation vai aparecer no lugar (consultar.data tem
     // prioridade no render abaixo).
     onNewConsulta?.()
+    consultar.reset()
     // Backend aceita pacote='custom' + insumos_custom = { pj?: number[], pf?: number[] }
     // (ver api/dd-consultar.ts). Quando custom, monta plano so com os codigos passados.
     const payload: Parameters<typeof consultar.mutate>[0] = {
@@ -319,7 +326,7 @@ export function DueDiligenceForm({
       // Codigos validos pra esse tipo de consulta — replica pra pj e/ou pf
       // conforme tipoConsulta. A API ignora chaves vazias.
       const codigos = insumosSelecionadosValidos
-      ;(payload as Record<string, unknown>).insumos_custom = {
+      payload.insumos_custom = {
         ...(precisaCnpj ? { pj: codigos } : {}),
         ...(precisaCpf ? { pf: codigos } : {}),
       }
@@ -561,15 +568,11 @@ export function DueDiligenceForm({
       </div>
       {/* Fim do form */}
 
-      {/* Resultado da consulta atual (se houver) — FULL WIDTH.
-          Regra de prioridade: `consultar.data` (nova consulta) > `viewConsulta`
-          (consulta carregada do historico/drawer). Quando user clica no item
-          do drawer, viewConsulta carrega sem custo. Quando user clica Consultar,
-          onNewConsulta limpa viewConsulta e consultar.data toma o lugar. */}
-      {(consultar.data || viewConsulta) && (() => {
-        const consultaParaRenderizar = consultar.data?.consulta ?? viewConsulta!
+      {/* O histórico mantém sua identidade enquanto carrega. Uma nova consulta
+          limpa a seleção e só apresenta o novo resultado confirmado. */}
+      {consultaParaRenderizar && (() => {
         // cacheHit=true pra historico (e leitura, custo zero) e flag do servidor pra nova consulta.
-        const cacheHit = consultar.data ? consultar.data._cache_hit : true
+        const cacheHit = historicoSelecionadoId ? true : consultar.data?._cache_hit ?? true
         return (
           <ResultadoBox
             consulta={consultaParaRenderizar}
@@ -1186,27 +1189,32 @@ function ColunaRisco({ resumo, analise }: { resumo: Resumo; analise: Analise }) 
 }
 
 function ColunaDatajud({ datajud }: { datajud: DatajudPayload }) {
-  const tem = datajud.processos.length > 0
+  const tem = datajud.totalEncontrado > 0 || datajud.processos.length > 0
+  const indisponivel = datajud.ok === false || (datajud.resumoTribunais.length > 0 && datajud.resumoTribunais.every(t => !!t.erro))
+  const parcial = !indisponivel && (datajud.erros.length > 0 || datajud.resumoTribunais.some(t => !!t.erro))
   const total = datajud.totalEncontrado
   const badge = (
-    <span className={`text-[9px] font-mono uppercase ${tem ? 'text-warning' : 'text-success'} tabular-nums`}>
+    <span className={`text-[9px] font-mono uppercase ${indisponivel ? 'text-danger' : tem || parcial ? 'text-warning' : 'text-success'} tabular-nums`}>
       Datajud · CNJ
     </span>
   )
   return (
     <SubCard titulo="Processos judiciais" badge={badge}>
       <div className="flex items-center gap-2 mb-2">
-        {tem ? (
+        {tem || indisponivel || parcial ? (
           <AlertCircle className="h-4 w-4 text-warning shrink-0" />
         ) : (
           <CheckCircle className="h-4 w-4 text-success shrink-0" />
         )}
         <span className="text-[12px] font-semibold text-ink tabular-nums">
-          {tem
+          {indisponivel ? 'Consulta judicial indisponível' : tem
             ? `${total} processo${total === 1 ? '' : 's'}`
+            : parcial ? 'Nenhum processo nos tribunais consultados'
             : 'Nenhum processo encontrado'}
         </span>
       </div>
+      {indisponivel && <p role="alert" className="mb-2 text-[11px] text-danger">Não foi possível confirmar a consulta judicial. Esse resultado não comprova ausência de processos.</p>}
+      {parcial && <p role="alert" className="mb-2 text-[11px] text-warning">Consulta parcial: alguns tribunais não responderam. Os resultados podem estar incompletos.</p>}
 
       {tem && (
         <div className="space-y-1.5">

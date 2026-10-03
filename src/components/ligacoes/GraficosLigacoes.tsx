@@ -141,7 +141,7 @@ export function EvolucaoLigacoes({ serie, truncado }: { serie: SerieDia[]; trunc
       }
       nota={[
         porSemana ? 'Período longo: cada barra é uma SEMANA (começando na segunda), senão o dia a dia vira serrote ilegível.' : '',
-        truncado ? 'Os períodos mais antigos aparecem menores do que foram: a primeira leitura de cada vendedor traz as últimas 500 ligações dele, então o começo da série está cortado. Os últimos dias estão completos.' : '',
+        truncado ? 'O histórico depende das ligações sincronizadas; períodos antigos podem estar incompletos.' : '',
       ].filter(Boolean).join(' ') || undefined}
     >
       {dados.length === 0 ? <Vazio msg="Nenhuma ligação no período selecionado." /> : (

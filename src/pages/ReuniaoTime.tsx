@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Users, Phone, FileText, Flame, AlertTriangle, TrendingDown, Check,
@@ -77,19 +77,28 @@ export function ReuniaoTime() {
   const [slug, setSlug] = useState<TimeSlug | null>(null)
   const time = TIMES.find(t => t.slug === slug) ?? null
 
-  const { data: pauta, isLoading } = usePautaNumeros(slug, 7)
-  const { data: vendas } = useVendidoMes(slug)
-  const { data: jaFeita } = useReuniaoDoDia(slug)
-  const { data: historico = [] } = useReuniaoHistorico(30)
+  const { data: pauta, isLoading, error: pautaError, refetch: retryPauta, isFetching: fetchingPauta } = usePautaNumeros(slug, 7)
+  const { data: vendas, error: vendasError, refetch: retryVendas, isFetching: fetchingVendas } = useVendidoMes(slug)
+  const { data: jaFeita, isLoading: carregandoReuniao, error: reuniaoError, refetch: retryReuniao, isFetching: fetchingReuniao } = useReuniaoDoDia(slug)
+  const { data: historico = [], error: historicoError, refetch: retryHistorico, isFetching: fetchingHistorico } = useReuniaoHistorico(30)
   const salvar = useSalvarReuniao()
 
   const [funcionando, setFuncionando] = useState('')
   const [melhorar, setMelhorar] = useState('')
   const [proximos, setProximos] = useState('')
   const [perdas, setPerdas] = useState<PerdaForm[]>([])
+  const draftSujo = useRef(false)
+  const marcarEdicao = () => { draftSujo.current = true; if (salvar.isSuccess) salvar.reset() }
+  const trocarTime = (next: TimeSlug | null) => {
+    if (salvar.isPending) return
+    draftSujo.current = false
+    salvar.reset()
+    setSlug(next)
+  }
 
   // reabriu no mesmo dia? carrega o que já foi anotado, pra corrigir
   useEffect(() => {
+    if (draftSujo.current) return
     if (!jaFeita) { setFuncionando(''); setMelhorar(''); setProximos(''); setPerdas([]); return }
     setFuncionando(jaFeita.funcionando ?? '')
     setMelhorar(jaFeita.melhorar ?? '')
@@ -119,7 +128,7 @@ export function ReuniaoTime() {
               h.time_slug === t.slug &&
               h.data === new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))
             return (
-              <button key={t.slug} onClick={() => setSlug(t.slug)}
+              <button key={t.slug} onClick={() => trocarTime(t.slug)}
                 className="w-full text-left px-4 py-3 rounded-lg border border-border bg-surface hover:border-accent transition-colors">
                 <div className="flex items-center justify-between gap-2">
                   <div>
@@ -136,6 +145,11 @@ export function ReuniaoTime() {
             )
           })}
         </div>
+
+        {historicoError && <div role="alert" className="mb-4 rounded-lg border border-danger/30 p-3 text-sm text-danger">
+          Não foi possível carregar o histórico de reuniões.
+          <button disabled={fetchingHistorico} onClick={() => { void retryHistorico() }} className="ml-2 underline disabled:opacity-50">Tentar novamente</button>
+        </div>}
 
         {perdasMes.length > 0 && (
           <div>
@@ -156,7 +170,7 @@ export function ReuniaoTime() {
     <div className="w-full min-w-0 px-3 sm:px-5 py-4 sm:py-6 space-y-4 pb-24">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <button onClick={() => setSlug(null)}
+          <button disabled={salvar.isPending} onClick={() => trocarTime(null)}
             className="text-[12px] text-accent hover:underline mb-1">← trocar de time</button>
           <h1 className="text-[20px] sm:text-[24px] font-bold text-ink">{time.nome}</h1>
           <p className="text-[13px] text-ink-muted">
@@ -174,12 +188,17 @@ export function ReuniaoTime() {
         )}
       </header>
 
-      {isLoading || !pauta ? (
+      {(pautaError || vendasError || reuniaoError) && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+        {reuniaoError ? 'Não foi possível carregar a reunião já registrada. Suas anotações locais foram mantidas; tente novamente antes de salvar.' : 'Não foi possível carregar todos os números da reunião. Os dados exibidos podem estar desatualizados.'}
+        <button disabled={fetchingPauta || fetchingVendas || fetchingReuniao} onClick={() => { void retryPauta(); void retryVendas(); void retryReuniao() }} className="ml-2 underline disabled:opacity-50">Tentar novamente</button>
+      </div>}
+
+      {isLoading || carregandoReuniao ? (
         <div className="h-40 grid place-items-center text-ink-muted">
           <Loader2 className="w-6 h-6 animate-spin" />
         </div>
-      ) : (
-        <>
+      ) : pauta ? (
+        <fieldset disabled={salvar.isPending} onChangeCapture={marcarEdicao} className="space-y-4 min-w-0">
           <Bloco n={1} icone={<Phone className="w-4 h-4 text-ink-muted" />} titulo="Ligações · últimos 7 dias">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <Num label="Feitas" valor={String(pauta.ligacoes_feitas)}
@@ -230,7 +249,7 @@ export function ReuniaoTime() {
                   <div className="flex gap-2">
                     <input className={inputCls} placeholder="Nome do cliente" value={p.cliente}
                       onChange={e => setPerdas(perdas.map((x, j) => j === i ? { ...x, cliente: e.target.value } : x))} />
-                    <button type="button" onClick={() => setPerdas(perdas.filter((_, j) => j !== i))}
+                    <button type="button" onClick={() => { marcarEdicao(); setPerdas(perdas.filter((_, j) => j !== i)) }}
                       className="shrink-0 w-10 grid place-items-center rounded-md border border-border text-ink-muted hover:text-danger hover:border-danger/50">
                       <X className="w-4 h-4" />
                     </button>
@@ -259,7 +278,7 @@ export function ReuniaoTime() {
                 </div>
               ))}
               <button type="button"
-                onClick={() => setPerdas([...perdas, { cliente: '', vendedor_nome: '', valor: null, motivo: '', concorrente: '' }])}
+                onClick={() => { marcarEdicao(); setPerdas([...perdas, { cliente: '', vendedor_nome: '', valor: null, motivo: '', concorrente: '' }]) }}
                 className="w-full py-2.5 rounded-md border border-dashed border-border text-[13px] text-ink-muted hover:border-danger hover:text-danger transition-colors">
                 <Plus className="w-4 h-4 inline mr-1" /> Registrar negócio perdido
               </button>
@@ -289,8 +308,12 @@ export function ReuniaoTime() {
               </div>
             </div>
           </Bloco>
-        </>
-      )}
+        </fieldset>
+      ) : !pautaError ? <p role="status" className="text-sm text-ink-muted">A pauta não está disponível. Tente recarregar os dados.</p> : null}
+
+      {salvar.isError && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-danger">
+        Não foi possível concluir o registro. Suas anotações foram mantidas; tente registrar novamente.
+      </div>}
 
       <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-0 right-0 md:bottom-0 md:left-[var(--branorte-sidebar-width)] border-t border-border bg-surface/95 backdrop-blur px-3 py-2.5 z-20">
         <div className="w-full min-w-0 flex flex-wrap items-center gap-3">
@@ -300,11 +323,11 @@ export function ReuniaoTime() {
               : 'O motivo de perda é o dado que mais vale aqui.'}
           </div>
           <button
-            disabled={salvar.isPending}
+            disabled={salvar.isPending || carregandoReuniao || !!reuniaoError || !pauta}
             onClick={() => salvar.mutate({
               time_slug: time.slug, conduzida_por: 'DANIEL',
               funcionando, melhorar, proximos_passos: proximos, perdas,
-            })}
+            }, { onSuccess: () => { draftSujo.current = false } })}
             className={cn('shrink-0 px-5 py-2.5 rounded-md text-[14px] font-semibold inline-flex items-center gap-2 transition-colors',
               salvar.isPending ? 'bg-surface-2 text-ink-muted' : 'bg-accent text-accent-fg hover:opacity-90')}>
             {salvar.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

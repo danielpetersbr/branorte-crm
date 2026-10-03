@@ -18,7 +18,7 @@
 //   - vercel.json: { "functions": { "api/gerar-pdf.ts": { "memory": 1024, "maxDuration": 60 } } }
 //   - Env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import chromium from '@sparticuz/chromium'
 import puppeteer from 'puppeteer-core'
 import { exigirAprovado } from './_lib/exigir-aprovado.js'
@@ -190,7 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 // Apaga PDFs temporários com 2+ dias (pastas gerar-pdf/YYYY-MM-DD antigas).
 // Best-effort: falha silenciosa, roda em background após responder.
-async function cleanupOldPdfs(supa: ReturnType<typeof createClient>) {
+async function cleanupOldPdfs(supa: SupabaseClient) {
   for (const diasAtras of [2, 3]) {
     const d = new Date(Date.now() - diasAtras * 86400000).toISOString().slice(0, 10)
     for (const raiz of ['gerar-pdf', 'props']) {

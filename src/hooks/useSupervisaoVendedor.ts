@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 // ============================================================================
@@ -263,8 +264,11 @@ export function useEncerrarAchado(vendedorId: string | null | undefined) {
  * PASSO 1 de supervisao_varrer_*). Ou seja, a tela só antecipa o que o motor
  * faria na próxima rodada — em vez de deixar o card mentir na tela até lá.
  */
+export class RegistroParcialSupervisao extends Error {}
+
 export function useRegistrarInteracao(vendedorId: string | null | undefined) {
   const qc = useQueryClient()
+  const registrados = useRef(new Set<string>())
   return useMutation({
     mutationFn: async (v: {
       achadoId: string
@@ -275,23 +279,31 @@ export function useRegistrarInteracao(vendedorId: string | null | undefined) {
       observacao: string | null
       usuarioId: string | null
     }) => {
-      const { error: erroInsert } = await supabase.from('supervisao_interacoes').insert({
-        vendedor_id: v.vendedorId,
-        chat_id: v.chatId,
-        tipo: v.tipo,
-        ocorrido_em: v.ocorridoEm,
-        observacao: v.observacao,
-        criado_por: v.usuarioId,
-      })
-      if (erroInsert) throw erroInsert
-      const { error: erroRpc } = await supabase.rpc('supervisao_encerrar', {
-        p_achado_id: v.achadoId,
-        p_como: 'resolvida',
-        p_por: v.usuarioId,
-      })
-      if (erroRpc) throw erroRpc
+      const chave = `${v.usuarioId}:${v.vendedorId}:${v.achadoId}`
+      if (!registrados.current.has(chave)) {
+        const { error: erroInsert } = await supabase.from('supervisao_interacoes').insert({
+          vendedor_id: v.vendedorId,
+          chat_id: v.chatId,
+          tipo: v.tipo,
+          ocorrido_em: v.ocorridoEm,
+          observacao: v.observacao,
+          criado_por: v.usuarioId,
+        })
+        if (erroInsert) throw erroInsert
+        registrados.current.add(chave)
+      }
+      try {
+        const { error: erroRpc } = await supabase.rpc('supervisao_encerrar', {
+          p_achado_id: v.achadoId,
+          p_como: 'resolvida',
+          p_por: v.usuarioId,
+        })
+        if (erroRpc) throw erroRpc
+      } catch {
+        throw new RegistroParcialSupervisao('Contato já registrado. Não foi possível encerrar o apontamento; tente encerrar novamente sem registrar outro contato.')
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: chaveAchados(vendedorId) }) },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['supervisao'] }) },
   })
 }
 
@@ -302,6 +314,7 @@ export function useRegistrarInteracao(vendedorId: string | null | undefined) {
  */
 export function useReportarIaErrada(vendedorId: string | null | undefined) {
   const qc = useQueryClient()
+  const registrados = useRef(new Set<string>())
   return useMutation({
     mutationFn: async (v: {
       achado: SupervisaoAchado
@@ -309,25 +322,33 @@ export function useReportarIaErrada(vendedorId: string | null | undefined) {
       detalhe: string | null
       usuarioId: string | null
     }) => {
-      const { error: erroInsert } = await supabase.from('supervisao_feedback').insert({
-        achado_id: v.achado.id,
-        regra_key: v.achado.regra_key,
-        regra_versao: v.achado.regra_versao,
-        camada: v.achado.camada,
-        modelo: v.achado.modelo,
-        confianca_original: v.achado.confianca,
-        usuario_id: v.usuarioId,
-        motivo: v.motivo,
-        detalhe: v.detalhe,
-      })
-      if (erroInsert) throw erroInsert
-      const { error: erroRpc } = await supabase.rpc('supervisao_encerrar', {
-        p_achado_id: v.achado.id,
-        p_como: 'ia_errada',
-        p_por: v.usuarioId,
-      })
-      if (erroRpc) throw erroRpc
+      const chave = `${v.usuarioId}:${v.achado.id}`
+      if (!registrados.current.has(chave)) {
+        const { error: erroInsert } = await supabase.from('supervisao_feedback').insert({
+          achado_id: v.achado.id,
+          regra_key: v.achado.regra_key,
+          regra_versao: v.achado.regra_versao,
+          camada: v.achado.camada,
+          modelo: v.achado.modelo,
+          confianca_original: v.achado.confianca,
+          usuario_id: v.usuarioId,
+          motivo: v.motivo,
+          detalhe: v.detalhe,
+        })
+        if (erroInsert) throw erroInsert
+        registrados.current.add(chave)
+      }
+      try {
+        const { error: erroRpc } = await supabase.rpc('supervisao_encerrar', {
+          p_achado_id: v.achado.id,
+          p_como: 'ia_errada',
+          p_por: v.usuarioId,
+        })
+        if (erroRpc) throw erroRpc
+      } catch {
+        throw new RegistroParcialSupervisao('Motivo já registrado. Não foi possível encerrar o apontamento; tente encerrar novamente sem enviar outro relato.')
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: chaveAchados(vendedorId) }) },
+    onSettled: () => { qc.invalidateQueries({ queryKey: ['supervisao'] }) },
   })
 }

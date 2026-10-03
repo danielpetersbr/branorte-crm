@@ -24,6 +24,7 @@ import {
 } from "./ChecklistComprasEditor";
 import { toast } from "sonner";
 import { supabase } from "@/lib/controle-supabase/client";
+import { supabase as crmSupabase } from "@/lib/supabase";
 import { avisoValorEdicao, decidirValorEdicao, hojeSP, valorBase, valorContrato } from "@/lib/pedido-venda/revisaoPedido";
 import { regerarDocumentoPedido, sincronizarParcelasFinanceiro } from "@/lib/pedido-venda/pedidoRevisaoAcoes";
 import { FileText, Upload, Download, Calendar as CalendarIcon, User, Package, Settings, DollarSign, Loader2, CheckCircle } from "lucide-react";
@@ -619,9 +620,11 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           if (!docxProducao && file.size <= 3 * 1024 * 1024) {
             try {
               const pdfBase64 = await fileToBase64(file);
-              const resp = await fetch('https://branorte-crm.vercel.app/api/pdf-to-docx-producao', {
+              const { data: { session }, error: sessionError } = await crmSupabase.auth.getSession();
+              if (sessionError || !session?.access_token) throw new Error('Sessão Branorte expirada. Entre novamente para converter o documento.');
+              const resp = await fetch('/api/pdf-to-docx-producao', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
                 body: JSON.stringify({ pdfBase64, filename: file.name }),
               });
               if (resp.ok) {

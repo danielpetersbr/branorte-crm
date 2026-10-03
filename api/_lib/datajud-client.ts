@@ -94,7 +94,7 @@ export async function buscarProcessos(opts: {
     const tribunal = TRIBUNAIS_PRIORIDADE[i]
     const r = resultados[i]
     if (r.status === 'rejected' || !r.value.ok) {
-      const msg = r.status === 'rejected' ? String(r.reason) : r.value.erro ?? 'erro desconhecido'
+      const msg = r.status === 'rejected' ? String(r.reason) : r.value.ok === false ? r.value.erro : 'erro desconhecido'
       resumoTribunais.push({ tribunal: tribunal.nome, total: 0, retornados: 0, erro: msg })
       erros.push(`${tribunal.nome}: ${msg}`)
       continue
@@ -116,7 +116,7 @@ export async function buscarProcessos(opts: {
   })
 
   return {
-    ok: true,
+    ok: resumoTribunais.some(r => r.erro === undefined),
     documento: opts.documento,
     tipoDocumento: opts.tipo,
     totalEncontrado: resumoTribunais.reduce((acc, r) => acc + r.total, 0),

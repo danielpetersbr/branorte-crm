@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { useControleVendas, type Periodo, type ControleVendas } from '@/hooks/useControleDashboard'
 import { ORIGEM_TODAS, ORIGEM_NAO_INFORMADA, rotuloOrigemVenda } from '@/lib/vendas-origem'
 import {
@@ -137,7 +138,7 @@ function FiltroOrigem({ data, origem, onChange }: {
 export function ControleDashboard() {
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [origem, setOrigem] = useState<string>(ORIGEM_TODAS)
-  const { data, isLoading } = useControleVendas(periodo, origem)
+  const { data, isLoading, error, refetch, isFetching } = useControleVendas(periodo, origem)
 
   return (
     <div className="p-4 lg:p-8 space-y-4">
@@ -166,7 +167,7 @@ export function ControleDashboard() {
         </div>
       </div>
 
-      {isLoading && !data ? <PageLoading /> : data && (
+      {error ? <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar o Painel de Vendas." /> : isLoading && !data ? <PageLoading /> : data && (
         <>
           <FiltroOrigem data={data} origem={origem} onChange={setOrigem} />
 

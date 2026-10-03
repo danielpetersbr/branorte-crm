@@ -111,6 +111,12 @@ export function janelaDoPeriodo(p: Periodo, custom?: Janela): Janela {
   return { from: d.toISOString(), to: null }
 }
 
+export function janelaValida(j: Janela): boolean {
+  const de = j.from ? Date.parse(j.from) : null
+  const ate = j.to ? Date.parse(j.to) : null
+  return (de === null || Number.isFinite(de)) && (ate === null || Number.isFinite(ate)) && (de === null || ate === null || de < ate)
+}
+
 // Período ANTERIOR de mesmo tamanho: hoje→ontem, 7d→7 dias antes, mês→mês passado.
 // "Tudo" não tem anterior — e comparar com o nada seria inventar contexto.
 export function janelaAnterior(p: Periodo, custom?: Janela): Janela | null {
@@ -132,9 +138,11 @@ export function janelaAnterior(p: Periodo, custom?: Janela): Janela | null {
   }
   // custom: janela de mesma duração, imediatamente antes
   if (custom?.from) {
+    if (!janelaValida(custom)) return null
     const ini = new Date(custom.from)
     const fim = custom.to ? new Date(custom.to) : new Date()
     const dur = fim.getTime() - ini.getTime()
+    if (dur <= 0) return null
     return { from: new Date(ini.getTime() - dur).toISOString(), to: custom.from }
   }
   return null
@@ -157,7 +165,7 @@ const args = (j: Janela, vendedor: string | null) => ({
 export function useLigacoesResumo(j: Janela, vendedor: string | null, ativo = true, auto = true) {
   return useQuery({
     queryKey: ['ligacoes-resumo', j.from, j.to, vendedor],
-    enabled: ativo,
+    enabled: ativo && janelaValida(j),
     queryFn: async (): Promise<LigacaoResumo[]> => {
       const { data, error } = await supabase.rpc('ligacoes_resumo', args(j, vendedor))
       if (error) throw error
@@ -171,6 +179,7 @@ export function useLigacoesResumo(j: Janela, vendedor: string | null, ativo = tr
 export function useLigacoesSerie(j: Janela, vendedor: string | null) {
   return useQuery({
     queryKey: ['ligacoes-serie', j.from, j.to, vendedor],
+    enabled: janelaValida(j),
     queryFn: async (): Promise<SerieDia[]> => {
       const { data, error } = await supabase.rpc('ligacoes_serie_dia', args(j, vendedor))
       if (error) throw error
@@ -184,6 +193,7 @@ export function useLigacoesSerie(j: Janela, vendedor: string | null) {
 export function useLigacoesPorHora(j: Janela, vendedor: string | null) {
   return useQuery({
     queryKey: ['ligacoes-hora', j.from, j.to, vendedor],
+    enabled: janelaValida(j),
     queryFn: async (): Promise<HoraLigacao[]> => {
       const { data, error } = await supabase.rpc('ligacoes_por_hora', args(j, vendedor))
       if (error) throw error

@@ -8,12 +8,13 @@
 // - LGPD vira ícone <Info /> com popover/tooltip no header
 // - Resultado sem bordas duplicadas; ParecerIA sticky no topo + score gigante
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Search, AlertCircle, History, Info, X, Eye, ArrowLeft, Printer } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DueDiligenceForm } from '@/components/contacts/DueDiligenceButton'
 import type { DDConsulta } from '@/hooks/useDueDiligence'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 
 export function Consulta() {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -22,9 +23,9 @@ export function Consulta() {
   // Estado da consulta atualmente sendo VISUALIZADA do historico (lifting state
   // pra a pagina). Quando setado, o DueDiligenceForm renderiza este resultado
   // no lugar de `consultar.data`. F5 perde — vive na URL via ?id=XXX pra deep-link.
-  const [consultaSelecionada, setConsultaSelecionada] = useState<DDConsulta | null>(null)
   const resultadoRef = useRef<HTMLDivElement | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
+  const queryClient = useQueryClient()
 
   // Fechar popover LGPD ao clicar fora
   useEffect(() => {
@@ -38,33 +39,28 @@ export function Consulta() {
     return () => window.removeEventListener('mousedown', onClick)
   }, [lgpdOpen])
 
-  // Deep-link: se vier ?id=XXX na URL, carrega a consulta uma vez no mount.
-  // Defensive: valida campos esperados antes de renderizar.
+  // Cada ID possui sua própria leitura/cache: uma consulta anterior nunca fica
+  // apresentada sob o link de outra, e falha de rede conserva o link para retry.
   const idFromUrl = searchParams.get('id')
+  const consultaQuery = useQuery({
+    queryKey: ['dd', 'consulta-url', idFromUrl], enabled: !!idFromUrl, staleTime: 60_000,
+    queryFn: async ({ signal }): Promise<DDConsulta | null> => {
+      const { data, error } = await supabase.from('due_diligence_consultas')
+        .select('*').eq('id', idFromUrl!).abortSignal(signal).maybeSingle()
+      if (error) throw error
+      return data && data.id === idFromUrl ? data as DDConsulta : null
+    },
+  })
+  const consultaSelecionada = idFromUrl ? consultaQuery.data ?? null : null
   useEffect(() => {
-    if (!idFromUrl || consultaSelecionada?.id === idFromUrl) return
-    let cancelado = false
-    ;(async () => {
-      const { data, error } = await supabase
-        .from('due_diligence_consultas')
-        .select('*')
-        .eq('id', idFromUrl)
-        .maybeSingle()
-      if (cancelado) return
-      if (error || !data || !data.id) {
-        // ID invalido — limpa da URL pra evitar tentar de novo em loop
-        setSearchParams(prev => {
-          const next = new URLSearchParams(prev)
-          next.delete('id')
-          return next
-        }, { replace: true })
-        return
-      }
-      setConsultaSelecionada(data as DDConsulta)
-      setTimeout(() => resultadoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
-    })()
-    return () => { cancelado = true }
-  }, [idFromUrl, consultaSelecionada?.id, setSearchParams])
+    if (!idFromUrl || !consultaQuery.isSuccess) return
+    if (!consultaSelecionada) {
+      setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('id'); return next }, { replace: true })
+      return
+    }
+    const timer = setTimeout(() => resultadoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    return () => clearTimeout(timer)
+  }, [idFromUrl, consultaQuery.isSuccess, consultaSelecionada, setSearchParams])
 
   // ESC: limpa view + fecha drawer. UX teclado.
   useEffect(() => {
@@ -83,7 +79,7 @@ export function Consulta() {
 
   // Centraliza a logica de "carregar consulta no resultado inline".
   const handleSelectConsulta = useCallback((c: DDConsulta) => {
-    setConsultaSelecionada(c)
+    queryClient.setQueryData(['dd', 'consulta-url', c.id], c)
     setDrawerOpen(false)
     // Sync URL pra deep-link sem trigger do efeito de fetch (id ja bate).
     setSearchParams(prev => {
@@ -92,10 +88,9 @@ export function Consulta() {
       return next
     }, { replace: true })
     setTimeout(() => resultadoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
-  }, [setSearchParams])
+  }, [setSearchParams, queryClient])
 
   const handleClearView = useCallback(() => {
-    setConsultaSelecionada(null)
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)
       next.delete('id')
@@ -176,6 +171,8 @@ export function Consulta() {
 
       {/* Conteúdo full-width */}
       <main className="w-full min-w-0 px-4 md:px-6 py-4">
+        {idFromUrl && <QueryNotice error={consultaQuery.error} loading={consultaQuery.isFetching} message="Não foi possível carregar a consulta deste link." onRetry={() => { void consultaQuery.refetch() }} />}
+        {idFromUrl && consultaQuery.isLoading && <p role="status" className="mb-3 text-sm text-ink-muted">Carregando consulta do histórico…</p>}
         {/* Indicador de "modo visualizar historico" — clareza sobre como sair */}
         {consultaSelecionada && (
           <div className="dd-no-print mb-3 flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-accent/40 bg-accent-bg/30">
@@ -209,6 +206,7 @@ export function Consulta() {
         <div ref={resultadoRef}>
           <DueDiligenceForm
             viewConsulta={consultaSelecionada}
+            viewConsultaId={idFromUrl}
             onNewConsulta={handleClearView}
           />
         </div>

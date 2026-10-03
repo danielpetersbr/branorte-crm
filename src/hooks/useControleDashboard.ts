@@ -252,5 +252,5 @@ export function useControleVendas(periodo: Periodo, origem: string = ORIGEM_TODA
     () => (base ? computeControleVendas(base.pedidos, base.settings, periodo, origem) : undefined),
     [base, q.dataUpdatedAt, periodo, origem],
   )
-  return { data, isLoading: q.isLoading }
+  return { data, isLoading: q.isLoading, error: q.error, refetch: q.refetch, isFetching: q.isFetching }
 }

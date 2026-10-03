@@ -51,8 +51,8 @@ const normUf = (uf: string | null) =>
 const REP_POR_ID: Record<string, Representante> = Object.fromEntries(REPRESENTANTES.map(r => [r.id, r]))
 
 export function MapaRepresentantes() {
-  const { data: linhas, isLoading } = useListaOrcamentos()
-  const { data: territorioSalvo } = useTerritorios()
+  const { data: linhas, isLoading, error: linhasError, refetch: retryLinhas, isFetching: fetchingLinhas } = useListaOrcamentos()
+  const { data: territorioSalvo, error: territorioError, refetch: retryTerritorios, isFetching: fetchingTerritorios } = useTerritorios()
   const salvar = useSalvarTerritorios()
   const { profile } = useAuth()
 
@@ -121,10 +121,11 @@ export function MapaRepresentantes() {
   const layerRef = useRef<L.GeoJSON | null>(null)
   const [erroGeo, setErroGeo] = useState(false)
   // o handler de clique do Leaflet é ligado uma vez — lê o estado atual por ref
-  const estadoRef = useRef({ porUf, territorio, selecionado, editando, pincel })
-  estadoRef.current = { porUf, territorio, selecionado, editando, pincel }
+  const estadoRef = useRef({ porUf, territorio, selecionado, editando, pincel, salvando: salvar.isPending })
+  estadoRef.current = { porUf, territorio, selecionado, editando, pincel, salvando: salvar.isPending }
 
   function clicarUf(uf: string) {
+    if (estadoRef.current.salvando) return
     const { editando: ed, pincel: p } = estadoRef.current
     if (ed) {
       if (!p) return // sem pincel escolhido, clique no mapa não faz nada
@@ -221,11 +222,13 @@ export function MapaRepresentantes() {
   const pincelRep = REP_POR_ID[pincel ?? '']
 
   async function onSalvar() {
-    if (!mudancas.length) return
-    await salvar.mutateAsync(
-      mudancas.map(m => ({ uf: m.uf, rep_id: m.para, autor: profile?.display_name ?? profile?.email ?? null })),
-    )
-    setRascunho(null); setPincel(null)
+    if (!mudancas.length || salvar.isPending) return
+    try {
+      await salvar.mutateAsync(
+        mudancas.map(m => ({ uf: m.uf, rep_id: m.para, autor: profile?.display_name ?? profile?.email ?? null })),
+      )
+      setRascunho(null); setPincel(null)
+    } catch { /* A mutation mantém o rascunho e exibe o erro abaixo. */ }
   }
 
   // Conta 'mapa' (Patrick) abre em TELA CHEIA, sem o cabeçalho/padding do Layout —
@@ -264,6 +267,7 @@ export function MapaRepresentantes() {
             ))}
           </div>
           <button
+            disabled={salvar.isPending || fetchingTerritorios || !!territorioError}
             onClick={() => {
               if (editando) { setRascunho(null); setPincel(null) }
               else { setRascunho({ ...(territorioSalvo ?? {}) }); setSelecionado(null) }
@@ -274,6 +278,11 @@ export function MapaRepresentantes() {
           </button>
         </div>
       </div>
+
+      {(linhasError || territorioError) && <div role="alert" className="shrink-0 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+        Não foi possível carregar todos os dados do mapa. Os números e a divisão podem estar desatualizados.
+        <button disabled={fetchingLinhas || fetchingTerritorios} onClick={() => { void retryLinhas(); void retryTerritorios() }} className="ml-2 underline disabled:opacity-50">Tentar novamente</button>
+      </div>}
 
       {/* barra do modo edição */}
       {editando && (
@@ -291,7 +300,7 @@ export function MapaRepresentantes() {
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={() => setRascunho({ ...(territorioSalvo ?? {}) })}
-              disabled={!mudancas.length}
+              disabled={!mudancas.length || salvar.isPending}
               className="h-8 px-3 rounded-lg border border-border bg-surface text-ink-muted disabled:opacity-40"
             >
               Descartar
@@ -304,7 +313,7 @@ export function MapaRepresentantes() {
               {salvar.isPending ? 'Salvando…' : 'Salvar divisão'}
             </button>
           </div>
-          {salvar.isError && <span className="w-full text-red-400">Não consegui salvar. Tente de novo.</span>}
+          {salvar.isError && <span role="alert" className="w-full text-danger">Não consegui salvar. Suas alterações foram mantidas; tente de novo.</span>}
         </div>
       )}
 
@@ -356,6 +365,7 @@ export function MapaRepresentantes() {
               return (
                 <li key={rep.id}>
                   <button
+                    disabled={salvar.isPending}
                     onClick={() => (editando
                       ? setPincel(p => (p === rep.id ? null : rep.id))
                       : setSelecionado(s => (s === rep.id ? null : rep.id)))}

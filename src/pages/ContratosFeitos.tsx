@@ -16,6 +16,7 @@ import {
   STATUS_CONTRATO, type ContratoLinha, type StatusContrato,
 } from '@/hooks/useContratos'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { formatBRL } from '@/lib/contrato/extenso'
 
 function dataBR(iso: string | null): string {
@@ -168,7 +169,7 @@ function Linha({ c }: { c: ContratoLinha }) {
 }
 
 export function ContratosFeitos() {
-  const { data, isLoading } = useContratos()
+  const { data, isLoading, error, refetch, isFetching } = useContratos()
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<StatusContrato | 'pendente_registro' | ''>('')
 
@@ -192,6 +193,7 @@ export function ContratosFeitos() {
   )
 
   if (isLoading) return <PageLoading />
+  if (error) return <div className="p-4"><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar os contratos." /></div>
 
   return (
     <div className="p-4 md:p-6 w-full min-w-0">

@@ -5,6 +5,8 @@
 // scrubDocxPrices remove todo R$ > 0 → GATE: se sobrar qualquer preço,
 // retorna 422 e o chamador cai no fluxo sem documento. Produção nunca vê preço.
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { createClient } from '@supabase/supabase-js'
+import { exigirAprovado } from './_lib/exigir-aprovado.js'
 import { scrubDocxPrices } from './_lib/scrubDocxPrices.js'
 
 // Limite real de request body na Vercel: ~4.5MB (o chamador pula PDFs > 3MB)
@@ -13,6 +15,8 @@ export const config = {
 }
 
 const SECRET = process.env.CONVERTAPI_SECRET
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
+const SVC_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -20,6 +24,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type')
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
+
+  const auth = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (!auth) return res.status(401).json({ error: 'no_auth' })
+  if (!SUPA_URL || !SVC_KEY) return res.status(500).json({ error: 'env_missing' })
+  const acesso = await exigirAprovado(createClient(SUPA_URL, SVC_KEY, { auth: { persistSession: false } }), auth)
+  if (!acesso.ok) return res.status(acesso.status).json({ error: acesso.error })
 
   if (!SECRET) {
     return res.status(503).json({ error: 'convertapi_not_configured' })

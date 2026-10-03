@@ -15,7 +15,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
-  useBuscarContatos, fetchConfiguradorProjeto, type ConfiguradorProjetoMeta,
+  useBuscarContatos, fetchConfiguradorProjeto, fetchConfiguradorProjetoMetaAtual, type ConfiguradorProjetoMeta,
   bridgeList, bridgeLoad, bridgeSave, bridgeDelete, bridgeThumb,
 } from '@/hooks/useConfiguradorProjetos'
 import {
@@ -35,6 +35,8 @@ const fmtData = (s: string) =>
 export function Projeto3D() {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [loading, setLoading] = useState(true)
+  const [abrindo, setAbrindo] = useState(false)
+  const abrindoRef = useRef(false)
 
   // Projeto salvo atualmente aberto (null = ainda não salvo / novo)
   const [projetoId, setProjetoId] = useState<string | null>(null)
@@ -42,6 +44,7 @@ export function Projeto3D() {
 
   const [showLista, setShowLista] = useState(false)
   const [toast, setToast] = useState<{ msg: string; erro?: boolean } | null>(null)
+  const toastTimerRef = useRef<number | null>(null)
 
   // Modal de salvar
   const [saveOpen, setSaveOpen] = useState(false)
@@ -57,34 +60,39 @@ export function Projeto3D() {
   const qc = useQueryClient()
   // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
   const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
-  const { data: projetos, isLoading: loadingLista } = useConfiguradorProjetos()
+  const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos()
   const salvar = useSalvarConfiguradorProjeto()
   const deletar = useDeletarConfiguradorProjeto()
-  const { data: contatos } = useBuscarContatos(saveBusca)
+  const { data: contatos, error: contatosError, refetch: retryContatos, isFetching: fetchingContatos } = useBuscarContatos(saveBusca)
 
   const flash = useCallback((msg: string, erro = false) => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
     setToast({ msg, erro })
-    window.setTimeout(() => setToast(null), 2600)
+    toastTimerRef.current = erro ? null : window.setTimeout(() => { setToast(null); toastTimerRef.current = null }, 2600)
   }, [])
+  useEffect(() => () => { if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current) }, [])
 
   // ---- postMessage: espera respostas do iframe (branorte:project) por requestId ----
   const pendings = useRef(new Map<string, (project: unknown) => void>())
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
-      if (e.origin !== CONFIGURADOR_ORIGIN) return
+      if (e.origin !== CONFIGURADOR_ORIGIN || e.source !== frameRef.current?.contentWindow) return
       const m = e.data
       if (!m || typeof m !== 'object') return
       if (m.type === 'branorte:project' && m.requestId) {
         const fn = pendings.current.get(m.requestId)
         if (fn) { pendings.current.delete(m.requestId); fn(m.project) }
+      } else if (m.type === 'branorte:loaded' && m.requestId) {
+        const fn = pendings.current.get(m.requestId)
+        if (fn) { pendings.current.delete(m.requestId); fn(m) }
       } else if (m.type === 'branorte:ready') {
         // iframe subiu → manda os BLOCOS PERSONALIZADOS e os MODELOS IMPORTADOS salvos (Supabase) pro catálogo dele
         fetchConfiguradorBlocos()
           .then((defs) => frameRef.current?.contentWindow?.postMessage({ type: 'branorte:blocks:load', defs }, CONFIGURADOR_ORIGIN))
-          .catch(() => {})
+          .catch(() => flash('Não foi possível carregar os blocos personalizados. Recarregue para tentar novamente.', true))
         fetchConfiguradorModelos()
           .then((defs) => frameRef.current?.contentWindow?.postMessage({ type: 'branorte:models:load', defs }, CONFIGURADOR_ORIGIN))
-          .catch(() => {})
+          .catch(() => flash('Não foi possível carregar os modelos importados. Recarregue para tentar novamente.', true))
       } else if (m.type === 'branorte:model:save' && m.requestId) {
         // MODELO IMPORTADO (GLB/STL): sobe o binário no Storage e grava a def compartilhada.
         // Responde com branorte:store:result (formato que o crmRequest do configurador espera).
@@ -107,12 +115,12 @@ export function Projeto3D() {
           }
         })()
       } else if (m.type === 'branorte:model:delete' && m.id) {
-        deleteConfiguradorModelo(String(m.id)).catch(() => {})
+        deleteConfiguradorModelo(String(m.id)).catch(() => flash('O modelo não foi removido do servidor. Recarregue e tente novamente.', true))
       } else if (m.type === 'branorte:block:upsert' && m.def) {
         // usuário criou/editou um bloco no configurador → grava no Supabase (compartilhado pela equipe)
-        upsertConfiguradorBloco(m.def, profileRef.current?.id ?? null, profileRef.current?.display_name ?? null).catch(() => {})
+        upsertConfiguradorBloco(m.def, profileRef.current?.id ?? null, profileRef.current?.display_name ?? null).catch(() => flash('O bloco não foi salvo no servidor. Mantenha o editor aberto e tente novamente.', true))
       } else if (m.type === 'branorte:block:delete' && m.id) {
-        deleteConfiguradorBloco(String(m.id)).catch(() => {})
+        deleteConfiguradorBloco(String(m.id)).catch(() => flash('O bloco não foi removido do servidor. Recarregue e tente novamente.', true))
       } else if (typeof m.type === 'string' && m.type.startsWith('branorte:store:') && m.requestId) {
         // GALERIA COMPARTILHADA: a tela inicial do configurador lista/salva/abre/exclui
         // projetos daqui (Supabase) via RPC postMessage — o iframe não tem sessão própria.
@@ -189,31 +197,64 @@ export function Projeto3D() {
       postToFrame({ type: 'branorte:get', requestId: id })
     })
 
+  const pedirAbertura = (msg: Record<string, unknown>) =>
+    new Promise<void>((resolve, reject) => {
+      const requestId = rid()
+      const timer = window.setTimeout(() => { pendings.current.delete(requestId); reject(new Error('O configurador não confirmou a abertura. Tente novamente.')) }, 15000)
+      pendings.current.set(requestId, response => {
+        window.clearTimeout(timer)
+        const result = response as { ok?: boolean; error?: unknown } | null
+        if (result?.ok === true) resolve()
+        else reject(new Error(typeof result?.error === 'string' ? result.error : 'O configurador não conseguiu abrir o projeto. Tente novamente.'))
+      })
+      postToFrame({ ...msg, requestId })
+    })
+
+  const iniciarOperacao = () => {
+    if (abrindoRef.current || salvar.isPending) return false
+    abrindoRef.current = true
+    setAbrindo(true)
+    return true
+  }
+  const finalizarOperacao = () => { abrindoRef.current = false; setAbrindo(false) }
+  const limparVinculo = () => {
+    setProjetoId(null); setProjetoNome(''); setSaveContactId(null); setSaveContactNome(null)
+    projetoDataRef.current = null
+  }
+
   // ---- Ações ----
-  const abrirNovo = () => {
-    postToFrame({ type: 'branorte:new' })
-    setProjetoId(null)
-    setProjetoNome('')
+  const abrirNovo = async () => {
+    if (!iniciarOperacao()) return
     setShowLista(false)
-    flash('Editor vazio aberto')
+    try {
+      await pedirAbertura({ type: 'branorte:new' })
+      limparVinculo()
+      flash('Editor vazio aberto')
+    } catch (error) {
+      limparVinculo()
+      flash((error as Error).message, true)
+    } finally { finalizarOperacao() }
   }
 
   const abrirSalvo = async (meta: ConfiguradorProjetoMeta) => {
+    if (!iniciarOperacao()) return
     setShowLista(false)
     try {
       const full = await fetchConfiguradorProjeto(meta.id)
-      postToFrame({ type: 'branorte:load', project: full.data })
+      await pedirAbertura({ type: 'branorte:load', project: full.data })
       setProjetoId(meta.id)
       setProjetoNome(meta.nome)
       setSaveContactId(meta.contact_id)
       setSaveContactNome(meta.cliente_nome)
       flash(`Aberto: ${meta.nome}`)
-    } catch {
-      flash('Falha ao abrir o projeto', true)
-    }
+    } catch (error) {
+      limparVinculo()
+      flash(`Falha ao abrir o projeto: ${(error as Error).message}`, true)
+    } finally { finalizarOperacao() }
   }
 
   const iniciarSalvar = async () => {
+    if (!iniciarOperacao()) return
     try {
       const project = await pedirProjeto()
       if (!project) {
@@ -221,17 +262,24 @@ export function Projeto3D() {
         return
       }
       projetoDataRef.current = project
+      // A galeria dentro do iframe também troca de projeto. O vínculo vem do
+      // JSON atual, nunca do projeto que o cabeçalho abriu anteriormente.
+      const metaAtual = await fetchConfiguradorProjetoMetaAtual(project)
+      setProjetoId(metaAtual?.id ?? null)
+      setProjetoNome(metaAtual?.nome ?? '')
+      setSaveContactId(metaAtual?.contact_id ?? null)
+      setSaveContactNome(metaAtual?.cliente_nome ?? null)
       const nomeInterno = (project as { name?: string })?.name
-      setSaveNome(projetoNome || nomeInterno || 'Projeto sem nome')
+      setSaveNome(metaAtual?.nome || nomeInterno || 'Projeto sem nome')
       setSaveBusca('')
       setSaveOpen(true)
     } catch {
-      flash('O configurador não respondeu — recarregue e tente de novo', true)
-    }
+      flash('Não foi possível identificar o projeto aberto. Recarregue e tente de novo.', true)
+    } finally { finalizarOperacao() }
   }
 
   const confirmarSalvar = () => {
-    if (!projetoDataRef.current) return
+    if (!projetoDataRef.current || salvar.isPending || abrindoRef.current) return
     salvar.mutate(
       {
         id: projetoId,
@@ -268,6 +316,7 @@ export function Projeto3D() {
 
   const telaCheia = () => frameRef.current?.requestFullscreen?.().catch(() => {})
   const recarregar = () => {
+    if (salvar.isPending || abrindoRef.current) return
     const el = frameRef.current
     if (!el) return
     setLoading(true)
@@ -292,6 +341,8 @@ export function Projeto3D() {
           <div className="relative">
             <button
               onClick={() => setShowLista(v => !v)}
+              disabled={abrindo || salvar.isPending}
+              aria-label="Projetos salvos"
               className="h-9 px-3 rounded-lg border border-border text-ink-muted hover:text-ink hover:bg-bg flex items-center gap-1.5 text-sm font-medium"
             >
               <FolderOpen className="h-4 w-4" />
@@ -310,7 +361,8 @@ export function Projeto3D() {
                   </button>
                   <div className="h-px bg-border my-1" />
                   {loadingLista && <div className="px-3 py-4 text-center text-sm text-ink-faint">Carregando…</div>}
-                  {!loadingLista && (!projetos || projetos.length === 0) && (
+                  {projetosError && <div role="alert" className="px-3 py-4 text-sm text-danger">Não foi possível carregar os projetos. <button disabled={fetchingProjetos} onClick={() => { void retryProjetos() }} className="underline">Tentar novamente</button></div>}
+                  {!loadingLista && !projetosError && (!projetos || projetos.length === 0) && (
                     <div className="px-3 py-6 text-center text-sm text-ink-faint">Nenhum projeto salvo ainda.</div>
                   )}
                   {projetos?.map(p => (
@@ -348,11 +400,13 @@ export function Projeto3D() {
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={iniciarSalvar}
+            disabled={abrindo || salvar.isPending}
+            aria-label="Salvar projeto"
             className="h-9 px-3 rounded-lg bg-accent text-white hover:opacity-90 flex items-center gap-1.5 text-sm font-semibold"
           >
             <Save className="h-4 w-4" /> <span className="hidden sm:inline">Salvar</span>
           </button>
-          <button onClick={recarregar} title="Recarregar" className="h-9 w-9 rounded-lg border border-border text-ink-muted hover:text-ink hover:bg-bg flex items-center justify-center">
+          <button onClick={recarregar} disabled={abrindo || salvar.isPending} title="Recarregar" className="h-9 w-9 rounded-lg border border-border text-ink-muted hover:text-ink hover:bg-bg flex items-center justify-center">
             <RefreshCw className="h-4 w-4" />
           </button>
           <button onClick={telaCheia} title="Tela cheia" className="h-9 w-9 rounded-lg border border-border text-ink-muted hover:text-ink hover:bg-bg hidden sm:flex items-center justify-center">
@@ -382,25 +436,28 @@ export function Projeto3D() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium ${toast.erro ? 'bg-red-600 text-white' : 'bg-ink text-bg'}`}>
+        <div role={toast.erro ? 'alert' : 'status'} className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)] px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 ${toast.erro ? 'bg-red-600 text-white' : 'bg-ink text-bg'}`}>
           {toast.msg}
+          {toast.erro && <button aria-label="Fechar aviso" onClick={() => setToast(null)} className="shrink-0"><X className="h-4 w-4" /></button>}
         </div>
       )}
 
       {/* Modal salvar */}
       {saveOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={() => setSaveOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-surface border border-border shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+        <div role="dialog" aria-modal="true" aria-label="Salvar projeto 3D" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={() => { if (!salvar.isPending) setSaveOpen(false) }}>
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-border shadow-2xl p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-ink">{projetoId ? 'Atualizar projeto' : 'Salvar projeto'}</h2>
-              <button onClick={() => setSaveOpen(false)} className="h-8 w-8 rounded-lg text-ink-faint hover:text-ink hover:bg-bg flex items-center justify-center">
+              <button disabled={salvar.isPending} aria-label="Fechar formulário" onClick={() => setSaveOpen(false)} className="h-8 w-8 rounded-lg text-ink-faint hover:text-ink hover:bg-bg flex items-center justify-center">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
+            <fieldset disabled={salvar.isPending}>
             <label className="block text-xs font-semibold text-ink-muted mb-1">Nome do projeto</label>
             <input
               value={saveNome}
+              aria-label="Nome do projeto"
               onChange={e => setSaveNome(e.target.value)}
               autoFocus
               placeholder="Ex.: Fábrica 5 t/h — Cliente X"
@@ -424,10 +481,12 @@ export function Projeto3D() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-faint" />
                 <input
                   value={saveBusca}
+                  aria-label="Buscar cliente"
                   onChange={e => setSaveBusca(e.target.value)}
                   placeholder="Buscar por nome ou telefone…"
                   className="w-full h-10 pl-9 pr-3 rounded-lg border border-border bg-bg text-ink text-sm focus:outline-none focus:border-accent"
                 />
+                {contatosError && <p role="alert" className="mt-2 text-xs text-danger">Não foi possível buscar os clientes. <button disabled={fetchingContatos} onClick={() => { void retryContatos() }} className="underline">Tentar novamente</button></p>}
                 {saveBusca.trim().length >= 2 && contatos && contatos.length > 0 && (
                   <div className="absolute left-0 right-0 top-full mt-1 max-h-52 overflow-y-auto rounded-lg border border-border bg-surface shadow-xl z-10 p-1">
                     {contatos.map(c => (
@@ -445,8 +504,10 @@ export function Projeto3D() {
               </div>
             )}
 
+            </fieldset>
+            {salvar.isError && <p role="alert" className="mb-3 text-sm text-danger">O projeto não foi salvo. Seus dados foram mantidos; tente novamente.</p>}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setSaveOpen(false)} className="h-10 px-4 rounded-lg border border-border text-ink-muted hover:bg-bg text-sm font-medium">
+              <button disabled={salvar.isPending} onClick={() => setSaveOpen(false)} className="h-10 px-4 rounded-lg border border-border text-ink-muted hover:bg-bg text-sm font-medium">
                 Cancelar
               </button>
               <button

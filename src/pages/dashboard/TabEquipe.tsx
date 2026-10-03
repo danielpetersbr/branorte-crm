@@ -17,6 +17,7 @@ import { ResumoDiaVendedores } from '@/components/ResumoDiaVendedores'
 import { Card, CardHeader, Inner } from './ui/Card'
 import { JanelaBadge } from './ui/JanelaBadge'
 import { useJanela } from './DashboardFilterContext'
+import { QueryNotice } from '@/components/ui/QueryNotice'
 import { brl, brlFull, n, pct, primeiroNome } from './ui/format'
 import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
 
@@ -891,13 +892,17 @@ function DrawerVendedor({ card, corrida, orfao, onFechar }: {
 export function TabEquipe() {
   const { preset, periodoLabel } = useJanela()
 
-  const { data } = useDashboard({ preset })
-  const { data: vendasReais } = useVendasReais()
-  const { data: orc } = useOrcamentosResumo(preset)
-  const { data: vendPainel } = useVendedoresPainel(preset)
-  const { data: cobertura } = useVendedorCobertura(preset)
+  const dashboardQuery = useDashboard({ preset })
+  const vendasQuery = useVendasReais()
+  const orcQuery = useOrcamentosResumo(preset)
+  const vendedoresQuery = useVendedoresPainel(preset)
+  const coberturaQuery = useVendedorCobertura(preset)
   // Órfãos usam janela por IDADE (>7d), não o filtro do topo — de propósito.
-  const { data: orfaos } = useOrfaosPorVendedor(7)
+  const orfaosQuery = useOrfaosPorVendedor(7)
+  const data = dashboardQuery.data, vendasReais = vendasQuery.data, orc = orcQuery.data, vendPainel = vendedoresQuery.data, cobertura = coberturaQuery.data, orfaos = orfaosQuery.data
+  const consultas = [dashboardQuery, vendasQuery, orcQuery, vendedoresQuery, coberturaQuery, orfaosQuery]
+  const erro = consultas.find(q => q.error)?.error
+  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
   const cards = useMemo(
     () => montarCardsVendedor(vendPainel ?? [], data?.slaPorVendedor ?? [], orc, cobertura ?? []),
@@ -932,10 +937,13 @@ export function TabEquipe() {
   }, [])
 
   const cardAberto = aberto ? cards.find(c => c.nome === aberto) ?? null : null
+  if (consultas.some(q => q.error && q.data === undefined)) return <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados da equipe." onRetry={atualizar} />
+  if (consultas.some(q => q.isLoading && q.data === undefined)) return <p role="status" className="py-8 text-center text-ink-muted">Carregando equipe…</p>
 
   return (
     <>
       <div className="space-y-5">
+        <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todos os dados da equipe. O último retrato permanece visível." onRetry={atualizar} />
         {/* 1 · Ranking de vendas — indivíduo | time (um bloco só) */}
         <RankingVendas vendas={vendasReais} />
 
