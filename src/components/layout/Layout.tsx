@@ -230,6 +230,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/disparos', label: 'Roteamento', icon: GitBranch, end: true, permKey: 'menu.disparos' },
       { to: '/disparos/links', label: 'Links de anúncio', icon: Link2, permKey: 'menu.disparos' },
       { to: '/ia-atendente', label: 'IA Atendente', icon: Bot, permKey: 'menu.ia_atendente' },
+      { to: '/ia-atendente/painel-ana', label: 'Painel da Ana', icon: BarChart2, permKey: 'menu.ia_atendente', roles: ['admin'] },
       { to: '/fluxos', label: 'Fluxos do Funil', icon: Workflow, permKey: 'menu.fluxos_funil' },
       { to: '/ia-teste', label: 'Testar a IA', icon: Bot, permKey: 'menu.ia_teste' },
     ],

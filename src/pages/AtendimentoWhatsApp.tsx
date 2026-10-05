@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ArrowLeft, BarChart3, Check, CheckCircle2, ChevronDown, FileText, Image as ImageIcon, Info, Loader2, Lock, MessageSquare, Mic, Music, Paperclip, Plus, Reply, Search, Send, SlidersHorizontal, Square, Tag, Upload, Users, Video, X } from 'lucide-react'
 import * as Popover from '@radix-ui/react-popover'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -44,7 +45,11 @@ function MessageBubble({message,url,onReply,replyDisabled}:{message:ChatMessage;
   </div>
 }
 export function AtendimentoWhatsApp() {
-  const [selected,setSelected]=useState<string|null>(null)
+  const [navigation]=useSearchParams()
+  const requestedConversation=navigation.get('conversa')
+  const validConversation=(id:string|null)=>id&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)?id:null
+  const [selected,setSelected]=useState<string|null>(()=>validConversation(requestedConversation))
+  useEffect(()=>{const id=validConversation(requestedConversation);if(id)setSelected(id)},[requestedConversation])
   const [search,setSearch]=useState(''),[debounced,setDebounced]=useState('')
   const [status,setStatus]=useState('open'),[vendor,setVendor]=useState(''),[tag,setTag]=useState('')
   const [anaTag,setAnaTag]=useState('')

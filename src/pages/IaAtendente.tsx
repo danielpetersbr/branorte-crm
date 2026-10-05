@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useAuth } from '@/hooks/useAuth'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Bot, Brain, Settings2, Film, Loader2, Save, Plus, Trash2, Upload,
@@ -1639,6 +1641,7 @@ const ABAS: Array<{ id: Aba; label: string; icon: typeof Bot }> = [
 ]
 
 export function IaAtendente() {
+  const { profile } = useAuth()
   const [aba, setAba] = useState<Aba>('visao')
   const [toasts, push] = useToast()
 
@@ -1650,6 +1653,7 @@ export function IaAtendente() {
           <div className="flex items-center gap-2 mb-1">
             <Bot className="w-5 h-5 text-accent" />
             <h1 className="text-[18px] font-semibold text-ink">IA Atendente</h1>
+            {profile?.role === 'admin' && <Link to="/ia-atendente/painel-ana" className="ml-auto text-xs text-accent border border-border rounded-md px-3 py-2">Painel da Ana</Link>}
           </div>
           <p className="text-[12px] text-ink-muted">
             A IA responde clientes no WhatsApp quando o vendedor liga ela na conversa (botão 🤖).
