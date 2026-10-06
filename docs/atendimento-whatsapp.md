@@ -2,6 +2,8 @@
 
 Acesse **Comercial → Atendimento WhatsApp** (`/whatsapp`). A interface usa o login existente do CRM: administrador aprovado vê toda a equipe; vendedor aprovado e vinculado a um vendedor ativo vê apenas sua carteira. Cadastros e aprovação continuam em **ADM → Usuários**.
 
+**Quem é o responsável pela conversa.** A carteira vem do dono do contato no CRM. Quando o contato não tem dono (ou a conversa ainda não tem contato) e a Ana passou o lead, o responsável é o vendedor da etiqueta que a Ana aplicou — desde 06/10/2026, pela regra `private.crm_chat_owner_from_ana_label`. Ela só preenche responsável vazio ou acompanha a troca de etiqueta: contato com dono no CRM e transferência feita pelo administrador continuam valendo; duas etiquetas de vendedor na mesma conversa não são decididas automaticamente; etiqueta removida não tira o acesso. A regra não altera o cadastro do contato. Antes dela, o lead repassado nascia sem dono no contato e a conversa ficava visível só para administradores.
+
 Os filtros da lista ficam recolhidos por padrão no botão ao lado de **Conversas**, mantendo a busca sempre disponível. O botão mostra a situação/fila selecionada e indica filtros adicionais; clique no ícone de filtros para alterar situação, fila ou etiquetas e, para administradores, vendedor. Fechar o painel preserva as seleções.
 
 1. Filtre conversas abertas/finalizadas, etiquetas ou nome/telefone. Administrador também filtra e define o responsável.
