@@ -38,8 +38,9 @@ const CPF_RX = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
 const RIGHT_COL_FRAC = 0.55;
 // Rótulos do cabeçalho do cliente que produção NÃO pode ver (faixa do rótulo pra
 // direita). Produção vê CLIENTE (nome), A/C, Nº do orçamento, DATA e CIDADE-UF
-// (destino da entrega — decisão do Daniel 2026-07-21; cidade/municipio saíram da lista).
-const PII_LABEL_RX = /^(fone|telefone|celular|whatsapp|bairro|endereco|cep|cpf|cnpj|inscricao|i\.?e\.?|e-?mail)\b/;
+// (destino da entrega — decisão do Daniel 2026-07-21; cidade/municipio saíram da lista)
+// e, desde 06/10/2026, BAIRRO/ENDEREÇO/CEP (roadmap #72: endereço completo pro projeto).
+const PII_LABEL_RX = /^(fone|telefone|celular|whatsapp|cpf|cnpj|inscricao|i\.?e\.?|e-?mail)\b/;
 
 function norm(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -143,8 +144,8 @@ export async function gerarDocxProducaoDePaginas(file: File): Promise<File | nul
           }
         }
 
-        // Cabeçalho do cliente: FONE/TELEFONE/BAIRRO/ENDEREÇO/CEP/CPF/CNPJ/IE/EMAIL/
-        // CIDADE — redige do rótulo pra direita (mantém CLIENTE, A/C, Nº e DATA).
+        // Cabeçalho do cliente: FONE/TELEFONE/CPF/CNPJ/IE/EMAIL — redige do rótulo pra
+        // direita (mantém CLIENTE, A/C, Nº, DATA, CIDADE e o endereço).
         const piiItem = ln.items.find((i) => PII_LABEL_RX.test(norm(i.s.trim())));
         if (piiItem) {
           const top = Math.max(...ln.items.map((i) => i.y + i.h));
