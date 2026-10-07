@@ -11,6 +11,7 @@ export interface Visita {
   cidade: string | null
   estado: string | null
   interesse: string | null
+  visitar: boolean | null
   vendedor_nome: string | null
   etiquetas: string[] | null
   valor_negociando: number | null
@@ -22,14 +23,28 @@ export interface Visita {
 export function useVisitas() {
   return useQuery<Visita[]>({
     queryKey: ['visitas'],
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('cliente_dados_visita')
-        .select('id, telefone, nome, cidade, estado, interesse, vendedor_nome, etiquetas, valor_negociando, lat, lng, created_at')
+        .select('id, telefone, nome, cidade, estado, interesse, visitar, vendedor_nome, etiquetas, valor_negociando, lat, lng, created_at')
         .order('created_at', { ascending: false })
       if (error) throw error
       return (data ?? []) as Visita[]
     },
+  })
+}
+
+// Atualiza somente a intenção de visita; a RPC valida o vendedor no servidor.
+export function useDefinirVisita() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, visitar }: { id: string; visitar: boolean }) => {
+      const { data, error } = await supabase.rpc('cliente_visita_definir', { p_id: id, p_visitar: visitar })
+      if (error) throw error
+      if (!data) throw new Error('Não foi possível salvar a marcação de visita.')
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['visitas'] }),
   })
 }
 

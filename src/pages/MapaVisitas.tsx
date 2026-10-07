@@ -4,7 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
   useVisitas, useGeocodarVisitas, useOrcamentosMapa, useListaOrcamentos, useVendasMapaCount, useUfsVisiveis,
-  useMapaMarcacoes, useSalvarMarcacao, useEtiquetasMapa,
+  useMapaMarcacoes, useSalvarMarcacao, useEtiquetasMapa, useDefinirVisita,
   type Visita, type OrcamentoPonto, type OrcamentoLinha, type Marcacao,
 } from '@/hooks/useVisitas'
 import { useEtiquetas } from '@/hooks/useEtiquetas'
@@ -24,6 +24,8 @@ import { parseLocalizacaoMapa } from '@/lib/mapa-localizacao'
 import { assinaturaRota } from '@/lib/mapa-rota-assinatura'
 import { corDaEtiqueta, ordemDe } from '@/lib/wa-funil'
 import { useAuth } from '@/hooks/useAuth'
+import { useVendedorNome } from '@/hooks/useVendedorNome'
+import { entradaVisitasWhatsApp, filtrarVisitasWhatsApp, vendedorVisitaCorresponde } from '@/lib/visitas-whatsapp'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
@@ -442,6 +444,8 @@ type VisitaFiltro = 'todos' | 'visitados' | 'pendentes'
 // Padrão 24 meses: mantém a tela parecida com a de antes da carga do histórico.
 
 export function MapaVisitas() {
+  const [params, setParams] = useSearchParams()
+  const entrada = entradaVisitasWhatsApp(params)
   const [showLista, setShowLista] = useState(false)
   const { data: visitas = VISITAS_VAZIAS, isLoading, error: errorVisitas, refetch: refetchVisitas, isFetching: fetchingVisitas } = useVisitas()
   const { data: orcPontos = PONTOS_VAZIOS, isLoading: loadingOrc, error: errorOrc, refetch: refetchOrc, isFetching: fetchingOrc } = useOrcamentosMapa()
@@ -455,9 +459,16 @@ export function MapaVisitas() {
   const salvarViagemMut = useSalvarViagem()
   const salvarLocalMut = useSalvarLocalizacaoCliente()
   const { profile } = useAuth()
+  const { nome: vendedorLogado } = useVendedorNome()
+  const meuVendedor = entrada.vendedor || vendedorLogado
+  const definirVisita = useDefinirVisita()
+  const [soMarcados, setSoMarcados] = useState(entrada.ativo)
   const geocodar = useGeocodarVisitas()
-  const [vendedorSel, setVendedorSel] = useState<string>('')
-  const [showOrc, setShowOrc] = useState(true)
+  const [vendedorSel, setVendedorSel] = useState<string>(entrada.ativo ? entrada.vendedor || '__meus__' : '')
+  useEffect(() => {
+    if (vendedorSel === '__meus__' && meuVendedor) setVendedorSel(meuVendedor)
+  }, [vendedorSel, meuVendedor])
+  const [showOrc, setShowOrc] = useState(!entrada.ativo)
   // Visitas LIGADA por padrão (03/09/2026, pedido do Daniel): é a única camada
   // onde entra o cliente que ainda NÃO tem orçamento — o vendedor preenche
   // cidade/UF no card "📍 Dados pra visita" da extensão e o pino tem que
@@ -722,8 +733,11 @@ export function MapaVisitas() {
     return [...s].sort()
   }, [visitas, orcPontos])
 
-  const comCoord = useMemo(() => visitas.filter(v => v.lat != null && v.lng != null), [visitas])
-  const semCoord = visitas.length - comCoord.length
+  const visitasSelecionadas = useMemo(() =>
+    filtrarVisitasWhatsApp(visitas, vendedorSel || null, soMarcados),
+    [visitas, vendedorSel, soMarcados])
+  const comCoord = useMemo(() => visitasSelecionadas.filter(v => v.lat != null && v.lng != null), [visitasSelecionadas])
+  const semCoord = visitasSelecionadas.length - comCoord.length
   const termo = normalizarBuscaMapa(buscaProcessada)
   const buscaVisitas = useMemo(() => criarIndiceBusca(comCoord, v =>
     [v.nome, v.cidade, v.estado, v.telefone, v.vendedor_nome, v.interesse]), [comCoord])
@@ -780,7 +794,7 @@ export function MapaVisitas() {
 
   const visSemBusca = useMemo(
     () => comCoord.filter(v =>
-      (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
+      (!vendedorSel || vendedorVisitaCorresponde(v.vendedor_nome, vendedorSel)) &&
       (!ufSel || ufKey(v.estado) === ufSel) &&
       passaEtiqueta(etiquetasSel, etiquetasDaVisita(v))
     ),
@@ -878,7 +892,7 @@ export function MapaVisitas() {
     // sumindo do mapa sem oferecer como marcar de volta.
     if (showVis) for (const v of comCoord) {
       const passa =
-        (!vendedorSel || (v.vendedor_nome || '—') === vendedorSel) &&
+        (!vendedorSel || vendedorVisitaCorresponde(v.vendedor_nome, vendedorSel)) &&
         (!ufSel || ufKey(v.estado) === ufSel) &&
         passaBuscaMapa(buscaVisitas.get(v), termo)
       if (passa) base.push({ chave: foneCanon(v.telefone), conversa: etiquetasDaVisita(v) })
@@ -1246,7 +1260,6 @@ export function MapaVisitas() {
   // vendedor de volta pro planejador com a viagem já aberta. Sem isto o botão
   // "Abrir no planejador" navegava e não acontecia nada.
   // Limpa o parâmetro depois: um F5 não pode reabrir por cima do que ele mexeu.
-  const [params, setParams] = useSearchParams()
   useEffect(() => {
     const id = params.get('viagem')
     if (!id) return
@@ -2106,6 +2119,50 @@ export function MapaVisitas() {
     <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
       {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
       <style>{`.leaflet-marker-icon.marc-check{pointer-events:none!important}`}</style>
+      {showVis && (
+        <div className="shrink-0 border border-border rounded-lg bg-surface p-3 mx-2 mt-2 md:m-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-sm text-ink mr-auto">📍 Clientes para visitar</span>
+            <button type="button" onClick={() => setVendedorSel(meuVendedor || '__meus__')}
+              aria-pressed={!!vendedorSel && vendedorSel === (meuVendedor || '__meus__')}
+              className={togglePill(!!vendedorSel && vendedorSel === (meuVendedor || '__meus__'))}>Só os meus</button>
+            <button type="button" onClick={() => setVendedorSel('')} aria-pressed={!vendedorSel}
+              className={togglePill(!vendedorSel)}>Todos os vendedores</button>
+            <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
+              <input type="checkbox" checked={soMarcados} onChange={e => setSoMarcados(e.target.checked)} />
+              Só marcados para visitar
+            </label>
+          </div>
+          {vendedorSel === '__meus__' && <p className="text-sm text-warning mt-2">Não foi possível identificar seu vendedor. Configure seu nome na extensão ou escolha um vendedor no mapa.</p>}
+          {errorVisitas && <p role="alert" className="text-sm text-red-600 mt-2">Não foi possível carregar os clientes: {errorVisitas.message}</p>}
+          {definirVisita.isError && <p role="alert" className="text-sm text-red-600 mt-2">Não foi possível salvar: {definirVisita.error.message}</p>}
+          <details open={entrada.ativo || undefined} className="mt-2">
+            <summary className="cursor-pointer text-sm text-ink-muted">{visitasSelecionadas.length} clientes · gerenciar marcações{semCoord > 0 ? ` · ${semCoord} sem localização` : ''}</summary>
+            <div className="max-h-40 overflow-auto mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {isLoading && <p className="text-sm text-ink-muted">Carregando clientes…</p>}
+              {!isLoading && !errorVisitas && visitasSelecionadas.length === 0 && <p className="text-sm text-ink-muted">Nenhum cliente neste filtro.</p>}
+              {visitasSelecionadas.map(v => {
+                const podeEditar = profile?.role === 'admin' || (profile?.role === 'vendor' && !!vendedorLogado &&
+                  (v.vendedor_nome || '').trim().toUpperCase() === vendedorLogado)
+                return <div key={v.id} className="rounded border border-border px-3 py-2 text-sm">
+                  <button type="button" disabled={v.lat == null || v.lng == null} className="font-semibold text-ink text-left disabled:cursor-default hover:underline"
+                    onClick={() => { if (v.lat != null && v.lng != null) mapRef.current?.setView([v.lat, v.lng], 12) }}>
+                    {v.nome || v.telefone || 'Sem nome'}
+                  </button>
+                  <p className="text-xs text-ink-muted">{[v.cidade, v.estado].filter(Boolean).join(' / ') || 'Cidade não informada'} · {v.vendedor_nome || 'Sem vendedor'}</p>
+                  {v.lat == null || v.lng == null ? <p className="text-xs text-warning">Sem localização no mapa</p> : null}
+                  <label className="flex items-center gap-2 mt-1 text-ink-muted">
+                    <input type="checkbox" aria-label={`Visitar ${v.nome || v.telefone || 'cliente'}`} checked={v.visitar === true}
+                      disabled={!podeEditar || definirVisita.isPending}
+                      onChange={e => definirVisita.mutate({ id: v.id, visitar: e.target.checked })} />
+                    É para visitar{!podeEditar ? ' · somente consulta' : ''}
+                  </label>
+                </div>
+              })}
+            </div>
+          </details>
+        </div>
+      )}
       <div className={erroFontesMapa ? 'shrink-0 px-2 pt-2 md:px-0 md:pt-0' : 'hidden'}>
         <QueryNotice error={erroFontesMapa} loading={carregandoFontesMapa}
           onRetry={() => Promise.allSettled(fontesMapa.filter(fonte => fonte.error).map(fonte => fonte.refetch()))}
