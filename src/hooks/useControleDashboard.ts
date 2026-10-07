@@ -6,9 +6,10 @@ import {
   subMonths, format,
 } from 'date-fns'
 import {
-  ORIGEM_TODAS, ehPedidoGarantia, filtrarPorOrigem, resumirOrigens,
-  type OrigemResumo, type ResumoOrigens,
+  ORIGEM_TODAS, ehPedidoGarantia, filtrarPorOrigem, resumirOrigens, origemFinalVenda,
+  type OrigemResumo, type ResumoOrigens, type BaseOrigem, type EvidenciaOrigem,
 } from '@/lib/vendas-origem'
+import { fetchRastreioVendas } from '@/hooks/useControleRastreio'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Espelho do dashboard do controle.branorte.com — lê SOMENTE das mirror_* no
@@ -22,6 +23,8 @@ import {
 export type Periodo = 'hoje' | 'semana' | 'mes'
 
 interface MirrorPedido {
+  /** Chave do pedido no espelho — é por ela que o rastreio da origem casa (opcional só pros testes antigos). */
+  id?: string | null
   vendedor: string | null
   vendedor_2: string | null
   valor_total: number | null
@@ -32,6 +35,17 @@ interface MirrorPedido {
   payment_plan_json: { total?: number | string } | null
   /** "Como o cliente encontrou a empresa?" do pedido — vem de raw->>'fonte_origem' (ver lib/vendas-origem). */
   fonte_origem: string | null
+  /** Origem FINAL (rastreio › vendedor › histórico), preenchida em computeControleVendas quando há rastreio. */
+  origem_chave?: string | null
+  origem_base?: BaseOrigem | null
+}
+
+/** Evidências de origem por id de pedido (o que a RPC controle_vendas_rastreio achou). */
+export type RastreioPorPedido = Map<string, EvidenciaOrigem>
+
+/** Janela que o painel mostra (6 meses do gráfico): é só nela que o rastreio é pedido. */
+export function janelaRastreio(agora: Date = new Date()): { from: string; to: string } {
+  return { from: format(startOfMonth(subMonths(agora, 5)), 'yyyy-MM-dd'), to: format(endOfMonth(agora), 'yyyy-MM-dd') }
 }
 
 const EXCLUIR_VENDEDOR = new Set(['DESCONHECIDO'])
@@ -89,7 +103,9 @@ export interface ControleVendas {
   /** Chips do filtro: vendas/valor do MÊS por origem, sempre sobre TODAS as origens. */
   origens: OrigemResumo[]
   /** Quanto das vendas do mês tem origem informada — o piso da atribuição, nunca escondido. */
-  coberturaOrigem: Pick<ResumoOrigens, 'total' | 'informada'>
+  coberturaOrigem: Pick<ResumoOrigens, 'total' | 'informada' | 'rastreada'>
+  /** false = o rastreio pelo telefone não veio (erro ou sem permissão): os chips são só o que o vendedor marcou. */
+  rastreioAplicado: boolean
 }
 
 async function fetchSettings(): Promise<Record<string, number>> {
@@ -111,7 +127,7 @@ async function fetchPedidos(): Promise<MirrorPedido[]> {
     .from('mirror_pedidos_venda')
     // fonte_origem não é coluna do espelho: o PostgREST extrai do jsonb `raw`
     // (29/09/2026, roadmap #80). Sem trazer o raw inteiro, que é pesado.
-    .select('vendedor, vendedor_2, valor_total, ajuste_valor, ajuste_data, data_venda, status, payment_plan_json, fonte_origem:raw->>fonte_origem')
+    .select('id, vendedor, vendedor_2, valor_total, ajuste_valor, ajuste_data, data_venda, status, payment_plan_json, fonte_origem:raw->>fonte_origem')
     .limit(20000)
   if (error) throw error
   return (data ?? []) as unknown as MirrorPedido[]
@@ -172,11 +188,23 @@ function computeFaturamento(pedidos: MirrorPedido[]): FaturamentoMes[] {
 /** Exportada só pro teste (lib/vendas-origem.test.ts): é aqui que o recorte vira número. */
 export function computeControleVendas(
   espelho: MirrorPedido[], settings: Record<string, number>, periodo: Periodo, origem: string,
+  rastreio?: RastreioPorPedido | null,
 ): ControleVendas {
   // GARANTIA não é venda (valor 0, criada pelo PedidoGarantia): o controle tira
   // esses pedidos de TODAS as somas e o painel diz ser espelho dele. Aqui eles
   // contavam em "Vendas no Mês" e puxavam o ticket médio pra baixo (3 em set/2026).
-  const todos = espelho.filter(p => !ehPedidoGarantia(p.fonte_origem))
+  //
+  // Origem FINAL (07/10/2026): com o rastreio em mãos, cada pedido da janela ganha
+  // a origem que vale (rastreio › vendedor › histórico — lib/vendas-origem). Pedido
+  // sem linha no rastreio (fora da janela, ou rastreio indisponível) segue com o que
+  // o vendedor marcou, como sempre foi.
+  const rastreioAplicado = !!rastreio && rastreio.size > 0
+  const todos = espelho.filter(p => !ehPedidoGarantia(p.fonte_origem)).map(p => {
+    const ev = rastreioAplicado && p.id ? rastreio!.get(p.id) : undefined
+    if (!ev) return p
+    const o = origemFinalVenda({ ...ev, fonte_declarada: p.fonte_origem })
+    return { ...p, origem_chave: o.chave, origem_base: o.base }
+  })
   const { from, to } = dateRange(periodo)
   const metaCorrida = settings.corrida_vendas_meta || 285000
   const metaMensal = settings.meta_mensal || 0
@@ -224,7 +252,8 @@ export function computeControleVendas(
   return {
     ranking, faturamentoMensal, valorTotal, ticketMedio, metaMes, metaSemanal, metaCorrida, totalVendasMes,
     origens: resumo.origens,
-    coberturaOrigem: { total: resumo.total, informada: resumo.informada },
+    coberturaOrigem: { total: resumo.total, informada: resumo.informada, rastreada: resumo.rastreada },
+    rastreioAplicado,
   }
 }
 
@@ -246,11 +275,33 @@ export function useControleVendas(periodo: Periodo, origem: string = ORIGEM_TODA
     staleTime: 60_000,
   })
   const base = q.data
+  // Rastreio da origem pelo telefone: consulta À PARTE de propósito. Ela é um
+  // enriquecimento — se falhar ou vier vazia (quem não tem menu.controle recebe zero
+  // linha), o painel continua de pé com o que o vendedor marcou, e a tela diz isso.
+  // Mesmo prefixo 'controle-vendas': editar/excluir pedido invalida as duas.
+  // A janela (6 meses do gráfico) é calculada DENTRO do queryFn: na virada do mês o
+  // próximo refetch já pede a janela nova, sem precisar das datas na chave.
+  const qr = useQuery({
+    queryKey: ['controle-vendas', 'rastreio', 'painel'],
+    queryFn: () => { const j = janelaRastreio(); return fetchRastreioVendas(j.from, j.to) },
+    staleTime: 5 * 60_000,
+    retry: 1,
+  })
+  const rastreio = useMemo<RastreioPorPedido | null>(() => {
+    if (!qr.data) return null
+    const m: RastreioPorPedido = new Map()
+    for (const r of qr.data) m.set(r.pedido_id, r)
+    return m
+  }, [qr.data])
   // dataUpdatedAt nas deps: um refetch com o mesmo conteúdo devolve o MESMO objeto
   // (structural sharing), e as janelas "hoje/semana/mês" dependem do relógio.
   const data = useMemo(
-    () => (base ? computeControleVendas(base.pedidos, base.settings, periodo, origem) : undefined),
-    [base, q.dataUpdatedAt, periodo, origem],
+    () => (base ? computeControleVendas(base.pedidos, base.settings, periodo, origem, rastreio) : undefined),
+    [base, q.dataUpdatedAt, periodo, origem, rastreio],
   )
-  return { data, isLoading: q.isLoading, error: q.error, refetch: q.refetch, isFetching: q.isFetching }
+  return {
+    data, isLoading: q.isLoading, error: q.error, refetch: q.refetch, isFetching: q.isFetching,
+    /** true enquanto o rastreio ainda não respondeu (os chips podem mudar quando ele chegar). */
+    rastreioCarregando: qr.isLoading,
+  }
 }

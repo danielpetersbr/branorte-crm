@@ -92,6 +92,7 @@ const ControleDashboard = lazy(() => import('@/pages/ControleDashboard').then(m 
 const ControlePedidos = lazy(() => import('@/pages/ControlePedidos').then(m => ({ default: m.ControlePedidos })))
 const ControleFinanceiro = lazy(() => import('@/pages/ControleFinanceiro').then(m => ({ default: m.ControleFinanceiro })))
 const ControleVendas = lazy(() => import('@/pages/controle/ControleVendas'))
+const ControleRastreio = lazy(() => import('@/pages/controle/ControleRastreio'))
 const ControleNovoPedido = lazy(() => import('@/pages/ControleNovoPedido').then(m => ({ default: m.ControleNovoPedido })))
 // Subsistema de Pedido de Venda portado de controle.branorte.com (export default la na origem).
 // Sao os 4 tipos de pedido: o seletor + form completo (NovoPedido), o rapido sem orcamento
@@ -598,6 +599,9 @@ function AppRoutes() {
         <Route path="/controle/pedidos" element={<ControlePedidos />} />
         <Route path="/controle/financeiro" element={<ControleFinanceiro />} />
         <Route path="/controle/vendas" element={<ControleVendas />} />
+        {/* Rastreio da origem das vendas pelo telefone (07/10/2026). A tela confere menu.controle e a RPC
+            controle_vendas_rastreio devolve zero linha pra quem não tem — o recorte é do banco. */}
+        <Route path="/controle/rastreio" element={<ControleRastreio />} />
         {/* Pedido de Venda completo (portado do controle.branorte.com):
             seletor dos 4 tipos + formulario com upload de orcamento, extracao,
             equipamentos, plano de pagamento, geracao de DOCX/PDF e envio pra fabrica. */}
