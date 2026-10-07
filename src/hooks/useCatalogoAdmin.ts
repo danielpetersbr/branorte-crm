@@ -284,6 +284,9 @@ export function useCriarItemCatalogo() {
       void _isv
       const payload = {
         ...clean,
+        // Produtos cadastrados aqui ficam disponíveis imediatamente. O campo
+        // legado continua usado para separar registros históricos importados.
+        is_oficial: true,
         ativo: true,
         ocorrencias: 0,
         atualizado_em: new Date().toISOString(),

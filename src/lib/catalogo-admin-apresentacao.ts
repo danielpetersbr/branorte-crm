@@ -25,11 +25,10 @@ export function correspondeBuscaCatalogo(item: ItemBusca, busca: string): boolea
 }
 
 export function resumirCatalogo(items: Array<{ ativo: boolean; is_oficial: boolean; foto_url: string | null }>) {
-  const resumo = { todos: 0, oficiais: 0, pendentes: 0, 'sem-foto': 0, inativos: 0, comFoto: 0 }
+  const resumo = { todos: 0, 'sem-foto': 0, inativos: 0, comFoto: 0 }
   for (const item of items) {
     if (!item.ativo) { resumo.inativos++; continue }
     resumo.todos++
-    resumo[item.is_oficial ? 'oficiais' : 'pendentes']++
     resumo[item.foto_url ? 'comFoto' : 'sem-foto']++
   }
   return resumo

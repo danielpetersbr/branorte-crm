@@ -218,7 +218,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: 'adm', label: 'Catálogo e projetos', icon: Boxes, section: 'gestao',
     items: [
-      { to: '/orcamentos/catalogo-admin', label: 'Catálogo (Admin)', icon: Shield, permKey: 'menu.orcamentos_avancado' },
+      { to: '/orcamentos/catalogo-admin', label: 'Catálogo de equipamentos', icon: Shield, permKey: 'catalogo.editar' },
       { to: '/orcamentos/motores', label: 'Motores (Preços)', icon: Zap, permKey: 'menu.orcamentos_avancado' },
       // As duas entradas de Funções Chupim preservam permissões diferentes.
       { to: '/admin/transportador-funcoes', label: 'Funções Chupim', icon: GitBranch, permKey: 'menu.orcamentos_avancado' },

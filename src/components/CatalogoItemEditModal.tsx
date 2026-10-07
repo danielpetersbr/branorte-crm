@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  X, Check, Loader2, Upload, Image as ImageIcon, Trash2, Plus, Star,
+  X, Check, Loader2, Upload, Image as ImageIcon, Trash2, Plus,
   Camera, Search,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import {
   useAtualizarItemCatalogo,
   useCriarItemCatalogo,
-  useToggleOficialCatalogo,
   useDeletarItemCatalogo,
   useUploadFotoCatalogo,
   useRemoverFotoCatalogo,
@@ -42,7 +41,6 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
   const { data: acessorios } = useCatalogoAcessorios()
 
   // ─── Estado dos campos editáveis ─────────────────────────────────
-  const [isOficial, setIsOficial] = useState(false)
   const [categoria, setCategoria] = useState('')
   const [nomeCurto, setNomeCurto] = useState('')
   const [nomeCompleto, setNomeCompleto] = useState('')
@@ -78,7 +76,6 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
 
   const atualizar = useAtualizarItemCatalogo()
   const criar = useCriarItemCatalogo()
-  const toggleOficial = useToggleOficialCatalogo()
   const deletar = useDeletarItemCatalogo()
   const uploadFoto = useUploadFotoCatalogo()
   const removerFoto = useRemoverFotoCatalogo()
@@ -88,7 +85,6 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     if (!open) return
     if (!item) {
       // Modo CRIAR — reseta tudo pra vazio
-      setIsOficial(false)
       setCategoria('')
       setNomeCurto('')
       setNomeCompleto('')
@@ -113,7 +109,6 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       return
     }
     // Modo EDITAR — preenche com dados do item
-    setIsOficial(item.is_oficial)
     setCategoria(item.categoria || '')
     setNomeCurto(item.nome_curto || '')
     setNomeCompleto(item.nome_completo || '')
@@ -360,7 +355,6 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
     setErroValidacao(null)
 
     const updates: Partial<CatalogoItemAdmin> = {
-      is_oficial: isOficial,
       categoria: categoria.trim().toUpperCase(),
       nome_curto: nomeCurto.trim(),
       nome_completo: nomeCompleto.trim() || nomeCurto.trim(),
@@ -393,20 +387,6 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
       onClose()
     } catch (err) {
       setErroValidacao('Falha ao salvar: ' + (err as Error).message)
-    }
-  }
-
-  async function handleToggleOficial() {
-    // Modo criar: ainda não há linha para atualizar — o status vai junto no INSERT
-    // (`is_oficial` do handleSalvar). Antes o botão ficava morto aqui.
-    if (!item) { setIsOficial(v => !v); return }
-    const novo = !isOficial
-    setIsOficial(novo)
-    try {
-      await toggleOficial.mutateAsync({ id: item.id, is_oficial: novo })
-    } catch (err) {
-      setIsOficial(!novo)
-      setErroValidacao('Falha ao trocar status: ' + (err as Error).message)
     }
   }
 
@@ -544,26 +524,6 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
           {/* ── Coluna direita: campos ──────────────────────────── */}
           <div className="flex flex-col gap-4 min-w-0">
             <h3 className="text-sm font-semibold text-ink">Foto e descrição</h3>
-            {/* Status toggle */}
-            <div>
-              <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1.5">
-                Status no catálogo
-              </label>
-              <button
-                type="button"
-                onClick={handleToggleOficial}
-                disabled={toggleOficial.isPending}
-                className={`w-full text-[13px] px-4 py-2.5 rounded-md font-semibold transition flex items-center justify-center gap-2 ${
-                  isOficial
-                    ? 'bg-success-bg text-success border border-success/40'
-                    : 'bg-surface-2 text-ink-faint border border-border'
-                }`}
-              >
-                <Star className={`w-4 h-4 ${isOficial ? 'fill-current' : ''}`} />
-                {isOficial ? 'Oficial — disponível nos orçamentos' : 'Pendente — aguardando aprovação'}
-              </button>
-            </div>
-
             {/* Categoria com sugestões */}
             <div>
               <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">

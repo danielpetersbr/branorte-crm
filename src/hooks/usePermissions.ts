@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import {CHAVE_PRODUCAO_FABRICA,canComExcecaoFabrica,type EstadoPermissoesFabrica} from '@/lib/producao-espelho-permissoes'
 import { CHAVE_NOVO_PEDIDO, permissaoNovoPedido } from '@/lib/novo-pedido-acesso'
+import { CHAVE_CATALOGO, permissaoCatalogo } from '@/lib/catalogo-acesso'
 
 // 'mapa' e 'financeiro' entraram em 06/08/2026 junto com o Financeiro por parcelas.
 // 'mapa' porque o Patrick tem esse papel e vende (12 pedidos, R$ 5,95 mi) — sem uma
@@ -35,6 +36,7 @@ export const FEATURE_CATALOG: Array<{
   { key: 'menu.funil', label: 'Funil', group: 'Menu' },
   { key: 'menu.orcamentos', label: 'Orçamentos', group: 'Menu' },
   { key: 'menu.orcamentos_avancado', label: 'Orçamentos avançado (Catálogo/Motores/Preços/Conversão/Painel/Lista)', group: 'Menu' },
+  { key: CHAVE_CATALOGO, label: 'Catálogo: editar fotos, descrições e cadastrar produtos', group: 'Ações' },
   { key: 'menu.vendidos', label: 'Vendidos', group: 'Menu' },
   { key: 'menu.frete', label: 'Frete', group: 'Menu' },
   { key: 'menu.controle', label: 'Controle (Vendas)', group: 'Menu' },
@@ -216,15 +218,42 @@ export function useProducaoEspelhoPermissions():EstadoPermissoesFabrica {
 }
 
 // API principal: `can('menu.disparos')` retorna boolean pro user logado.
+export function useCatalogoPermissions() {
+  const { session, profile, loading: authLoading, profileError } = useAuth()
+  const roles = useRolePermissions()
+  const userId = session?.user.id ?? null
+  const aprovado = !!userId && profile?.id === userId && !!profile?.approved_at && !['pending', 'rejected'].includes(profile.role)
+  const overrides = useQuery({
+    queryKey: ['catalogo-permissoes', userId],
+    enabled: aprovado && !authLoading && !profileError,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('controle_permissoes_usuario')
+        .select('permitido').eq('user_id', userId!).eq('feature_key', CHAVE_CATALOGO).maybeSingle()
+      if (error) throw error
+      if (data !== null && typeof data.permitido !== 'boolean') throw new Error('Permissão inválida')
+      return { userId, permitido: data?.permitido as boolean | undefined }
+    },
+    staleTime: 60_000, refetchOnWindowFocus: true, refetchInterval: 5 * 60_000,
+  })
+  const permissions = roles.data?.find(r => r.role === profile?.role)?.permissions
+  const loading = aprovado && (authLoading || roles.isPending || overrides.isPending)
+  const error = !!profileError || roles.isError || overrides.isError
+  const carregado = !authLoading && !loading && !error && overrides.data?.userId === userId
+  const legado = permissions?.[CHAVE_CATALOGO] ?? permissions?.['menu.orcamentos_avancado'] ?? false
+  return { loading, error, permitido: permissaoCatalogo(aprovado, carregado, legado, overrides.data?.permitido) }
+}
+
 export function useCan(): (featureKey: string) => boolean {
   const { profile } = useAuth()
   const { data } = useRolePermissions()
   const fabrica=useProducaoEspelhoPermissions()
+  const catalogo = useCatalogoPermissions()
 
   return (featureKey: string) => {
     if (!profile) return false
     const role = profile.role
     if (role === 'pending' || role === 'rejected') return false
+    if (featureKey === CHAVE_CATALOGO) return catalogo.permitido
     return canComExcecaoFabrica(featureKey,fabrica,()=>{
       const row = data?.find(r => r.role === role)
       const perms = row?.permissions ?? FALLBACK[role as AssignableRole] ?? {}
