@@ -726,9 +726,9 @@ export function useSemRespostaTelefones(enabled = true, filters?: Partial<Atendi
   })
 }
 
-export function useAtendimentos(filters: AtendimentoFilters) {
+export function useAtendimentos(filters: AtendimentoFilters, pageSize = ATENDIMENTO_PAGE_SIZE) {
   return useQuery({
-    queryKey: ['atendimentos', filters],
+    queryKey: ['atendimentos', filters, pageSize],
     queryFn: async () => {
       const vendorFirst = await getCurrentVendorFirstName()
 
@@ -846,7 +846,7 @@ export function useAtendimentos(filters: AtendimentoFilters) {
           for (const p of partes) chaves.push(...p)
         }
 
-        const { total, telefones } = paginaPorUltimaMsg(chaves, filters.page, ATENDIMENTO_PAGE_SIZE)
+        const { total, telefones } = paginaPorUltimaMsg(chaves, filters.page, pageSize)
         if (telefones.length === 0) return { rows: [] as Atendimento[], total, truncado: false }
 
         const { data, error } = await aplicarFiltros(
@@ -912,8 +912,8 @@ export function useAtendimentos(filters: AtendimentoFilters) {
       }
       // (29/09/2026) data, UF, origem e criativo já entraram no aplicarFiltros, lá em cima.
 
-      const from = filters.page * ATENDIMENTO_PAGE_SIZE
-      query = query.range(from, from + ATENDIMENTO_PAGE_SIZE - 1)
+      const from = filters.page * pageSize
+      query = query.range(from, from + pageSize - 1)
 
       const { data, error, count } = await query
       if (error) throw error
@@ -1193,9 +1193,8 @@ export function useAtendimentosTotalMenu() {
 // ─── Contagem "aberto vs fechado" do funil (estado ATUAL da etiqueta WhatsApp) ──
 // Base INTEIRA (independe do filtro de data — etiqueta é estado atual, não do dia).
 // Respeita o escopo do vendedor logado (vê os seus + não-atribuídos), igual aos KPIs.
-//   Aberto  = sem nenhuma etiqueta OU com etiqueta de funil ativo
-//             (PROSPECCAO / NOVO LEAD / FOLLOW UP / LEAD QUENTE).
-//   Fechado = tem etiqueta, mas nenhuma delas é de funil ativo.
+//   Aberto = etiqueta de Prospecção até Lead quente, sem etiqueta de encerramento.
+//   Sem etiqueta não entra em aberto. Encerramento prevalece sobre etapa pendurada.
 export interface AtendimentoFunilContagem {
   total: number
   abertos: number

@@ -69,3 +69,16 @@ test('paginaPorUltimaMsg: telefone repetido conta uma vez; vazio/nulo é ignorad
   ]
   assert.deepEqual(paginaPorUltimaMsg(linhas, 0, 50), { total: 2, telefones: ['X', 'Y'] })
 })
+
+test('modo análise: páginas de 100 atravessam lotes sem perder ou repetir clientes', () => {
+  const linhas: ChaveAtendimento[] = Array.from({ length: 251 }, (_, i) => ({
+    telefone_norm: String(i).padStart(4, '0'),
+    ultima_msg: '2026-10-07T10:00:00Z',
+  }))
+  const todas = emLotes(linhas, 50).reverse().flat()
+  const paginas = [0, 1, 2].map(p => paginaPorUltimaMsg(todas, p, 100))
+  assert.deepEqual(paginas.map(p => p.telefones.length), [100, 100, 51])
+  assert.ok(paginas.every(p => p.total === 251))
+  assert.deepEqual(paginas.flatMap(p => p.telefones), linhas.map(l => l.telefone_norm))
+  assert.deepEqual(paginaPorUltimaMsg(todas, 0, 50).telefones, paginas[0].telefones.slice(0, 50))
+})
