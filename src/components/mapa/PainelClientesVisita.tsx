@@ -1,6 +1,7 @@
 import type { Visita } from '@/hooks/useVisitas'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { vendedorVisitaCorresponde } from '@/lib/visitas-whatsapp'
+import { useState } from 'react'
+import { copiarTexto, vendedorVisitaCorresponde } from '@/lib/visitas-whatsapp'
 import { MapaDialog } from './MapaDialog'
 
 interface Props {
@@ -26,6 +27,18 @@ export function PainelClientesVisita({
   vendedorSel, soMarcados, onVendedor, onFiltro, onMarcar, onFocar, onClose,
 }: Props) {
   const mobile = useIsMobile()
+  const [copiado, setCopiado] = useState<string | null>(null)
+  async function copiar(id: string, telefone: string) {
+    if (!(await copiarTexto(telefone))) return
+    setCopiado(id)
+    window.setTimeout(() => setCopiado(c => (c === id ? null : c)), 1800)
+  }
+  // Desmarcar tira o cliente da lista de visita do vendedor — clique sem querer
+  // some com ele do filtro. Marcar não pergunta nada.
+  function trocarVisita(v: Visita, visitar: boolean) {
+    if (!visitar && !window.confirm(`Tem certeza que ${v.nome || v.telefone || 'este cliente'} NÃO é mais para visitar?`)) return
+    onMarcar(v.id, visitar)
+  }
   const meus = !!vendedorSel && vendedorSel === (meuVendedor || '__meus__')
   const semLocalizacao = visitas.filter(v => v.lat == null || v.lng == null).length
   const content = <>
@@ -56,18 +69,28 @@ export function PainelClientesVisita({
       {visitas.map(v => {
         const podeEditar = role === 'admin' || (role === 'vendor' && !!vendedorLogado && vendedorVisitaCorresponde(v.vendedor_nome, vendedorLogado))
         const temLocalizacao = v.lat != null && v.lng != null
+        const tel = (v.telefone || '').replace(/\D/g, '')
         return <div key={v.id} className="rounded-lg border border-border bg-surface-2/50 p-3 text-sm">
           <button type="button" disabled={!temLocalizacao}
             className="text-left font-semibold text-ink hover:text-accent disabled:cursor-default disabled:hover:text-ink break-words"
             onClick={() => { onFocar(v); if (mobile) onClose() }}>
             {v.nome || v.telefone || 'Sem nome'}
           </button>
-          {v.nome && v.telefone && <p className="mt-0.5 text-xs text-ink-muted">{v.telefone}</p>}
+          {v.telefone && <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-ink-muted">{v.telefone}</span>
+            <button type="button" onClick={() => copiar(v.id, tel || v.telefone!)}
+              title="Copiar o telefone pra procurar a conversa no WhatsApp"
+              className="h-7 rounded-md border border-border px-2 font-semibold text-ink hover:bg-surface-2">
+              {copiado === v.id ? '✓ Copiado' : '📋 Copiar'}
+            </button>
+            {tel && <a href={`https://wa.me/${tel}`} target="_blank" rel="noopener"
+              className="h-7 rounded-md border border-border px-2 font-semibold leading-7 text-accent hover:bg-surface-2">WhatsApp ↗</a>}
+          </div>}
           <p className="mt-1 text-xs text-ink-muted">{[v.cidade, v.estado].filter(Boolean).join(' / ') || 'Cidade não informada'} · {v.vendedor_nome || 'Sem vendedor'}</p>
           {!temLocalizacao && <p className="mt-1 text-xs text-warning">Sem localização no mapa</p>}
           <label className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
             <input type="checkbox" aria-label={`Visitar ${v.nome || v.telefone || 'cliente'}`} checked={v.visitar === true}
-              disabled={!podeEditar || saving} onChange={e => onMarcar(v.id, e.target.checked)} />
+              disabled={!podeEditar || saving} onChange={e => trocarVisita(v, e.target.checked)} />
             É para visitar{!podeEditar && ' · somente consulta'}
           </label>
         </div>
