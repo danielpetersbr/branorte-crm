@@ -22,7 +22,40 @@
 -- Telefone sempre por fone_canon nos dois lados (DDD + 8 dígitos; estrangeiro não casa).
 -- SECURITY DEFINER lê auditoria.* e fura RLS: por isso o guard de papel é da PRÓPRIA função.
 -- (No banco entrou em duas passadas no mesmo dia: controle_vendas_rastreio e ..._v2, que só acrescentou a
---  distinção de origem forte x porta de entrada. Este arquivo é a versão final.)
+--  distinção de origem forte x porta de entrada; e uma terceira trouxe fones_canon_do_campo. Este arquivo é
+--  a versão final.)
+
+-- Campo de telefone com MAIS DE UM número (2 pedidos em 277 nos 6 meses medidos em 07/10/2026).
+-- fone_canon do campo inteiro junta os dígitos e corta os 10 da direita: fica só com o último número,
+-- ou fabrica um DDD ("(77) 99971-3032 e (11) 98888-7777" virava 1988887777). Esta função devolve uma
+-- chave por número do campo. Campo com um número só continua indo direto pro fone_canon.
+create or replace function public.fones_canon_do_campo(p text)
+returns setof text
+language sql
+immutable
+set search_path to 'public'
+as $f$
+  with d as (
+    select coalesce(p, '') as t, length(regexp_replace(coalesce(p, ''), '\D', '', 'g')) as n
+  ),
+  um as (select public.fone_canon(d.t) as fc from d where d.n <= 13),
+  -- números colados, sem formatação: "77999713032 / 1133334444"
+  colados as (
+    select public.fone_canon(m[1]) as fc from d, lateral regexp_matches(d.t, '(\d{10,13})', 'g') m where d.n > 13
+  ),
+  -- números formatados: "(77) 99971-3032 e (11) 98888-7777"
+  formatados as (
+    select public.fone_canon(m[1]) as fc
+    from d, lateral regexp_matches(regexp_replace(d.t, '\d{10,}', ' ', 'g'),
+                                   '(\(?\d{2}\)?[\s.-]*\d?[\s.-]*\d{4}[\s.-]*\d{4})', 'g') m
+    where d.n > 13
+  )
+  select distinct x.fc from (select fc from um union all select fc from colados union all select fc from formatados) x
+  where x.fc is not null
+$f$;
+
+revoke all on function public.fones_canon_do_campo(text) from public, anon;
+grant execute on function public.fones_canon_do_campo(text) to authenticated, service_role;
 
 create or replace function public.controle_vendas_rastreio(p_from date, p_to date)
 returns table (
@@ -101,6 +134,7 @@ og as (
 -- orçamento da pasta (docx) ligado ao pedido
 ofi as (
   select distinct on (p.id) p.id, nullif(btrim(f.docx_phone), '') as fone,
+         coalesce(nullif(btrim(f.docx_phone), ''), f.docx_phone_normalizado) as fone_txt,
          public.fone_canon(coalesce(f.docx_phone_normalizado, f.docx_phone)) as fc
   from ped p
   join public.orcamentos_files f
@@ -108,12 +142,13 @@ ofi as (
   where public.fone_canon(coalesce(f.docx_phone_normalizado, f.docx_phone)) is not null
   order by p.id, f.mtime_iso desc nulls last
 ),
+-- uma chave por NÚMERO do campo (fones_canon_do_campo): campo com dois telefones casa pelos dois
 fones as (
-  select p.id, p.fc, 'pedido'::text as via from ped p where p.fc is not null
+  select p.id, x.fc, 'pedido'::text as via from ped p, lateral public.fones_canon_do_campo(p.telefone_pedido) x(fc)
   union
-  select og.id, og.fc, 'orcamento' from og
+  select og.id, x.fc, 'orcamento' from og, lateral public.fones_canon_do_campo(og.fone) x(fc)
   union
-  select ofi.id, ofi.fc, 'orcamento' from ofi
+  select ofi.id, x.fc, 'orcamento' from ofi, lateral public.fones_canon_do_campo(ofi.fone_txt) x(fc)
 ),
 fcs as (
   select distinct f.fc from fones f
