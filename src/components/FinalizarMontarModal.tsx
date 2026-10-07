@@ -27,6 +27,7 @@ import { quadrosMontagem, montagemParaSalvar, obsPorContaComMontagem, type Monta
 import { supabase } from '@/lib/supabase'
 import { parseClienteText, titleCasePtBr } from '@/lib/parse-cliente-text'
 import { uploadOrcamentoViaServer } from '@/lib/orcamento-upload'
+import { reduzirFotoParaUpload, extensaoDaFoto } from '@/lib/foto-upload'
 import { nomeBase, nomeBaseWhatsApp, sanitizeNomeArquivo, MAX_DESCRICAO } from '@/lib/orcamento-nome-arquivo'
 import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 
@@ -733,6 +734,9 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
     let erroFluxo: string | null = null
     // Aviso ≠ erro: o orçamento saiu inteiro, só não pelo caminho preferido.
     let avisoFluxo: string | null = null
+    // Foto que o Storage recusou (roadmap #94): a proposta sai com ela, mas o banco não guarda —
+    // ao reabrir pra editar ela some. Antes era só console.warn; agora o vendedor fica sabendo.
+    const fotosNaoSalvas: string[] = []
     try {
       const hoje = new Date()
 
@@ -818,17 +822,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         if (!f || !f.startsWith('data:')) return it
         try {
           const res = await fetch(f)
-          const blob = await res.blob()
-          const ext = blob.type.includes('png') ? 'png' : 'jpg'
+          const blob = await reduzirFotoParaUpload(await res.blob())
+          const ext = extensaoDaFoto(blob)
           const path = `orcamentos/foto-item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
           const { error: upErr } = await supabase.storage
             .from('catalogo-fotos')
             .upload(path, blob, { contentType: blob.type, upsert: true })
-          if (upErr) { console.warn('Falha upload foto item:', upErr.message); return it }
+          if (upErr) {
+            console.warn('Falha upload foto item:', upErr.message)
+            fotosNaoSalvas.push(`foto do item ${it.nome}`)
+            return it
+          }
           const { data: pub } = supabase.storage.from('catalogo-fotos').getPublicUrl(path)
           return { ...it, foto_url: pub?.publicUrl ?? it.foto_url }
         } catch (e) {
           console.warn('Falha upload foto item:', (e as Error).message)
+          fotosNaoSalvas.push(`foto do item ${it.nome}`)
           return it
         }
       }))
@@ -891,8 +900,8 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           try {
             setStep('Subindo foto principal...', 8)
             const res = await fetch(snapshot.fotoPrincipal)
-            const blob = await res.blob()
-            const ext = blob.type.includes('png') ? 'png' : 'jpg'
+            const blob = await reduzirFotoParaUpload(await res.blob())
+            const ext = extensaoDaFoto(blob)
             // Usa timestamp pra evitar cache e colisão
             const storagePath = `orcamentos/foto-principal-${Date.now()}.${ext}`
             const { error: upErr } = await supabase.storage
@@ -900,12 +909,14 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               .upload(storagePath, blob, { contentType: blob.type, upsert: true })
             if (upErr) {
               console.warn('Falha upload foto principal:', upErr.message)
+              fotosNaoSalvas.push('foto principal')
             } else {
               const { data: pubData } = supabase.storage.from('catalogo-fotos').getPublicUrl(storagePath)
               fotoPrincipalUrl = pubData?.publicUrl ?? null
             }
           } catch (e) {
             console.warn('Falha upload foto principal:', (e as Error).message)
+            fotosNaoSalvas.push('foto principal')
           }
         } else {
           // Já é uma URL pública — salva direto
@@ -921,20 +932,22 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
           try {
             setStep('Subindo foto das observações...', 9)
             const res = await fetch(snapshot.observacoesFoto)
-            const blob = await res.blob()
-            const ext = blob.type.includes('png') ? 'png' : 'jpg'
+            const blob = await reduzirFotoParaUpload(await res.blob())
+            const ext = extensaoDaFoto(blob)
             const storagePath = `orcamentos/observacoes-${Date.now()}.${ext}`
             const { error: upErr } = await supabase.storage
               .from('catalogo-fotos')
               .upload(storagePath, blob, { contentType: blob.type, upsert: true })
             if (upErr) {
               console.warn('Falha upload foto observações:', upErr.message)
+              fotosNaoSalvas.push('foto das observações')
             } else {
               const { data: pubData } = supabase.storage.from('catalogo-fotos').getPublicUrl(storagePath)
               observacoesFotoUrl = pubData?.publicUrl ?? null
             }
           } catch (e) {
             console.warn('Falha upload foto observações:', (e as Error).message)
+            fotosNaoSalvas.push('foto das observações')
           }
         } else {
           observacoesFotoUrl = snapshot.observacoesFoto
@@ -1465,7 +1478,11 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
 
       setGerandoStep('Pronto!')
       setGerandoProgress(100)
-      onSuccess({ orcamentoId: orc.id, numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, viaServidor, pdfBlob, cliente: cliNome.trim(), erro: erroFluxo, aviso: avisoFluxo, pdfErro, whatsappEnviado, whatsappMensagem })
+      const avisoFotos = fotosNaoSalvas.length
+        ? `A proposta saiu com ${fotosNaoSalvas.join(', ')}, mas ela NÃO ficou guardada no orçamento: ao abrir pra editar, coloque de novo.`
+        : null
+      const aviso = [avisoFluxo, avisoFotos].filter(Boolean).join(' ') || null
+      onSuccess({ orcamentoId: orc.id, numero: orc.numero, baixouDocx, baixouPdf, salvouNaPasta, viaServidor, pdfBlob, cliente: cliNome.trim(), erro: erroFluxo, aviso, pdfErro, whatsappEnviado, whatsappMensagem })
       if (pdfErro) alert(`Orçamento gerado, mas PDF falhou: ${pdfErro}\n.docx foi gerado normalmente.`)
     } catch (e) {
       setErro((e as Error).message)
