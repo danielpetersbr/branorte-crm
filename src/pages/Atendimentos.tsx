@@ -17,7 +17,7 @@ import { StatusDot } from '@/components/ui/StatusDot'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
-import { resumoUtil, limparEquipamento } from '@/lib/atendimentos-texto'
+import { limparEquipamento } from '@/lib/atendimentos-texto'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
 import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useAnuncioPorTelefone, lookupAnuncio, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useQualificacaoPorTelefone, lookupQualificacao, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
@@ -1212,54 +1212,19 @@ export function Atendimentos() {
                             )
                           })()}
                         </td>
-                        {/* MOTIVO DO CONTATO + nome do equipamento (o_que_precisa OU criativo) */}
+                        {/* MOTIVO DO CONTATO — somente a categoria; o modelo fica em Equipamento. */}
                         <td className="hidden lg:table-cell px-1.5 py-2.5 overflow-hidden">
                           {(() => {
                             const motivo = humanizeMotivo(r.motivo_contato)
                             if (!motivo) return <EmptyCell />
                             const tone = MOTIVO_TONE[r.motivo_contato!] ?? MOTIVO_TONE[motivo] ?? 'neutral'
-                            // Nome do equipamento que o CLIENTE declarou. Vale pros dois motivos:
-                            // quem vai montar fábrica também nomeia peça ("preciso do moinho e do
-                            // misturador"), e antes esse dado era descartado porque a linha só
-                            // mostrava equipamento quando motivo='equipamento'.
-                            const ehUmEquipamento = /equipamento/i.test(motivo)
-                            const equipDeclarado = limparEquipamento(r.o_que_precisa)
-                              ?? limparEquipamento(lookupDadosIa(dadosIaMap, r.telefone)?.equipamento)
-                            // Fallback: o equipamento do ANÚNCIO. É palpite, não fala do cliente,
-                            // então só entra quando o motivo já disse que é peça avulsa, e vai
-                            // rotulado — sem o rótulo, o nome do criativo lia como pedido dele.
-                            const equipDoAnuncio = !equipDeclarado && ehUmEquipamento
-                              ? limparEquipamento(criativoNome)
-                              : null
-                            const equipamento = equipDeclarado ?? equipDoAnuncio
-                            // Contexto do que o lead quer. `last_message_text` só carrega texto de
-                            // sistema ("Lead chegou via webhook" em 100% dos leads), então passa
-                            // pelo filtro antes de ocupar espaço na célula.
-                            const resumo = resumoUtil(r.ai_context_summary) ?? resumoUtil(r.last_message_text)
                             return (
-                              <div className="flex flex-col gap-0.5 min-w-0 w-full max-h-[44px] overflow-hidden"
-                                   title={[motivo, equipamento, resumo].filter(Boolean).join('\n')}>
-                                <Badge style={{
-                                  background: `hsl(var(--${tone}-bg))`,
-                                  color: `hsl(var(--${tone}))`,
-                                }} className="w-fit max-w-full overflow-hidden" title={motivo}>
-                                  <span className="truncate">{motivo}</span>
-                                </Badge>
-                                {equipamento && (
-                                  <span className="text-[10.5px] text-ink-faint truncate capitalize"
-                                        title={equipDoAnuncio
-                                          ? `${equipamento} — equipamento do anúncio que ele clicou, não o que ele pediu`
-                                          : equipamento}>
-                                    {equipDoAnuncio && <span className="not-italic opacity-60">anúncio: </span>}
-                                    {equipamento}
-                                  </span>
-                                )}
-                                {resumo && resumo.toLowerCase() !== (equipamento || '').toLowerCase() && (
-                                  <span className="text-[10.5px] text-ink-muted leading-snug line-clamp-2" title={resumo}>
-                                    {resumo}
-                                  </span>
-                                )}
-                              </div>
+                              <Badge style={{
+                                background: `hsl(var(--${tone}-bg))`,
+                                color: `hsl(var(--${tone}))`,
+                              }} className="w-fit max-w-full overflow-hidden" title={motivo}>
+                                <span className="truncate">{motivo}</span>
+                              </Badge>
                             )
                           })()}
                         </td>
@@ -1331,8 +1296,9 @@ export function Atendimentos() {
                         <td className="hidden 2xl:table-cell px-1.5 py-2.5 max-w-[124px]">
                           {(() => {
                             const q = lookupQualificacao(qualifMap, r.telefone)
-                            const daIa = lookupDadosIa(dadosIaMap, r.telefone)?.equipamento
-                            const nome = q?.produto || daIa
+                            const daIa = limparEquipamento(lookupDadosIa(dadosIaMap, r.telefone)?.equipamento)
+                            const declarado = limparEquipamento(r.o_que_precisa)
+                            const nome = q?.produto || daIa || declarado
                             if (!nome) return <EmptyCell />
                             const doVendedor = !!q?.produto
                             return (
@@ -1341,7 +1307,9 @@ export function Atendimentos() {
                                 style={{ color: doVendedor ? 'hsl(var(--ink))' : 'hsl(var(--ink-faint))' }}
                                 title={doVendedor
                                   ? `${nome} — marcado pelo vendedor na extensão`
-                                  : `${nome} — deduzido pela IA da conversa (o vendedor ainda não confirmou)`}
+                                  : daIa
+                                    ? `${nome} — deduzido pela IA da conversa (o vendedor ainda não confirmou)`
+                                    : `${nome} — informado no atendimento`}
                               >
                                 {nome}
                                 {/* "os dois" = consumo + sobra. Sem isso ele fica igual a consumo puro. */}
