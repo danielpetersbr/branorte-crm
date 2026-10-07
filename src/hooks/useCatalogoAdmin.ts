@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import type { CatalogoItem } from './useCatalogo'
+import { fabricasDoCatalogo, type ModeloCatalogo } from '@/lib/catalogo-fabricas'
 
 // Item do catálogo com todos os campos de curadoria.
 // Quando `is_virtual=true`, o registro veio só de precos_branorte e ainda não tem
@@ -17,6 +18,7 @@ export interface CatalogoItemAdmin extends CatalogoItem {
   atualizado_por: string | null
   atualizado_em: string | null
   is_virtual?: boolean
+  modelo_id?: number
 }
 
 const BUCKET_FOTOS = 'catalogo-fotos'
@@ -130,7 +132,7 @@ export function useCatalogoItemsAdmin() {
   return useQuery({
     queryKey: ['catalogo-items-admin'],
     queryFn: async (): Promise<CatalogoItemAdmin[]> => {
-      const [itemsRes, precosRes] = await Promise.all([
+      const [itemsRes, precosRes, modelosRes] = await Promise.all([
         supabase
           .from('catalogo_items')
           .select('*')
@@ -146,9 +148,13 @@ export function useCatalogoItemsAdmin() {
           .from('precos_branorte')
           .select('id, categoria, subcategoria, descricao, capacidade, valor_equipamento, motor_cv, motor_polos, observacoes, ordem')
           .eq('ativo', true),
+        supabase.from('orcamento_modelos')
+          .select('id, basename, pacote, voltagem, is_master, ativo, foto_url, producao_kgh, total_equipamentos, itens')
+          .order('pacote').order('producao_kgh').order('id'),
       ])
       if (itemsRes.error) throw itemsRes.error
       if (precosRes.error) throw precosRes.error
+      if (modelosRes.error) throw modelosRes.error
       const items = (itemsRes.data ?? []) as CatalogoItemAdmin[]
       const precos = (precosRes.data ?? []) as Parameters<typeof precoToVirtualItem>[0][]
 
@@ -160,7 +166,7 @@ export function useCatalogoItemsAdmin() {
         .map(precoToVirtualItem)
 
       // Reais primeiro (curados), virtuais depois (sem foto/specs ainda)
-      return [...items, ...virtuais]
+      return fabricasDoCatalogo([...items, ...virtuais], (modelosRes.data ?? []) as ModeloCatalogo[])
     },
     staleTime: 30_000,
   })
@@ -278,6 +284,9 @@ export function useCriarItemCatalogo() {
       void _isv
       const payload = {
         ...clean,
+        // Produtos cadastrados aqui ficam disponíveis imediatamente. O campo
+        // legado continua usado para separar registros históricos importados.
+        is_oficial: true,
         ativo: true,
         ocorrencias: 0,
         atualizado_em: new Date().toISOString(),

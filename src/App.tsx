@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase'
 import { Layout } from '@/components/layout/Layout'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
-import { useCan,useProducaoEspelhoPermissions } from '@/hooks/usePermissions'
+import { useCan,useProducaoEspelhoPermissions,useCatalogoPermissions } from '@/hooks/usePermissions'
+import { rotaCatalogo } from '@/lib/catalogo-acesso'
 import { rotaPedidosVendedorPermitida } from '@/lib/novo-pedido-acesso'
 import {decidirRotaProducaoFabrica} from '@/lib/producao-espelho-permissoes'
 import { useTrilhaAcesso } from '@/hooks/useAcesso'
@@ -230,6 +231,7 @@ function AppRoutes() {
   const { session, profile, loading, profileError } = useAuth()
   const can = useCan()
   const fabrica=useProducaoEspelhoPermissions()
+  const catalogo = useCatalogoPermissions()
   const loc = useLocation()
   // ⚠️ Tem que ficar AQUI, no topo: este componente tem dezenas de `return`
   // antecipados (rotas públicas, portal, pendente) e hook depois de return
@@ -375,6 +377,12 @@ function AppRoutes() {
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
   const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/precos', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/contrato', '/orcamentos/contratos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
+  if (rotaCatalogo(loc.pathname)) {
+    if (catalogo.loading) return <PageLoading />
+    if (catalogo.error) return <div role="alert" className="p-6 text-ink">Não foi possível validar seu acesso ao catálogo. Atualize a página.</div>
+    if (!catalogo.permitido) return <Navigate to="/atendimentos" replace />
+  }
+
   if (profile.role === 'vendor') {
     const p = loc.pathname
     // gestor de frete pode ter papel 'vendor' + permissão frete.aprovar → libera a fila pra ele
@@ -461,7 +469,7 @@ function AppRoutes() {
      */
     const funilOk = p === '/funil' && can('menu.funil')
     const whatsappOk = p === '/whatsapp' && can('menu.whatsapp')
-    const allowed = fabricaPermitida || whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || pedidosOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const allowed = (rotaCatalogo(p) && catalogo.permitido) || fabricaPermitida || whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || pedidosOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 

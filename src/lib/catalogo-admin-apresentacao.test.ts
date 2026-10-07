@@ -21,15 +21,15 @@ test('busca reconhece os nomes de categorias exibidos na tela', () => {
   assert.equal(correspondeBuscaCatalogo({ ...caixa, categoria: 'SUPORTE_BAG' }, 'big bag'), true)
 })
 
-test('resumo conta oficiais e fotos separadamente, sem incluir inativos nos totais ativos', () => {
+test('resumo conta produtos e fotos sem classificação de aprovação', () => {
   assert.deepEqual(resumirCatalogo([
     { ativo: true, is_oficial: true, foto_url: 'caixa.jpg' },
     { ativo: true, is_oficial: true, foto_url: null },
     { ativo: true, is_oficial: false, foto_url: 'pendente.jpg' },
     { ativo: false, is_oficial: true, foto_url: null },
-  ]), { todos: 3, oficiais: 2, pendentes: 1, 'sem-foto': 1, inativos: 1, comFoto: 2 })
+  ]), { todos: 3, 'sem-foto': 1, inativos: 1, comFoto: 2 })
 })
 
 test('catálogo vazio tem resumo vazio', () => {
-  assert.deepEqual(resumirCatalogo([]), { todos: 0, oficiais: 0, pendentes: 0, 'sem-foto': 0, inativos: 0, comFoto: 0 })
+  assert.deepEqual(resumirCatalogo([]), { todos: 0, 'sem-foto': 0, inativos: 0, comFoto: 0 })
 })

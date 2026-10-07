@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
-  Search, Star, ImageOff, Filter, Loader2,
-  Package, CheckCircle2, AlertCircle, Camera, Edit,
+  Search, ImageOff, Filter,
+  Package, Camera, Edit,
   Rows3, LayoutGrid, Image as ImageView, FileText, Plus, X, ArrowRight,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
@@ -9,18 +9,16 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import {
   useCatalogoItemsAdmin,
-  useToggleOficialCatalogo,
   type CatalogoItemAdmin,
 } from '@/hooks/useCatalogoAdmin'
 import { CatalogoItemEditModal } from '@/components/CatalogoItemEditModal'
+import { CatalogoFabricaFotoModal } from '@/components/CatalogoFabricaFotoModal'
 import { correspondeBuscaCatalogo, nomeCategoria, resumirCatalogo } from '@/lib/catalogo-admin-apresentacao'
 
-type AbaFiltro = 'todos' | 'pendentes' | 'oficiais' | 'sem-foto' | 'inativos'
+type AbaFiltro = 'todos' | 'sem-foto' | 'inativos'
 
 const ABAS: Array<{ id: AbaFiltro; label: string }> = [
   { id: 'todos', label: 'Todos' },
-  { id: 'pendentes', label: 'Pendentes' },
-  { id: 'oficiais', label: 'Oficiais' },
   { id: 'sem-foto', label: 'Sem foto' },
   { id: 'inativos', label: 'Inativos' },
 ]
@@ -121,7 +119,6 @@ function diametrosDoItems(
 
 export function CatalogoAdmin() {
   const { data: items, isLoading, error, refetch, isFetching } = useCatalogoItemsAdmin()
-  const toggleOficial = useToggleOficialCatalogo()
   const resumo = useMemo(() => resumirCatalogo(items ?? []), [items])
 
   const [aba, setAba] = useState<AbaFiltro>('todos')
@@ -167,14 +164,6 @@ export function CatalogoAdmin() {
     const filtrados = items.filter(it => {
       // Aba
       switch (aba) {
-        case 'pendentes':
-          if (it.is_oficial) return false
-          if (!it.ativo) return false
-          break
-        case 'oficiais':
-          if (!it.is_oficial) return false
-          if (!it.ativo) return false
-          break
         case 'sem-foto':
           if (it.foto_url) return false
           if (!it.ativo) return false
@@ -251,15 +240,6 @@ export function CatalogoAdmin() {
     setItemEditando(null)
   }
 
-  async function handleToggleOficial(e: React.MouseEvent, item: CatalogoItemAdmin) {
-    e.stopPropagation()
-    try {
-      await toggleOficial.mutateAsync({ id: item.id, is_oficial: !item.is_oficial })
-    } catch {
-      // silencioso — react-query já mostra erro no devtools; fallback é re-fetch
-    }
-  }
-
   if (error && !items) return <div className="p-4"><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar o catálogo de equipamentos." /></div>
   if (isLoading && !items) return <PageLoading />
 
@@ -286,12 +266,10 @@ export function CatalogoAdmin() {
           </button>
         </header>
 
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6" aria-label="Resumo do catálogo ativo">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6" aria-label="Resumo do catálogo ativo">
           {[
             { filtro: 'todos', label: 'Produtos ativos', valor: resumo.todos, icon: Package, detalhe: 'Todos os equipamentos', cor: 'text-ink' },
-            { filtro: 'oficiais', label: 'Oficiais', valor: resumo.oficiais, icon: CheckCircle2, detalhe: 'Disponíveis para orçamento', cor: 'text-success' },
             { filtro: 'sem-foto', label: 'Sem foto', valor: resumo['sem-foto'], icon: ImageOff, detalhe: 'Adicione uma imagem', cor: 'text-warning' },
-            { filtro: 'pendentes', label: 'Pendentes', valor: resumo.pendentes, icon: AlertCircle, detalhe: 'Aguardando aprovação', cor: 'text-ink-muted' },
           ].map(s => (
             <button key={s.filtro} onClick={() => { limparFiltros(); setAba(s.filtro as AbaFiltro) }} className="text-left bg-surface border border-border hover:border-accent/50 rounded-xl p-4 transition group">
               <div className="flex items-center justify-between gap-2 text-ink-muted text-xs"><span>{s.label}</span><s.icon className={`w-4 h-4 ${s.cor}`} /></div>
@@ -374,22 +352,24 @@ export function CatalogoAdmin() {
               </div>
             ) : viewMode === 'lista' ? (
               <div className="bg-surface border border-border rounded-xl overflow-hidden divide-y divide-border">
-                {itemsVisiveis.map(item => <CatalogoLinhaItem key={item.id} item={item} onClick={() => abrirEdicao(item)} onToggleOficial={e => handleToggleOficial(e, item)} togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id} />)}
+                {itemsVisiveis.map(item => <CatalogoLinhaItem key={item.id} item={item} onClick={() => abrirEdicao(item)} />)}
               </div>
             ) : viewMode === 'orcamento' ? (
               <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
-                {itemsVisiveis.map(item => <CatalogoOrcamentoItem key={item.id} item={item} onClick={() => abrirEdicao(item)} onToggleOficial={e => handleToggleOficial(e, item)} togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id} />)}
+                {itemsVisiveis.map(item => <CatalogoOrcamentoItem key={item.id} item={item} onClick={() => abrirEdicao(item)} />)}
               </div>
             ) : (
               <div className={viewMode === 'galeria' ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4'}>
-                {itemsVisiveis.map(item => <CatalogoCardItem key={item.id} item={item} galeria={viewMode === 'galeria'} onClick={() => abrirEdicao(item)} onToggleOficial={e => handleToggleOficial(e, item)} togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id} />)}
+                {itemsVisiveis.map(item => <CatalogoCardItem key={item.id} item={item} galeria={viewMode === 'galeria'} onClick={() => abrirEdicao(item)} />)}
               </div>
             )}
             {temMais && <div className="flex justify-center mt-6"><button onClick={() => setLimite(prev => prev + PAGINA_INICIAL)} className="text-sm px-5 py-3 rounded-lg border border-border bg-surface hover:bg-surface-2 text-ink font-medium">Carregar mais produtos ({itemsFiltrados.length - limite} restantes)</button></div>}
           </main>
         </div>
       </div>
-      <CatalogoItemEditModal open={modalOpen} item={itemEditando} onClose={fecharEdicao} onSaved={() => { /* Os hooks atualizam a lista após salvar. */ }} />
+      {modalOpen && itemEditando?.modelo_id != null
+        ? <CatalogoFabricaFotoModal key={itemEditando.modelo_id} item={itemEditando as CatalogoItemAdmin & { modelo_id: number }} onClose={fecharEdicao} />
+        : <CatalogoItemEditModal open={modalOpen} item={itemEditando} onClose={fecharEdicao} onSaved={() => { /* Os hooks atualizam a lista após salvar. */ }} />}
     </div>
   )
 }
@@ -399,12 +379,10 @@ export function CatalogoAdmin() {
 interface CardProps {
   item: CatalogoItemAdmin
   onClick: () => void
-  onToggleOficial: (e: React.MouseEvent) => void
-  togglePending?: boolean
   galeria?: boolean
 }
 
-function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending, galeria }: CardProps) {
+function CatalogoCardItem({ item, onClick, galeria }: CardProps) {
   return (
     <article className={`group flex flex-col bg-surface border border-border rounded-xl overflow-hidden hover:border-accent/50 transition ${item.ativo ? '' : 'opacity-60'}`}>
       <button type="button" onClick={onClick} aria-label={`Editar ${item.nome_curto}`} className={`text-left w-full min-w-0 ${galeria ? '' : 'flex items-start gap-4 p-4'}`}>
@@ -420,17 +398,14 @@ function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending, galer
           {item.motor_padrao_cv && <p className="text-xs text-ink-muted mt-1">Motor {item.motor_padrao_cv} CV{item.motor_padrao_polos ? ` · ${item.motor_padrao_polos} polos` : ''}</p>}
         </div>
       </button>
-      <div className="flex items-center justify-between gap-2 px-4 py-3 mt-auto border-t border-border">
-        <button type="button" onClick={onToggleOficial} disabled={togglePending} title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'} className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1.5 rounded-md transition ${item.is_oficial ? 'text-success bg-success-bg/50' : 'text-warning bg-warning/10'}`}>
-          {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}{item.is_oficial ? 'Oficial' : 'Pendente'}
-        </button>
-        <button type="button" onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-accent bg-accent/10 hover:bg-accent/20" aria-label={`Editar foto e descrição de ${item.nome_curto}`}><Edit className="w-3.5 h-3.5" /> Editar</button>
+      <div className="flex items-center justify-end gap-2 px-4 py-3 mt-auto border-t border-border">
+        <button type="button" onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-accent bg-accent/10 hover:bg-accent/20" aria-label={`Editar ${item.modelo_id != null ? 'foto' : 'foto e descrição'} de ${item.nome_curto}`}><Edit className="w-3.5 h-3.5" /> Editar</button>
       </div>
     </article>
   )
 }
 
-function CatalogoLinhaItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
+function CatalogoLinhaItem({ item, onClick }: CardProps) {
   return (
     <article className={`flex flex-wrap sm:flex-nowrap items-center gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2 transition ${item.ativo ? '' : 'opacity-60'}`}>
       <button type="button" onClick={onClick} aria-label={`Editar ${item.nome_curto}`} className="flex flex-1 min-w-0 items-center gap-3 text-left">
@@ -440,15 +415,12 @@ function CatalogoLinhaItem({ item, onClick, onToggleOficial, togglePending }: Ca
         <div className="min-w-0">
           <p className="text-[11px] text-accent mb-1">{nomeCategoria(item.categoria || 'Sem categoria')}</p>
           <h3 className="text-sm text-ink font-medium line-clamp-2">{item.nome_curto}</h3>
-          <p className="text-[11px] text-ink-faint mt-1">{item.is_virtual ? 'Aguardando foto e descrição' : `#${item.id}`}{!item.foto_url && !item.is_virtual ? ' · Sem foto' : ''}{!item.ativo ? ' · Inativo' : ''}</p>
+          <p className="text-[11px] text-ink-faint mt-1">{item.is_virtual ? 'Aguardando foto e descrição' : (item.modelo_id != null ? `Modelo #${item.modelo_id}` : `#${item.id}`)}{!item.foto_url && !item.is_virtual ? ' · Sem foto' : ''}{!item.ativo ? ' · Inativo' : ''}</p>
         </div>
       </button>
       <div className="w-full sm:w-auto flex items-center justify-end gap-2 sm:gap-4">
         <span className="mr-auto sm:mr-0 text-sm font-semibold text-ink tabular-nums">{formatBRL(item.valor || 0)}</span>
-        <button type="button" onClick={onToggleOficial} disabled={togglePending} className={`inline-flex items-center gap-1 px-2 py-2 rounded-md text-[11px] ${item.is_oficial ? 'text-success bg-success-bg/40' : 'text-warning bg-warning/10'}`} title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'}>
-          {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}<span className="hidden sm:inline">{item.is_oficial ? 'Oficial' : 'Pendente'}</span>
-        </button>
-        <button type="button" onClick={onClick} aria-label={`Editar foto e descrição de ${item.nome_curto}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-accent bg-accent/10 hover:bg-accent/20"><Edit className="w-3.5 h-3.5" /> Editar</button>
+        <button type="button" onClick={onClick} aria-label={`Editar ${item.modelo_id != null ? 'foto' : 'foto e descrição'} de ${item.nome_curto}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-accent bg-accent/10 hover:bg-accent/20"><Edit className="w-3.5 h-3.5" /> Editar</button>
       </div>
     </article>
   )
@@ -458,7 +430,7 @@ function CatalogoLinhaItem({ item, onClick, onToggleOficial, togglePending }: Ca
 // ─── Card no MESMO layout do card de item no OrcamentoPreview ─────────────
 // Foto 180x140 a direita, bullets de specs a esquerda, titulo grande no topo,
 // linha VALOR no rodape. Pra editar vendo exatamente como o cliente ve.
-function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
+function CatalogoOrcamentoItem({ item, onClick }: CardProps) {
   const specs = Array.isArray(item.specs) ? item.specs : []
   return (
     <div
@@ -467,7 +439,7 @@ function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }
         item.ativo ? 'border-gray-300' : 'border-gray-200 opacity-60'
       }`}
     >
-      {/* Header: badges + estrela */}
+      {/* Categoria e status do item */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           <span className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">
@@ -476,11 +448,6 @@ function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }
           {item.subcategoria && (
             <span className="px-1.5 py-px rounded bg-accent/15 text-accent border border-accent/30 text-[9px] font-bold tracking-wider">
               {item.subcategoria}
-            </span>
-          )}
-          {!item.is_oficial && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 uppercase tracking-wider">
-              Pendente
             </span>
           )}
           {item.is_virtual && (
@@ -494,24 +461,6 @@ function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={e => { e.stopPropagation(); onToggleOficial(e) }}
-          disabled={togglePending}
-          title={item.is_oficial ? 'Oficial — clique pra remover do builder' : 'Marcar como oficial'}
-          className={`shrink-0 p-1.5 rounded-md transition ${
-            item.is_oficial
-              ? 'bg-success-bg/60 text-success hover:bg-success-bg'
-              : 'bg-gray-100 text-gray-400 hover:bg-warning/20 hover:text-warning'
-          }`}
-          aria-label="Alternar oficial"
-        >
-          {togglePending ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />
-          )}
-        </button>
       </div>
 
       {/* Titulo grande estilo orcamento */}
@@ -563,14 +512,14 @@ function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-gray-400">
-            {item.is_virtual ? '(virtual)' : `#${item.id} · usado ${item.ocorrencias}×`}
+            {item.modelo_id != null ? `Modelo #${item.modelo_id}` : item.is_virtual ? '(virtual)' : `#${item.id} · usado ${item.ocorrencias}×`}
           </span>
           <span className="text-[16px] font-bold text-accent">
             {formatBRL(item.valor || 0)}
           </span>
         </div>
       </div>
-      <button type="button" onClick={e => { e.stopPropagation(); onClick() }} className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent mt-3 px-3 py-2 rounded-lg bg-accent/10 hover:bg-accent/20"><Edit className="w-3.5 h-3.5" /> Editar foto e descrição</button>
+      <button type="button" onClick={e => { e.stopPropagation(); onClick() }} className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent mt-3 px-3 py-2 rounded-lg bg-accent/10 hover:bg-accent/20"><Edit className="w-3.5 h-3.5" /> {item.modelo_id != null ? 'Editar foto' : 'Editar foto e descrição'}</button>
     </div>
   )
 }

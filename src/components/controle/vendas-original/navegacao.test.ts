@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import * as ts from 'typescript'
 import * as politica from './navegacao'
 import { rotaPedidosVendedorPermitida } from '@/lib/novo-pedido-acesso'
+import { rotaCatalogo } from '@/lib/catalogo-acesso'
 
 const app = ts.createSourceFile('App.tsx', readFileSync(new URL('../../../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const pagina = ts.createSourceFile('ControleVendasOriginal.tsx', readFileSync(new URL('../../../pages/controle/ControleVendasOriginal.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -14,15 +15,24 @@ const variavel = (nome: string) => nodes.find(node => ts.isVariableStatement(nod
 const condicional = (inicio: string) => nodes.find(node => ts.isIfStatement(node) && node.expression.getText(app).startsWith(inicio))!.getText(app)
 
 /** Executa os mesmos blocos de rota do App; todas as permissões retornam true. */
-function guardReal(papel: 'vendor' | 'mapa', rota: string, pedidos = true) {
-  const fonte = [variavel('freteLiberado'), variavel('VENDOR_PREFIXES'), condicional("profile.role === 'vendor'"), variavel('ROTAS_RESTRITAS'), variavel('rotasDoPapel'), condicional('rotasDoPapel &&')].join('\n')
+function guardReal(papel: 'vendor' | 'mapa', rota: string, pedidos = true, catalogo = { loading: false, error: false, permitido: false }) {
+  const fonte = [variavel('freteLiberado'), variavel('VENDOR_PREFIXES'), condicional('rotaCatalogo(loc.pathname)'), condicional("profile.role === 'vendor'"), variavel('ROTAS_RESTRITAS'), variavel('rotasDoPapel'), condicional('rotasDoPapel &&')].join('\n')
   const js = ts.transpileModule(fonte, { compilerOptions: { jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2020 } }).outputText
-  return new Function('profile', 'loc', 'can', 'fabricaPermitida', 'React', 'Navigate', 'rotaPedidosVendedorPermitida', `${js}; return 'permitida';`)(
+  return new Function('profile', 'loc', 'can', 'fabricaPermitida', 'React', 'Navigate', 'rotaPedidosVendedorPermitida', 'rotaCatalogo', 'catalogo', 'PageLoading', `${js}; return 'permitida';`)(
     { role: papel }, { pathname: rota }, (key: string) => key !== 'menu.novo_pedido' || pedidos, false,
-    { createElement: (_tipo: unknown, props: { to: string }) => ({ redireciona: props.to }) }, 'Navigate',
-    rotaPedidosVendedorPermitida,
+    { createElement: (tipo: unknown, props: { to: string } | null) => ({ redireciona: props?.to, tipo }) }, 'Navigate',
+    rotaPedidosVendedorPermitida, rotaCatalogo, catalogo, 'PageLoading',
   )
 }
+
+test('catálogo aguarda validação e aceita apenas liberação individual concluída', () => {
+  const rota = '/orcamentos/catalogo-admin'
+  assert.equal(guardReal('vendor', rota, true, { loading: false, error: false, permitido: true }), 'permitida')
+  assert.equal(guardReal('vendor', rota).redireciona, '/atendimentos')
+  assert.equal(guardReal('vendor', rota, true, { loading: true, error: false, permitido: false }).tipo, 'PageLoading')
+  assert.equal(guardReal('vendor', rota, true, { loading: false, error: true, permitido: false }).tipo, 'div')
+  assert.notEqual(guardReal('vendor', '/orcamentos/motores', true, { loading: false, error: false, permitido: true }), 'permitida')
+})
 
 function callbackPagina(tag: string, conteudo: string) {
   let expressao = ''
