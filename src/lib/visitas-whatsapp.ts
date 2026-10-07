@@ -15,3 +15,14 @@ export function filtrarVisitasWhatsApp<T extends { visitar: boolean | null; vend
   return clientes.filter(c => (!soMarcados || c.visitar === true) &&
     (vendedor === null || vendedorVisitaCorresponde(c.vendedor_nome, vendedor)))
 }
+
+/** Copia pro clipboard; devolve false se o navegador recusou (aba sem foco, http). */
+export async function copiarTexto(texto: string): Promise<boolean> {
+  if (!texto) return false
+  try {
+    await navigator.clipboard.writeText(texto)
+    return true
+  } catch {
+    return false
+  }
+}
