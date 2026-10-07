@@ -29,6 +29,7 @@ import { entradaVisitasWhatsApp, filtrarVisitasWhatsApp, vendedorVisitaCorrespon
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import { PainelViagem, corDoDia } from '@/components/mapa/PainelViagem'
+import { PainelClientesVisita } from '@/components/mapa/PainelClientesVisita'
 import { CompletarCidade } from '@/components/mapa/CompletarCidade'
 import { MapaDialog, MapaPainel } from '@/components/mapa/MapaDialog'
 import { useSalvarViagem, useSalvarLocalizacaoCliente, useViagem, type ViagemStatus } from '@/hooks/useViagens'
@@ -463,6 +464,7 @@ export function MapaVisitas() {
   const meuVendedor = entrada.vendedor || vendedorLogado
   const definirVisita = useDefinirVisita()
   const [soMarcados, setSoMarcados] = useState(entrada.ativo)
+  const [painelVisitasAberto, setPainelVisitasAberto] = useState(entrada.ativo)
   const geocodar = useGeocodarVisitas()
   const [vendedorSel, setVendedorSel] = useState<string>(entrada.ativo ? entrada.vendedor || '__meus__' : '')
   useEffect(() => {
@@ -475,6 +477,11 @@ export function MapaVisitas() {
   // aparecer. Com ela desligada, preencher não mostrava nada e parecia que o
   // cadastro não tinha funcionado.
   const [showVis, setShowVis] = useState(true)
+  const mostrarPainelVisitas = showVis && painelVisitasAberto
+  function filtrarMarcados(marcados: boolean) {
+    setSoMarcados(marcados)
+    setPainelVisitasAberto(marcados)
+  }
   // Fila de completar cidade dos clientes salvos pelo card da extensão.
   const [cidadeAberta, setCidadeAberta] = useState(false)
   const [busca, setBusca] = useState('')
@@ -1247,6 +1254,7 @@ export function MapaVisitas() {
   }
 
   function entrarNaViagem() {
+    setPainelVisitasAberto(false)
     setModoViagem(true)
     // O raio some junto com o CENTRO. Só desligar o modo deixava o círculo
     // desenhado e o painel do raio no ar, e os dois disputavam o clique no mapa:
@@ -2116,53 +2124,9 @@ export function MapaVisitas() {
     // Volta a ser casca de altura fixa: a Organização de viagem virou página
     // própria (menu, abaixo de "Mapa de Visitas"), então não há mais nada
     // embaixo do mapa — e com a página rolando o mapa perdia altura à toa.
-    <div className="relative flex flex-col overflow-hidden md:p-4 md:gap-3 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
+    <div className="relative flex flex-col overflow-hidden md:p-3 md:gap-2 h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
       {/* selo ✓ não pode capturar clique — senão não dá pra abrir o popup do pino visitado */}
       <style>{`.leaflet-marker-icon.marc-check{pointer-events:none!important}`}</style>
-      {showVis && (
-        <div className="shrink-0 border border-border rounded-lg bg-surface p-3 mx-2 mt-2 md:m-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-sm text-ink mr-auto">📍 Clientes para visitar</span>
-            <button type="button" onClick={() => setVendedorSel(meuVendedor || '__meus__')}
-              aria-pressed={!!vendedorSel && vendedorSel === (meuVendedor || '__meus__')}
-              className={togglePill(!!vendedorSel && vendedorSel === (meuVendedor || '__meus__'))}>Só os meus</button>
-            <button type="button" onClick={() => setVendedorSel('')} aria-pressed={!vendedorSel}
-              className={togglePill(!vendedorSel)}>Todos os vendedores</button>
-            <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
-              <input type="checkbox" checked={soMarcados} onChange={e => setSoMarcados(e.target.checked)} />
-              Só marcados para visitar
-            </label>
-          </div>
-          {vendedorSel === '__meus__' && <p className="text-sm text-warning mt-2">Não foi possível identificar seu vendedor. Configure seu nome na extensão ou escolha um vendedor no mapa.</p>}
-          {errorVisitas && <p role="alert" className="text-sm text-red-600 mt-2">Não foi possível carregar os clientes: {errorVisitas.message}</p>}
-          {definirVisita.isError && <p role="alert" className="text-sm text-red-600 mt-2">Não foi possível salvar: {definirVisita.error.message}</p>}
-          <details open={entrada.ativo || undefined} className="mt-2">
-            <summary className="cursor-pointer text-sm text-ink-muted">{visitasSelecionadas.length} clientes · gerenciar marcações{semCoord > 0 ? ` · ${semCoord} sem localização` : ''}</summary>
-            <div className="max-h-40 overflow-auto mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {isLoading && <p className="text-sm text-ink-muted">Carregando clientes…</p>}
-              {!isLoading && !errorVisitas && visitasSelecionadas.length === 0 && <p className="text-sm text-ink-muted">Nenhum cliente neste filtro.</p>}
-              {visitasSelecionadas.map(v => {
-                const podeEditar = profile?.role === 'admin' || (profile?.role === 'vendor' && !!vendedorLogado &&
-                  (v.vendedor_nome || '').trim().toUpperCase() === vendedorLogado)
-                return <div key={v.id} className="rounded border border-border px-3 py-2 text-sm">
-                  <button type="button" disabled={v.lat == null || v.lng == null} className="font-semibold text-ink text-left disabled:cursor-default hover:underline"
-                    onClick={() => { if (v.lat != null && v.lng != null) mapRef.current?.setView([v.lat, v.lng], 12) }}>
-                    {v.nome || v.telefone || 'Sem nome'}
-                  </button>
-                  <p className="text-xs text-ink-muted">{[v.cidade, v.estado].filter(Boolean).join(' / ') || 'Cidade não informada'} · {v.vendedor_nome || 'Sem vendedor'}</p>
-                  {v.lat == null || v.lng == null ? <p className="text-xs text-warning">Sem localização no mapa</p> : null}
-                  <label className="flex items-center gap-2 mt-1 text-ink-muted">
-                    <input type="checkbox" aria-label={`Visitar ${v.nome || v.telefone || 'cliente'}`} checked={v.visitar === true}
-                      disabled={!podeEditar || definirVisita.isPending}
-                      onChange={e => definirVisita.mutate({ id: v.id, visitar: e.target.checked })} />
-                    É para visitar{!podeEditar ? ' · somente consulta' : ''}
-                  </label>
-                </div>
-              })}
-            </div>
-          </details>
-        </div>
-      )}
       <div className={erroFontesMapa ? 'shrink-0 px-2 pt-2 md:px-0 md:pt-0' : 'hidden'}>
         <QueryNotice error={erroFontesMapa} loading={carregandoFontesMapa}
           onRetry={() => Promise.allSettled(fontesMapa.filter(fonte => fonte.error).map(fonte => fonte.refetch()))}
@@ -2176,10 +2140,10 @@ export function MapaVisitas() {
         <button type="button" onClick={cancelarAberturaViagem} className="mt-1 rounded px-2 py-1 text-sm font-medium text-ink underline">Manter planejamento atual</button>
       </div>
       {/* HEADER + TOOLBAR — só no desktop. No celular o mapa é tela cheia com filtros flutuantes. */}
-      <div className="hidden md:flex flex-col gap-3 shrink-0 rounded-xl border border-border bg-surface px-4 py-3">
-        <div>
-          <h1 className="text-[22px] font-semibold text-ink tracking-tight">Mapa de clientes</h1>
-          <p className="text-[13px] text-ink-muted">
+      <div className="hidden md:flex flex-col gap-2 shrink-0 rounded-xl border border-border bg-surface px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-base font-semibold text-ink tracking-tight">Mapa de clientes</h1>
+          <p className="text-xs text-ink-muted">
             {ufsVisiveis.length > 0 && (
               <span className="mr-2 px-2 py-0.5 rounded-full bg-accent-bg border border-accent/30 text-accent text-[11px] font-bold"
                     title="Seu acesso é limitado a estes estados. Os outros nem chegam do servidor.">
@@ -2198,9 +2162,17 @@ export function MapaVisitas() {
               {semCoord} sem coordenadas · completar cadastro</button></>}</>}
             {!showOrc && !showVis && 'Ligue uma camada pra ver os pontos'}
           </p>
+          {showVis && <div className="ml-auto flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-ink-muted cursor-pointer">
+              <input type="checkbox" checked={soMarcados} onChange={e => filtrarMarcados(e.target.checked)} />
+              Só marcados para visitar
+            </label>
+            <button type="button" aria-expanded={mostrarPainelVisitas} onClick={() => setPainelVisitasAberto(v => !v)}
+              className={togglePill(mostrarPainelVisitas)}>Contatos ({visitasSelecionadas.length})</button>
+          </div>}
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full">
-          <div className="relative w-full lg:w-72" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSugAberta(false) }}>
+          <div className="relative w-56 shrink-0" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSugAberta(false) }}>
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-ink-faint pointer-events-none">🔍</span>
             <input
               value={busca}
@@ -2217,7 +2189,7 @@ export function MapaVisitas() {
               placeholder="Buscar cidade, cliente, telefone, Nº…"
               aria-label="Buscar cidade, cliente, telefone ou número de orçamento"
               autoComplete="off"
-              className="h-10 w-full pl-8 pr-7 rounded-lg bg-surface-2 border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
+              className="h-9 w-full pl-8 pr-7 rounded-lg bg-surface-2 border border-border text-[13px] text-ink placeholder:text-ink-faint outline-none focus:border-accent"
             />
             {busca && (
               <button onClick={() => { setBusca(''); setSugAberta(false) }} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink text-[13px]" title="Limpar busca">✕</button>
@@ -2248,7 +2220,7 @@ export function MapaVisitas() {
               Filtros (popover) | Ver como | camadas | Lista · Viagem. O Raio foi pra
               sidebar, que é onde ele entrega a lista. O que está filtrando vira chip na
               linha de baixo. O celular tem a própria faixa, mais abaixo, e não mudou. */}
-          <div className="flex flex-wrap items-center gap-2 [&>*]:shrink-0">
+          <div className="contents [&>*]:shrink-0">
           <select value={vendedorSel} onChange={e => setVendedorSel(e.target.value)}
             aria-label="Vendedor dos clientes no mapa"
             title="Vendedor do cliente (o do orçamento mais recente)"
@@ -2426,6 +2398,16 @@ export function MapaVisitas() {
           <div className="absolute inset-0 flex items-center justify-center z-[400]"><PageLoading /></div>
         )}
 
+        {mostrarPainelVisitas && <PainelClientesVisita
+          visitas={visitasSelecionadas} loading={isLoading} error={errorVisitas?.message}
+          saveError={definirVisita.isError ? definirVisita.error.message : undefined} saving={definirVisita.isPending}
+          role={profile?.role} vendedorLogado={vendedorLogado} meuVendedor={meuVendedor}
+          vendedorSel={vendedorSel} soMarcados={soMarcados} onVendedor={setVendedorSel} onFiltro={filtrarMarcados}
+          onMarcar={(id, visitar) => definirVisita.mutate({ id, visitar })}
+          onFocar={v => { if (v.lat != null && v.lng != null) mapRef.current?.setView([v.lat, v.lng], 12) }}
+          onClose={() => setPainelVisitasAberto(false)}
+        />}
+
         {/* ===== MOBILE: filtros flutuando SOBRE o mapa (tela cheia) ===== */}
         <div className="md:hidden absolute top-2 left-2 right-2 z-[1000] flex flex-col gap-2 pointer-events-none">
           <div className="relative pointer-events-auto" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setSugAberta(false) }}>
@@ -2475,6 +2457,13 @@ export function MapaVisitas() {
               Filtros{nFiltros + (vendedorSel ? 1 : 0) > 0 ? ` (${nFiltros + (vendedorSel ? 1 : 0)})` : ''}
             </button>
           </div>
+          {showVis && !mostrarPainelVisitas && <div className="pointer-events-auto flex items-center justify-between gap-2 rounded-lg border border-border bg-surface/95 px-3 py-1.5 shadow">
+            <label className="flex items-center gap-2 text-xs text-ink-muted">
+              <input type="checkbox" checked={soMarcados} onChange={e => filtrarMarcados(e.target.checked)} />
+              Só marcados para visitar
+            </label>
+            <button type="button" onClick={() => setPainelVisitasAberto(true)} className="h-8 text-xs font-semibold text-accent">Contatos ({visitasSelecionadas.length})</button>
+          </div>}
           <div className="pointer-events-auto grid grid-cols-4 gap-1.5">
             <button onClick={() => setShowLista(true)} className="h-10 rounded-lg border border-border bg-surface/95 text-[12px] font-semibold text-ink shadow">Lista</button>
             <button onClick={() => { setModoRaio(v => !v); if (modoRaio) setCentro(null) }} disabled={modoViagem} aria-pressed={modoRaio}
@@ -2509,7 +2498,7 @@ export function MapaVisitas() {
         {/* Largura por faixa de tela: 400px so sobra em monitor grande. Em
             notebook (1280-1440) o painel fixo espremia o mapa e, junto com o
             menu lateral aberto, era o que fazia o roteiro cortar. */}
-        {modoViagem && (
+        {modoViagem && !mostrarPainelVisitas && (
           <div className="hidden lg:flex w-[320px] xl:w-[360px] shrink-0 min-w-0 rounded-xl border border-border bg-surface overflow-hidden">
             <PainelViagem
               cfg={cfgViagem} setCfg={setCfgViagem}
@@ -2541,6 +2530,7 @@ export function MapaVisitas() {
 
         {/* A legenda e a lista do raio usam o mesmo painel em qualquer tela. */}
         {!modoViagem && (
+        <div className={`absolute inset-0 pointer-events-none [&_button]:pointer-events-auto ${mostrarPainelVisitas ? 'md:right-[332px]' : ''}`}>
         <MapaPainel title={modoRaio && centro ? `Clientes em ${raioKm} km (${noRaio.length})` : 'Legenda e estados'}
           summary={modoRaio && centro ? 'Resultados dos filtros atuais, em ordem de distância.' : `${MODOS.find(([v]) => v === modo)?.[1]} · 1 ponto por cliente de orçamento.`}>
           {fecharPainel => (<>
@@ -2742,6 +2732,7 @@ export function MapaVisitas() {
           )}
           </>)}
         </MapaPainel>
+        </div>
         )}
       </div>
 
