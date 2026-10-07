@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { QueryNotice } from '@/components/ui/QueryNotice'
@@ -7,7 +8,7 @@ import { ORIGEM_TODAS, ORIGEM_NAO_INFORMADA, rotuloOrigemVenda } from '@/lib/ven
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { Flag, DollarSign, TrendingUp, Target, CalendarRange, BarChart3 } from 'lucide-react'
+import { Flag, DollarSign, TrendingUp, Target, CalendarRange, BarChart3, Route } from 'lucide-react'
 
 const PERIODOS: { key: Periodo; label: string }[] = [
   { key: 'hoje', label: 'Hoje' },
@@ -78,13 +79,17 @@ function MetaCard({ title, realizado, meta, pct, falta, icon: Icon }: {
 
 // Filtro por ORIGEM da venda (roadmap #80, pedido do marketing — 29/09/2026).
 // Recorta TODOS os números da tela. A linha de cobertura fica sempre à vista e
-// sempre sobre o total: a origem é a que o vendedor declarou no pedido e parte
-// das vendas não tem nenhuma — somar os chips não dá o faturamento, e a tela não
-// pode deixar parecer que dá.
-function FiltroOrigem({ data, origem, onChange }: {
-  data: ControleVendas; origem: string; onChange: (o: string) => void
+// sempre sobre o total: parte das vendas não tem origem nenhuma — somar os chips
+// não dá o faturamento, e a tela não pode deixar parecer que dá.
+//
+// 07/10/2026: a origem deixou de ser só a que o vendedor marcou. Quando o telefone
+// do pedido (ou do orçamento ligado a ele) bate com um lead/repasse/clique de
+// anúncio, vale o rastreio; sem isso, o que o vendedor marcou. A linha de baixo diz
+// quantas vieram de cada jeito e leva pra tela que mostra venda a venda.
+function FiltroOrigem({ data, origem, onChange, rastreioCarregando }: {
+  data: ControleVendas; origem: string; onChange: (o: string) => void; rastreioCarregando: boolean
 }) {
-  const { total, informada } = data.coberturaOrigem
+  const { total, informada, rastreada } = data.coberturaOrigem
   const pctValor = total.valor > 0 ? (informada.valor / total.valor) * 100 : 0
   const chips = [
     { chave: ORIGEM_TODAS, rotulo: 'Todas', vendas: total.vendas },
@@ -108,7 +113,7 @@ function FiltroOrigem({ data, origem, onChange }: {
               type="button"
               aria-pressed={ativo}
               onClick={() => onChange(c.chave)}
-              title={semOrigem ? 'Pedido sem origem, com "Não informado" ou "Não lembra"' : undefined}
+              title={semOrigem ? 'Sem rastreio pelo telefone e sem origem marcada pelo vendedor ("Não informado" ou "Não lembra")' : undefined}
               className={`inline-flex items-center gap-1 px-2.5 h-7 text-xs font-medium rounded-full border transition-colors ${
                 ativo
                   ? 'bg-accent border-accent text-white'
@@ -124,12 +129,24 @@ function FiltroOrigem({ data, origem, onChange }: {
         })}
       </div>
       <p className="text-[11px] text-text-muted">
-        Origem informada em <span className="font-semibold text-text-secondary tabular-nums">{informada.vendas} de {total.vendas}</span> vendas
-        do mês ({fmtFull(informada.valor)} de {fmtFull(total.valor)} · {pctValor.toFixed(0)}% do valor).
-        É o que o vendedor marcou no pedido ("Como o cliente encontrou a empresa?"), não rastreio de lead.
+        Origem identificada em <span className="font-semibold text-text-secondary tabular-nums">{informada.vendas} de {total.vendas}</span> vendas
+        do mês ({fmtFull(informada.valor)} de {fmtFull(total.valor)} · {pctValor.toFixed(0)}% do valor).{' '}
+        {data.rastreioAplicado ? (
+          <>
+            <span className="font-semibold text-text-secondary tabular-nums">{rastreada.vendas}</span> pelo rastreio do telefone
+            do cliente (lead, repasse ou anúncio); as outras pelo que o vendedor marcou no pedido.
+          </>
+        ) : rastreioCarregando ? (
+          <>Conferindo o rastreio pelo telefone… por enquanto é o que o vendedor marcou no pedido.</>
+        ) : (
+          <>É o que o vendedor marcou no pedido ("Como o cliente encontrou a empresa?"); o rastreio pelo telefone não respondeu agora.</>
+        )}
         {origem !== ORIGEM_TODAS && (
           <span className="font-semibold text-text-secondary"> Todos os números abaixo são só de: {rotuloOrigemVenda(origem)}.</span>
-        )}
+        )}{' '}
+        <Link to="/controle/rastreio" className="inline-flex items-center gap-1 font-semibold text-accent hover:underline">
+          <Route className="h-3 w-3" /> Ver o rastreio venda a venda
+        </Link>
       </p>
     </Card>
   )
@@ -138,7 +155,7 @@ function FiltroOrigem({ data, origem, onChange }: {
 export function ControleDashboard() {
   const [periodo, setPeriodo] = useState<Periodo>('mes')
   const [origem, setOrigem] = useState<string>(ORIGEM_TODAS)
-  const { data, isLoading, error, refetch, isFetching } = useControleVendas(periodo, origem)
+  const { data, isLoading, error, refetch, isFetching, rastreioCarregando } = useControleVendas(periodo, origem)
 
   return (
     <div className="p-4 lg:p-8 space-y-4">
@@ -169,7 +186,7 @@ export function ControleDashboard() {
 
       {error ? <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar o Painel de Vendas." /> : isLoading && !data ? <PageLoading /> : data && (
         <>
-          <FiltroOrigem data={data} origem={origem} onChange={setOrigem} />
+          <FiltroOrigem data={data} origem={origem} onChange={setOrigem} rastreioCarregando={rastreioCarregando} />
 
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

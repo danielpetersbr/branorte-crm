@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, Menu, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, X, Zap,
+  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, Menu, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, Route, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, X, Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState, Suspense, type CSSProperties, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -116,6 +116,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, permKey: 'menu.dashboard' },
       { to: '/funil', label: 'Funil de Vendas', icon: GitBranch, permKey: 'menu.funil' },
       { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true, permKey: 'menu.controle' },
+      { to: '/controle/rastreio', label: 'Rastreio de Origem', icon: Route, permKey: 'menu.controle' },
       { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
       { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2, permKey: 'menu.financeiro' },
       { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado', hidden: true },
