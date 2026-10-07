@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { addMonths, endOfMonth, format, startOfMonth } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Route, ArrowLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Route, ArrowLeft, FileDown } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { QueryNotice } from '@/components/ui/QueryNotice'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useControleRastreio, type RastreioVenda } from '@/hooks/useControleRastreio'
@@ -124,8 +125,17 @@ export default function ControleRastreio() {
   const can = useCan()
   const [mes, setMes] = useState<Date>(() => startOfMonth(new Date()))
   const [situacao, setSituacao] = useState<Situacao>('todas')
-  const from = format(startOfMonth(mes), 'yyyy-MM-dd')
+  // Janela: 1, 3 ou 6 meses TERMINANDO no mês escolhido (o gestor de tráfego precisa de mais de um mês pra ver padrão).
+  const [meses, setMeses] = useState<1 | 3 | 6>(1)
+  const [exportando, setExportando] = useState(false)
+  const [erroPdf, setErroPdf] = useState<string | null>(null)
+  const inicio = startOfMonth(addMonths(mes, -(meses - 1)))
+  const from = format(inicio, 'yyyy-MM-dd')
   const to = format(endOfMonth(mes), 'yyyy-MM-dd')
+  const nomeMes = (d: Date, comAno: boolean) => format(d, comAno ? "MMMM 'de' yyyy" : 'MMMM', { locale: ptBR }).replace(/^./, c => c.toUpperCase())
+  const rotuloPeriodo = meses === 1
+    ? nomeMes(mes, true)
+    : `${nomeMes(inicio, inicio.getFullYear() !== mes.getFullYear())} a ${nomeMes(mes, true)}`
   const q = useControleRastreio(from, to)
 
   const linhas = useMemo<Linha[]>(
@@ -150,6 +160,25 @@ export default function ControleRastreio() {
     if (situacao === 'rastreio') return linhas.filter(l => l.o.base === 'rastreio')
     return linhas.filter(l => situacaoDe(l.o) === situacao)
   }, [linhas, situacao])
+
+  // PDF pro gestor de tráfego. Sai da empresa: o relatório não leva nome nem telefone de cliente
+  // (lib/rastreio-origem-relatorio). A UF vem do espelho de pedidos; se essa busca falhar, o PDF sai sem UF.
+  const exportarPdf = async () => {
+    if (exportando || !q.data || q.data.length === 0) return
+    setExportando(true); setErroPdf(null)
+    try {
+      const ufs = new Map<string, string | null>()
+      const { data: linhasUf } = await supabase.from('mirror_pedidos_venda').select('id, estado').gte('data_venda', from).lte('data_venda', to).limit(5000)
+      for (const l of (linhasUf ?? []) as { id: string; estado: string | null }[]) ufs.set(l.id, l.estado)
+      const [{ montarRelatorioOrigem }, { criarRelatorioOrigemPDF, nomeArquivoRelatorioOrigem }] = await Promise.all([
+        import('@/lib/rastreio-origem-relatorio'), import('@/lib/rastreio-origem-pdf'),
+      ])
+      const doc = await criarRelatorioOrigemPDF({ relatorio: montarRelatorioOrigem(q.data, ufs), periodo: rotuloPeriodo, geradoEm: new Date() })
+      doc.save(nomeArquivoRelatorioOrigem(from, to))
+    } catch (e) {
+      setErroPdf(e instanceof Error && e.message ? e.message : 'Não foi possível gerar o PDF. Tente de novo.')
+    } finally { setExportando(false) }
+  }
 
   if (loading) return <PageLoading />
   if (!profile?.approved_at || !can('menu.controle')) {
@@ -177,20 +206,37 @@ export default function ControleRastreio() {
             vendedor e clique em anúncio). Achou origem, vale o rastreio. Não achou, vale o que o vendedor marcou.
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-0.5 rounded-md border border-surface-border bg-surface-secondary p-0.5" role="group" aria-label="Tamanho do período">
+          {([1, 3, 6] as const).map(n => (
+            <button key={n} type="button" aria-pressed={meses === n} onClick={() => setMeses(n)}
+              title={n === 1 ? 'Só o mês escolhido' : `Os ${n} meses que terminam no mês escolhido`}
+              className={`px-2.5 h-7 text-xs font-medium rounded transition-colors ${meses === n ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary'}`}>
+              {n === 1 ? '1 mês' : `${n} meses`}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-1 rounded-md border border-surface-border bg-surface-secondary p-0.5">
           <button type="button" aria-label="Mês anterior" onClick={() => setMes(m => addMonths(m, -1))}
             className="h-7 w-7 inline-flex items-center justify-center rounded text-text-muted hover:text-text-primary">
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="px-2 text-xs font-semibold text-text-primary min-w-[7.5rem] text-center">
-            {format(mes, "MMMM 'de' yyyy", { locale: ptBR }).replace(/^./, c => c.toUpperCase())}
+            {nomeMes(mes, true)}
           </span>
           <button type="button" aria-label="Próximo mês" disabled={mesAtual} onClick={() => setMes(m => addMonths(m, 1))}
             className="h-7 w-7 inline-flex items-center justify-center rounded text-text-muted hover:text-text-primary disabled:opacity-30">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
+        <button type="button" onClick={() => { void exportarPdf() }} disabled={exportando || !q.data || q.data.length === 0}
+          title="PDF com a identidade da Branorte pra mandar ao gestor de tráfego. Não leva nome nem telefone de cliente."
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-accent text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40">
+          <FileDown className="h-4 w-4" /> {exportando ? 'Gerando PDF…' : 'Exportar PDF'}
+        </button>
+        </div>
       </div>
+      {erroPdf && <p role="alert" className="text-xs text-red-500">{erroPdf}</p>}
 
       {q.error ? (
         <QueryNotice error={q.error} loading={q.isFetching} onRetry={() => { void q.refetch() }} message="Não foi possível carregar o rastreio das vendas." />
@@ -198,7 +244,7 @@ export default function ControleRastreio() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {[
-              { t: 'Vendas no mês', n: String(resumo.total), s: fmtBRL(resumo.valor) },
+              { t: meses === 1 ? 'Vendas no mês' : `Vendas em ${meses} meses`, n: String(resumo.total), s: fmtBRL(resumo.valor) },
               { t: 'Pelo rastreio', n: String(resumo.rastreio), s: resumo.total ? `${Math.round((resumo.rastreio / resumo.total) * 100)}% das vendas` : '—' },
               { t: 'Rastreio = vendedor', n: String(resumo.confere), s: 'os dois dizem o mesmo canal' },
               { t: 'Rastreio ≠ vendedor', n: String(resumo.diverge), s: 'vale o rastreio' },
@@ -230,7 +276,7 @@ export default function ControleRastreio() {
           <Card className="overflow-x-auto">
             {visiveis.length === 0 ? (
               <p className="text-center py-10 text-sm text-text-muted">
-                {resumo.total === 0 ? 'Nenhuma venda neste mês.' : 'Nenhuma venda nesta situação.'}
+                {resumo.total === 0 ? 'Nenhuma venda neste período.' : 'Nenhuma venda nesta situação.'}
               </p>
             ) : (
               <table className="w-full text-xs">
