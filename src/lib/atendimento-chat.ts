@@ -74,6 +74,20 @@ export interface ChatConversation {
   resolved_at?:string|null; resolution_observed_at?:string|null;
   resolution_label_id?:string|null; ana_paused_at?:string|null; ana_blocked_at?:string|null;
 }
+// WhatsApp LIDs identify chats; their digits are not telephone numbers.
+export function chatContactPhone(conversation?:Pick<ChatConversation,'phone'|'wa_chat_id'>|null):string|null {
+  const value=conversation?.phone?.trim()
+  if(!value || !/^\+?[\d\s().-]+$/.test(value))return null
+  const digits=value.replace(/\D/g,'')
+  if(conversation?.wa_chat_id.endsWith('@lid') && digits===conversation.wa_chat_id.split('@')[0])return null
+  return /^[1-9]\d{9,14}$/.test(digits)?digits:null
+}
+export function chatContactName(conversation?:Pick<ChatConversation,'phone'|'wa_chat_id'|'name'>|null):string {
+  const name=conversation?.name?.trim()
+  const chatId=conversation?.wa_chat_id??''
+  const isIdentifier=name===chatId || /^\d+@(?:lid|c\.us|s\.whatsapp\.net)$/.test(name??'') || (chatId.endsWith('@lid') && name===chatId.split('@')[0])
+  return name&&!isIdentifier?name:chatContactPhone(conversation)||'Contato WhatsApp'
+}
 export interface ChatMessage {
   id:number; msg_id:string; from_me:boolean; tipo:string; body:string|null;
   media_url:string|null; data_msg:string; transcricao:string|null; duracao_seg:number|null;
