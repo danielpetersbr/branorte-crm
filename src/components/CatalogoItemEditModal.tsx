@@ -429,16 +429,16 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-2 sm:p-4">
-      <div className="bg-bg border border-border rounded-lg w-full max-w-[1400px] max-h-[95vh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-labelledby="catalogo-editor-titulo" className="bg-bg border border-border rounded-xl w-full max-w-[1100px] max-h-[95vh] overflow-y-auto">
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-bg z-10">
           <div className="min-w-0">
-            <h2 className="text-[14px] font-semibold text-ink truncate">
-              {item ? `Editar item · #${item.id}` : '+ Novo Produto'}
+            <h2 id="catalogo-editor-titulo" className="text-base font-semibold text-ink truncate">
+              {item ? `Editar ${item.nome_curto}` : 'Novo produto'}
             </h2>
             <p className="text-[11px] text-ink-faint truncate">
               {item
-                ? `${item.categoria || 'Sem categoria'} · ${item.ocorrencias}× usado`
+                ? `${item.categoria || 'Sem categoria'}${item.is_virtual ? '' : ` · #${item.id}`}`
                 : 'Cadastrar item novo no catálogo'}
             </p>
           </div>
@@ -477,15 +477,15 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
         )}
 
         {/* ── Body ────────────────────────────────────────────────── */}
-        <div className="p-5 grid grid-cols-1 md:grid-cols-[200px_1fr] gap-5">
+        <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-[240px_minmax(0,1fr)] gap-5">
           {/* ── Coluna esquerda: foto ───────────────────────────── */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 min-w-0 md:sticky md:top-[86px] self-start">
             <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">
               Foto
             </label>
-            <div className="relative w-[200px] h-[200px] border border-border rounded-md overflow-hidden bg-surface-2 flex items-center justify-center">
+            <div className="relative w-full aspect-square max-w-[280px] mx-auto border border-border rounded-lg overflow-hidden bg-white flex items-center justify-center">
               {fotoAtual ? (
-                <img src={fotoAtual} alt={item?.nome_curto || 'preview'} className="w-full h-full object-cover" />
+                <img src={fotoAtual} alt={item?.nome_curto || 'Prévia da foto'} className="w-full h-full object-contain p-2" />
               ) : (
                 <button
                   type="button"
@@ -519,7 +519,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 className="flex-1 text-[11px] px-2 py-1.5 rounded border border-border bg-surface-2 hover:bg-surface-3 text-ink-muted hover:text-ink transition disabled:opacity-50 flex items-center justify-center gap-1"
               >
                 <Camera className="w-3 h-3" />
-                Trocar
+                Trocar foto
               </button>
               {item?.foto_url && (
                 <button
@@ -536,10 +536,14 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
             <p className="text-[10px] text-ink-faint">
               JPG/PNG/WEBP até 5MB
             </p>
+            <p className="text-xs text-ink-muted leading-relaxed mt-2 p-3 rounded-lg bg-accent/5 border border-accent/20">
+              A foto é atualizada ao concluir o envio. Para gravar os textos e outros campos, clique em Salvar.
+            </p>
           </div>
 
           {/* ── Coluna direita: campos ──────────────────────────── */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 min-w-0">
+            <h3 className="text-sm font-semibold text-ink">Foto e descrição</h3>
             {/* Status toggle */}
             <div>
               <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1.5">
@@ -556,7 +560,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 }`}
               >
                 <Star className={`w-4 h-4 ${isOficial ? 'fill-current' : ''}`} />
-                {isOficial ? 'OFICIAL — aparece no builder' : 'PENDENTE — escondido do vendedor'}
+                {isOficial ? 'Oficial — disponível nos orçamentos' : 'Pendente — aguardando aprovação'}
               </button>
             </div>
 
@@ -585,7 +589,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                   Visível no orçamento
                 </span>
                 <span className="text-[10px] text-ink-faint">
-                  — o cliente vê exatamente esses textos no PDF
+                    — textos usados no PDF do cliente
                 </span>
               </div>
 
@@ -621,12 +625,13 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                           next[i] = e.target.value
                           setSpecs(next)
                         }}
-                        className="flex-1 bg-transparent text-[13px] text-ink border-0 border-b border-transparent hover:border-border focus:border-accent outline-none py-0.5 transition-colors"
+                        aria-label={`Descrição comercial, linha ${i + 1}`}
+                        className="flex-1 min-w-0 bg-transparent text-[13px] text-ink border-0 border-b border-transparent hover:border-border focus:border-accent outline-none py-1.5 transition-colors"
                       />
                       <button
                         type="button"
                         onClick={() => removerSpec(i)}
-                        className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-danger p-0.5 transition-opacity"
+                        className="text-ink-faint hover:text-danger p-1.5 transition"
                         aria-label="Remover linha"
                       >
                         <X className="w-3 h-3" />
@@ -645,8 +650,9 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                           adicionarSpec()
                         }
                       }}
+                      aria-label="Nova linha da descrição"
                       placeholder="Adicionar linha..."
-                      className="flex-1 bg-transparent text-[13px] text-ink-faint border-0 border-b border-transparent hover:border-border focus:border-accent outline-none py-0.5 placeholder:text-ink-faint/50 transition-colors"
+                      className="flex-1 min-w-0 bg-transparent text-[13px] text-ink-faint border-0 border-b border-transparent hover:border-border focus:border-accent outline-none py-1.5 placeholder:text-ink-faint/50 transition-colors"
                     />
                     {novaSpec.trim() && (
                       <button
@@ -679,7 +685,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                       <h3 className="text-[15.5px] font-bold text-gray-900 mb-2 leading-tight uppercase">
                         A - 01 — {nomeCurto.trim().toUpperCase()}
                       </h3>
-                      <div className="flex flex-row gap-4 items-start mb-2">
+                      <div className="flex flex-col sm:flex-row gap-4 items-start mb-2">
                         <div className="flex-1 pl-3 text-[13.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
                           {(() => {
                             // Preview = atributos estruturados (Atributos do Silo, etc) + specs livres,
@@ -775,6 +781,8 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
             {/* Specs livres foram movidas para a Descrição Comercial acima */}
 
             {/* Preço base */}
+            <section className="border-t border-border pt-5 space-y-4">
+            <h3 className="text-sm font-semibold text-ink">Preço e motor</h3>
             <div>
               <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1">
                 Preço base (R$)
@@ -859,7 +867,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
                 <div className="space-y-2">
                   {motoresExtras.map((m, idx) => (
                     <div key={idx} className="border border-border rounded-md p-2 bg-surface">
-                      <div className="grid grid-cols-[1fr_70px_70px_50px_auto] gap-2 items-end">
+                      <div className="grid grid-cols-2 sm:grid-cols-[1fr_70px_70px_50px_auto] gap-2 items-end">
                         <div>
                           <p className="text-[10px] text-ink-faint mb-1">Descrição (ex: Exaustor de aquecimento)</p>
                           <Input
@@ -948,6 +956,9 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
             </div>
 
             {/* Acessórios relacionados */}
+            </section>
+            <section className="border-t border-border pt-5 space-y-4">
+            <h3 className="text-sm font-semibold text-ink">Acessórios e notas</h3>
             <div>
               <label className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide block mb-1.5">
                 Acessórios relacionados
@@ -1012,6 +1023,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
             </div>
 
             {/* Metadata */}
+            </section>
             {item && (item.atualizado_por || item.atualizado_em) && (
               <p className="text-[10px] text-ink-faint">
                 Última atualização:{' '}
@@ -1030,7 +1042,7 @@ export function CatalogoItemEditModal({ open, item, onClose, onSaved }: Props) {
         )}
 
         {/* ── Footer ──────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-border bg-surface-2 sticky bottom-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 border-t border-border bg-surface sticky bottom-0 z-10">
           {item ? (
             <button
               type="button"

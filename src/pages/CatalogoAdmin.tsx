@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import {
-  Search, Star, Image as ImageIcon, ImageOff, Filter, Loader2,
-  Package, CheckCircle2, AlertCircle, Camera, Settings2, Edit,
-  Rows3, LayoutGrid, Image as ImageView, FileText,
+  Search, Star, ImageOff, Filter, Loader2,
+  Package, CheckCircle2, AlertCircle, Camera, Edit,
+  Rows3, LayoutGrid, Image as ImageView, FileText, Plus, X, ArrowRight,
 } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -10,10 +10,10 @@ import { QueryNotice } from '@/components/ui/QueryNotice'
 import {
   useCatalogoItemsAdmin,
   useToggleOficialCatalogo,
-  useStatsCatalogo,
   type CatalogoItemAdmin,
 } from '@/hooks/useCatalogoAdmin'
 import { CatalogoItemEditModal } from '@/components/CatalogoItemEditModal'
+import { correspondeBuscaCatalogo, nomeCategoria, resumirCatalogo } from '@/lib/catalogo-admin-apresentacao'
 
 type AbaFiltro = 'todos' | 'pendentes' | 'oficiais' | 'sem-foto' | 'inativos'
 
@@ -121,8 +121,8 @@ function diametrosDoItems(
 
 export function CatalogoAdmin() {
   const { data: items, isLoading, error, refetch, isFetching } = useCatalogoItemsAdmin()
-  const { data: stats } = useStatsCatalogo()
   const toggleOficial = useToggleOficialCatalogo()
+  const resumo = useMemo(() => resumirCatalogo(items ?? []), [items])
 
   const [aba, setAba] = useState<AbaFiltro>('todos')
   const [busca, setBusca] = useState('')
@@ -136,8 +136,8 @@ export function CatalogoAdmin() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
       const saved = localStorage.getItem(VIEW_MODE_KEY)
-      return (saved === 'grid' || saved === 'galeria' || saved === 'lista' || saved === 'orcamento') ? saved : 'lista'
-    } catch { return 'lista' }
+      return (saved === 'grid' || saved === 'galeria' || saved === 'lista' || saved === 'orcamento') ? saved : 'grid'
+    } catch { return 'grid' }
   })
   function setViewModePersistente(v: ViewMode) {
     setViewMode(v)
@@ -147,24 +147,23 @@ export function CatalogoAdmin() {
   // ─── Categorias disponíveis (botões de toggle) ─────────────────
   // mostrarInativos no deps pra esconder categorias 100% inativas (ex.: COMPACTA)
   const categorias = useMemo(
-    () => (items ? categoriasDoItems(items, mostrarInativos) : []),
-    [items, mostrarInativos],
+    () => (items ? categoriasDoItems(items, mostrarInativos || aba === 'inativos') : []),
+    [items, mostrarInativos, aba],
   )
   // ─── Subcategorias da categoria selecionada (só aparecem se categoria != null)
   const subcategorias = useMemo(
-    () => (items ? subcategoriasDoItems(items, categoriaFiltro, mostrarInativos) : []),
-    [items, categoriaFiltro, mostrarInativos],
+    () => (items ? subcategoriasDoItems(items, categoriaFiltro, mostrarInativos || aba === 'inativos') : []),
+    [items, categoriaFiltro, mostrarInativos, aba],
   )
   // Diâmetros (apenas pra chupim/helicoidal de transportador)
   const diametros = useMemo(
-    () => (items ? diametrosDoItems(items, categoriaFiltro, subcategoriaFiltro, mostrarInativos) : []),
-    [items, categoriaFiltro, subcategoriaFiltro, mostrarInativos],
+    () => (items ? diametrosDoItems(items, categoriaFiltro, subcategoriaFiltro, mostrarInativos || aba === 'inativos') : []),
+    [items, categoriaFiltro, subcategoriaFiltro, mostrarInativos, aba],
   )
 
   // ─── Aplicar filtros ────────────────────────────────────────────
   const itemsFiltrados = useMemo(() => {
     if (!items) return []
-    const q = busca.trim().toLowerCase()
     const filtrados = items.filter(it => {
       // Aba
       switch (aba) {
@@ -200,10 +199,7 @@ export function CatalogoAdmin() {
         if (d !== diametroFiltro) return false
       }
       // Busca
-      if (q) {
-        const alvo = `${it.nome_curto} ${it.nome_completo} ${it.categoria} ${it.subcategoria || ''}`.toLowerCase()
-        if (!alvo.includes(q)) return false
-      }
+      if (!correspondeBuscaCatalogo(it, busca)) return false
       return true
     })
     // Ordenacao especial pra TRANSPORTADOR: ordena por (diametro asc, comprimento asc)
@@ -224,6 +220,20 @@ export function CatalogoAdmin() {
 
   const itemsVisiveis = itemsFiltrados.slice(0, limite)
   const temMais = itemsFiltrados.length > limite
+
+  function selecionarCategoria(categoria: string | null) {
+    setCategoriaFiltro(categoria)
+    setSubcategoriaFiltro(null)
+    setDiametroFiltro(null)
+    setLimite(PAGINA_INICIAL)
+  }
+
+  function limparFiltros() {
+    setBusca('')
+    setAba('todos')
+    setMostrarInativos(false)
+    selecionarCategoria(null)
+  }
 
   function abrirEdicao(item: CatalogoItemAdmin) {
     setItemEditando(item)
@@ -253,334 +263,137 @@ export function CatalogoAdmin() {
   if (error && !items) return <div className="p-4"><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar o catálogo de equipamentos." /></div>
   if (isLoading && !items) return <PageLoading />
 
+  const temFiltros = !!busca || !!categoriaFiltro || aba !== 'todos' || mostrarInativos
+  const modos = [
+    { id: 'grid', label: 'Cards', icon: LayoutGrid },
+    { id: 'lista', label: 'Lista', icon: Rows3 },
+    { id: 'galeria', label: 'Fotos', icon: ImageView },
+    { id: 'orcamento', label: 'Orçamento', icon: FileText },
+  ] as const
+
   return (
     <div className="min-h-screen bg-bg">
-      <div className="w-full min-w-0 px-4 sm:px-6 py-6">
-        <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível atualizar o catálogo. Os dados anteriores e os rascunhos de edição foram preservados." />
-        {/* ── Header ─────────────────────────────────────────────── */}
-        <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível atualizar o catálogo. Seus dados de edição foram preservados." />
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Settings2 className="w-5 h-5 text-accent" />
-              <h1 className="text-[18px] font-semibold text-ink">
-                Admin do Catálogo de Produtos
-              </h1>
-            </div>
-            <p className="text-[13px] text-ink-muted">
-              Cure cada item com foto, motor e acessórios. Só items "Oficiais" aparecem no builder do vendedor.
-            </p>
+            <p className="text-[11px] uppercase tracking-widest text-accent font-semibold mb-2">Catálogo e projetos</p>
+            <h1 className="text-2xl sm:text-[28px] font-semibold tracking-tight text-ink">Catálogo de equipamentos</h1>
+            <p className="text-sm text-ink-muted mt-2">Gerencie as fotos e descrições usadas nos orçamentos.</p>
           </div>
-          <button
-            onClick={() => { setItemEditando(null); setModalOpen(true) }}
-            className="text-[12px] px-4 py-2 rounded bg-accent hover:bg-accent-700 text-white font-semibold flex items-center gap-1.5 shadow shrink-0"
-          >
-            <span className="text-[16px] leading-none">+</span> Novo Produto
+          <button onClick={() => { setItemEditando(null); setModalOpen(true) }} className="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent-700 text-white rounded-lg px-4 py-3 text-sm font-semibold shrink-0">
+            <Plus className="w-4 h-4" /> Novo produto
           </button>
+        </header>
+
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6" aria-label="Resumo do catálogo ativo">
+          {[
+            { filtro: 'todos', label: 'Produtos ativos', valor: resumo.todos, icon: Package, detalhe: 'Todos os equipamentos', cor: 'text-ink' },
+            { filtro: 'oficiais', label: 'Oficiais', valor: resumo.oficiais, icon: CheckCircle2, detalhe: 'Disponíveis para orçamento', cor: 'text-success' },
+            { filtro: 'sem-foto', label: 'Sem foto', valor: resumo['sem-foto'], icon: ImageOff, detalhe: 'Adicione uma imagem', cor: 'text-warning' },
+            { filtro: 'pendentes', label: 'Pendentes', valor: resumo.pendentes, icon: AlertCircle, detalhe: 'Aguardando aprovação', cor: 'text-ink-muted' },
+          ].map(s => (
+            <button key={s.filtro} onClick={() => { limparFiltros(); setAba(s.filtro as AbaFiltro) }} className="text-left bg-surface border border-border hover:border-accent/50 rounded-xl p-4 transition group">
+              <div className="flex items-center justify-between gap-2 text-ink-muted text-xs"><span>{s.label}</span><s.icon className={`w-4 h-4 ${s.cor}`} /></div>
+              <p className={`text-2xl sm:text-3xl font-semibold tabular-nums mt-2 ${s.cor}`}>{s.valor}</p>
+              <p className="text-[11px] text-ink-faint mt-1 flex items-center justify-between gap-1">{s.detalhe}<ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100" /></p>
+            </button>
+          ))}
         </div>
 
-        {/* ── Stats banner ───────────────────────────────────────── */}
-        {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-6">
-            <div className="bg-surface border border-border rounded-md px-3 py-2.5">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <Package className="w-3 h-3 text-ink-faint" />
-                <span className="text-[10px] text-ink-faint uppercase tracking-wide">Total</span>
-              </div>
-              <div className="text-[18px] font-semibold text-ink">{stats.total}</div>
-            </div>
-            <div className="bg-success-bg/40 border border-success/30 rounded-md px-3 py-2.5">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <CheckCircle2 className="w-3 h-3 text-success" />
-                <span className="text-[10px] text-success uppercase tracking-wide">Oficiais</span>
-              </div>
-              <div className="text-[18px] font-semibold text-success">{stats.oficiais}</div>
-            </div>
-            <div className="bg-warning/15 border border-warning/30 rounded-md px-3 py-2.5">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <AlertCircle className="w-3 h-3 text-warning" />
-                <span className="text-[10px] text-warning uppercase tracking-wide">Pendentes</span>
-              </div>
-              <div className="text-[18px] font-semibold text-warning">{stats.pendentes}</div>
-            </div>
-            <div className="bg-info/10 border border-info/30 rounded-md px-3 py-2.5">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <Camera className="w-3 h-3 text-info" />
-                <span className="text-[10px] text-info uppercase tracking-wide">Com Foto</span>
-              </div>
-              <div className="text-[18px] font-semibold text-info">{stats.com_foto}</div>
-            </div>
-            <div className="bg-surface border border-border rounded-md px-3 py-2.5">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <Settings2 className="w-3 h-3 text-ink-faint" />
-                <span className="text-[10px] text-ink-faint uppercase tracking-wide">Com Motor</span>
-              </div>
-              <div className="text-[18px] font-semibold text-ink">{stats.com_motor}</div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Filtros: abas + busca ──────────────────────────────── */}
-        <div className="bg-surface border border-border rounded-lg p-3 mb-4 flex flex-col gap-3">
-          {/* Linha 1: abas + toggle inativos */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap gap-1">
-              {ABAS.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => { setAba(a.id); setLimite(PAGINA_INICIAL) }}
-                  className={`text-[12px] px-3 py-1.5 rounded-md font-medium transition ${
-                    aba === a.id
-                      ? 'bg-accent text-white'
-                      : 'bg-surface-2 text-ink-muted hover:bg-surface-3 hover:text-ink border border-border'
-                  }`}
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-[12px] text-ink-muted cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={mostrarInativos}
-                  onChange={e => setMostrarInativos(e.target.checked)}
-                  className="rounded border-border accent-accent"
-                />
-                Mostrar inativos
-              </label>
-            </div>
-          </div>
-
-          {/* Linha 2: busca */}
-          <Input
-            value={busca}
-            onChange={e => { setBusca(e.target.value); setLimite(PAGINA_INICIAL) }}
-            leftIcon={<Search className="w-3.5 h-3.5" />}
-            placeholder="Buscar por nome, categoria..."
-          />
-
-          {/* Linha 3: categorias */}
-          {categorias.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="flex items-center gap-1 text-[11px] text-ink-faint mr-1">
-                <Filter className="w-3 h-3" />
-                Categoria:
-              </div>
-              <button
-                onClick={() => { setCategoriaFiltro(null); setSubcategoriaFiltro(null); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
-                className={`text-[11px] px-2 py-1 rounded border transition ${
-                  categoriaFiltro === null
-                    ? 'bg-accent text-white border-accent'
-                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
-                }`}
-              >
-                Todas
-              </button>
+        <div className="flex items-start gap-5">
+          <aside className="hidden lg:block w-[220px] shrink-0 sticky top-6 bg-surface border border-border rounded-xl overflow-hidden" aria-label="Categorias de equipamentos">
+            <div className="px-4 py-4 border-b border-border"><h2 className="font-semibold text-sm text-ink flex items-center gap-2"><Filter className="w-4 h-4 text-accent" /> Categorias</h2></div>
+            <div className="p-2 max-h-[65vh] overflow-y-auto">
+              <button onClick={() => selecionarCategoria(null)} aria-pressed={!categoriaFiltro} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm mb-1 transition ${!categoriaFiltro ? 'bg-accent/15 text-accent font-semibold' : 'text-ink-muted hover:bg-surface-2'}`}>Todas as categorias</button>
               {categorias.map(c => (
-                <button
-                  key={c.categoria}
-                  onClick={() => { setCategoriaFiltro(c.categoria); setSubcategoriaFiltro(null); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
-                  className={`text-[11px] px-2 py-1 rounded border transition ${
-                    categoriaFiltro === c.categoria
-                      ? 'bg-accent text-white border-accent'
-                      : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
-                  }`}
-                >
-                  {c.categoria} <span className="opacity-60">({c.qtd})</span>
+                <button key={c.categoria} onClick={() => selecionarCategoria(c.categoria)} aria-pressed={categoriaFiltro === c.categoria} className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-lg text-[13px] transition ${categoriaFiltro === c.categoria ? 'bg-accent/15 text-accent font-semibold' : 'text-ink-muted hover:bg-surface-2 hover:text-ink'}`}>
+                  <span>{nomeCategoria(c.categoria)}</span><span className="text-[11px] opacity-60 tabular-nums">{c.qtd}</span>
                 </button>
               ))}
             </div>
-          )}
+            <p className="px-4 py-3 border-t border-border text-[11px] text-ink-faint">Clique em Editar para trocar a foto ou ajustar a descrição.</p>
+          </aside>
 
-          {/* Linha 4: subcategorias (só aparece quando uma categoria com >1 sub está selecionada) */}
-          {subcategorias.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pl-4 border-l-2 border-accent/40">
-              <div className="flex items-center gap-1 text-[11px] text-ink-faint mr-1">
-                Tipo:
+          <main className="flex-1 min-w-0">
+            <div className="bg-surface border border-border rounded-xl p-3 sm:p-4 mb-4 space-y-3 sticky top-0 z-10 shadow-sm">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1 min-w-0">
+                  <Input value={busca} onChange={e => { setBusca(e.target.value); setLimite(PAGINA_INICIAL) }} aria-label="Buscar equipamento" leftIcon={<Search className="w-4 h-4" />} placeholder="Buscar equipamento, categoria ou código…" className="sm:h-11" />
+                </div>
+                {temFiltros && <button onClick={limparFiltros} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-ink-muted hover:text-ink rounded-lg border border-border hover:bg-surface-2"><X className="w-3.5 h-3.5" /> Limpar filtros</button>}
               </div>
-              <button
-                onClick={() => { setSubcategoriaFiltro(null); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
-                className={`text-[11px] px-2 py-1 rounded border transition ${
-                  subcategoriaFiltro === null
-                    ? 'bg-accent text-white border-accent'
-                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
-                }`}
-              >
-                Todos
-              </button>
-              {subcategorias.map(s => (
-                <button
-                  key={s.subcategoria}
-                  onClick={() => { setSubcategoriaFiltro(s.subcategoria); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
-                  className={`text-[11px] px-2 py-1 rounded border transition ${
-                    subcategoriaFiltro === s.subcategoria
-                      ? 'bg-accent text-white border-accent'
-                      : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
-                  }`}
-                >
-                  {s.subcategoria} <span className="opacity-60">({s.qtd})</span>
-                </button>
-              ))}
-            </div>
-          )}
 
-          {/* Linha 5: diâmetros (só pra chupim/helicoidal) */}
-          {diametros.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pl-8 border-l-2 border-info/40">
-              <div className="flex items-center gap-1 text-[11px] text-ink-faint mr-1">
-                Ø Diâmetro:
+              <div className="lg:hidden">
+                <label htmlFor="catalogo-categoria" className="text-xs text-ink-muted block mb-1">Categoria</label>
+                <select id="catalogo-categoria" value={categoriaFiltro ?? ''} onChange={e => selecionarCategoria(e.target.value || null)} className="w-full h-11 rounded-lg border border-border bg-surface px-3 text-sm text-ink">
+                  <option value="">Todas as categorias</option>
+                  {categorias.map(c => <option key={c.categoria} value={c.categoria}>{nomeCategoria(c.categoria)} ({c.qtd})</option>)}
+                </select>
               </div>
-              <button
-                onClick={() => { setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }}
-                className={`text-[11px] px-2 py-1 rounded border transition ${
-                  diametroFiltro === null
-                    ? 'bg-info text-white border-info'
-                    : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
-                }`}
-              >
-                Todos
-              </button>
-              {diametros.map(d => (
-                <button
-                  key={d.diametro}
-                  onClick={() => { setDiametroFiltro(d.diametro); setLimite(PAGINA_INICIAL) }}
-                  className={`text-[11px] px-2 py-1 rounded border transition ${
-                    diametroFiltro === d.diametro
-                      ? 'bg-info text-white border-info'
-                      : 'bg-surface-2 text-ink-muted hover:bg-surface-3 border-border'
-                  }`}
-                >
-                  Ø {d.diametro} <span className="opacity-60">({d.qtd})</span>
-                </button>
-              ))}
+
+              <div className="flex flex-wrap gap-1.5" aria-label="Status do produto">
+                {ABAS.map(a => (
+                  <button key={a.id} onClick={() => { setAba(a.id); setLimite(PAGINA_INICIAL) }} aria-pressed={aba === a.id} className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition ${aba === a.id ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink hover:bg-surface-2'}`}>
+                    {a.label}<span className="text-[10px] tabular-nums opacity-70">{resumo[a.id]}</span>
+                  </button>
+                ))}
+              </div>
+
+              {subcategorias.length > 0 && <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
+                <span className="text-xs text-ink-faint mr-1">Tipo:</span>
+                <button onClick={() => { setSubcategoriaFiltro(null); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }} aria-pressed={!subcategoriaFiltro} className={`text-xs px-2.5 py-1.5 rounded border ${!subcategoriaFiltro ? 'text-accent border-accent/40 bg-accent/10' : 'text-ink-muted border-border'}`}>Todos</button>
+                {subcategorias.map(s => <button key={s.subcategoria} onClick={() => { setSubcategoriaFiltro(s.subcategoria); setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }} aria-pressed={subcategoriaFiltro === s.subcategoria} className={`text-xs px-2.5 py-1.5 rounded border ${subcategoriaFiltro === s.subcategoria ? 'text-accent border-accent/40 bg-accent/10' : 'text-ink-muted border-border'}`}>{s.subcategoria.replace(/_/g, ' ')} <span className="opacity-60">({s.qtd})</span></button>)}
+              </div>}
+              {diametros.length > 0 && <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-ink-faint mr-1">Diâmetro:</span>
+                <button onClick={() => { setDiametroFiltro(null); setLimite(PAGINA_INICIAL) }} aria-pressed={!diametroFiltro} className={`text-xs px-2.5 py-1.5 rounded border ${!diametroFiltro ? 'text-accent border-accent/40 bg-accent/10' : 'text-ink-muted border-border'}`}>Todos</button>
+                {diametros.map(d => <button key={d.diametro} onClick={() => { setDiametroFiltro(d.diametro); setLimite(PAGINA_INICIAL) }} aria-pressed={diametroFiltro === d.diametro} className={`text-xs px-2.5 py-1.5 rounded border ${diametroFiltro === d.diametro ? 'text-accent border-accent/40 bg-accent/10' : 'text-ink-muted border-border'}`}>Ø {d.diametro} mm <span className="opacity-60">({d.qtd})</span></button>)}
+              </div>}
             </div>
-          )}
+
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-base font-semibold text-ink">{categoriaFiltro ? nomeCategoria(categoriaFiltro) : 'Todos os equipamentos'}</h2>
+                <p className="text-xs text-ink-muted mt-1" role="status">{itemsFiltrados.length} produtos encontrados{temMais && ` · mostrando ${limite}`}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {aba === 'todos' && <label className="flex items-center gap-1.5 text-xs text-ink-muted cursor-pointer"><input type="checkbox" checked={mostrarInativos} onChange={e => { setMostrarInativos(e.target.checked); setLimite(PAGINA_INICIAL) }} className="accent-accent" /> Incluir inativos</label>}
+                <div className="flex items-center gap-1 bg-surface border border-border rounded-lg p-1" aria-label="Visualização">
+                  {modos.map(m => <button key={m.id} onClick={() => setViewModePersistente(m.id)} aria-pressed={viewMode === m.id} className={`inline-flex items-center gap-1.5 px-2.5 py-2 rounded text-xs transition ${viewMode === m.id ? 'bg-accent/15 text-accent font-semibold' : 'text-ink-muted hover:text-ink hover:bg-surface-2'}`}><m.icon className="w-3.5 h-3.5" />{m.label}</button>)}
+                </div>
+              </div>
+            </div>
+
+            {itemsFiltrados.length === 0 ? (
+              <div className="bg-surface border border-dashed border-border rounded-xl py-16 px-4 text-center">
+                <Search className="w-9 h-9 text-ink-faint mx-auto mb-3" />
+                <h3 className="text-base font-semibold text-ink">Nenhum equipamento encontrado</h3>
+                <p className="text-sm text-ink-muted mt-2 mb-5">Tente outro nome ou ajuste os filtros selecionados.</p>
+                <button onClick={limparFiltros} className="text-sm text-accent font-semibold hover:underline">Limpar filtros</button>
+              </div>
+            ) : viewMode === 'lista' ? (
+              <div className="bg-surface border border-border rounded-xl overflow-hidden divide-y divide-border">
+                {itemsVisiveis.map(item => <CatalogoLinhaItem key={item.id} item={item} onClick={() => abrirEdicao(item)} onToggleOficial={e => handleToggleOficial(e, item)} togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id} />)}
+              </div>
+            ) : viewMode === 'orcamento' ? (
+              <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+                {itemsVisiveis.map(item => <CatalogoOrcamentoItem key={item.id} item={item} onClick={() => abrirEdicao(item)} onToggleOficial={e => handleToggleOficial(e, item)} togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id} />)}
+              </div>
+            ) : (
+              <div className={viewMode === 'galeria' ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4'}>
+                {itemsVisiveis.map(item => <CatalogoCardItem key={item.id} item={item} galeria={viewMode === 'galeria'} onClick={() => abrirEdicao(item)} onToggleOficial={e => handleToggleOficial(e, item)} togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id} />)}
+              </div>
+            )}
+            {temMais && <div className="flex justify-center mt-6"><button onClick={() => setLimite(prev => prev + PAGINA_INICIAL)} className="text-sm px-5 py-3 rounded-lg border border-border bg-surface hover:bg-surface-2 text-ink font-medium">Carregar mais produtos ({itemsFiltrados.length - limite} restantes)</button></div>}
+          </main>
         </div>
-
-        {/* ── Resultado: contagem ─────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[12px] text-ink-muted">
-            {itemsFiltrados.length} item(s) encontrados
-            {itemsFiltrados.length > limite && ` — exibindo ${limite}`}
-          </p>
-
-          {/* Seletor de visualizacao: lista (densa) / grid (cards) / galeria (foto grande) */}
-          <div className="flex items-center gap-1 bg-surface border border-border rounded-md p-0.5">
-            <button
-              onClick={() => setViewModePersistente('lista')}
-              className={`p-1.5 rounded transition ${viewMode === 'lista' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
-              title="Lista compacta (mais itens por tela)"
-            >
-              <Rows3 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewModePersistente('grid')}
-              className={`p-1.5 rounded transition ${viewMode === 'grid' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
-              title="Grid (cards medios)"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewModePersistente('galeria')}
-              className={`p-1.5 rounded transition ${viewMode === 'galeria' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
-              title="Galeria (foto grande)"
-            >
-              <ImageView className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewModePersistente('orcamento')}
-              className={`p-1.5 rounded transition ${viewMode === 'orcamento' ? 'bg-accent/15 text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2'}`}
-              title="Orçamento (mesma visualização que aparece no PDF do orçamento)"
-            >
-              <FileText className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* ── Lista de items ─────────────────────────────────────── */}
-        {itemsFiltrados.length === 0 ? (
-          <div className="bg-surface border border-border rounded-lg py-16 flex flex-col items-center justify-center text-ink-faint">
-            <Package className="w-10 h-10 mb-2 opacity-50" />
-            <p className="text-[13px]">Nenhum item encontrado com esses filtros</p>
-          </div>
-        ) : viewMode === 'lista' ? (
-          // LISTA COMPACTA: 1 linha por item, infos lado a lado, foto 32x32, ~4x mais densa
-          <div className="bg-surface border border-border rounded-lg overflow-hidden divide-y divide-border">
-            {itemsVisiveis.map(item => (
-              <CatalogoLinhaItem
-                key={item.id}
-                item={item}
-                onClick={() => abrirEdicao(item)}
-                onToggleOficial={e => handleToggleOficial(e, item)}
-                togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id}
-              />
-            ))}
-          </div>
-        ) : viewMode === 'galeria' ? (
-          // GALERIA: foto grande, ideal pra reconhecimento visual de transportadores/motores
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {itemsVisiveis.map(item => (
-              <CatalogoGaleriaItem
-                key={item.id}
-                item={item}
-                onClick={() => abrirEdicao(item)}
-                onToggleOficial={e => handleToggleOficial(e, item)}
-                togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id}
-              />
-            ))}
-          </div>
-        ) : viewMode === 'orcamento' ? (
-          // ORCAMENTO: mesmo layout do card no preview do orcamento (foto direita 180x140,
-          // bullets esquerda, titulo grande, valor no rodape). Pra editar vendo como o cliente ve.
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {itemsVisiveis.map(item => (
-              <CatalogoOrcamentoItem
-                key={item.id}
-                item={item}
-                onClick={() => abrirEdicao(item)}
-                onToggleOficial={e => handleToggleOficial(e, item)}
-                togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id}
-              />
-            ))}
-          </div>
-        ) : (
-          // GRID: cards medios (formato original, 3 colunas)
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {itemsVisiveis.map(item => (
-              <CatalogoCardItem
-                key={item.id}
-                item={item}
-                onClick={() => abrirEdicao(item)}
-                onToggleOficial={e => handleToggleOficial(e, item)}
-                togglePending={toggleOficial.isPending && toggleOficial.variables?.id === item.id}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* ── Ver mais ───────────────────────────────────────────── */}
-        {temMais && (
-          <div className="flex justify-center mt-6">
-            <button
-              onClick={() => setLimite(prev => prev + PAGINA_INICIAL)}
-              className="text-[12px] px-4 py-2 rounded border border-border bg-surface hover:bg-surface-2 text-ink-muted hover:text-ink font-semibold transition"
-            >
-              Ver mais ({itemsFiltrados.length - limite} restantes)
-            </button>
-          </div>
-        )}
       </div>
-
-      {/* ── Modal de edição ──────────────────────────────────────── */}
-      <CatalogoItemEditModal
-        open={modalOpen}
-        item={itemEditando}
-        onClose={fecharEdicao}
-        onSaved={() => { /* react-query invalida a lista no hook */ }}
-      />
+      <CatalogoItemEditModal open={modalOpen} item={itemEditando} onClose={fecharEdicao} onSaved={() => { /* Os hooks atualizam a lista após salvar. */ }} />
     </div>
   )
 }
+
 
 // ─── Card de item (memoizado por simplicidade visual) ─────────────
 interface CardProps {
@@ -588,197 +401,59 @@ interface CardProps {
   onClick: () => void
   onToggleOficial: (e: React.MouseEvent) => void
   togglePending?: boolean
+  galeria?: boolean
 }
 
-function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
+function CatalogoCardItem({ item, onClick, onToggleOficial, togglePending, galeria }: CardProps) {
   return (
-    <div
-      onClick={onClick}
-      className={`group relative bg-surface border rounded-lg p-3 cursor-pointer transition hover:border-accent/40 hover:shadow-sm ${
-        item.ativo ? 'border-border' : 'border-border opacity-60'
-      }`}
-    >
-      <div className="flex gap-3">
-        {/* Foto */}
-        <div className="shrink-0 w-[60px] h-[60px] rounded-md overflow-hidden bg-surface-2 border border-border flex items-center justify-center">
-          {item.foto_url ? (
-            <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-cover" />
-          ) : (
-            <ImageOff className="w-5 h-5 text-ink-faint" />
-          )}
+    <article className={`group flex flex-col bg-surface border border-border rounded-xl overflow-hidden hover:border-accent/50 transition ${item.ativo ? '' : 'opacity-60'}`}>
+      <button type="button" onClick={onClick} aria-label={`Editar ${item.nome_curto}`} className={`text-left w-full min-w-0 ${galeria ? '' : 'flex items-start gap-4 p-4'}`}>
+        <div className={`relative flex items-center justify-center overflow-hidden bg-white border-border ${galeria ? 'w-full aspect-[4/3] border-b' : 'shrink-0 w-24 h-24 sm:w-28 sm:h-28 border rounded-lg'}`}>
+          {item.foto_url ? <img src={item.foto_url} alt={item.nome_curto} loading="lazy" className="w-full h-full object-contain p-2" /> : <div className="flex flex-col items-center gap-2 text-gray-400"><ImageOff className="w-7 h-7" /><span className="text-xs">Sem foto</span></div>}
         </div>
-
-        {/* Conteúdo */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 mb-0.5">
-            <p className="text-[10px] text-ink-faint uppercase tracking-wide truncate flex items-center gap-1.5">
-              <span>{item.categoria || 'Sem categoria'}</span>
-              {item.subcategoria && (
-                <span className="px-1 py-px rounded bg-accent/15 text-accent border border-accent/30 text-[9px] font-bold tracking-wider">
-                  {item.subcategoria}
-                </span>
-              )}
-            </p>
-            {!item.is_oficial && (
-              <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 uppercase tracking-wider">
-                Pendente
-              </span>
-            )}
-          </div>
-          <h3 className="text-[13px] font-semibold text-ink truncate mb-1">
-            {item.nome_curto}
-          </h3>
-          <div className="flex items-center justify-between gap-2 mb-0.5">
-            <span className="text-[12px] font-semibold text-accent">
-              {formatBRL(item.valor || 0)}
-            </span>
-            {item.motor_padrao_cv && item.motor_padrao_polos && (
-              <span className="text-[10px] text-ink-muted">
-                {item.motor_padrao_cv} CV {item.motor_padrao_polos}p
-                {item.motor_padrao_qtd > 1 && ` ×${item.motor_padrao_qtd}`}
-              </span>
-            )}
-          </div>
-          <p className="text-[10px] text-ink-faint flex items-center gap-1.5">
-            {item.is_virtual ? (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 uppercase tracking-wider">
-                Sem foto/specs · só preço
-              </span>
-            ) : (
-              <>Usado {item.ocorrencias}× · #{item.id}</>
-            )}
-            {!item.ativo && ' · INATIVO'}
-          </p>
+        <div className={`min-w-0 flex-1 ${galeria ? 'p-4' : ''}`}>
+          {!item.ativo && <span className="inline-block mb-2 px-2 py-0.5 rounded text-[11px] font-medium text-ink-muted bg-surface-2">Inativo</span>}
+          <p className="text-[11px] text-accent font-medium mb-1.5">{nomeCategoria(item.categoria || 'Sem categoria')}</p>
+          <h3 className="text-sm font-semibold text-ink leading-snug line-clamp-2" title={item.nome_curto}>{item.nome_curto}</h3>
+          {item.subcategoria && <p className="text-[11px] text-ink-faint mt-1">{item.subcategoria.replace(/_/g, ' ')}</p>}
+          <p className="text-base font-semibold text-ink tabular-nums mt-3">{formatBRL(item.valor || 0)}</p>
+          {item.motor_padrao_cv && <p className="text-xs text-ink-muted mt-1">Motor {item.motor_padrao_cv} CV{item.motor_padrao_polos ? ` · ${item.motor_padrao_polos} polos` : ''}</p>}
         </div>
-      </div>
-
-      {/* Botão estrela (toggle oficial) */}
-      <button
-        type="button"
-        onClick={onToggleOficial}
-        disabled={togglePending}
-        title={item.is_oficial ? 'Marcar como pendente' : 'Marcar como oficial'}
-        className={`absolute top-2 right-2 p-1.5 rounded-md transition opacity-0 group-hover:opacity-100 ${
-          item.is_oficial
-            ? 'bg-success-bg/60 text-success hover:bg-success-bg'
-            : 'bg-surface-2 text-ink-faint hover:bg-warning/20 hover:text-warning'
-        }`}
-        aria-label="Alternar oficial"
-      >
-        {togglePending ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        ) : (
-          <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />
-        )}
       </button>
-    </div>
+      <div className="flex items-center justify-between gap-2 px-4 py-3 mt-auto border-t border-border">
+        <button type="button" onClick={onToggleOficial} disabled={togglePending} title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'} className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1.5 rounded-md transition ${item.is_oficial ? 'text-success bg-success-bg/50' : 'text-warning bg-warning/10'}`}>
+          {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}{item.is_oficial ? 'Oficial' : 'Pendente'}
+        </button>
+        <button type="button" onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-accent bg-accent/10 hover:bg-accent/20" aria-label={`Editar foto e descrição de ${item.nome_curto}`}><Edit className="w-3.5 h-3.5" /> Editar</button>
+      </div>
+    </article>
   )
 }
 
-// ─── LISTA COMPACTA: linha unica densa, ~4x mais itens visiveis ───
 function CatalogoLinhaItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
   return (
-    <div
-      onClick={onClick}
-      className={`group flex items-center gap-2 px-2 py-1.5 cursor-pointer transition hover:bg-surface-2 ${item.ativo ? '' : 'opacity-60'}`}
-    >
-      {/* Foto miniatura 56x56 (era 32 — pequeno demais pra reconhecer item) */}
-      <div className="shrink-0 w-14 h-14 rounded overflow-hidden bg-surface-2 border border-border flex items-center justify-center">
-        {item.foto_url ? (
-          <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-contain" />
-        ) : (
-          <ImageOff className="w-5 h-5 text-ink-faint" />
-        )}
-      </div>
-      {/* Categoria + subcategoria (badges compactas) */}
-      <div className="shrink-0 flex items-center gap-1 w-[140px]">
-        <span className="text-[9px] text-ink-faint uppercase tracking-wide truncate">{item.categoria || '—'}</span>
-        {item.subcategoria && (
-          <span className="px-1 rounded bg-accent/15 text-accent border border-accent/30 text-[8px] font-bold tracking-wider">
-            {item.subcategoria}
-          </span>
-        )}
-      </div>
-      {/* Nome (flex-1, trunca) */}
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] text-ink truncate font-medium">{item.nome_curto}</p>
-      </div>
-      {/* Motor (se tiver) */}
-      {item.motor_padrao_cv && item.motor_padrao_polos && (
-        <span className="shrink-0 text-[10px] text-ink-muted tabular-nums w-[60px] text-right">
-          {item.motor_padrao_cv} CV {item.motor_padrao_polos}p
-        </span>
-      )}
-      {/* Preco (alinhado direita) */}
-      <span className="shrink-0 text-[12px] font-semibold text-accent tabular-nums w-[90px] text-right">
-        {formatBRL(item.valor || 0)}
-      </span>
-      {/* Badges status (pendente / sem foto / sem link) */}
-      <div className="shrink-0 flex items-center gap-1">
-        {!item.is_oficial && (
-          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-warning/20 text-warning border border-warning/30 uppercase tracking-wider">P</span>
-        )}
-        {!item.foto_url && (
-          <span title="Sem foto" className="text-[8px] font-bold px-1 py-0.5 rounded bg-danger/15 text-danger border border-danger/30">SF</span>
-        )}
-      </div>
-      {/* Star toggle */}
-      <button
-        onClick={onToggleOficial}
-        disabled={togglePending}
-        className={`shrink-0 p-1 rounded transition ${item.is_oficial ? 'text-warning' : 'text-ink-faint opacity-0 group-hover:opacity-100 hover:text-warning'}`}
-        title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'}
-      >
-        {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}
+    <article className={`flex flex-wrap sm:flex-nowrap items-center gap-3 px-3 sm:px-4 py-3 hover:bg-surface-2 transition ${item.ativo ? '' : 'opacity-60'}`}>
+      <button type="button" onClick={onClick} aria-label={`Editar ${item.nome_curto}`} className="flex flex-1 min-w-0 items-center gap-3 text-left">
+        <div className="shrink-0 w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-lg overflow-hidden bg-white border border-border flex items-center justify-center">
+          {item.foto_url ? <img src={item.foto_url} alt={item.nome_curto} loading="lazy" className="w-full h-full object-contain p-1" /> : <ImageOff className="w-6 h-6 text-gray-400" />}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] text-accent mb-1">{nomeCategoria(item.categoria || 'Sem categoria')}</p>
+          <h3 className="text-sm text-ink font-medium line-clamp-2">{item.nome_curto}</h3>
+          <p className="text-[11px] text-ink-faint mt-1">{item.is_virtual ? 'Aguardando foto e descrição' : `#${item.id}`}{!item.foto_url && !item.is_virtual ? ' · Sem foto' : ''}{!item.ativo ? ' · Inativo' : ''}</p>
+        </div>
       </button>
-    </div>
+      <div className="w-full sm:w-auto flex items-center justify-end gap-2 sm:gap-4">
+        <span className="mr-auto sm:mr-0 text-sm font-semibold text-ink tabular-nums">{formatBRL(item.valor || 0)}</span>
+        <button type="button" onClick={onToggleOficial} disabled={togglePending} className={`inline-flex items-center gap-1 px-2 py-2 rounded-md text-[11px] ${item.is_oficial ? 'text-success bg-success-bg/40' : 'text-warning bg-warning/10'}`} title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'}>
+          {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}<span className="hidden sm:inline">{item.is_oficial ? 'Oficial' : 'Pendente'}</span>
+        </button>
+        <button type="button" onClick={onClick} aria-label={`Editar foto e descrição de ${item.nome_curto}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-accent bg-accent/10 hover:bg-accent/20"><Edit className="w-3.5 h-3.5" /> Editar</button>
+      </div>
+    </article>
   )
 }
 
-// ─── GALERIA: foto grande, ideal pra reconhecimento visual rapido ───
-function CatalogoGaleriaItem({ item, onClick, onToggleOficial, togglePending }: CardProps) {
-  return (
-    <div
-      onClick={onClick}
-      className={`group relative bg-surface border rounded-lg overflow-hidden cursor-pointer transition hover:border-accent/40 hover:shadow-md ${item.ativo ? 'border-border' : 'border-border opacity-60'}`}
-    >
-      {/* Foto grande (proporcao 4:3) */}
-      <div className="w-full aspect-[4/3] bg-surface-2 border-b border-border flex items-center justify-center overflow-hidden">
-        {item.foto_url ? (
-          <img src={item.foto_url} alt={item.nome_curto} className="w-full h-full object-cover" />
-        ) : (
-          <ImageOff className="w-8 h-8 text-ink-faint opacity-50" />
-        )}
-      </div>
-      {/* Star canto superior direito */}
-      <button
-        onClick={onToggleOficial}
-        disabled={togglePending}
-        className={`absolute top-1.5 right-1.5 p-1.5 rounded-full backdrop-blur bg-bg/70 transition ${item.is_oficial ? 'text-warning' : 'text-white/70 opacity-0 group-hover:opacity-100 hover:text-warning'}`}
-        title={item.is_oficial ? 'Remover de Oficiais' : 'Marcar como Oficial'}
-      >
-        {togglePending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Star className={`w-3.5 h-3.5 ${item.is_oficial ? 'fill-current' : ''}`} />}
-      </button>
-      {/* Badge pendente canto superior esquerdo */}
-      {!item.is_oficial && (
-        <span className="absolute top-1.5 left-1.5 text-[8px] font-bold px-1.5 py-0.5 rounded bg-warning/90 text-white uppercase tracking-wider">
-          Pendente
-        </span>
-      )}
-      {/* Info abaixo da foto */}
-      <div className="p-2">
-        <p className="text-[9px] text-ink-faint uppercase tracking-wide truncate">{item.categoria}{item.subcategoria && ` · ${item.subcategoria}`}</p>
-        <h3 className="text-[11px] font-semibold text-ink truncate" title={item.nome_curto}>{item.nome_curto}</h3>
-        <div className="flex items-center justify-between mt-0.5">
-          <span className="text-[11px] font-semibold text-accent tabular-nums">{formatBRL(item.valor || 0)}</span>
-          {item.motor_padrao_cv && (
-            <span className="text-[9px] text-ink-muted tabular-nums">{item.motor_padrao_cv}CV</span>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Card no MESMO layout do card de item no OrcamentoPreview ─────────────
 // Foto 180x140 a direita, bullets de specs a esquerda, titulo grande no topo,
@@ -845,7 +520,7 @@ function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }
       </h3>
 
       {/* Bullets + foto (mesmo layout do OrcamentoPreview) */}
-      <div className="flex flex-row gap-4 items-start mb-2">
+      <div className="flex flex-col sm:flex-row gap-4 items-start mb-2">
         <div className="flex-1 pl-3 text-[13.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
           {specs.length > 0 ? (
             specs.map((s, i) => (
@@ -876,7 +551,7 @@ function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }
       </div>
 
       {/* Linha VALOR no rodape (igual orcamento) */}
-      <div className="flex items-center justify-between border-t border-gray-200 pt-2 mt-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2 mt-2">
         <div className="flex items-center gap-3">
           <span className="text-[13px] font-bold text-gray-700 tracking-wider uppercase">Valor</span>
           {item.motor_padrao_cv && item.motor_padrao_polos && (
@@ -895,6 +570,7 @@ function CatalogoOrcamentoItem({ item, onClick, onToggleOficial, togglePending }
           </span>
         </div>
       </div>
+      <button type="button" onClick={e => { e.stopPropagation(); onClick() }} className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent mt-3 px-3 py-2 rounded-lg bg-accent/10 hover:bg-accent/20"><Edit className="w-3.5 h-3.5" /> Editar foto e descrição</button>
     </div>
   )
 }
