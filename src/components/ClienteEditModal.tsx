@@ -99,16 +99,69 @@ interface BrasilApiCnpj {
   email: string
 }
 
+// fetch de JSON com tempo-limite: API pública pendurada não pode travar o botão Buscar.
+async function getJson(url: string, ms = 8000): Promise<any | null> {
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), ms)
+  try {
+    const res = await fetch(url, { signal: ac.signal })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+// Roadmap #97 (07/10/2026): só a BrasilAPI respondia; quando ela falhava o vendedor via
+// "CNPJ não encontrado" com CNPJ válido. Agora cai pra OpenCNPJ e depois CNPJ.ws, as
+// duas convertidas pro formato da BrasilAPI que o resto do modal já lê.
 async function buscarCnpj(cnpj: string): Promise<BrasilApiCnpj | null> {
   const d = somenteDigitos(cnpj)
   if (d.length !== 14) return null
-  try {
-    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`)
-    if (!res.ok) return null
-    return await res.json() as BrasilApiCnpj
-  } catch {
-    return null
+
+  const brasil = await getJson(`https://brasilapi.com.br/api/cnpj/v1/${d}`)
+  if (brasil?.razao_social) return brasil as BrasilApiCnpj
+
+  const open = await getJson(`https://api.opencnpj.org/${d}`)
+  if (open?.razao_social) {
+    const tel = Array.isArray(open.telefones) ? open.telefones.find((t: any) => t && !t.is_fax) : null
+    return {
+      razao_social: open.razao_social || '',
+      nome_fantasia: open.nome_fantasia || '',
+      descricao_tipo_de_logradouro: open.tipo_logradouro || '',
+      logradouro: open.logradouro || '',
+      numero: open.numero || '',
+      complemento: open.complemento || '',
+      bairro: open.bairro || '',
+      municipio: open.municipio || '',
+      uf: open.uf || '',
+      cep: open.cep || '',
+      ddd_telefone_1: tel ? `${tel.ddd || ''}${tel.numero || ''}` : '',
+      email: open.email || '',
+    }
   }
+
+  const ws = await getJson(`https://publica.cnpj.ws/cnpj/${d}`)
+  const e = ws?.estabelecimento
+  if (ws?.razao_social && e) {
+    return {
+      razao_social: ws.razao_social || '',
+      nome_fantasia: e.nome_fantasia || '',
+      descricao_tipo_de_logradouro: e.tipo_logradouro || '',
+      logradouro: e.logradouro || '',
+      numero: e.numero || '',
+      complemento: e.complemento || '',
+      bairro: e.bairro || '',
+      municipio: e.cidade?.nome || '',
+      uf: e.estado?.sigla || '',
+      cep: e.cep || '',
+      ddd_telefone_1: e.telefone1 ? `${e.ddd1 || ''}${e.telefone1}` : '',
+      email: e.email || '',
+    }
+  }
+  return null
 }
 
 // CPF lookup via cpfcnpj.com.br
