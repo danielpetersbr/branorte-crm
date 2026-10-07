@@ -1070,7 +1070,7 @@ export function Atendimentos() {
                     const esperando = semVendedor && !semResp && !!(r.last_message_at || r.created_at)
                     return (
                       <tr key={r.id}
-                          className={`group border-b border-border/30 last:border-0 transition-all duration-150
+                          className={`group h-[64px] [&>td]:h-[64px] [&>td]:py-[8px] [&>td]:align-middle border-b border-border/30 last:border-0 transition-all duration-150
                                      ${semResp
                                         ? 'bg-red-500/10 hover:bg-red-500/[0.16]'
                                         : isHot
@@ -1090,7 +1090,7 @@ export function Atendimentos() {
                           />
                         </td>
                         {/* CHEGOU */}
-                        <td className="px-2 py-2.5 whitespace-nowrap" title={r.primeira_data ?? r.created_at ?? ''}>
+                        <td className="px-2 py-2.5 whitespace-nowrap leading-tight" title={r.primeira_data ?? r.created_at ?? ''}>
                           <span className="text-[11px] text-ink-muted font-mono tabular-nums block">
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
@@ -1253,7 +1253,8 @@ export function Atendimentos() {
                             // pelo filtro antes de ocupar espaço na célula.
                             const resumo = resumoUtil(r.ai_context_summary) ?? resumoUtil(r.last_message_text)
                             return (
-                              <div className="flex flex-col gap-0.5 min-w-0 w-full">
+                              <div className="flex flex-col gap-0.5 min-w-0 w-full max-h-[44px] overflow-hidden"
+                                   title={[motivo, equipamento, resumo].filter(Boolean).join('\n')}>
                                 <Badge style={{
                                   background: `hsl(var(--${tone}-bg))`,
                                   color: `hsl(var(--${tone}))`,
@@ -1367,9 +1368,10 @@ export function Atendimentos() {
                         </td>
                         {/* VENDEDOR — só primeiro nome (sem avatar) + selo da IA atendente */}
                         <td className="px-1.5 py-2.5 whitespace-nowrap w-[72px]">
+                          <div className="flex flex-col items-start gap-px leading-tight">
                           {ia?.ia_ativa && (
                             <span
-                              className={`mb-0.5 inline-flex items-center gap-0.5 rounded px-1 text-[9px] font-semibold leading-tight ${
+                              className={`inline-flex items-center gap-0.5 rounded px-1 text-[9px] font-semibold leading-tight ${
                                 ia.conversando ? '' : 'bg-surface-2 text-ink-faint'
                               }`}
                               style={ia.conversando ? {
@@ -1394,7 +1396,7 @@ export function Atendimentos() {
                               const sv = r.status_vendedor ? STATUS_VENDEDOR_MAP[r.status_vendedor] : null
                               const svRelevante = sv && ['proposta', 'negociando', 'fechou', 'nao_fechou'].includes(sv.value)
                               return (
-                                <div className="min-w-0">
+                                <div className="flex flex-col items-start gap-px min-w-0">
                                   <span
                                     className="text-[12px] text-ink-muted truncate block max-w-[70px] capitalize"
                                     title={`${v.name}${v.source === 'wa' ? ' (via etiqueta WA)' : v.source === 'repasse' ? ' (recebeu o lead da ANA)' : ''}`}
@@ -1403,7 +1405,7 @@ export function Atendimentos() {
                                   </span>
                                   {svRelevante && (
                                     <span
-                                      className="mt-0.5 inline-block rounded px-1 text-[9px] font-semibold leading-tight"
+                                      className="inline-block rounded px-1 text-[9px] font-semibold leading-tight"
                                       style={{ background: `${sv!.bg}22`, color: sv!.bg, border: `1px solid ${sv!.bg}55` }}
                                       title={`Estágio do vendedor: ${sv!.label}`}
                                     >
@@ -1419,6 +1421,7 @@ export function Atendimentos() {
                               </div>
                             )
                           })()}
+                          </div>
                         </td>
                         {/* TOCOU — cliente clicou em FALAR COM CONSULTOR (edge function `ir` grava tocou_botao_em) */}
                         <td className="px-1.5 py-2.5 overflow-hidden" title={r.tocou_botao_em ?? ''}>
@@ -1453,7 +1456,7 @@ export function Atendimentos() {
                             if (!tocou && !m?.enviada && r.dispatch_mensagem?.trim()) {
                               return (
                                 <span
-                                  className="text-[11px] leading-tight line-clamp-2 block w-full text-ink-muted"
+                                  className="text-[11px] leading-tight line-clamp-2 max-h-[28px] w-full break-words text-ink-muted"
                                   title={`1ª mensagem do vendedor${r.dispatch_vendedor_nome ? ` ${r.dispatch_vendedor_nome}` : ''} (${r.dispatch_origem === 'WhatsApp ANA' ? 'repasse da ANA' : 'disparo'}) — este lead não passou pelo botão\n\n${r.dispatch_mensagem}`}
                                 >
                                   <Send className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5" />
@@ -1469,7 +1472,7 @@ export function Atendimentos() {
                                 : 'Prévia — ainda não tocou no botão'
                             return (
                               <span
-                                className={`text-[11px] leading-tight line-clamp-2 block w-full ${m.enviada ? 'text-success' : tocou ? 'text-ink-muted' : 'text-ink-faint'}`}
+                                className={`text-[11px] leading-tight line-clamp-2 max-h-[28px] w-full break-words ${m.enviada ? 'text-success' : tocou ? 'text-ink-muted' : 'text-ink-faint'}`}
                                 title={`${rotulo}\n\n${m.texto}`}
                               >
                                 {m.texto}
@@ -1514,7 +1517,8 @@ export function Atendimentos() {
                               : allLabels
                             if (labels.length === 0) return <EmptyCell />
                             return (
-                              <div className="flex flex-wrap gap-1 w-full min-w-0">
+                              <div className="flex flex-wrap gap-1 w-full min-w-0 max-h-[44px] overflow-hidden"
+                                   title={labels.map(l => `${l.name}${l.vendedor ? ` (${l.vendedor})` : ''}`).join('\n')}>
                                 {labels.slice(0, 3).map(l => (
                                   <Badge
                                     key={l.id + ':' + l.vendedor}
