@@ -392,6 +392,9 @@ export function Atendimentos() {
     page: 0,
   }))
   const [searchInput, setSearchInput] = useState('')
+  const [modoAnalise, setModoAnalise] = useState(false)
+  const [tamanhoAnalise, setTamanhoAnalise] = useState(100)
+  const pageSize = modoAnalise ? tamanhoAnalise : ATENDIMENTO_PAGE_SIZE
 
   // Fundo branco nesta tela (o padrão da página é cinza --bg). O CSS pinta `html, body`,
   // então whitena os DOIS; só no tema claro; restaura ao sair.
@@ -404,7 +407,7 @@ export function Atendimentos() {
     return () => { html.style.backgroundColor = prevHtml; body.style.backgroundColor = prevBody }
   }, [])
 
-  const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters)
+  const { data, isLoading, isFetching, dataUpdatedAt, error: atendimentosError, refetch } = useAtendimentos(filters, pageSize)
   const { data: kpis } = useAtendimentoKpis(filters)
   // KPIs por AÇÃO (quem falou por último) — ver useAtendimentoKpisAcao
   const { data: acao } = useAtendimentoKpisAcao(filters)
@@ -463,7 +466,7 @@ export function Atendimentos() {
 
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
-  const totalPages = Math.ceil(total / ATENDIMENTO_PAGE_SIZE)
+  const totalPages = Math.ceil(total / pageSize)
 
   // Seleção para chamada em massa. Guarda os DADOS, não só a chave: o vendedor
   // seleciona na página 1, vai pra 2 e seleciona mais — as linhas da 1 já saíram
@@ -560,16 +563,30 @@ export function Atendimentos() {
             ) : 'Carregando...'}
           </p>
         </div>
-        <SyncIndicator
-          isFetching={isFetching}
-          dataUpdatedAt={dataUpdatedAt}
-          error={atendimentosError as Error | null}
-          onRefetch={() => refetch()}
-        />
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={modoAnalise ? 'primary' : 'secondary'}
+            aria-pressed={modoAnalise}
+            onClick={() => {
+              setModoAnalise(v => !v)
+              setFilters(f => ({ ...f, page: 0 }))
+            }}
+            title="Recolher indicadores e ampliar a tabela"
+          >
+            Modo análise
+          </Button>
+          <SyncIndicator
+            isFetching={isFetching}
+            dataUpdatedAt={dataUpdatedAt}
+            error={atendimentosError as Error | null}
+            onRefetch={() => refetch()}
+          />
+        </div>
       </div>
 
       {/* KPIs - funil: ENTRADA → ENGAJAMENTO → QUALIFICAÇÃO → HANDOFF → CONTATO */}
-      {kpis && (() => {
+      {!modoAnalise && kpis && (() => {
         // % de cada card sobre o TOTAL DO PERÍODO (o mesmo "N conversas" do cabeçalho).
         // Base = acao.total, que é a contagem da RPC dos baldes — mesmo recorte por
         // created_at que alimenta I.A e Qualificados, então essas duas fecham exato.
@@ -656,7 +673,7 @@ export function Atendimentos() {
       })()}
 
       {/* Origens */}
-      {origens && origens.length > 0 && (() => {
+      {!modoAnalise && origens && origens.length > 0 && (() => {
         const total = origens.reduce((s, o) => s + o.count, 0)
         return (
           <div className="space-y-2">
@@ -725,6 +742,7 @@ export function Atendimentos() {
           />
         </div>
         <Select
+          aria-label="Período dos atendimentos"
           options={DATA_PRESETS.map(p => ({ value: p.value, label: p.label }))}
           placeholder="Qualquer data"
           value={filters.data}
@@ -817,15 +835,14 @@ export function Atendimentos() {
                   · limitado aos {SEM_ETIQUETA_LIMITE} mais recentes
                 </span>
               )}
-              {/* Em aberto no funil — base inteira, estado atual da etiqueta WA (não do filtro/dia).
-                  Aberto = sem etiqueta OU Prospecção/Novo lead/Follow-up/Lead quente. */}
-              {funil && funil.abertos > 0 && (
+              {/* Em aberto no funil — etiquetas ativas, na base inteira (não do filtro/dia). */}
+              {funil && (
                 <span
                   className="text-emerald-600"
                   title={
                     `${formatNumber(funil.abertos)} de ${formatNumber(funil.total)} atendimentos em aberto no funil (estado atual da etiqueta no WhatsApp).\n\n` +
-                    `Aberto = sem nenhuma etiqueta (${formatNumber(funil.semEtiqueta)}) ou com Prospecção / Novo lead / Follow-up / Lead quente (${formatNumber(funil.comEtiquetaAberta)}).\n` +
-                    `Fechado = ${formatNumber(funil.fechados)} (já têm etiqueta de encerramento: vendido, sem interesse, etc.).\n\n` +
+                    `Aberto = Prospecção / Tentativas / Novo lead / Follow-up / Lead quente, sem etiqueta de encerramento.\n` +
+                    `Sem etiqueta (${formatNumber(funil.semEtiqueta)}), não respondeu mais, sem interesse, base de preço e outros assuntos ficam fora.\n\n` +
                     `Conta a base toda, independente dos filtros da tela.`
                   }
                 >
@@ -838,7 +855,19 @@ export function Atendimentos() {
                 return n > 0 ? <span className="text-emerald-500"> · 📄 {n} com orçamento</span> : null
               })()}
             </p>
-            {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              {modoAnalise && (
+                <Select
+                  aria-label="Atendimentos por página"
+                  value={String(tamanhoAnalise)}
+                  options={[{ value: '50', label: '50 por página' }, { value: '100', label: '100 por página' }]}
+                  onChange={e => {
+                    setTamanhoAnalise(Number(e.target.value))
+                    setFilters(f => ({ ...f, page: 0 }))
+                  }}
+                />
+              )}
+              {totalPages > 1 && (
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="sm" disabled={filters.page === 0}
                         onClick={() => setFilters(f => ({ ...f, page: f.page - 1 }))}>
@@ -852,7 +881,8 @@ export function Atendimentos() {
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* ─── MOBILE: cards verticais ─── */}
