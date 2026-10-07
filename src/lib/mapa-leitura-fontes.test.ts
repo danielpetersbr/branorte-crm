@@ -11,17 +11,17 @@ const source = readFileSync(new URL('../pages/MapaVisitas.tsx', import.meta.url)
 const ast = ts.createSourceFile('MapaVisitas.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 const page = ast.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'MapaVisitas') as ts.FunctionDeclaration
 
-function view({ error = null as Error | null, pending = false, cached = false } = {}) {
+function view({ error = null as Error | null, pending = false, cached = false, showOrc = true, modoViagem = true, orcError = error, orcPending = pending } = {}) {
   const cfg = { nome: 'Rascunho fictício que deve permanecer', dias: 1 }, paradas = [{ id: 'draft-stop' }]
   let retries = 0
   const query = () => ({ data: cached ? [] : undefined, error, isLoading: pending, isFetching: false, refetch: async () => { retries++ } })
   const context: Record<string, unknown> = {
     React: { createElement, Fragment }, QueryNotice,
-    useVisitas: query, useOrcamentosMapa: query, useEtiquetasMapa: query, useMapaMarcacoes: query,
+    useVisitas: query, useOrcamentosMapa: () => ({ ...query(), error: orcError, isLoading: orcPending }), useEtiquetasMapa: query, useMapaMarcacoes: query,
     VISITAS_VAZIAS: [], PONTOS_VAZIOS: [], MAPA_ETIQ_VAZIO: {}, MARCACOES_VAZIAS: {},
-    showOrc: true, showVis: true, ufsVisiveis: [], orcFiltrados: [], visFiltradas: [], orcStats: { vendido: 0 }, semCoord: 0,
+    showOrc, showLista: false, showVis: true, ufsVisiveis: [], orcFiltrados: [], visFiltradas: [], orcStats: { vendido: 0 }, semCoord: 0,
     cfgViagem: cfg, paradas, prog: { dias: [] }, trechos: new Map(), viagemId: 'draft-trip',
-    modoViagem: true, viagemSheet: false, calculandoRota: false, provedorRota: null, escolhendoOrigem: false,
+    modoViagem, viagemSheet: false, calculandoRota: false, provedorRota: null, escolhendoOrigem: false,
     salvandoViagem: false, viagemSalvaEm: null, gerandoPdf: false, viagemStatus: 'rascunho', carregandoViagem: false, carregarId: null,
     PainelViagem: () => createElement('div', { 'data-draft': 'preserved' }),
   }
@@ -37,7 +37,7 @@ function view({ error = null as Error | null, pending = false, cached = false } 
   assert.ok(desktop && mobile && planner)
   // These are the real SDK result destructuring and presentation declarations.
   const queryStatements = page.body!.statements.filter(n => ts.isVariableStatement(n) &&
-    /use(?:Visitas|OrcamentosMapa|EtiquetasMapa|MapaMarcacoes)\(\)/.test(n.getText(ast)))
+    /use(?:Visitas|OrcamentosMapa|EtiquetasMapa|MapaMarcacoes)\(/.test(n.getText(ast)))
   const displayNames = new Set(['fontesMapa', 'erroFontesMapa', 'carregandoFontesMapa', 'leituraMapaConfirmada', 'contagemClientesMapa', 'contagemVisitasMapa'])
   const displayStatements = page.body!.statements.filter(n => ts.isVariableStatement(n) && n.declarationList.declarations.some(d => displayNames.has(d.name.getText(ast))))
   for (const attribute of planner.attributes.properties) {
@@ -82,4 +82,13 @@ test('healthy empty map layers show confirmed zero counts, while initial pending
   const pending = view({ pending: true })
   const loadingHtml = renderToStaticMarkup(createElement(Fragment, {}, pending.desktop, pending.mobile))
   assert.doesNotMatch(loadingHtml, /0 clientes|0 registros de visita/)
+})
+
+test('disabled budget layer neither masks visit counts nor exposes stale errors or pending requests', () => {
+  for (const state of [{ orcPending: true }, { orcError: new Error('budget timeout') }]) {
+    const v = view({ showOrc: false, modoViagem: false, ...state })
+    const html = renderToStaticMarkup(createElement(Fragment, {}, v.desktop, v.mobile, v.notice))
+    assert.match(html, /0 registros de visita no mapa/)
+    assert.doesNotMatch(html, /role="alert"|Leitura do mapa ainda não confirmada/)
+  }
 })

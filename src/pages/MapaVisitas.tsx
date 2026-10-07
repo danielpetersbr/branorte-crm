@@ -448,8 +448,8 @@ export function MapaVisitas() {
   const [params, setParams] = useSearchParams()
   const entrada = entradaVisitasWhatsApp(params)
   const [showLista, setShowLista] = useState(false)
+  const [showOrc, setShowOrc] = useState(!entrada.ativo)
   const { data: visitas = VISITAS_VAZIAS, isLoading, error: errorVisitas, refetch: refetchVisitas, isFetching: fetchingVisitas } = useVisitas()
-  const { data: orcPontos = PONTOS_VAZIOS, isLoading: loadingOrc, error: errorOrc, refetch: refetchOrc, isFetching: fetchingOrc } = useOrcamentosMapa()
   const { data: lista = LISTA_VAZIA, isLoading: loadingListaQuery, error: errorListaQuery, refetch: refetchListaQuery } = useListaOrcamentos({ enabled: showLista })
   const { data: vendasCount = 0 } = useVendasMapaCount()
   const { data: etiquetasWa = [] } = useEtiquetas()
@@ -470,7 +470,6 @@ export function MapaVisitas() {
   useEffect(() => {
     if (vendedorSel === '__meus__' && meuVendedor) setVendedorSel(meuVendedor)
   }, [vendedorSel, meuVendedor])
-  const [showOrc, setShowOrc] = useState(!entrada.ativo)
   // Visitas LIGADA por padrão (03/09/2026, pedido do Daniel): é a única camada
   // onde entra o cliente que ainda NÃO tem orçamento — o vendedor preenche
   // cidade/UF no card "📍 Dados pra visita" da extensão e o pino tem que
@@ -589,6 +588,9 @@ export function MapaVisitas() {
   }
 
   // Abrir uma viagem salva: o hook busca, o effect aplica no painel.
+  // A viagem também usa a base para atualizar endereços das paradas restauradas.
+  // Essa consulta em segundo plano não deve cobrir a camada visível de visitas.
+  const { data: orcPontos = PONTOS_VAZIOS, isLoading: loadingOrc, error: errorOrc, refetch: refetchOrc, isFetching: fetchingOrc } = useOrcamentosMapa({ enabled: showOrc || showLista || modoViagem || !!carregarId })
   const { data: viagemCarregada, isFetching: carregandoViagem, error: erroCarregarViagem, isFetched: viagemBuscada, refetch: refetchViagem } = useViagem(carregarId)
   const erroAbrirViagem = carregarId && !carregandoViagem
     ? erroCarregarViagem || (viagemBuscada && !viagemCarregada ? new Error('Viagem não encontrada ou indisponível.') : null)
@@ -2024,8 +2026,8 @@ export function MapaVisitas() {
   // O MESMO painel no popover do desktop e na folha do celular — uma lista só,
   // senão as duas divergem na primeira mexida.
   const fontesMapa = [
-    { nome: 'clientes', error: errorOrc, pending: loadingOrc, fetching: fetchingOrc, refetch: refetchOrc },
-    { nome: 'registros de visita', error: errorVisitas, pending: isLoading, fetching: fetchingVisitas, refetch: refetchVisitas },
+    ...(showOrc || showLista || modoViagem || carregarId ? [{ nome: 'clientes', error: errorOrc, pending: loadingOrc, fetching: fetchingOrc, refetch: refetchOrc }] : []),
+    ...(showVis ? [{ nome: 'registros de visita', error: errorVisitas, pending: isLoading, fetching: fetchingVisitas, refetch: refetchVisitas }] : []),
     { nome: 'etiquetas', error: errorEtiquetasMapa, pending: loadingEtiquetasMapa, fetching: fetchingEtiquetasMapa, refetch: refetchEtiquetasMapa },
     { nome: 'marcações de visita', error: errorMarcacoes, pending: loadingMarcacoes, fetching: fetchingMarcacoes, refetch: refetchMarcacoes },
   ]
@@ -2394,7 +2396,7 @@ export function MapaVisitas() {
 
       <div className="relative flex-1 min-h-0 md:flex md:gap-3">
         <div ref={divRef} className="absolute inset-0 md:relative md:flex-1 md:rounded-xl md:border md:border-border overflow-hidden z-0" />
-        {(isLoading || loadingOrc) && (
+        {((showVis && isLoading) || (showOrc && loadingOrc)) && (
           <div className="absolute inset-0 flex items-center justify-center z-[400]"><PageLoading /></div>
         )}
 
