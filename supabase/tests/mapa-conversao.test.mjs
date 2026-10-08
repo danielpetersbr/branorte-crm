@@ -90,6 +90,7 @@ const migration=readFileSync(new URL('../migrations/20261008114856_mapa_identida
 await db.exec(migration)
 await db.exec(readFileSync(new URL('../migrations/20261008115735_mapa_conversao_historico.sql',import.meta.url),'utf8'))
 await db.exec(readFileSync(new URL('../migrations/20261008115951_mapa_conversao_sufixo_empresa.sql',import.meta.url),'utf8'))
+await db.exec(readFileSync(new URL('../migrations/20261008120425_mapa_conversoes_acesso_unico.sql',import.meta.url),'utf8'))
 const result=await db.query("select tipo,chave,vendido,n_vendas,total from mv_mapa_conversoes order by tipo,chave")
 const clientes=result.rows.filter(r=>r.tipo==='cliente')
 for(const key of ['varios','cpf','fone','historico','nomecidade','mudou-fone','local','empresa-antiga']) assert.equal(clientes.find(r=>r.chave===key)?.vendido,true,key)
