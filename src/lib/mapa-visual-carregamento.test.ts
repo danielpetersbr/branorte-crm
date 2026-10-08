@@ -210,7 +210,8 @@ test('busca só a categoria no servidor antes de paginar e preserva seleção e 
     const expected = selecionarMapaVisual(quotes as any, visits as any)[mode]
     assert.deepEqual(JSON.parse(JSON.stringify(selected)), JSON.parse(JSON.stringify(expected)))
     const request = hooks.requests[0]
-    assert.equal(request.rpc, mode === 'visitas' ? 'mapa_visual_visitas' : 'mapa_orcamentos_v2')
+    assert.equal(request.rpc, mode === 'visitas' ? 'mapa_visual_visitas'
+      : mode === 'orcados' ? 'mapa_visual_orcados' : 'mapa_orcamentos_v2')
     const filters = mode === 'vendidos' ? [['or', 'vendido.eq.true,n_vendas.gt.0', undefined]]
       : mode === 'visitas' ? [['eq', 'visitar', true], ['eq', 'vendido', false], ['lte', 'n_vendas', 0]]
         : [['eq', 'vendido', false], ['lte', 'n_vendas', 0]]
@@ -220,6 +221,38 @@ test('busca só a categoria no servidor antes de paginar e preserva seleção e 
     assert.ok(opts.queryKey.includes(mode), 'sold and quoted caches must be separate')
     assert.equal(hooks.timers.size, 0)
   }
+})
+
+test('orçados lê a janela móvel no servidor e não reaproveita o cache de todo o histórico', async () => {
+  const cache = new QueryClient()
+  cache.setQueryData(['orcamentos-mapa', 'visual', 'orcados'], [quote('histórico-antigo')])
+  const hooks = hooksFixture([quote('janela-atual')], { cache })
+  const opts = hooks.useMapaVisualPontos('orcados')
+  const observer = new QueryObserver(cache, opts)
+  assert.equal(observer.getCurrentResult().data, undefined, 'histórico anterior não pode aparecer antes da nova leitura')
+  const stop = observer.subscribe(() => {})
+  await observer.refetch()
+  assert.deepEqual(observer.getCurrentResult().data?.pontos.map((p: any) => p.id), ['janela-atual'])
+  assert.equal(hooks.requests[0].rpc, 'mapa_visual_orcados')
+  assert.equal(opts.refetchInterval, 60_000)
+  assert.equal(hooks.useMapaVisualResumo().refetchInterval, 60_000)
+  assert.equal(hooks.useMapaVisualPontos('vendidos').refetchInterval, false)
+  assert.equal(hooks.useMapaVisualPontos('visitas').refetchInterval, false)
+  stop()
+  cache.clear()
+})
+
+test('novo resumo elimina também o cache de orçados da janela de 24 meses', () => {
+  const cache = new QueryClient()
+  const hooks = hooksFixture([], { cache, state: {
+    isSuccess: true, isStale: false, data: resumo, dataUpdatedAt: 1000,
+  } })
+  const key = hooks.useMapaVisualPontos('orcados').queryKey
+  cache.setQueryData(key, [quote('janela-anterior')], { updatedAt: 999 })
+  hooks.useMapaVisualResumo()
+  hooks.runEffects()
+  assert.equal(cache.getQueryData(key), undefined)
+  cache.clear()
 })
 
 test('contagem filtrada evita segunda página de clientes que pertencem à outra categoria', async () => {
