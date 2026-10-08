@@ -36,6 +36,7 @@ const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m 
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
 const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ default: m.MapaVisitas })))
+const MapaVisual = lazy(() => import('@/pages/MapaVisual').then(m => ({ default: m.MapaVisual })))
 const MinhasVisitas = lazy(() => import('@/pages/MinhasVisitas').then(m => ({ default: m.MinhasVisitas })))
 const OrganizacaoViagemPage = lazy(() => import('./pages/OrganizacaoViagemPage').then(m => ({ default: m.OrganizacaoViagemPage })))
 const MapaRepresentantes = lazy(() => import('@/pages/MapaRepresentantes').then(m => ({ default: m.MapaRepresentantes })))
@@ -377,7 +378,7 @@ function AppRoutes() {
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
   // Mapa de Visitas (+ Perfil). Dashboard escondido → "/" e demais rotas caem em
   // Atendimentos. O menu já esconde; isto trava o acesso por URL direta.
-  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/precos', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/contrato', '/orcamentos/contratos', '/orcamentos/novo', '/mapa-visitas', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
+  const VENDOR_PREFIXES = ['/atendimentos', '/consulta', '/orcamentos/precos', '/orcamentos/montar', '/orcamentos/salvos', '/orcamentos/contrato', '/orcamentos/contratos', '/orcamentos/novo', '/mapa-visitas', '/mapa-visual', '/minhas-visitas', '/organizacao-viagem', '/frete/solicitar', '/perfil', '/agenda']
   if (rotaCatalogo(loc.pathname)) {
     if (catalogo.loading) return <PageLoading />
     if (catalogo.error) return <div role="alert" className="p-6 text-ink">Não foi possível validar seu acesso ao catálogo. Atualize a página.</div>
@@ -503,7 +504,7 @@ function AppRoutes() {
   // salvo pro começo em vez do estudo.
   const ROTAS_RESTRITAS: Record<string, string[]> = {
     mapa: [
-      '/mapa-visitas', '/mapa-representantes', '/mapa-potenciais', '/representantes', '/ficha-representante',
+      '/mapa-visitas', '/mapa-visual', '/mapa-representantes', '/mapa-potenciais', '/representantes', '/ficha-representante',
       '/producao-propria', '/viabilidade', '/venda-racao', '/perfil',
       // O Patrick tem papel 'mapa' mas vende: 12 pedidos, R$ 5,95 mi. Com o
       // vendor_id apontado, /api/financeiro devolve só os pedidos dele.
@@ -522,7 +523,7 @@ function AppRoutes() {
     // roteiro montado pra ele — pôr uma tela vazia como porta de entrada seria
     // trocar o que funciona por uma promessa.
     representante: [
-      '/mapa-visitas', '/minhas-visitas', '/producao-propria',
+      '/mapa-visitas', '/mapa-visual', '/minhas-visitas', '/producao-propria',
       '/viabilidade', '/venda-racao', '/perfil',
     ],
   }
@@ -721,6 +722,8 @@ function AppRoutes() {
           </>
         )}
       </Route>
+      {/* Usa os mesmos guards acima, sem a sidebar e os overlays do Layout. */}
+      <Route path="/mapa-visual" element={<MapaVisual />} />
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/signup" element={<Navigate to="/" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -751,6 +754,7 @@ function OverlaysGlobais() {
     pathname.startsWith('/print/')
     || pathname.startsWith('/reuniao/')
     || pathname === '/monte-sua-fabrica'
+    || pathname === '/mapa-visual'
   ) return null
   return (
     <>

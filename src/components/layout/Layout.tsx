@@ -34,6 +34,7 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
   // Patrick e afins: consulta os mapas + os dois estudos.
   mapa: [
     { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+    { to: '/mapa-visual', label: 'Mapa visual', icon: ScanEye },
     { to: '/mapa-representantes', label: 'Representantes', icon: Users },
     // Prospecção: 54 candidatos a representante externo, com contato, por UF.
     // Fica ao lado do mapa de território porque a pergunta é a mesma — quem cobre
@@ -53,6 +54,7 @@ const MENUS_RESTRITOS: Record<string, Array<{ to: string; label: string; icon: t
   // trocar o papel dele pelo mapa não podia TIRAR o que ele usava.
   representante: [
     { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin },
+    { to: '/mapa-visual', label: 'Mapa visual', icon: ScanEye },
     { to: '/minhas-visitas', label: 'Minhas Visitas', icon: ClipboardList },
     { to: '/producao-propria', label: 'Produção Própria', icon: Calculator },
     { to: '/venda-racao', label: 'Venda de Ração', icon: ShoppingBag },
@@ -128,6 +130,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' },
       { to: '/contatos', label: 'Carteira de Contatos', icon: Users, permKey: 'menu.contatos' },
       { to: '/mapa-visitas', label: 'Mapa de clientes', icon: MapPin, roles: ['admin', 'vendor', 'marketing'] },
+      { to: '/mapa-visual', label: 'Mapa visual', icon: ScanEye, roles: ['admin', 'vendor', 'marketing'] },
       { to: '/whatsapp', label: 'Atendimento WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
     ],
   },
@@ -188,6 +191,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'representante', label: 'Representantes', icon: Compass, section: 'operacao',
     items: [
       { to: '/mapa-visitas', label: 'Mapa de Visitas', icon: MapPin, roles: ['admin', 'vendor', 'marketing'] },
+      { to: '/mapa-visual', label: 'Mapa visual', icon: ScanEye, roles: ['admin', 'vendor', 'marketing'] },
       { to: '/minhas-visitas', label: 'Minhas Visitas', icon: ClipboardList, roles: ['admin', 'vendor', 'marketing'] },
       { to: '/organizacao-viagem', label: 'Organização de Viagem', icon: Compass, roles: ['admin', 'vendor', 'marketing'] },
       { to: '/mapa-representantes', label: 'Mapa de Representantes', icon: MapPin, adminOnly: true },
