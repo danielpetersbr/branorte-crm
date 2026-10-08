@@ -1,0 +1,160 @@
+--- a/wa-sidebar.js
++++ b/wa-sidebar.js
+@@ -3651,7 +3651,7 @@
+ 
+   // Salva no perfil do cliente (cliente-dados) o INTERESSE que a IA coletou — SÓ se o
+   // campo estiver vazio (nunca sobrescreve o que o vendedor digitou). Best-effort e
+-  // silencioso em erro. Não marca visita no mapa (visitar herdado ou false).
++  // silencioso em erro. Preserva as marcações de visita de clientes já cadastrados.
+   async function autoSalvarInteressePerfil(j) {
+     const doModelo = String(j?.perfilSugerido?.interesse || '').trim()
+     const interesse = (doModelo || [j?.produto_detectado, j?.segmento_detectado].filter(Boolean).join(' — ')).trim()
+@@ -3665,7 +3665,14 @@
+     if (!vend) return  // sem vendedor não grava (evitaria dado órfão)
+     const EP = 'https://flwbeevtvjiouxdjmziv.supabase.co/functions/v1/cliente-dados'
+     let d = {}
+-    try { const rr = await fetch(`${EP}?telefone=${tel}`, { headers: { 'Authorization': 'Bearer ' + SECRET } }); const jj = await rr.json(); d = jj?.dados || {} } catch {}
++    let clienteNovo = false
++    try {
++      const rr = await fetch(`${EP}?telefone=${tel}`, { headers: { 'Authorization': 'Bearer ' + SECRET } })
++      const jj = await rr.json()
++      if (rr.ok === false || jj?.ok !== true) return
++      d = jj.dados || {}
++      clienteNovo = jj.dados === null
++    } catch { return }
+     if (String(d.interesse || '').trim()) return  // já tem interesse → respeita, não mexe
+     const body = {
+       telefone: tel,
+@@ -3674,7 +3681,7 @@
+       estado: d.estado || '',
+       interesse,
+       valor_negociando: (d.valor_negociando != null ? d.valor_negociando : null),
+-      visitar: (typeof d.visitar === 'boolean') ? d.visitar : false,  // não joga no mapa automaticamente
++      ...(clienteNovo ? { visitar: false, visita_obrigatoria: false } : {}),  // não altera marcações que podem ter mudado no mapa
+       vendedor_nome: vend,
+       etiquetas: Array.isArray(chatAtivo.labels) ? chatAtivo.labels : [],
+     }
+@@ -6567,7 +6574,11 @@
+               <input id="bsb-cv-valor" type="text" inputmode="decimal" placeholder="R$ ex: 175.000"></label>
+             <label id="bsb-cv-visitar-row" style="display:flex;align-items:center;gap:9px;cursor:pointer;margin:3px 0 5px;padding:8px 9px;border-radius:8px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25)">
+               <input id="bsb-cv-visitar" type="checkbox" style="width:16px;height:16px;accent-color:#10b981;cursor:pointer;flex:0 0 auto;margin:0">
+-              <span class="bsb-ui-visit-copy"><strong>Cliente para visitar</strong><small>Mostrar este cliente no mapa de visitas.</small></span>
++              <span class="bsb-ui-visit-copy"><strong>Pode visitar</strong><small>Mostrar este cliente no mapa de visitas.</small></span>
++            </label>
++            <label id="bsb-cv-visita-obrigatoria-row" style="display:flex;align-items:center;gap:9px;cursor:pointer;margin:3px 0 5px;padding:8px 9px;border-radius:8px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25)">
++              <input id="bsb-cv-visita-obrigatoria" type="checkbox" style="width:16px;height:16px;accent-color:#10b981;cursor:pointer;flex:0 0 auto;margin:0">
++              <span class="bsb-ui-visit-copy"><strong>É para visitar (obrigatório)</strong><small>Visita que precisa entrar no roteiro.</small></span>
+             </label>
+             <div style="display:flex;align-items:center;gap:8px">
+               <button class="bsb-cv-save" id="bsb-cv-save" style="flex:1">${ico('check', 16)} Salvar</button>
+@@ -6830,6 +6841,7 @@
+     const $interesse = document.getElementById('bsb-cv-interesse')
+     const $valor = document.getElementById('bsb-cv-valor')
+     const $visitar = document.getElementById('bsb-cv-visitar')
++    const $obrigatoria = document.getElementById('bsb-cv-visita-obrigatoria')
+     const $save = document.getElementById('bsb-cv-save')
+     const $st = document.getElementById('bsb-cv-status')
+     wireCidadeAutocomplete($cidade, $estado)
+@@ -6841,8 +6853,16 @@
+     let _dadosSalvos = null   // reaproveitado pelo bloco QUALIFICACAO (nao refaz o GET)
+     let _clientePersistido = false
+     let _visitarEditado = false
+-    let _visitarEdicao = 0
+-    $visitar?.addEventListener('change', () => { _visitarEditado = true; _visitarEdicao++ })
++    let _obrigatoriaEditada = false
++    let _visitaEdicao = 0
++    $visitar?.addEventListener('change', () => {
++      if (!$visitar.checked && $obrigatoria) $obrigatoria.checked = false
++      _visitarEditado = true; _obrigatoriaEditada = true; _visitaEdicao++
++    })
++    $obrigatoria?.addEventListener('change', () => {
++      if ($obrigatoria.checked && $visitar) $visitar.checked = true
++      _visitarEditado = true; _obrigatoriaEditada = true; _visitaEdicao++
++    })
+     // ⚠️ GET que FALHOU e cliente NOVO davam os dois `null` — indistinguiveis. Com o
+     // autosave do bloco QUALIFICACAO isso vira perda de dado: rede ruim no campo → GET
+     // falha → inputs ficam vazios → vendedor marca um chip → o POST grava '' por cima
+@@ -6862,7 +6882,8 @@
+         if ($estado) $estado.value = (d.estado || '').toUpperCase()
+         if ($interesse) $interesse.value = d.interesse || ''
+         if ($valor) $valor.value = d.valor_negociando != null ? formatValorBR(d.valor_negociando) : ''
+-        if ($visitar) $visitar.checked = (d.visitar !== false)
++        if ($visitar && !_visitarEditado) $visitar.checked = (d.visitar !== false)
++        if ($obrigatoria && !_obrigatoriaEditada) $obrigatoria.checked = (d.visita_obrigatoria === true)
+         if ($st && d.updated_at) $st.textContent = 'salvo ' + new Date(d.updated_at).toLocaleDateString('pt-BR')
+       }
+     } catch (_) {}
+@@ -6892,7 +6913,7 @@
+         $save.dataset.busy = '1'
+         const txtBak = $save.textContent
+         $save.textContent = '⏳ salvando…'
+-        const _visitarRevisao = _visitarEdicao
++        const _visitaRevisao = _visitaEdicao
+         try {
+           const cfg = await chrome.storage.local.get(['vendedor_nome'])
+           // Sem vendedor configurado NÃO salva — senão cria visita órfã (sem vendedor) no mapa.
+@@ -6913,7 +6934,8 @@
+               interesse: $interesse?.value || '',
+               valor_negociando: parseValorBR($valor?.value),
+               // Sem edição explícita, a edge preserva a marcação atual do mapa.
+-              ...(!_clientePersistido || _visitarEditado ? { visitar: $visitar ? $visitar.checked : true } : {}),
++              ...((_getOk && !_clientePersistido) || _visitarEditado ? { visitar: $visitar ? $visitar.checked : true } : {}),
++              ...((_getOk && !_clientePersistido) || _obrigatoriaEditada ? { visita_obrigatoria: $obrigatoria ? $obrigatoria.checked : false } : {}),
+               vendedor_nome: cfg.vendedor_nome.trim(),
+               etiquetas: Array.isArray(chatAtivo?.labels) ? chatAtivo.labels : [],
+             }),
+@@ -6922,7 +6944,8 @@
+           if (!j?.ok) throw new Error(j?.error || 'falha')
+           mostrarToast('✅ Dados salvos pra visita', 'sucesso', 1800)
+           _clientePersistido = true
+-          _visitarEditado = _visitarEdicao !== _visitarRevisao
++          _visitarEditado = _visitaEdicao !== _visitaRevisao
++          _obrigatoriaEditada = _visitaEdicao !== _visitaRevisao
+           if ($st) $st.textContent = 'salvo agora'
+         } catch (e) {
+           mostrarToast('❌ ' + (e?.message || e), 'erro', 3000)
+--- a/wa-sidebar.css
++++ b/wa-sidebar.css
+@@ -5541,15 +5541,19 @@
+ }
+ 
+ /* Linha do checkbox "visitar": destaque suave verde (inline styles -> !important) */
+-#branorte-sb-full[data-theme="light"] #bsb-cv-visitar-row {
++#branorte-sb-full[data-theme="light"] #bsb-cv-visitar-row,
++#branorte-sb-full[data-theme="light"] #bsb-cv-visita-obrigatoria-row {
+   background: #e7f6ee !important;
+   border-color: rgba(31,168,85,.25) !important;
+ }
+-#branorte-sb-full[data-theme="light"] #bsb-cv-visitar-row span {
++#branorte-sb-full[data-theme="light"] #bsb-cv-visitar-row span,
++#branorte-sb-full[data-theme="light"] #bsb-cv-visita-obrigatoria-row span {
+   color: #54656f !important;
+ }
+-#branorte-sb-full[data-theme="light"] #bsb-cv-visitar-row b { color: #111b21; }
+-#branorte-sb-full[data-theme="light"] #bsb-cv-visitar { accent-color: #1fa855; }
++#branorte-sb-full[data-theme="light"] #bsb-cv-visitar-row b,
++#branorte-sb-full[data-theme="light"] #bsb-cv-visita-obrigatoria-row b { color: #111b21; }
++#branorte-sb-full[data-theme="light"] #bsb-cv-visitar,
++#branorte-sb-full[data-theme="light"] #bsb-cv-visita-obrigatoria { accent-color: #1fa855; }
+ 
+ /* Botao primario: accent solido, texto branco */
+ #branorte-sb-full[data-theme="light"] .bsb-cv-save {
+--- a/wa-interface.css
++++ b/wa-interface.css
+@@ -136,12 +136,14 @@
+ }
+ #branorte-sb-full[data-theme] .bsb-cv-field input::placeholder { color: var(--ui-faint); opacity: 1; }
+ #branorte-sb-full[data-theme] .bsb-cv-field :is(input,select):focus { border-color: var(--ui-accent); outline: 2px solid var(--ui-soft); outline-offset: 1px; }
+-#branorte-sb-full[data-theme] #bsb-cv-visitar-row {
++#branorte-sb-full[data-theme] #bsb-cv-visitar-row,
++#branorte-sb-full[data-theme] #bsb-cv-visita-obrigatoria-row {
+   padding: 10px 0 !important; margin: 0 !important; border: 0 !important;
+   border-top: 1px solid var(--ui-line) !important; border-radius: 0 !important; background: transparent !important;
+   align-items: flex-start !important;
+ }
+-#branorte-sb-full[data-theme] #bsb-cv-visitar { accent-color: var(--ui-primary) !important; margin-top: 2px !important; }
++#branorte-sb-full[data-theme] #bsb-cv-visitar,
++#branorte-sb-full[data-theme] #bsb-cv-visita-obrigatoria { accent-color: var(--ui-primary) !important; margin-top: 2px !important; }
+ #branorte-sb-full[data-theme] .bsb-ui-visit-copy { display: flex; flex-direction: column; gap: 3px; color: var(--ui-text); font-size: 12px; line-height: 1.4; }
+ #branorte-sb-full[data-theme] .bsb-ui-visit-copy strong { font-weight: 500; }
+ #branorte-sb-full[data-theme] .bsb-ui-visit-copy small { font-size: 11px; color: var(--ui-muted); }
