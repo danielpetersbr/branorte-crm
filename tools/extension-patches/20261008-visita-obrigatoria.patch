@@ -43,7 +43,7 @@
 +            </label>
 +            <label id="bsb-cv-visita-obrigatoria-row" style="display:flex;align-items:center;gap:9px;cursor:pointer;margin:3px 0 5px;padding:8px 9px;border-radius:8px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25)">
 +              <input id="bsb-cv-visita-obrigatoria" type="checkbox" style="width:16px;height:16px;accent-color:#10b981;cursor:pointer;flex:0 0 auto;margin:0">
-+              <span class="bsb-ui-visit-copy"><strong>É para visitar (obrigatório)</strong><small>Visita que precisa entrar no roteiro.</small></span>
++              <span class="bsb-ui-visit-copy"><strong>É para visitar</strong><small>Visita que precisa entrar no roteiro.</small></span>
              </label>
              <div style="display:flex;align-items:center;gap:8px">
                <button class="bsb-cv-save" id="bsb-cv-save" style="flex:1">${ico('check', 16)} Salvar</button>
