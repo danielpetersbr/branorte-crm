@@ -10,12 +10,19 @@ export interface PontoVisual {
   lng: number
   forma: FormaVisual
   cor: string
+  circulo: { radius: number; color: string; weight: number; fillOpacity: number }
 }
 export interface CategoriaVisual {
   pontos: PontoVisual[]
   total: number
   semLocalizacao: number
 }
+
+// Mesmo padrão de MapaVisitas: a posição na lista completa de vendedores
+// define a cor, independentemente de quais clientes passaram no filtro.
+const CORES_VENDEDORES = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4']
+const CIRCULO_ORCAMENTO = { radius: 5, color: '#fff', weight: 1, fillOpacity: 0.92 }
+const CIRCULO_VISITA = { radius: 9, color: '#0f172a', weight: 2.5, fillOpacity: 1 }
 
 export function modoMapaVisual(valor: string | null): ModoMapaVisual | null {
   return valor === 'vendidos' || valor === 'orcados' || valor === 'visitas' ? valor : null
@@ -37,6 +44,10 @@ function temCoordenadas(p: { lat: number | null; lng: number | null }): p is { l
 // A identidade e a conversão vêm das mesmas RPCs do mapa completo, já agregadas
 // por cliente e com as restrições de acesso do usuário aplicadas no servidor.
 export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visita[]) {
+  const vendedores = [...new Set([
+    ...visitas.map(v => v.vendedor_nome || '—'),
+    ...orcamentos.map(p => p.vendedor || '—'),
+  ])].sort()
   const vendidos: CategoriaVisual = { pontos: [], total: 0, semLocalizacao: 0 }
   const orcados: CategoriaVisual = { pontos: [], total: 0, semLocalizacao: 0 }
   const pendentes: CategoriaVisual = { pontos: [], total: 0, semLocalizacao: 0 }
@@ -44,7 +55,7 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     if (!temCoordenadas(p)) continue
     const vendido = p.vendido || p.n_vendas > 0
     const categoria = vendido ? vendidos : orcados
-    categoria.pontos.push({ id: p.cli_key, lat: p.lat, lng: p.lng,
+    categoria.pontos.push({ id: p.cli_key, lat: p.lat, lng: p.lng, circulo: CIRCULO_ORCAMENTO,
       ...(vendido ? { forma: 'circulo' as const, cor: '#2563eb' } : estiloOrcadoVisual(p.total, p.data_recente)) })
     categoria.total++
   }
@@ -52,7 +63,9 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     if (v.visitar !== true || v.vendido || (v.n_vendas ?? 0) > 0) continue
     pendentes.total++
     if (!temCoordenadas(v)) { pendentes.semLocalizacao++; continue }
-    pendentes.pontos.push({ id: v.id, lat: v.lat, lng: v.lng, forma: 'circulo', cor: '#f59e0b' })
+    const indice = Math.max(0, vendedores.indexOf(v.vendedor_nome || '—'))
+    pendentes.pontos.push({ id: v.id, lat: v.lat, lng: v.lng, forma: 'circulo',
+      cor: CORES_VENDEDORES[indice % CORES_VENDEDORES.length], circulo: CIRCULO_VISITA })
   }
   return { vendidos, orcados, visitas: pendentes }
 }

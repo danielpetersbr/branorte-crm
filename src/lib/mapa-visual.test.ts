@@ -66,6 +66,28 @@ test('vendidos são círculos azuis mesmo quando o valor é alto', () => {
   assert.equal(dados.vendidos.pontos[0].cor, '#2563eb')
 })
 
+test('visitas mantém a cor de cada vendedor do mapa completo, mesmo com outros vendedores fora do filtro', () => {
+  const orcamentos = [cliente({ vendedor: 'ANA', vendido: true }), cliente({ vendedor: 'DANIEL' })]
+  const visitas = [
+    visita({ id: 'bruno', vendedor_nome: 'BRUNO' }),
+    visita({ id: 'carlos', vendedor_nome: 'CARLOS', visitar: false }),
+    visita({ id: 'eder', vendedor_nome: 'EDER' }),
+    visita({ id: 'sem-vendedor', vendedor_nome: null }),
+  ]
+  const esperado = [['bruno', '#3b82f6'], ['eder', '#8b5cf6'], ['sem-vendedor', '#ec4899']]
+  const cores = (pontos: ReturnType<typeof selecionarMapaVisual>['visitas']['pontos']) => pontos.map(p => [p.id, p.cor])
+  assert.deepEqual(cores(selecionarMapaVisual(orcamentos, visitas).visitas.pontos), esperado)
+  assert.deepEqual(cores(selecionarMapaVisual([...orcamentos].reverse(), [...visitas].reverse()).visitas.pontos).reverse(), esperado)
+})
+
+test('círculos usam o tamanho, contorno e opacidade das mesmas categorias no mapa completo', () => {
+  const dados = selecionarMapaVisual([cliente(), cliente({ vendido: true })], [visita()])
+  assert.deepEqual(dados.visitas.pontos[0].circulo, { radius: 9, color: '#0f172a', weight: 2.5, fillOpacity: 1 })
+  const circuloOrcamento = { radius: 5, color: '#fff', weight: 1, fillOpacity: 0.92 }
+  assert.deepEqual(dados.orcados.pontos[0].circulo, circuloOrcamento)
+  assert.deepEqual(dados.vendidos.pontos[0].circulo, circuloOrcamento)
+})
+
 test('somente as três categorias são aceitas em links diretos', () => {
   for (const modo of ['vendidos', 'orcados', 'visitas']) assert.equal(modoMapaVisual(modo), modo)
   for (const modo of [null, '', 'todos', 'vendidos<script>']) assert.equal(modoMapaVisual(modo), null)
