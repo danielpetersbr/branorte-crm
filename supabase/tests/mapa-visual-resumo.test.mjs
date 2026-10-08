@@ -68,10 +68,13 @@ before(async () => {
   assert.ok(file)
   await db.exec(readFileSync(new URL(file,migrationDir),'utf8'))
   originalFunctions=(await db.query("select pg_get_functiondef('public.mapa_conversoes()'::regprocedure) conversoes,pg_get_functiondef('public.mapa_visitas_clientes()'::regprocedure) visitas")).rows
-  originalAccess=(await db.query("select (select nspacl::text from pg_namespace where nspname='private') schema_acl,(select relacl::text from pg_class where oid='public.cliente_dados_visita'::regclass) visitas_acl,(select proacl::text from pg_proc where oid='public.mapa_visual_resumo()'::regprocedure) resumo_acl")).rows
+  originalAccess=(await db.query("select (select nspacl::text from pg_namespace where nspname='private') schema_acl,(select relacl::text from pg_class where oid='public.cliente_dados_visita'::regclass) visitas_acl,(select proacl::text from pg_proc where oid='public.mapa_visual_resumo()'::regprocedure) resumo_acl,(select proacl::text from pg_proc where oid='private.mapa_visual_contagem_pontos()'::regprocedure) pontos_acl")).rows
   const narrow = readdirSync(migrationDir).find(n=>n.endsWith('_mapa_visual_visitas_resumo.sql'))
   assert.ok(narrow)
   await db.exec(readFileSync(new URL(narrow,migrationDir),'utf8'))
+  const points = readdirSync(migrationDir).find(n=>n.endsWith('_mapa_visual_pontos_materializados.sql'))
+  assert.ok(points)
+  await db.exec(readFileSync(new URL(points,migrationDir),'utf8'))
 })
 after(async()=>{ if(db) await db.close() })
 const finite = p=>p.lat!=null && p.lng!=null && Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat)<=90 && Math.abs(p.lng)<=180
@@ -152,5 +155,5 @@ test('narrow statuses never exceed input IDs and retain original conversion gate
 })
 test('old RPC definitions and table/schema permissions are unchanged',async()=>{
   assert.deepEqual((await db.query("select pg_get_functiondef('public.mapa_conversoes()'::regprocedure) conversoes,pg_get_functiondef('public.mapa_visitas_clientes()'::regprocedure) visitas")).rows,originalFunctions)
-  assert.deepEqual((await db.query("select (select nspacl::text from pg_namespace where nspname='private') schema_acl,(select relacl::text from pg_class where oid='public.cliente_dados_visita'::regclass) visitas_acl,(select proacl::text from pg_proc where oid='public.mapa_visual_resumo()'::regprocedure) resumo_acl")).rows,originalAccess)
+  assert.deepEqual((await db.query("select (select nspacl::text from pg_namespace where nspname='private') schema_acl,(select relacl::text from pg_class where oid='public.cliente_dados_visita'::regclass) visitas_acl,(select proacl::text from pg_proc where oid='public.mapa_visual_resumo()'::regprocedure) resumo_acl,(select proacl::text from pg_proc where oid='private.mapa_visual_contagem_pontos()'::regprocedure) pontos_acl")).rows,originalAccess)
 })
