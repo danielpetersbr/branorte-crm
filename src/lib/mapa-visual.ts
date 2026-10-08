@@ -1,5 +1,6 @@
 import type { OrcamentoPonto, Visita } from '../hooks/useVisitas'
 import { faixaIdade } from './periodo'
+import { corDoEstado } from './mapa-modos'
 import { chaveCoordenadaMapa, criarCacheLimitesMapa, geometriaDosPontos } from './mapa-visitas-regras'
 
 export type ModoMapaVisual = 'vendidos' | 'orcados' | 'visitas'
@@ -11,6 +12,15 @@ export interface PontoVisual {
   forma: FormaVisual
   cor: string
   circulo: { radius: number; color: string; weight: number; fillOpacity: number }
+  detalhes: {
+    cliente: string | null
+    telefone: string
+    contato: string | null
+    vendedor: string | null
+    cidade: string | null
+    uf: string | null
+    categoria: 'Vendido' | 'Orçado' | 'Visita'
+  }
 }
 export interface CategoriaVisual {
   pontos: PontoVisual[]
@@ -56,7 +66,10 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     const vendido = p.vendido || p.n_vendas > 0
     const categoria = vendido ? vendidos : orcados
     categoria.pontos.push({ id: p.cli_key, lat: p.lat, lng: p.lng, circulo: CIRCULO_ORCAMENTO,
-      ...(vendido ? { forma: 'circulo' as const, cor: '#2563eb' } : estiloOrcadoVisual(p.total, p.data_recente)) })
+      detalhes: { cliente: p.cliente, telefone: (p.telefone || p.fone || '').replace(/\D/g, ''),
+        contato: p.fone || p.telefone, vendedor: p.vendedor, cidade: p.cidade, uf: p.uf,
+        categoria: vendido ? 'Vendido' : 'Orçado' },
+      ...(vendido ? { forma: 'circulo' as const, cor: corDoEstado(p.uf, false) } : estiloOrcadoVisual(p.total, p.data_recente)) })
     categoria.total++
   }
   for (const v of visitas) {
@@ -65,7 +78,9 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     if (!temCoordenadas(v)) { pendentes.semLocalizacao++; continue }
     const indice = Math.max(0, vendedores.indexOf(v.vendedor_nome || '—'))
     pendentes.pontos.push({ id: v.id, lat: v.lat, lng: v.lng, forma: 'circulo',
-      cor: CORES_VENDEDORES[indice % CORES_VENDEDORES.length], circulo: CIRCULO_VISITA })
+      cor: CORES_VENDEDORES[indice % CORES_VENDEDORES.length], circulo: CIRCULO_VISITA,
+      detalhes: { cliente: v.nome, telefone: (v.telefone || '').replace(/\D/g, ''), contato: v.telefone,
+        vendedor: v.vendedor_nome, cidade: v.cidade, uf: v.estado, categoria: 'Visita' } })
   }
   return { vendidos, orcados, visitas: pendentes }
 }
