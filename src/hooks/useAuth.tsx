@@ -35,6 +35,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const identity = useRef<string | null>(null)
+  const profileRequest = useRef<{ userId: string; controller: AbortController } | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,6 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return
       const nextId = sess?.user.id ?? null
       if (identity.current !== nextId) {
+        if (profileRequest.current && profileRequest.current.userId !== nextId) {
+          profileRequest.current.controller.abort()
+        }
         // Limpa também logout em outra aba e troca direta de conta. Não limpar
         // em TOKEN_REFRESHED: a identidade e a carteira continuam as mesmas.
         queryClient.clear()
@@ -84,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileError(false)
       return
     }
-    let cancel = false
+    const lifecycle = new AbortController()
+    profileRequest.current = { userId, controller: lifecycle }
     // Só mostra full-page loading se ainda não temos profile (primeiro load).
     setProfile(prev => {
       if (!prev || prev.id !== userId) setLoading(true)
@@ -92,26 +97,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     setProfileError(false)
 
-    // Cada tentativa é limitada por tempo: o supabase-js pode TRAVAR (não rejeitar)
-    // quando o Supabase está sob carga. Sem isso, o usuário fica preso no spinner.
-    const withTimeout = <T,>(p: PromiseLike<T>, ms: number): Promise<T> =>
-      Promise.race([
-        Promise.resolve(p),
-        new Promise<never>((_, rej) => window.setTimeout(() => rej(new Error('profile-timeout')), ms)),
-      ])
+    // O prazo inclui a espera interna de sessão do SDK. Além de encerrar a
+    // espera da UI, aborta o transporte antes de iniciar a próxima tentativa.
+    const withTimeout = async <T,>(request: (signal: AbortSignal) => PromiseLike<T>, ms: number): Promise<T> => {
+      if (lifecycle.signal.aborted) throw new Error('profile-cancelled')
+      const controller = new AbortController()
+      let rejectInterrupted!: (error: Error) => void
+      const interrupted = new Promise<never>((_, reject) => { rejectInterrupted = reject })
+      const timer = window.setTimeout(() => {
+        controller.abort()
+        rejectInterrupted(new Error('profile-timeout'))
+      }, ms)
+      const abort = () => {
+        window.clearTimeout(timer)
+        controller.abort()
+        rejectInterrupted(new Error('profile-cancelled'))
+      }
+      lifecycle.signal.addEventListener('abort', abort, { once: true })
+      if (lifecycle.signal.aborted) abort()
+      try {
+        return await Promise.race([Promise.resolve(request(controller.signal)), interrupted])
+      } finally {
+        window.clearTimeout(timer)
+        lifecycle.signal.removeEventListener('abort', abort)
+      }
+    }
+
+    const backoff = (ms: number) => new Promise<void>(resolve => {
+      const finish = () => {
+        window.clearTimeout(timer)
+        lifecycle.signal.removeEventListener('abort', finish)
+        resolve()
+      }
+      const timer = window.setTimeout(finish, ms)
+      lifecycle.signal.addEventListener('abort', finish, { once: true })
+      if (lifecycle.signal.aborted) finish()
+    })
 
     const fetchProfile = async () => {
-      for (let attempt = 0; attempt < 3 && !cancel; attempt++) {
+      for (let attempt = 0; attempt < 3 && !lifecycle.signal.aborted; attempt++) {
         try {
           const { data, error } = await withTimeout(
-            supabase
+            signal => supabase
               .from('user_profiles')
               .select('id,email,display_name,role,vendor_id,approved_at')
               .eq('id', userId)
-              .maybeSingle(),
+              .maybeSingle()
+              .abortSignal(signal),
             6000,
           )
-          if (cancel) return
+          if (lifecycle.signal.aborted) return
           if (error) throw error
           // Resposta definitiva (data pode ser null = sem perfil de verdade → /pendente)
           setProfile(data as UserProfile | null)
@@ -119,14 +154,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLoading(false)
           return
         } catch (err) {
+          if (lifecycle.signal.aborted) return
           // eslint-disable-next-line no-console
           console.error(`[useAuth] profile fetch attempt ${attempt + 1} falhou:`, err)
-          if (attempt < 2 && !cancel) {
-            await new Promise(r => window.setTimeout(r, 800 * (attempt + 1)))
+          if (attempt < 2 && !lifecycle.signal.aborted) {
+            await backoff(800 * (attempt + 1))
           }
         }
       }
-      if (cancel) return
+      if (lifecycle.signal.aborted) return
       // Falhou após retries: NÃO assumir "não aprovado". Sinaliza erro pra UI
       // mostrar tela de reconexão (não a tela de "Aguardando aprovação").
       setProfileError(true)
@@ -135,11 +171,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchProfile()
 
     return () => {
-      cancel = true
+      lifecycle.abort()
+      if (profileRequest.current?.controller === lifecycle) profileRequest.current = null
     }
   }, [userId])
 
   const signOut = async () => {
+    profileRequest.current?.controller.abort()
     await supabase.auth.signOut()
     queryClient.clear()
     identity.current = null
