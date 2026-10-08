@@ -34,3 +34,9 @@ No background, manifest, automation cadence, central ownership or WhatsApp login
 Published at 2026-10-01 23:24:08 UTC to the eleven existing extension folders: alvaro, ana, daniel, eder, edilson-jr, gustavo, igor, jardel, lucas, pedro and ramon. Every original hash matched the expected baseline before replacement. Each original file was backed up and hash-checked under `/opt/branorte/backups/crm-performance-20261001/<seller>/popup.js`; backups are readable only by their owner. A verified staged popup was copied through a temporary file and atomically replaced each target. All eleven final hashes matched the patched hash above. Background and manifest hashes were checked before and after and remained identical. No containers were restarted. Already open popup windows retain their previous script until closed and reopened.
 
 For rollback, restore the backed-up contents while preserving the destination file's permissions and owner. Backups have mode `600`; copying their metadata onto a normally `644` extension file can prevent Chrome from reading it. Verify the restored hash against the original above before reopening the popup.
+
+## Windows rollout — 2026-10-08
+
+The canonical Windows source and Daniel's existing 1.70.42 installation still had the original hash above. Both now have the reviewed patched hash. The original popups were backed up locally, file ACLs were preserved, and background/manifest hashes remained identical. No other installation, VPS worker, version, ownership setting or WhatsApp session was changed. An already open popup needs to be closed and reopened.
+
+The existing offline suite reproduced six failures on the legacy file and passed all eight cases against the staged and reviewed candidate; the syntax check also passed. This prevents excessive role polling when a popup is open. It does not establish that a popup was open during the outage or that popup polling caused the REST 503 errors.
