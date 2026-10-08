@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, FileText, MapPin, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ChevronRight, FileText, Map, MapPin, X } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useOrcamentosMapa, useVisitas } from '@/hooks/useVisitas'
@@ -8,9 +8,9 @@ import { modoMapaVisual, selecionarMapaVisual, prepararDesenhoVisual, deslocamen
 import { chaveCoordenadaMapa } from '@/lib/mapa-visitas-regras'
 
 const CATEGORIAS = [
-  { modo: 'vendidos', nome: 'Vendidos', icon: CheckCircle2, cor: '#60a5fa' },
-  { modo: 'orcados', nome: 'Orçados', icon: FileText, cor: '#4ade80' },
-  { modo: 'visitas', nome: 'Visitas', icon: MapPin, cor: '#fbbf24' },
+  { modo: 'vendidos', nome: 'Vendidos', icon: CheckCircle2, cor: '#01A95B', fundo: '#e1f9ed' },
+  { modo: 'orcados', nome: 'Orçados', icon: FileText, cor: '#01A95B', fundo: '#edf7f1' },
+  { modo: 'visitas', nome: 'Visitas', icon: MapPin, cor: '#f4b400', fundo: '#fff7e3' },
 ] as const
 const NUMERO = new Intl.NumberFormat('pt-BR')
 const MOEDA = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -133,13 +133,19 @@ export function MapaVisual() {
 
   function abrir(m: ModoMapaVisual) { setParams({ modo: m }) }
   return (
-    <main className="min-h-[100dvh] bg-[#161c19] text-white flex flex-col items-center px-6"
-      style={{ paddingTop: 'calc(3.5rem + env(safe-area-inset-top))', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}>
-      <div className="w-full max-w-md flex-1 flex flex-col justify-center pb-10 sm:pb-16">
-        <img src="/branorte-logo-dark.png" alt="BraNorte" className="mx-auto mb-14 w-[240px] max-w-[80%] h-auto" />
-        <h1 className="sr-only">Mapa visual</h1>
+    <main className="relative isolate flex min-h-[100dvh] flex-col items-center overflow-hidden bg-white px-5 text-[#18262e] sm:px-6"
+      style={{ paddingTop: 'calc(3.5rem + env(safe-area-inset-top))', paddingBottom: 'calc(3.5rem + env(safe-area-inset-bottom))' }}>
+      <svg aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 -z-10 h-[290px] w-[420px] max-w-full text-[#b7efd2] sm:h-[340px] sm:w-[540px]"
+        viewBox="0 0 540 340" fill="none" preserveAspectRatio="xMaxYMax slice">
+        <path d="M-80 340C180 340 155 105 555 15M-40 355C210 355 188 135 575 45M0 370C240 370 221 165 595 75M40 385C270 385 254 195 615 105M80 400C300 400 287 225 635 135" stroke="currentColor" strokeWidth=".8" />
+      </svg>
+      <div className="flex w-full max-w-md flex-1 flex-col justify-center">
+        <header className="mb-9 text-center sm:mb-11">
+          <img src="/branorte-logo.png" alt="BraNorte" className="mx-auto h-auto w-[240px] max-w-[80%] sm:w-[280px]" />
+          <h1 className="mt-7 text-lg font-medium text-[#66727e] sm:mt-8 sm:text-xl">Selecione um mapa</h1>
+        </header>
         <div className="space-y-4">
-          {CATEGORIAS.map(({ modo: m, nome, icon: Icon, cor }) => {
+          {CATEGORIAS.map(({ modo: m, nome, icon: Icon, cor, fundo }) => {
             const q = consultas[m]
             const dados = categorias[m]
             const carregando = q.isPending
@@ -148,18 +154,22 @@ export function MapaVisual() {
               <div key={m}>
                 <button type="button" onClick={() => abrir(m)} disabled={carregando || erro || !dados.pontos.length}
                   aria-label={`${nome}: ${carregando ? 'carregando' : erro ? 'indisponível' : NUMERO.format(dados.total)}`}
-                  className="group flex w-full items-center gap-4 rounded-2xl border border-white/15 bg-white/[.04] px-5 py-6 text-left transition hover:border-green-400/60 hover:bg-white/[.08] active:scale-[.99] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-400">
-                  <Icon className="h-6 w-6 shrink-0" style={{ color: cor }} />
-                  <span className="text-lg font-semibold tracking-wide">{nome}</span>
-                  <span className="ml-auto text-2xl font-semibold tabular-nums" aria-live="polite">
+                  className={`group flex min-h-[96px] w-full items-center gap-3 rounded-2xl border px-4 py-5 text-left transition active:scale-[.99] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#01A95B] sm:gap-4 sm:px-5 sm:py-6 ${m === 'vendidos'
+                    ? 'border-[#01A95B] bg-[#f1fcf6] shadow-[0_6px_24px_rgba(1,169,91,.12)] hover:bg-[#e8f9ef]'
+                    : 'border-[#e7ecef] bg-white shadow-[0_5px_20px_rgba(24,38,46,.06)] hover:border-[#b8d9c8] hover:bg-[#fcfefc]'}`}>
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full sm:h-14 sm:w-14" style={{ backgroundColor: fundo }}>
+                    <Icon className="h-7 w-7" style={{ color: cor }} strokeWidth={2} />
+                  </span>
+                  <span className="text-xl font-semibold sm:text-2xl">{nome}</span>
+                  <span className={`ml-auto text-[27px] font-semibold tabular-nums sm:text-3xl ${m === 'vendidos' ? 'text-[#008e49]' : 'text-[#18262e]'}`} aria-live="polite">
                     {carregando ? '…' : erro ? '—' : NUMERO.format(dados.total)}
                   </span>
-                  <ArrowRight className="h-4 w-4 text-white/30 group-hover:text-green-400" />
+                  <ChevronRight className={`h-5 w-5 shrink-0 ${m === 'vendidos' ? 'text-[#01A95B]' : 'text-[#78838d] group-hover:text-[#01A95B]'}`} />
                 </button>
-                {erro && <p className="px-1 pt-2 text-sm text-red-300" role="alert">
+                {erro && <p className="px-1 pt-2 text-sm text-red-700" role="alert">
                   Não foi possível carregar. <button className="underline" onClick={() => void q.refetch()}>Tentar novamente</button>
                 </p>}
-                {!carregando && !erro && dados.semLocalizacao > 0 && <p className="px-1 pt-2 text-xs text-white/50">
+                {!carregando && !erro && dados.semLocalizacao > 0 && <p className="px-1 pt-2 text-xs text-[#66727e]">
                   {NUMERO.format(dados.pontos.length)} no mapa · {NUMERO.format(dados.semLocalizacao)} sem localização
                 </p>}
               </div>
@@ -167,9 +177,11 @@ export function MapaVisual() {
           })}
         </div>
         {modo && !consulta.isPending && !consulta.isError && !categorias[modo].pontos.length && (
-          <p role="status" className="mt-5 text-center text-sm text-white/60">Nenhum cliente com localização nesta categoria.</p>
+          <p role="status" className="mt-5 text-center text-sm text-[#66727e]">Nenhum cliente com localização nesta categoria.</p>
         )}
-        <Link to="/mapa-visitas" className="mt-10 self-center py-3 text-sm text-white/45 hover:text-white">Abrir mapa completo</Link>
+        <Link to="/mapa-visitas" className="mt-9 flex min-h-11 items-center gap-3 self-center rounded-lg px-3 py-3 text-base text-[#66727e] hover:text-[#01A95B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#01A95B] sm:mt-11 sm:text-lg">
+          <Map className="h-5 w-5 shrink-0" strokeWidth={1.8} />Abrir mapa completo
+        </Link>
       </div>
     </main>
   )
