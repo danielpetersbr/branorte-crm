@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, ChevronRight, FileText, Map, MapPin, X } from 
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useMapaVisualPontos, useMapaVisualResumo } from '@/hooks/useMapaVisual'
+import { useAuth } from '@/hooks/useAuth'
 import { modoMapaVisual, prepararDesenhoVisual, deslocamentoVisual, type ModoMapaVisual, type PontoVisual } from '@/lib/mapa-visual'
 import { chaveCoordenadaMapa } from '@/lib/mapa-visitas-regras'
 
@@ -137,6 +138,7 @@ export function MapaVisual() {
 }
 
 function LauncherMapaVisual({ abrir }: { abrir: (modo: ModoMapaVisual) => void }) {
+  const { profile } = useAuth()
   const consulta = useMapaVisualResumo()
   const resumo = consulta.data
   const carregando = consulta.isPending
@@ -187,9 +189,9 @@ function LauncherMapaVisual({ abrir }: { abrir: (modo: ModoMapaVisual) => void }
           {consulta.error?.message || 'Não foi possível carregar as quantidades.'}{' '}
           <button type="button" className="underline" onClick={() => void consulta.refetch()}>Tentar novamente</button>
         </p>}
-        <Link to="/mapa-visitas" className="mt-9 flex min-h-11 items-center gap-3 self-center rounded-lg px-3 py-3 text-base text-[#66727e] hover:text-[#01A95B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#01A95B] sm:mt-11 sm:text-lg">
+        {profile?.role !== 'mapa_visual' && <Link to="/mapa-visitas" className="mt-9 flex min-h-11 items-center gap-3 self-center rounded-lg px-3 py-3 text-base text-[#66727e] hover:text-[#01A95B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#01A95B] sm:mt-11 sm:text-lg">
           <Map className="h-5 w-5 shrink-0" strokeWidth={1.8} />Abrir mapa completo
-        </Link>
+        </Link>}
       </div>
     </main>
   )

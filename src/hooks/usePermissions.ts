@@ -222,7 +222,7 @@ export function useCatalogoPermissions() {
   const { session, profile, loading: authLoading, profileError } = useAuth()
   const roles = useRolePermissions()
   const userId = session?.user.id ?? null
-  const aprovado = !!userId && profile?.id === userId && !!profile?.approved_at && !['pending', 'rejected'].includes(profile.role)
+  const aprovado = !!userId && profile?.id === userId && !!profile?.approved_at && !['pending', 'rejected', 'mapa_visual'].includes(profile.role)
   const overrides = useQuery({
     queryKey: ['catalogo-permissoes', userId],
     enabled: aprovado && !authLoading && !profileError,
@@ -252,7 +252,7 @@ export function useCan(): (featureKey: string) => boolean {
   return (featureKey: string) => {
     if (!profile) return false
     const role = profile.role
-    if (role === 'pending' || role === 'rejected') return false
+    if (role === 'pending' || role === 'rejected' || role === 'mapa_visual') return false
     if (featureKey === CHAVE_CATALOGO) return catalogo.permitido
     return canComExcecaoFabrica(featureKey,fabrica,()=>{
       const row = data?.find(r => r.role === role)

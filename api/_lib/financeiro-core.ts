@@ -871,6 +871,7 @@ export async function resolverEscopo(authHeader: string | undefined): Promise<Es
   if (!prof || !prof.approved_at || prof.role === 'pending' || prof.role === 'rejected') {
     return { status: 403, error: 'not_approved' }
   }
+  if (prof.role === 'mapa_visual') return { status: 403, error: 'sem_permissao' }
 
   const base = { userId: u.user.id, role: prof.role as string, displayName: prof.display_name as string | null }
 

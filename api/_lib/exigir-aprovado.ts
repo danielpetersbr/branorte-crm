@@ -89,6 +89,8 @@ export async function exigirAprovado(
   if (perfilErr) return { ok: false, status: 500, error: 'profile_lookup_failed' }
   const p = perfil as PerfilDeAcesso | null
   if (!perfilAprovado(p)) return { ok: false, status: 403, error: 'not_approved' }
+  // A conta aprovada de consulta exclusiva não executa APIs de ações do CRM.
+  if (p.role === 'mapa_visual') return { ok: false, status: 403, error: 'sem_permissao' }
 
   return {
     ok: true,
