@@ -86,6 +86,16 @@ test('valor mantém círculos abaixo de 100 mil, estrelas a partir de 100 mil e 
   assert.equal(estiloOrcadoVisual(100_000, recente, agora).cor, '#22c55e')
   assert.equal(estiloOrcadoVisual(100_000, '2026-08-08T12:00:00Z', agora).cor, '#ef4444')
   assert.equal(estiloOrcadoVisual(100_000, '2012-01-01', agora).cor, '#9ca3af')
+  const valores = [99_999, 100_000, 299_999, 300_000, null, 0]
+  const formas = ['circulo', 'estrela', 'estrela', 'diamante', 'circulo', 'circulo']
+  for (const obrigatoria of [false, true]) {
+    const pontos = selecionarMapaVisual([], valores.map((valor, i) => visita({
+      id: String(i), valor_negociando: valor, visita_obrigatoria: obrigatoria,
+    }))).visitas.pontos
+    assert.deepEqual(pontos.map(p => p.forma), formas)
+    assert.deepEqual(pontos.map(p => p.cor), valores.map(() => obrigatoria ? '#ef4444' : '#3b82f6'))
+    assert.deepEqual(pontos.map(p => p.detalhes.valor), valores)
+  }
 })
 
 test('vendidos distinguem estados vizinhos e mantêm círculos mesmo quando o valor é alto', () => {
