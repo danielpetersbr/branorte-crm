@@ -9,6 +9,7 @@ import {
   Users,
   MessageSquare,
   LayoutDashboard,
+  MapPin,
   ChevronRight,
   User,
 } from 'lucide-react'
@@ -43,6 +44,14 @@ export function MobileHome() {
   const podeOrcar = can('menu.orcamentos')
 
   const tiles: Tile[] = [
+    {
+      to: '/mapa-visual',
+      label: 'Mapa visual',
+      sub: 'Vendidos, orçados e visitas',
+      icon: MapPin,
+      tone: 'text-emerald-400',
+      show: ['admin', 'vendor', 'marketing', 'mapa', 'representante'].includes(profile?.role ?? ''),
+    },
     {
       to: '/orcamentos/salvos',
       label: 'Meus Orçamentos',
