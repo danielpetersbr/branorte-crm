@@ -7,6 +7,7 @@ import { passaEtiqueta, SEM_CONVERSA, SEM_WHATSAPP } from './mapa-etiquetas'
 import { passaPeriodo } from './periodo'
 import { foneCanon } from './fone-canon'
 import * as helpers from './mapa-visitas-regras'
+import { filtrarVisitasWhatsApp } from './visitas-whatsapp'
 
 // Execute the page's real filter expressions without authenticated hooks or a DOM.
 const source = readFileSync(new URL('../pages/MapaVisitas.tsx', import.meta.url), 'utf8')
@@ -33,7 +34,7 @@ function evaluate(names: string[], result: string, patch: Record<string, unknown
     loadingLista: false, loadingListaQuery: false, loadingOrc: false, loadingEtiquetasMapa: false, loadingMarcacoes: false,
     errorListaQuery: null, errorOrc: null, errorEtiquetasMapa: null, errorMarcacoes: null,
     byVendId: new Map(), globId: new Map(), etiqPorCliente: new Map(),
-    useMemo: (fn: () => unknown) => fn(), passaPeriodoRegra: passaPeriodo, passaEtiqueta, foneCanon,
+    useMemo: (fn: () => unknown) => fn(), passaPeriodoRegra: passaPeriodo, passaEtiqueta, foneCanon, filtrarVisitasWhatsApp, soMarcados: false,
     passaEtq: () => true, etiqDoPonto: () => SEM_CONVERSA, etiquetasDaVisita: () => SEM_CONVERSA,
     LIMITE_ESTRELA: 100000, LIMITE_DIAMANTE: 300000, ...patch,
   }
@@ -46,6 +47,14 @@ const searchNames = ['buscaVisitas', 'buscaOrcamentos', 'buscaLista', 'clientesD
 
 test('accentless search finds the same São Paulo points and proposals as autocomplete', () => {
   assert.equal(evaluate(searchNames, 'orcFiltrados.length + listaFiltrada.length', { busca: 'sao paulo', buscaProcessada: 'sao paulo' }), 2)
+})
+
+test('visitas de quem já comprou não entram no filtro só orçados', () => {
+  const visita = { id: 'v', nome: 'João', telefone: '11999990001', cidade: 'São Paulo', estado: 'SP', vendedor_nome: 'ANA', interesse: null, lat: -23.55, lng: -46.63, vendido: true }
+  assert.equal(evaluate(searchNames, 'visFiltradas.length', { comCoord: [visita], vendFiltro: 'orcados' }), 0)
+  assert.equal(evaluate(searchNames, 'visFiltradas.length', { comCoord: [visita], vendFiltro: 'vendidos' }), 1)
+  assert.equal(evaluate(['visitasSelecionadas'], 'visitasSelecionadas.length', { visitas: [visita], vendFiltro: 'orcados' }), 0)
+  assert.equal(evaluate(['visitasSelecionadas'], 'visitasSelecionadas.length', { visitas: [visita], vendFiltro: 'vendidos' }), 1)
 })
 
 test('proposal table inherits seller filter while retaining rows without coordinates', () => {

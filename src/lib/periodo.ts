@@ -9,9 +9,10 @@
  * fronteiras (365/730/1825) e um caso que é fácil errar: registro SEM data.
  */
 
-export type PeriodoFiltro = '12m' | '24m' | '5a' | 'tudo'
+export type PeriodoFiltro = '6m' | '12m' | '24m' | '5a' | 'tudo'
 
 export const PERIODO_DIAS: Record<PeriodoFiltro, number | null> = {
+  '6m': 183,
   '12m': 365,
   '24m': 730,
   '5a': 1825,
@@ -19,12 +20,14 @@ export const PERIODO_DIAS: Record<PeriodoFiltro, number | null> = {
 }
 
 export const PERIODO_LABEL: [PeriodoFiltro, string][] = [
+  ['6m', '6 meses'],
   ['12m', '12 meses'], ['24m', '24 meses'], ['5a', '5 anos'], ['tudo', 'Tudo'],
 ]
 
 // No celular a faixa de filtros rola na horizontal e é disputada: com os rótulos
 // longos este grupo sozinho empurrava "Estados" e "Viagem" pra fora da tela.
 export const PERIODO_LABEL_CURTO: [PeriodoFiltro, string][] = [
+  ['6m', '6m'],
   ['12m', '12m'], ['24m', '24m'], ['5a', '5a'], ['tudo', 'Tudo'],
 ]
 

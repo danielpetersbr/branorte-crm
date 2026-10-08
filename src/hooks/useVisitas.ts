@@ -18,6 +18,8 @@ export interface Visita {
   lat: number | null
   lng: number | null
   created_at: string
+  vendido?: boolean
+  n_vendas?: number
 }
 
 export function useVisitas() {
@@ -25,12 +27,11 @@ export function useVisitas() {
     queryKey: ['visitas'],
     refetchOnWindowFocus: true,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('cliente_dados_visita')
-        .select('id, telefone, nome, cidade, estado, interesse, visitar, vendedor_nome, etiquetas, valor_negociando, lat, lng, created_at')
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return (data ?? []) as Visita[]
+      return todasAsLinhas<Visita>(async (de, ate) => {
+        const { data, error, count } = await supabase.rpc('mapa_visitas_clientes', {}, { count: 'exact' }).range(de, ate)
+        if (error) throw error
+        return { linhas: (data ?? []) as Visita[], total: count ?? null }
+      })
     },
   })
 }

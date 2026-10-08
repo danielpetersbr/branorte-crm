@@ -13,6 +13,13 @@ test('passaPeriodo: "tudo" nunca esconde nada', () => {
   assert.equal(passaPeriodo('', 'tudo', HOJE), true)
 })
 
+test('seis meses inclui a fronteira de 183 dias e exclui orçamento mais antigo', () => {
+  assert.equal(passaPeriodo(diasAtras(183), '6m', HOJE), true)
+  assert.equal(passaPeriodo(diasAtras(184), '6m', HOJE), false)
+  assert.equal(passaPeriodo(null, '6m', HOJE), true)
+  assert.equal(rotuloPeriodo('6m'), '6 meses')
+})
+
 test('passaPeriodo: SEM DATA passa em qualquer janela (vendas_mapa sem data_venda)', () => {
   for (const p of ['12m', '24m', '5a', 'tudo'] as const) {
     assert.equal(passaPeriodo(null, p, HOJE), true, `null deveria passar em ${p}`)
