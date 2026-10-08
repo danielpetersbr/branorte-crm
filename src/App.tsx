@@ -242,6 +242,13 @@ function AppRoutes() {
   const geo = useLocalizacaoObrigatoria()
   const bloqueio = useTrilhaAcesso({ estado: geo.estado, coords: geo.coords })
 
+  // Consulta exclusiva já autenticada: nem rotas públicas ou overrides abrem
+  // outras telas. No mapa continuam valendo aprovação, horário e localização.
+  if (!loading && session && profile?.id === session.user.id && profile.approved_at
+    && profile.role === 'mapa_visual' && loc.pathname !== '/mapa-visual') {
+    return <Navigate to="/mapa-visual" replace />
+  }
+
   // Rota pública /print — usada pelo Puppeteer pra renderizar OrcamentoPreview
   // sem chrome do app. Dados injetados via window.__BRANORTE_PRINT__ pelo Puppeteer.
   if (loc.pathname === '/print/orcamento') {

@@ -73,6 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!prof || !prof.approved_at || prof.role === 'pending' || prof.role === 'rejected') {
     return res.status(403).json({ error: 'not_approved' })
   }
+  if (prof.role === 'mapa_visual') return res.status(403).json({ error: 'sem_permissao' })
 
   // CONTROLE_SVC sempre definido (anon pública por default) — sem 500 de "key missing".
 

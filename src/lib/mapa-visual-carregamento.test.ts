@@ -24,7 +24,7 @@ const pending = () => ({ isPending: true, isError: false, data: undefined, error
 const resumo = { vendidos: 7, orcados: 11, visitas: 5, visitas_no_mapa: 3, visitas_sem_localizacao: 2 }
 
 // Execute the real page and its event handlers without Leaflet or a browser.
-function pageFixture(initialMode: string | null = null) {
+function pageFixture(initialMode: string | null = null, role = 'vendor') {
   const file = new URL('../pages/MapaVisual.tsx', import.meta.url)
   const ast = ts.createSourceFile(file.pathname, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   const declarations = ast.statements.filter(node =>
@@ -39,6 +39,7 @@ function pageFixture(initialMode: string | null = null) {
     FileText: 'FileText', Map: 'Map', MapPin: 'MapPin', LoaderCircle: 'LoaderCircle', MapaLimpo: 'MapaLimpo',
     NUMERO: new Intl.NumberFormat('pt-BR'), modoMapaVisual, selecionarMapaVisual,
     useMemo: (fn: () => unknown) => fn(),
+    useAuth: () => ({ profile: { role } }),
     useSearchParams: () => [new URLSearchParams(mode ? { modo: mode } : {}), (params: { modo?: string }) => { mode = params.modo ?? null }],
     useOrcamentosMapa: () => { calls.push('orcamentos'); return states.orcamentos },
     useVisitas: () => { calls.push('visitas'); return states.visitas },
@@ -76,6 +77,24 @@ test('menu busca somente o resumo e permite escolher sem aguardar queries de pon
   assert.equal(fixture.mode(), 'visitas')
   fixture.render()
   assert.deepEqual(fixture.calls, ['visitas'])
+})
+
+test('papel exclusivo não oferece mapa completo e preserva escolha das três categorias', () => {
+  for (const mode of ['vendidos', 'orcados', 'visitas']) {
+    const fixture = pageFixture(null, 'mapa_visual')
+    const tree = fixture.render()
+    assert.equal(elements(tree, e => e.type === 'a' && e.props.to === '/mapa-visitas').length, 0)
+    const cards = elements(tree, e => e.type === 'button' && /^Vendidos:|^Orçados:|^Visitas:/.test(e.props['aria-label']))
+    assert.equal(cards.length, 3)
+    cards[['vendidos', 'orcados', 'visitas'].indexOf(mode)].props.onClick()
+    assert.equal(fixture.mode(), mode)
+    const back = elements(fixture.render(), e => e.type === 'button' && e.props['aria-label'] === 'Voltar às categorias')[0]
+    back.props.onClick()
+    assert.equal(fixture.mode(), null)
+  }
+  for (const role of ['admin', 'vendor', 'mapa', 'representante']) {
+    assert.equal(elements(pageFixture(null, role).render(), e => e.type === 'a' && e.props.to === '/mapa-visitas').length, 1, role)
+  }
 })
 
 for (const [mode, source] of [['vendidos', 'orcamentos'], ['orcados', 'orcamentos'], ['visitas', 'visitas']] as const) {
