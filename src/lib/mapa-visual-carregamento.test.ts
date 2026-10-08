@@ -79,7 +79,7 @@ test('menu busca somente o resumo e permite escolher sem aguardar queries de pon
   assert.deepEqual(fixture.calls, ['visitas'])
 })
 
-test('papel exclusivo não oferece mapa completo e preserva escolha das três categorias', () => {
+test('nenhum perfil recebe link para mapa completo e as três categorias continuam disponíveis', () => {
   for (const mode of ['vendidos', 'orcados', 'visitas']) {
     const fixture = pageFixture(null, 'mapa_visual')
     const tree = fixture.render()
@@ -93,7 +93,7 @@ test('papel exclusivo não oferece mapa completo e preserva escolha das três ca
     assert.equal(fixture.mode(), null)
   }
   for (const role of ['admin', 'vendor', 'mapa', 'representante']) {
-    assert.equal(elements(pageFixture(null, role).render(), e => e.type === 'a' && e.props.to === '/mapa-visitas').length, 1, role)
+    assert.equal(elements(pageFixture(null, role).render(), e => e.type === 'a' && e.props.to === '/mapa-visitas').length, 0, role)
   }
 })
 
