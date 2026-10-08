@@ -36,7 +36,7 @@ export function PainelClientesVisita({
   // Desmarcar tira o cliente da lista de visita do vendedor — clique sem querer
   // some com ele do filtro. Marcar não pergunta nada.
   function trocarVisita(v: Visita, visitar: boolean) {
-    if (!visitar && !window.confirm(`Tem certeza que ${v.nome || v.telefone || 'este cliente'} NÃO é mais para visitar?`)) return
+    if (!visitar && !window.confirm(`Deseja desmarcar Pode visitar para ${v.nome || v.telefone || 'este cliente'}?`)) return
     onMarcar(v.id, visitar)
   }
   const meus = !!vendedorSel && vendedorSel === (meuVendedor || '__meus__')
@@ -90,9 +90,9 @@ export function PainelClientesVisita({
           {v.vendido && <p className="mt-1 text-xs font-semibold text-blue-500">✓ VENDIDO · já comprou</p>}
           {!temLocalizacao && <p className="mt-1 text-xs text-warning">Sem localização no mapa</p>}
           <label className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
-            <input type="checkbox" aria-label={`Visitar ${v.nome || v.telefone || 'cliente'}`} checked={v.visitar === true}
+            <input type="checkbox" aria-label={`Pode visitar ${v.nome || v.telefone || 'cliente'}`} checked={v.visitar === true}
               disabled={!podeEditar || saving} onChange={e => trocarVisita(v, e.target.checked)} />
-            É para visitar{!podeEditar && ' · somente consulta'}
+            Pode visitar{!podeEditar && ' · somente consulta'}
           </label>
         </div>
       })}
