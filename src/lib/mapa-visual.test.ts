@@ -160,6 +160,19 @@ test('visitas usa vermelho para É para visitar e azul para Pode visitar, indepe
     ['É para visitar', 'Pode visitar', 'Pode visitar'])
 })
 
+test('WhatsApp preserva o DDI explícito do contato original quando o normalizado tem onze dígitos', () => {
+  const dados = selecionarMapaVisual([
+    cliente({ cli_key: 'chile', telefone: '56912345678', fone: '  +56 912 345 678' }),
+    cliente({ cli_key: 'eua', telefone: '12025550123', fone: '+1 202 555 0123', vendido: true }),
+    cliente({ cli_key: 'br', telefone: '11987654321', fone: '(48) 91234-5678' }),
+  ], [visita({ telefone: '+56 912 345 678' })])
+  assert.equal(dados.orcados.pontos[0].detalhes.telefone, '56912345678')
+  assert.equal(dados.orcados.pontos[0].detalhes.contato, '  +56 912 345 678')
+  assert.equal(dados.orcados.pontos[1].detalhes.telefone, '5511987654321')
+  assert.equal(dados.vendidos.pontos[0].detalhes.telefone, '12025550123')
+  assert.equal(dados.visitas.pontos[0].detalhes.telefone, '56912345678')
+})
+
 test('flag É para visitar não inclui visitas desmarcadas ou clientes vendidos no mapa visual', () => {
   const dados = selecionarMapaVisual([], [
     visita({ id: 'para', visita_obrigatoria: true }),

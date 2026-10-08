@@ -68,8 +68,9 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     if (!temCoordenadas(p)) continue
     const vendido = p.vendido || p.n_vendas > 0
     const categoria = vendido ? vendidos : orcados
+    const telefone = p.fone?.trim().startsWith('+') ? p.fone : p.telefone || p.fone
     categoria.pontos.push({ id: p.cli_key, lat: p.lat, lng: p.lng, circulo: CIRCULO_ORCAMENTO,
-      detalhes: { cliente: p.cliente, telefone: telefoneVisual(p.telefone || p.fone),
+      detalhes: { cliente: p.cliente, telefone: telefoneVisual(telefone),
         contato: p.fone || p.telefone, vendedor: p.vendedor, cidade: p.cidade, uf: p.uf,
         equipamento: p.equipamento?.trim() || null, valor: p.total,
         categoria: vendido ? 'Vendido' : 'Orçado' },
