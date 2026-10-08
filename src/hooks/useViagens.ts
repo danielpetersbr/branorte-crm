@@ -389,6 +389,7 @@ export function useSalvarLocalizacaoCliente() {
       // corrigia a localização e o pino ficava no lugar velho até recarregar a página.
       qc.invalidateQueries({ queryKey: ['orcamentos-mapa-v2'] })
       qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] })
+      qc.invalidateQueries({ queryKey: ['mapa-visual-resumo'] })
       qc.invalidateQueries({ queryKey: ['viagem'] })
       // O quadro mostra a precisão de cada parada: sem isto ele segue dizendo
       // "no centro da cidade" depois de o vendedor ter corrigido.
@@ -622,6 +623,7 @@ export function useCorrigirLocalDaParada() {
       // corrigia a localização e o pino ficava no lugar velho até recarregar a página.
       qc.invalidateQueries({ queryKey: ['orcamentos-mapa-v2'] })
       qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] })
+      qc.invalidateQueries({ queryKey: ['mapa-visual-resumo'] })
       qc.invalidateQueries({ queryKey: ['viagem'] })
     },
   })

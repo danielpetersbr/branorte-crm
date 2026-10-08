@@ -46,7 +46,10 @@ export function useDefinirVisita() {
       if (error) throw error
       if (!data) throw new Error('Não foi possível salvar a marcação de visita.')
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['visitas'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['visitas'] }),
+      qc.invalidateQueries({ queryKey: ['mapa-visual-resumo'] }),
+    ]),
   })
 }
 
@@ -59,7 +62,10 @@ export function useGeocodarVisitas() {
       if (!r.ok) throw new Error('Falha no geocoding')
       return r.json() as Promise<{ atualizados: number; pendentes: number; falhas?: string[] }>
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['visitas'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['visitas'] }),
+      qc.invalidateQueries({ queryKey: ['mapa-visual-resumo'] }),
+    ]),
   })
 }
 
@@ -298,7 +304,10 @@ export function useGeocodarCidades() {
       if (!r.ok) throw new Error('Falha no geocoding de cidades')
       return r.json() as Promise<{ atualizados: number; pendentes: number; falhas?: string[] }>
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['orcamentos-mapa'] }),
+      qc.invalidateQueries({ queryKey: ['mapa-visual-resumo'] }),
+    ]),
   })
 }
 
@@ -359,6 +368,9 @@ export function useDefinirCidadeVisita() {
       if (!linhas.length) throw new Error('não achei esse telefone no cadastro de visitas')
       return linhas[0]
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['visitas'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['visitas'] }),
+      qc.invalidateQueries({ queryKey: ['mapa-visual-resumo'] }),
+    ]),
   })
 }
