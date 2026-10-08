@@ -79,3 +79,5 @@ insert into vendas_mapa values
 ('pedido-outro-cliente','p1000','2026-2001','Nome Atual','Fortaleza','CE','85999990007',150);
 insert into mv_mapa_orcamentos values ('local','EmpresaCurta','Tubarão','SC','venda','34660724',null,1000);
 insert into mv_mapa_orcamentos values ('empresa-antiga','Empresa Nome Atual LTDA','São Paulo','SP','2026 - 3000','11999990009',null,500);
+insert into vendas_mapa values ('pessoa-sufixo',null,null,'Maria Rosa','São Paulo','SP','1133332222',500);
+insert into mv_mapa_orcamentos values ('pessoa-sufixo','Maria Rosa','São Paulo','SP',null,'11999997777',null,500);
