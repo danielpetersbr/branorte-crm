@@ -106,14 +106,9 @@ export function MapaVisual() {
   const visitas = useVisitas()
   const categorias = useMemo(() => selecionarMapaVisual(orcamentos.data ?? [], visitas.data ?? []),
     [orcamentos.data, visitas.data])
-  // A paleta de visitas usa vendedores das duas fontes, assim como no mapa completo.
   const consultas = {
     vendidos: orcamentos, orcados: orcamentos,
-    visitas: {
-      isPending: visitas.isPending || orcamentos.isPending,
-      isError: visitas.isError || orcamentos.isError,
-      refetch: () => Promise.all([visitas.refetch(), orcamentos.refetch()]),
-    },
+    visitas,
   }
   const consulta = consultas[modo ?? 'orcados']
   const aberta = modo && !consulta.isPending && !consulta.isError && categorias[modo].pontos.length > 0

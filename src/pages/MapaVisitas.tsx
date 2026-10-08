@@ -15,6 +15,7 @@ import {
   type EtiquetasDoFone, type MapaEtiquetas, type ConversaDoCliente, type ClienteDeCamada,
 } from '@/lib/mapa-etiquetas'
 import { foneCanon } from '@/lib/fone-canon'
+import { corVisitaMarcada } from '@/lib/visita-cor'
 import {
   normalizarBuscaMapa, criarIndiceBusca, passaBuscaMapa, indexarClientesDaLista,
   chaveCoordenadaMapa, geometriaDosPontos, criarCacheLimitesMapa,
@@ -314,7 +315,7 @@ function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
       ${v.interesse ? `<div style="font-size:12px;margin-top:4px">🎯 ${esc(v.interesse)}</div>` : ''}
       ${v.valor_negociando != null ? `<div style="font-size:13px;font-weight:600;color:#10b981;margin-top:2px">${brl(v.valor_negociando)}</div>` : ''}
       <div style="font-size:11px;color:#64748b;margin-top:4px">Vendedor: ${esc(v.vendedor_nome) || '—'}</div>
-      ${v.visitar === true ? `<div style="font-size:12px;color:#166534;font-weight:700;margin-top:4px">📍 Marcado para visitar</div>` : ''}
+      ${v.visitar === true ? `<div style="font-size:12px;color:${corVisitaMarcada(v.visita_obrigatoria)};font-weight:700;margin-top:4px">📍 ${v.visita_obrigatoria === true ? 'É para visitar' : 'Pode visitar'}</div>` : ''}
       ${tel ? `<div style="font-size:12px;color:#0f172a;margin-top:4px">📱 ${esc(v.telefone)}<button data-copiar="${tel}" title="Copiar o telefone pra procurar a conversa no WhatsApp" style="margin-left:6px;padding:2px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#0f172a;font-weight:600;font-size:11px;cursor:pointer">📋 Copiar</button></div>` : ''}
       ${tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;font-size:12px;color:#10b981;font-weight:600">Abrir WhatsApp ↗</a>` : ''}
     </div>`
@@ -1719,13 +1720,14 @@ export function MapaVisitas() {
     if (showVis) {
       for (const v of visFiltradas) {
         const { nomes, isFollowUp } = resolverEtiquetas(v)
-        // Com filtro de etiqueta ligado, TODA visita que passou é a que a pessoa
-        // pediu — ganha a cor do vendedor. Sem filtro, só o follow-up se destaca.
-        // Marcado para visitar é o pino mais importante da camada: cor do vendedor,
+        // Com filtro de etiqueta ligado, visitas não marcadas ganham a cor do
+        // vendedor. Sem filtro, só o follow-up se destaca.
+        // Marcado para visitar é o pino mais importante da camada: cor da intenção,
         // maior e com contorno escuro, pra saltar do mapa.
         const marcado = v.visitar === true
         const destaque = marcado || isFollowUp || etiquetasSel.size > 0
-        const cor = destaque ? corDoVendedor(v.vendedor_nome, vendedores) : VISITA_NEUTRA
+        const cor = marcado ? corVisitaMarcada(v.visita_obrigatoria)
+          : destaque ? corDoVendedor(v.vendedor_nome, vendedores) : VISITA_NEUTRA
         const lat = v.lat as number, lng = v.lng as number
         const [dx, dy, anelMax, limiteM] = proximo(lat, lng)
         const m = L.circleMarker(posEspalhada(map, lat, lng, dx, dy, anelMax, limiteM), {
@@ -2749,19 +2751,32 @@ export function MapaVisitas() {
                   )}
                 </div>
               )}
-              {showVis && vendedores.length > 1 && (
+              {showVis && (
                 <div className={showOrc ? 'pt-3 border-t border-border' : ''}>
                   <div className="text-[11px] uppercase tracking-wide text-ink-faint mb-2">
-                    {etiquetasSel.size > 0 ? 'Visitas · filtradas por etiqueta' : 'Visitas · marcadas p/ visitar e follow-up'}
+                    Visitas · marcações
                   </div>
                   <ul className="space-y-1.5">
-                    {vendedores.filter(v => visFiltradas.some(x => (etiquetasSel.size > 0 || x.visitar === true || resolverEtiquetas(x).isFollowUp) && (x.vendedor_nome || '—') === v)).map(v => (
-                      <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
-                        <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
-                        <span className="truncate">{v}</span>
-                      </li>
-                    ))}
+                    <li className="flex items-center gap-2 text-[12px] text-ink">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corVisitaMarcada(false) }} />
+                      <span>Pode visitar</span>
+                    </li>
+                    <li className="flex items-center gap-2 text-[12px] text-ink">
+                      <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corVisitaMarcada(true) }} />
+                      <span>É para visitar</span>
+                    </li>
                   </ul>
+                  {visFiltradas.some(v => v.visitar !== true && (etiquetasSel.size > 0 || resolverEtiquetas(v).isFollowUp)) && <>
+                    <div className="mt-3 text-[11px] uppercase tracking-wide text-ink-faint mb-2">Outros destaques · por vendedor</div>
+                    <ul className="space-y-1.5">
+                      {vendedores.filter(v => visFiltradas.some(x => x.visitar !== true && (etiquetasSel.size > 0 || resolverEtiquetas(x).isFollowUp) && (x.vendedor_nome || '—') === v)).map(v => (
+                        <li key={v} className="flex items-center gap-2 text-[12px] text-ink">
+                          <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: corDoVendedor(v, vendedores) }} />
+                          <span className="truncate">{v}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>}
                 </div>
               )}
             </>

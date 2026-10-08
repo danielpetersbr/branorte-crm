@@ -86,7 +86,7 @@ test('os pontos preservam identidade, contato e responsável para consultar no m
   assert.equal(dados.orcados.pontos[0].detalhes.vendedor, null)
   assert.deepEqual(dados.visitas.pontos[0].detalhes, {
     cliente: 'Pedro', telefone: '5549999990002', contato: '5549999990002', vendedor: 'DANIEL',
-    cidade: 'Chapecó', uf: 'SC', categoria: 'Visita',
+    cidade: 'Chapecó', uf: 'SC', categoria: 'Pode visitar',
   })
 })
 
@@ -104,18 +104,30 @@ test('contatos brasileiros antigos sem DDI abrem no Brasil e o número já compl
   assert.equal(dados.visitas.pontos[0].detalhes.telefone, '5549999225692')
 })
 
-test('visitas mantém a cor de cada vendedor do mapa completo, mesmo com outros vendedores fora do filtro', () => {
+test('visitas usa vermelho para É para visitar e azul para Pode visitar, independente do vendedor', () => {
   const orcamentos = [cliente({ vendedor: 'ANA', vendido: true }), cliente({ vendedor: 'DANIEL' })]
   const visitas = [
-    visita({ id: 'bruno', vendedor_nome: 'BRUNO' }),
+    visita({ id: 'bruno', vendedor_nome: 'BRUNO', visita_obrigatoria: true }),
     visita({ id: 'carlos', vendedor_nome: 'CARLOS', visitar: false }),
-    visita({ id: 'eder', vendedor_nome: 'EDER' }),
+    visita({ id: 'eder', vendedor_nome: 'EDER', visita_obrigatoria: false }),
     visita({ id: 'sem-vendedor', vendedor_nome: null }),
   ]
-  const esperado = [['bruno', '#3b82f6'], ['eder', '#8b5cf6'], ['sem-vendedor', '#ec4899']]
+  const esperado = [['bruno', '#ef4444'], ['eder', '#3b82f6'], ['sem-vendedor', '#3b82f6']]
   const cores = (pontos: ReturnType<typeof selecionarMapaVisual>['visitas']['pontos']) => pontos.map(p => [p.id, p.cor])
   assert.deepEqual(cores(selecionarMapaVisual(orcamentos, visitas).visitas.pontos), esperado)
   assert.deepEqual(cores(selecionarMapaVisual([...orcamentos].reverse(), [...visitas].reverse()).visitas.pontos).reverse(), esperado)
+  assert.deepEqual(selecionarMapaVisual(orcamentos, visitas).visitas.pontos.map(p => p.detalhes.categoria),
+    ['É para visitar', 'Pode visitar', 'Pode visitar'])
+})
+
+test('flag É para visitar não inclui visitas desmarcadas ou clientes vendidos no mapa visual', () => {
+  const dados = selecionarMapaVisual([], [
+    visita({ id: 'para', visita_obrigatoria: true }),
+    visita({ id: 'desmarcada', visitar: false, visita_obrigatoria: true }),
+    visita({ id: 'sem-permissao', visitar: null, visita_obrigatoria: true }),
+    visita({ id: 'vendida', vendido: true, visita_obrigatoria: true }),
+  ])
+  assert.deepEqual(dados.visitas.pontos.map(p => [p.id, p.cor]), [['para', '#ef4444']])
 })
 
 test('círculos usam o tamanho, contorno e opacidade das mesmas categorias no mapa completo', () => {

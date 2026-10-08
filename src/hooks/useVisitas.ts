@@ -12,6 +12,7 @@ export interface Visita {
   estado: string | null
   interesse: string | null
   visitar: boolean | null
+  visita_obrigatoria?: boolean
   vendedor_nome: string | null
   etiquetas: string[] | null
   valor_negociando: number | null
