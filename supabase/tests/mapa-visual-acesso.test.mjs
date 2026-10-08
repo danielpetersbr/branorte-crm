@@ -314,3 +314,130 @@ test('anonymous cannot execute new helpers or map wrappers, and invoker/schema/b
     assert.ok(helper.proconfig.includes('search_path=""'))
   }
 })
+
+test('orçados visuais usam 24 meses móveis sem recortar vendidos, conversões ou o mapa completo', async t => {
+  await db.exec('begin')
+  try {
+    // Tudo que já existia fica sem data; compradores antigos continuam vendidos.
+    await db.exec(`update public.mv_mapa_orcamentos set data_recente=null;
+      update public.mv_mapa_orcamentos set data_recente='2012-01-01' where cli_key='varios';
+      with dia as (select (current_timestamp at time zone 'America/Sao_Paulo')::date hoje)
+      insert into public.mv_mapa_orcamentos(cli_key,cliente,cidade,uf,total,n_orcamentos,
+        data_recente,vendido,n_vendas,lat,lng,precisao_base)
+      select chave,chave,'Curitiba',uf,125000,3,data,false,0,lat,lng,'cidade'
+      from dia cross join lateral (values
+        ('janela-limite','PR',(hoje-interval '24 months')::date,-25::float8,-49::float8),
+        ('janela-hoje','PR',hoje,-25,-49),
+        ('janela-outra-uf','MS',hoje,-20,-54),
+        ('janela-antigo','PR',(hoje-interval '24 months')::date-1,-25,-49),
+        ('janela-futuro','PR',hoje+1,-25,-49),
+        ('janela-sem-data','PR',null::date,-25,-49),
+        ('janela-sem-coord','PR',hoje,null::float8,null::float8)
+      ) fixtures(chave,uf,data,lat,lng);
+      refresh materialized view public.mv_mapa_conversoes;`)
+    const baseline = await asProfile('admin', true, legacySnapshot)
+    await asProfile('admin', true, async () => {
+      assert.equal((await rows("select vendido and data_recente=date '2012-01-01' old_sold from public.mapa_orcamentos_v2() where cli_key='varios'"))[0].old_sold, true)
+    })
+    assert.ok(baseline.points.some(p => p.vendido && p.data_recente == null))
+    const baseRpc = (await rows("select pg_get_functiondef('public.mapa_orcamentos_v2()'::regprocedure) definition"))[0].definition
+    const visitasRpc = (await rows("select pg_get_functiondef('public.mapa_visual_visitas()'::regprocedure) definition"))[0].definition
+    if (!process.argv.includes('--periodo-baseline')) await migration('_mapa_visual_orcados_24_meses.sql')
+
+    await t.test('contador exclui orçamento anterior ao limite, sem data e futuro; mantém todos os vendidos e visitas', async () => {
+      await asProfile('admin', true, async () => {
+        const summary = (await rows('select * from public.mapa_visual_resumo()'))[0]
+        assert.equal(summary.orcados, 3)
+        assert.equal(summary.vendidos, baseline.summary[0].vendidos)
+        assert.equal(summary.visitas, baseline.summary[0].visitas)
+        assert.equal(summary.visitas_no_mapa, baseline.summary[0].visitas_no_mapa)
+        assert.equal(summary.visitas_sem_localizacao, baseline.summary[0].visitas_sem_localizacao)
+      })
+    })
+    if (process.argv.includes('--periodo-baseline')) return
+
+    await t.test('RPC estreita inclui a fronteira e preserva os 18 campos; orçamento recente de cliente antigo fica incluído', async () => {
+      await asProfile('admin', true, async () => {
+        const quotes = await rows('select * from public.mapa_visual_orcados() order by cli_key')
+        assert.deepEqual(quotes.map(p => p.cli_key), ['janela-hoje','janela-limite','janela-outra-uf','janela-sem-coord'])
+        assert.deepEqual(Object.keys(quotes[0]), Object.keys(baseline.points[0]))
+        assert.equal(quotes[0].n_orcamentos, 3)
+        assert.ok(quotes.every(p => !p.vendido && p.n_vendas === 0))
+        assert.ok(!quotes.some(p => p.cli_key === 'varios'))
+        assert.deepEqual(await rows('select * from public.mapa_orcamentos_v2() order by cli_key'), baseline.points)
+        assert.deepEqual(await rows('select * from public.mapa_visual_visitas() order by id'), baseline.visits)
+      })
+    })
+
+    await t.test('UF e aprovação continuam aplicadas no servidor para pontos e contagem', async () => {
+      for (const role of ['admin','vendor','mapa','mapa_visual','representante']) {
+        await asProfile(role, true, async () => {
+          assert.deepEqual((await rows('select cli_key from public.mapa_visual_orcados() order by cli_key')).map(p => p.cli_key),
+            ['janela-hoje','janela-limite','janela-sem-coord'], role)
+          assert.equal((await rows('select * from public.mapa_visual_resumo()'))[0].orcados, 2, role)
+        }, { ufs: ['PR'] })
+      }
+      await asProfile('representante', true, async () => {
+        assert.deepEqual(await rows('select * from public.mapa_visual_orcados()'), [])
+      })
+      await asProfile('mapa_visual', false, async () => {
+        assert.deepEqual(await rows('select * from public.mapa_visual_orcados()'), [])
+        assert.deepEqual(await rows('select * from public.mapa_visual_resumo()'),
+          [{ vendidos:0,orcados:0,visitas:0,visitas_no_mapa:0,visitas_sem_localizacao:0 }])
+      })
+      await asProfile('admin', true, async () => {
+        assert.equal((await rows('select * from public.mapa_visual_orcados()')).length, 4)
+        assert.equal((await rows('select * from private.mapa_visual_contagem_pontos()'))[0].orcados, 3)
+      }, { sqlRole: 'service_role', uid: '' })
+    })
+
+    await t.test('anon não pode executar a RPC; invoker e contratos de mapas anteriores permanecem iguais', async () => {
+      assert.deepEqual(await rows(`select has_function_privilege('anon','public.mapa_visual_orcados()','EXECUTE') anon,
+        has_function_privilege('authenticated','public.mapa_visual_orcados()','EXECUTE') authenticated,
+        has_function_privilege('service_role','public.mapa_visual_orcados()','EXECUTE') service`),
+      [{ anon:false,authenticated:true,service:true }])
+      await asProfile('admin', true, async () => {
+        await db.exec('savepoint anonymous_denial')
+        try { await assert.rejects(db.query('select * from public.mapa_visual_orcados()'), { code:'42501' }) }
+        finally { await db.exec('rollback to savepoint anonymous_denial; release savepoint anonymous_denial') }
+      }, { sqlRole:'anon' })
+      const rpc = (await rows("select prosecdef,provolatile,proconfig from pg_proc where oid='public.mapa_visual_orcados()'::regprocedure"))[0]
+      assert.equal(rpc.prosecdef, false)
+      assert.equal(rpc.provolatile, 's')
+      assert.ok(rpc.proconfig.includes('search_path=""'))
+      assert.equal((await rows("select pg_get_functiondef('public.mapa_orcamentos_v2()'::regprocedure) definition"))[0].definition, baseRpc)
+      assert.equal((await rows("select pg_get_functiondef('public.mapa_visual_visitas()'::regprocedure) definition"))[0].definition, visitasRpc)
+    })
+
+    await t.test('janela segue meses de calendário e o dia de São Paulo, avançando sem alterar dados', async () => {
+      const definitions = await rows(`select pg_get_functiondef(oid) definition from pg_proc
+        where oid in ('public.mapa_visual_orcados()'::regprocedure,'private.mapa_visual_contagem_pontos()'::regprocedure)`)
+      // Controla somente o relógio das funções reais na base descartável.
+      // Na produção elas continuam usando current_timestamp a cada leitura.
+      await db.exec(`delete from public.mv_mapa_orcamentos where cli_key like 'janela-%';
+        insert into public.mv_mapa_orcamentos(cli_key,cliente,cidade,uf,total,n_orcamentos,data_recente,vendido,n_vendas,lat,lng)
+        values ('cal-limite','Calendar limit','Curitiba','PR',1,1,'2024-02-28',false,0,-25,-49),
+          ('cal-antes','Before limit','Curitiba','PR',1,1,'2024-02-27',false,0,-25,-49),
+          ('cal-bissexto','Leap day','Curitiba','PR',1,1,'2024-02-29',false,0,-25,-49),
+          ('cal-hoje','Today','Curitiba','PR',1,1,'2026-02-28',false,0,-25,-49),
+          ('cal-amanha','Tomorrow','Curitiba','PR',1,1,'2026-03-01',false,0,-25,-49);
+        refresh materialized view public.mv_mapa_conversoes;
+        set timezone='UTC';`)
+      for (const [clock, expected] of [
+        ["2026-03-01 02:59:59+00", ['cal-bissexto','cal-hoje','cal-limite']],
+        ["2026-03-01 03:00:00+00", ['cal-amanha','cal-hoje']],
+      ]) {
+        for (const { definition } of definitions) {
+          await db.exec(definition.replace(/\bCURRENT_TIMESTAMP\b/gi, `timestamptz '${clock}'`))
+        }
+        await asProfile('mapa_visual', true, async () => {
+          assert.deepEqual((await rows('select cli_key from public.mapa_visual_orcados() order by cli_key')).map(p => p.cli_key), expected)
+          const summary = (await rows('select * from public.mapa_visual_resumo()'))[0]
+          assert.equal(summary.orcados, expected.length)
+          assert.equal(summary.vendidos, baseline.summary[0].vendidos)
+          assert.equal(summary.visitas, baseline.summary[0].visitas)
+        })
+      }
+    })
+  } finally { await db.exec('rollback') }
+})

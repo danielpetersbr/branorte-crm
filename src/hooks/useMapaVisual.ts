@@ -73,9 +73,10 @@ export function validarResumoMapaVisual(data: unknown): MapaVisualResumo {
 export function useMapaVisualResumo(enabled = true) {
   const qc = useQueryClient()
   const consulta = useQuery<MapaVisualResumo>({
-    queryKey: ['mapa-visual-resumo'],
+    queryKey: ['mapa-visual-resumo', 'orcados-24m'],
     enabled,
     staleTime: STALE_TIME,
+    refetchInterval: STALE_TIME,
     retry: false,
     queryFn: ({ signal }) => comPrazoMapaVisual(signal, async abortSignal => {
       const { data, error, status } = await supabase.rpc('mapa_visual_resumo').abortSignal(abortSignal)
@@ -93,7 +94,7 @@ export function useMapaVisualResumo(enabled = true) {
     ] as const) {
       // Uma nova leitura do resumo pode refletir redução de UF mesmo com total
       // positivo. Pontos anteriores precisam validar o acesso na própria RPC.
-      qc.removeQueries({ queryKey: [fonte, 'visual', modo], exact: true, type: 'inactive',
+      qc.removeQueries({ queryKey: [fonte, 'visual', modo, ...(modo === 'orcados' ? ['24m'] : [])], exact: true, type: 'inactive',
         predicate: query => quantidade === 0 || query.state.dataUpdatedAt <= consulta.dataUpdatedAt })
     }
   }, [qc, consulta.error, consulta.data, consulta.dataUpdatedAt, consulta.isSuccess, consulta.isStale])
@@ -105,14 +106,15 @@ export function useMapaVisualPontos(modo: ModoMapaVisual) {
   const visitas = modo === 'visitas'
   const consulta = useQuery({
     // As invalidações do mapa completo também alcançam estes caches específicos.
-    queryKey: [visitas ? 'visitas' : 'orcamentos-mapa', 'visual', modo],
+    queryKey: [visitas ? 'visitas' : 'orcamentos-mapa', 'visual', modo, ...(modo === 'orcados' ? ['24m'] : [])],
     staleTime: STALE_TIME,
+    refetchInterval: modo === 'orcados' ? STALE_TIME : false,
     retry: false,
     queryFn: ({ signal }) => comPrazoMapaVisual(signal, abortSignal =>
       todasAsLinhas<Visita | OrcamentoPonto>(async (de, ate) => {
         abortSignal.throwIfAborted()
         let query = supabase.rpc(
-          visitas ? 'mapa_visual_visitas' : 'mapa_orcamentos_v2', {}, { count: 'exact' },
+          visitas ? 'mapa_visual_visitas' : modo === 'orcados' ? 'mapa_visual_orcados' : 'mapa_orcamentos_v2', {}, { count: 'exact' },
         )
         if (modo === 'vendidos') query = query.or('vendido.eq.true,n_vendas.gt.0')
         else {
