@@ -60,10 +60,34 @@ test('valor mantém círculos abaixo de 100 mil, estrelas a partir de 100 mil e 
   assert.equal(estiloOrcadoVisual(100_000, '2012-01-01', agora).cor, '#9ca3af')
 })
 
-test('vendidos são círculos azuis mesmo quando o valor é alto', () => {
-  const dados = selecionarMapaVisual([cliente({ vendido: true, total: 900_000 })], [])
+test('vendidos distinguem estados vizinhos e mantêm círculos mesmo quando o valor é alto', () => {
+  const dados = selecionarMapaVisual([
+    cliente({ cli_key: 'sc', vendido: true, total: 900_000 }),
+    cliente({ cli_key: 'pr', vendido: true, uf: 'PR' }),
+    cliente({ cli_key: 'sc-2', vendido: true, uf: ' sc ' }),
+    cliente({ cli_key: 'sem-uf', vendido: true, uf: null }),
+  ], [])
   assert.equal(dados.vendidos.pontos[0].forma, 'circulo')
-  assert.equal(dados.vendidos.pontos[0].cor, '#2563eb')
+  assert.notEqual(dados.vendidos.pontos[0].cor, dados.vendidos.pontos[1].cor)
+  assert.equal(dados.vendidos.pontos[0].cor, dados.vendidos.pontos[2].cor)
+  assert.equal(dados.vendidos.pontos[3].cor, '#9ca3af')
+})
+
+test('os pontos preservam identidade, contato e responsável para consultar no mapa', () => {
+  const dados = selecionarMapaVisual([
+    cliente({ vendido: true, cliente: 'Maria & Filhos', telefone: '5548999990000', fone: '(48) 99999-0000', vendedor: 'EDER' }),
+    cliente({ cli_key: 'orcado', cliente: 'João', telefone: null, fone: '5548999990001', vendedor: null }),
+  ], [visita({ nome: 'Pedro', telefone: '5549999990002', vendedor_nome: 'DANIEL' })])
+  assert.deepEqual(dados.vendidos.pontos[0].detalhes, {
+    cliente: 'Maria & Filhos', telefone: '5548999990000', contato: '(48) 99999-0000',
+    vendedor: 'EDER', cidade: 'Chapecó', uf: 'SC', categoria: 'Vendido',
+  })
+  assert.equal(dados.orcados.pontos[0].detalhes.telefone, '5548999990001')
+  assert.equal(dados.orcados.pontos[0].detalhes.vendedor, null)
+  assert.deepEqual(dados.visitas.pontos[0].detalhes, {
+    cliente: 'Pedro', telefone: '5549999990002', contato: '5549999990002', vendedor: 'DANIEL',
+    cidade: 'Chapecó', uf: 'SC', categoria: 'Visita',
+  })
 })
 
 test('visitas mantém a cor de cada vendedor do mapa completo, mesmo com outros vendedores fora do filtro', () => {

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, FileText, MapPin } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, FileText, MapPin, X } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useOrcamentosMapa, useVisitas } from '@/hooks/useVisitas'
 import { modoMapaVisual, selecionarMapaVisual, prepararDesenhoVisual, deslocamentoVisual, type ModoMapaVisual, type PontoVisual } from '@/lib/mapa-visual'
+import { chaveCoordenadaMapa } from '@/lib/mapa-visitas-regras'
 
 const CATEGORIAS = [
   { modo: 'vendidos', nome: 'Vendidos', icon: CheckCircle2, cor: '#60a5fa' },
@@ -25,6 +26,7 @@ function iconeValor(p: PontoVisual) {
 
 function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
   const container = useRef<HTMLDivElement>(null)
+  const [selecionado, setSelecionado] = useState<PontoVisual | null>(null)
   useEffect(() => {
     if (!container.current || !pontos.length) return
     const map = L.map(container.current, { zoomControl: false, preferCanvas: true })
@@ -37,11 +39,14 @@ function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
     // Primeiro os círculos; os símbolos de maior valor ficam por cima.
     for (const p of desenho.filter(p => p.forma === 'circulo')) {
       const marcador = L.circleMarker([p.lat, p.lng], { renderer: canvas, ...p.circulo,
-        fillColor: p.cor, opacity: 1, interactive: false }).addTo(map)
+        fillColor: p.cor, opacity: 1, interactive: true }).addTo(map)
+      marcador.on('click', () => setSelecionado(p))
       marcadores.push({ ponto: p, marcador })
     }
     for (const p of desenho.filter(p => p.forma !== 'circulo')) {
-      const marcador = L.marker([p.lat, p.lng], { icon: iconeValor(p), interactive: false, keyboard: false }).addTo(map)
+      const marcador = L.marker([p.lat, p.lng], { icon: iconeValor(p), interactive: true, keyboard: true,
+        title: p.detalhes.cliente || 'Cliente sem nome', alt: p.detalhes.cliente || 'Cliente sem nome' }).addTo(map)
+      marcador.on('click', () => setSelecionado(p))
       marcadores.push({ ponto: p, marcador })
     }
     map.fitBounds(L.latLngBounds(pontos.map(p => [p.lat, p.lng] as [number, number])), {
@@ -61,7 +66,37 @@ function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
     resize.observe(container.current)
     return () => { resize.disconnect(); map.remove() }
   }, [pontos])
-  return <div ref={container} role="region" aria-label="Mapa de clientes" className="absolute inset-0" />
+  const vizinhos = selecionado ? pontos.filter(p =>
+    chaveCoordenadaMapa(p.lat, p.lng) === chaveCoordenadaMapa(selecionado.lat, selecionado.lng)) : []
+  return <>
+    <div ref={container} role="region" aria-label="Mapa de clientes" className="absolute inset-0" />
+    {selecionado && <section role="dialog" aria-label="Dados do cliente"
+      className="absolute left-4 right-4 z-[1000] max-h-[65dvh] overflow-y-auto rounded-2xl bg-white p-4 text-gray-900 shadow-xl sm:right-auto sm:w-[360px]"
+      style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-gray-500">Dados do cliente</h2>
+        <button type="button" aria-label="Fechar dados do cliente" onClick={() => setSelecionado(null)}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-600"><X className="h-5 w-5" /></button>
+      </div>
+      <h3 className="mt-2 break-words text-lg font-semibold">{selecionado.detalhes.cliente || 'Cliente sem nome'}</h3>
+      <p className="mt-1 text-sm text-gray-500">{selecionado.detalhes.categoria} · {[selecionado.detalhes.cidade, selecionado.detalhes.uf].filter(Boolean).join(' / ') || 'Localização não informada'}</p>
+      <dl className="mt-4 space-y-3 text-sm">
+        <div><dt className="text-gray-500">Contato</dt><dd className="break-words font-medium">{selecionado.detalhes.contato || 'Não informado'}</dd></div>
+        <div><dt className="text-gray-500">Vendedor</dt><dd className="break-words font-medium">{selecionado.detalhes.vendedor || 'Não informado'}</dd></div>
+      </dl>
+      {/^[0-9]{10,15}$/.test(selecionado.detalhes.telefone) && <a href={`https://wa.me/${selecionado.detalhes.telefone}`} target="_blank" rel="noopener noreferrer"
+        className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-green-700 px-4 text-sm font-semibold text-white hover:bg-green-800">Abrir WhatsApp</a>}
+      {vizinhos.length > 1 && <div className="mt-4 border-t border-gray-200 pt-3">
+        <p className="text-sm font-semibold">{vizinhos.length} clientes nesta localização</p>
+        <ul className="mt-2 space-y-1">
+          {vizinhos.map(p => <li key={p.id}><button type="button" aria-label={`Ver cliente ${p.detalhes.cliente || 'sem nome'}`} aria-pressed={p.id === selecionado.id}
+            onClick={() => setSelecionado(p)} className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${p.id === selecionado.id ? 'bg-gray-100 font-semibold' : 'hover:bg-gray-50'}`}>
+            <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: p.cor }} /><span className="break-words">{p.detalhes.cliente || 'Cliente sem nome'}</span>
+          </button></li>)}
+        </ul>
+      </div>}
+    </section>}
+  </>
 }
 
 export function MapaVisual() {
