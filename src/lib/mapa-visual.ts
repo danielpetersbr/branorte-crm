@@ -80,7 +80,7 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     if (v.visitar !== true || v.vendido || (v.n_vendas ?? 0) > 0) continue
     pendentes.total++
     if (!temCoordenadas(v)) { pendentes.semLocalizacao++; continue }
-    pendentes.pontos.push({ id: v.id, lat: v.lat, lng: v.lng, forma: 'circulo',
+    pendentes.pontos.push({ id: v.id, lat: v.lat, lng: v.lng, forma: estiloOrcadoVisual(v.valor_negociando, null).forma,
       cor: corVisitaMarcada(v.visita_obrigatoria), circulo: CIRCULO_VISITA,
       detalhes: { cliente: v.nome, telefone: telefoneVisual(v.telefone), contato: v.telefone,
         vendedor: v.vendedor_nome, cidade: v.cidade, uf: v.estado,
