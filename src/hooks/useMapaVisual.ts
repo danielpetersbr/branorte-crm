@@ -112,7 +112,7 @@ export function useMapaVisualPontos(modo: ModoMapaVisual) {
       todasAsLinhas<Visita | OrcamentoPonto>(async (de, ate) => {
         abortSignal.throwIfAborted()
         let query = supabase.rpc(
-          visitas ? 'mapa_visitas_clientes' : 'mapa_orcamentos_v2', {}, { count: 'exact' },
+          visitas ? 'mapa_visual_visitas' : 'mapa_orcamentos_v2', {}, { count: 'exact' },
         )
         if (modo === 'vendidos') query = query.or('vendido.eq.true,n_vendas.gt.0')
         else {

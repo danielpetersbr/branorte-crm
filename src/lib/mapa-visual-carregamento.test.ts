@@ -191,7 +191,7 @@ test('busca só a categoria no servidor antes de paginar e preserva seleção e 
     const expected = selecionarMapaVisual(quotes as any, visits as any)[mode]
     assert.deepEqual(JSON.parse(JSON.stringify(selected)), JSON.parse(JSON.stringify(expected)))
     const request = hooks.requests[0]
-    assert.equal(request.rpc, mode === 'visitas' ? 'mapa_visitas_clientes' : 'mapa_orcamentos_v2')
+    assert.equal(request.rpc, mode === 'visitas' ? 'mapa_visual_visitas' : 'mapa_orcamentos_v2')
     const filters = mode === 'vendidos' ? [['or', 'vendido.eq.true,n_vendas.gt.0', undefined]]
       : mode === 'visitas' ? [['eq', 'visitar', true], ['eq', 'vendido', false], ['lte', 'n_vendas', 0]]
         : [['eq', 'vendido', false], ['lte', 'n_vendas', 0]]
