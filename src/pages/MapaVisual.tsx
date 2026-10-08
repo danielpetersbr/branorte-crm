@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, ChevronRight, FileText, Map, MapPin, X } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useOrcamentosMapa, useVisitas } from '@/hooks/useVisitas'
-import { modoMapaVisual, selecionarMapaVisual, prepararDesenhoVisual, deslocamentoVisual, type ModoMapaVisual, type PontoVisual } from '@/lib/mapa-visual'
+import { useMapaVisualPontos, useMapaVisualResumo } from '@/hooks/useMapaVisual'
+import { modoMapaVisual, prepararDesenhoVisual, deslocamentoVisual, type ModoMapaVisual, type PontoVisual } from '@/lib/mapa-visual'
 import { chaveCoordenadaMapa } from '@/lib/mapa-visitas-regras'
 
 const CATEGORIAS = [
@@ -104,34 +104,43 @@ function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
   </>
 }
 
+function CategoriaMapaVisual({ modo, voltar }: { modo: ModoMapaVisual; voltar: () => void }) {
+  const consulta = useMapaVisualPontos(modo)
+  const pontos = consulta.data?.pontos
+  return (
+    <main className="fixed inset-0 bg-[#e5e7eb]" style={{ height: '100dvh' }}>
+      {consulta.isPending || consulta.isError || !pontos?.length ? (
+        <div className="flex h-full items-center justify-center bg-white px-6 text-center text-[#66727e]">
+          <div className="max-w-sm" role={consulta.isError ? 'alert' : 'status'}>
+            <p>{consulta.isPending ? 'Carregando mapa…' : consulta.isError
+              ? consulta.error?.message || 'Não foi possível carregar este mapa.'
+              : 'Nenhum cliente com localização nesta categoria.'}</p>
+            {consulta.isError && <button type="button" onClick={() => void consulta.refetch()}
+              className="mt-4 min-h-11 rounded-lg bg-[#01A95B] px-5 font-semibold text-white hover:bg-[#008e49] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#01A95B]">Tentar novamente</button>}
+          </div>
+        </div>
+      ) : <MapaLimpo pontos={pontos} />}
+      <button type="button" aria-label="Voltar às categorias" onClick={voltar}
+          className="absolute left-4 z-[1000] flex h-11 w-11 items-center justify-center rounded-full bg-white text-gray-800 shadow-lg hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-600"
+          style={{ top: 'calc(1rem + env(safe-area-inset-top))' }}>
+        <ArrowLeft className="h-5 w-5" />
+      </button>
+    </main>
+  )
+}
+
 export function MapaVisual() {
   const [params, setParams] = useSearchParams()
   const modo = modoMapaVisual(params.get('modo'))
-  const orcamentos = useOrcamentosMapa()
-  const visitas = useVisitas()
-  const categorias = useMemo(() => selecionarMapaVisual(orcamentos.data ?? [], visitas.data ?? []),
-    [orcamentos.data, visitas.data])
-  const consultas = {
-    vendidos: orcamentos, orcados: orcamentos,
-    visitas,
-  }
-  const consulta = consultas[modo ?? 'orcados']
-  const aberta = modo && !consulta.isPending && !consulta.isError && categorias[modo].pontos.length > 0
+  if (modo) return <CategoriaMapaVisual key={modo} modo={modo} voltar={() => setParams({})} />
+  return <LauncherMapaVisual abrir={m => setParams({ modo: m })} />
+}
 
-  if (aberta && modo) {
-    return (
-      <main className="fixed inset-0 bg-[#e5e7eb]" style={{ height: '100dvh' }}>
-        <MapaLimpo pontos={categorias[modo].pontos} />
-        <button type="button" aria-label="Voltar às categorias" onClick={() => setParams({})}
-          className="absolute left-4 z-[1000] flex h-11 w-11 items-center justify-center rounded-full bg-white text-gray-800 shadow-lg hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-600"
-          style={{ top: 'calc(1rem + env(safe-area-inset-top))' }}>
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-      </main>
-    )
-  }
-
-  function abrir(m: ModoMapaVisual) { setParams({ modo: m }) }
+function LauncherMapaVisual({ abrir }: { abrir: (modo: ModoMapaVisual) => void }) {
+  const consulta = useMapaVisualResumo()
+  const resumo = consulta.data
+  const carregando = consulta.isPending
+  const erro = consulta.isError
   return (
     <main className="relative isolate flex min-h-[100dvh] flex-col items-center overflow-hidden bg-white px-5 text-[#18262e] sm:px-6"
       style={{ paddingTop: 'calc(3.5rem + env(safe-area-inset-top))', paddingBottom: 'calc(3.5rem + env(safe-area-inset-bottom))' }}>
@@ -146,14 +155,14 @@ export function MapaVisual() {
         </header>
         <div className="space-y-4">
           {CATEGORIAS.map(({ modo: m, nome, icon: Icon, cor, fundo }) => {
-            const q = consultas[m]
-            const dados = categorias[m]
-            const carregando = q.isPending
-            const erro = q.isError
+            const total = resumo?.[m]
+            const noMapa = m === 'visitas' ? resumo?.visitas_no_mapa : total
+            const semPontos = !consulta.isStale && !carregando && !erro && noMapa === 0
+            const quantidade = total == null ? '—' : NUMERO.format(total)
             return (
               <div key={m}>
-                <button type="button" onClick={() => abrir(m)} disabled={carregando || erro || !dados.pontos.length}
-                  aria-label={`${nome}: ${carregando ? 'carregando' : erro ? 'indisponível' : NUMERO.format(dados.total)}`}
+                <button type="button" onClick={() => abrir(m)} disabled={semPontos}
+                  aria-label={`${nome}: ${carregando ? 'carregando' : erro ? 'indisponível' : quantidade}`}
                   className={`group flex min-h-[96px] w-full items-center gap-3 rounded-2xl border px-4 py-5 text-left transition active:scale-[.99] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#01A95B] sm:gap-4 sm:px-5 sm:py-6 ${m === 'vendidos'
                     ? 'border-[#01A95B] bg-[#f1fcf6] shadow-[0_6px_24px_rgba(1,169,91,.12)] hover:bg-[#e8f9ef]'
                     : 'border-[#e7ecef] bg-white shadow-[0_5px_20px_rgba(24,38,46,.06)] hover:border-[#b8d9c8] hover:bg-[#fcfefc]'}`}>
@@ -162,23 +171,22 @@ export function MapaVisual() {
                   </span>
                   <span className="text-xl font-semibold sm:text-2xl">{nome}</span>
                   <span className={`ml-auto text-[27px] font-semibold tabular-nums sm:text-3xl ${m === 'vendidos' ? 'text-[#008e49]' : 'text-[#18262e]'}`} aria-live="polite">
-                    {carregando ? '…' : erro ? '—' : NUMERO.format(dados.total)}
+                    {carregando ? '…' : erro ? '—' : quantidade}
                   </span>
                   <ChevronRight className={`h-5 w-5 shrink-0 ${m === 'vendidos' ? 'text-[#01A95B]' : 'text-[#78838d] group-hover:text-[#01A95B]'}`} />
                 </button>
-                {erro && <p className="px-1 pt-2 text-sm text-red-700" role="alert">
-                  Não foi possível carregar. <button className="underline" onClick={() => void q.refetch()}>Tentar novamente</button>
-                </p>}
-                {!carregando && !erro && dados.semLocalizacao > 0 && <p className="px-1 pt-2 text-xs text-[#66727e]">
-                  {NUMERO.format(dados.pontos.length)} no mapa · {NUMERO.format(dados.semLocalizacao)} sem localização
+                {!carregando && !erro && m === 'visitas' && resumo && resumo.visitas_sem_localizacao > 0 && <p className="px-1 pt-2 text-xs text-[#66727e]">
+                  {NUMERO.format(resumo.visitas_no_mapa)} no mapa · {NUMERO.format(resumo.visitas_sem_localizacao)} sem localização
+                  {semPontos && ' · Nenhum cliente com localização nesta categoria.'}
                 </p>}
               </div>
             )
           })}
         </div>
-        {modo && !consulta.isPending && !consulta.isError && !categorias[modo].pontos.length && (
-          <p role="status" className="mt-5 text-center text-sm text-[#66727e]">Nenhum cliente com localização nesta categoria.</p>
-        )}
+        {erro && <p className="mt-4 px-1 text-sm text-red-700" role="alert">
+          {consulta.error?.message || 'Não foi possível carregar as quantidades.'}{' '}
+          <button type="button" className="underline" onClick={() => void consulta.refetch()}>Tentar novamente</button>
+        </p>}
         <Link to="/mapa-visitas" className="mt-9 flex min-h-11 items-center gap-3 self-center rounded-lg px-3 py-3 text-base text-[#66727e] hover:text-[#01A95B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#01A95B] sm:mt-11 sm:text-lg">
           <Map className="h-5 w-5 shrink-0" strokeWidth={1.8} />Abrir mapa completo
         </Link>
