@@ -51,6 +51,13 @@ function temCoordenadas(p: { lat: number | null; lng: number | null }): p is { l
     && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180
 }
 
+function telefoneVisual(bruto: string | null): string {
+  const texto = (bruto || '').trim()
+  const numero = texto.replace(/\D/g, '')
+  // Importações brasileiras guardam só DDD + número. DDI explícito é preservado.
+  return !texto.startsWith('+') && (numero.length === 10 || numero.length === 11) ? '55' + numero : numero
+}
+
 // A identidade e a conversão vêm das mesmas RPCs do mapa completo, já agregadas
 // por cliente e com as restrições de acesso do usuário aplicadas no servidor.
 export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visita[]) {
@@ -66,7 +73,7 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     const vendido = p.vendido || p.n_vendas > 0
     const categoria = vendido ? vendidos : orcados
     categoria.pontos.push({ id: p.cli_key, lat: p.lat, lng: p.lng, circulo: CIRCULO_ORCAMENTO,
-      detalhes: { cliente: p.cliente, telefone: (p.telefone || p.fone || '').replace(/\D/g, ''),
+      detalhes: { cliente: p.cliente, telefone: telefoneVisual(p.telefone || p.fone),
         contato: p.fone || p.telefone, vendedor: p.vendedor, cidade: p.cidade, uf: p.uf,
         categoria: vendido ? 'Vendido' : 'Orçado' },
       ...(vendido ? { forma: 'circulo' as const, cor: corDoEstado(p.uf, false) } : estiloOrcadoVisual(p.total, p.data_recente)) })
@@ -79,7 +86,7 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     const indice = Math.max(0, vendedores.indexOf(v.vendedor_nome || '—'))
     pendentes.pontos.push({ id: v.id, lat: v.lat, lng: v.lng, forma: 'circulo',
       cor: CORES_VENDEDORES[indice % CORES_VENDEDORES.length], circulo: CIRCULO_VISITA,
-      detalhes: { cliente: v.nome, telefone: (v.telefone || '').replace(/\D/g, ''), contato: v.telefone,
+      detalhes: { cliente: v.nome, telefone: telefoneVisual(v.telefone), contato: v.telefone,
         vendedor: v.vendedor_nome, cidade: v.cidade, uf: v.estado, categoria: 'Visita' } })
   }
   return { vendidos, orcados, visitas: pendentes }

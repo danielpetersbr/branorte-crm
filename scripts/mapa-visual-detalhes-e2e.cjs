@@ -11,7 +11,7 @@ const assert = require('node:assert/strict')
     await context.addInitScript(({ user, token }) => {
       localStorage.setItem('sb-flwbeevtvjiouxdjmziv-auth-token', JSON.stringify({ access_token: token, refresh_token: 'fixture', expires_in: 3600, expires_at: Math.floor(Date.now()/1000)+3600, token_type: 'bearer', user }))
     }, { user, token })
-    const base = { telefone: '5548999990000', fone: '(48) 99999-0000', cidade: 'Chapecó', uf: 'SC', total: 150000, n_orcamentos: 1, data_recente: '2026-10-08', vendedor: 'EDER', vendido: true, n_vendas: 1, lat: -27.1, lng: -52.61, precisao: 'cidade' }
+    const base = { telefone: '(48) 99999-0000', fone: '(48) 99999-0000', cidade: 'Chapecó', uf: 'SC', total: 150000, n_orcamentos: 1, data_recente: '2026-10-08', vendedor: 'EDER', vendido: true, n_vendas: 1, lat: -27.1, lng: -52.61, precisao: 'cidade' }
     const clientes = [
       { ...base, cli_key: 'maria', cliente: 'Maria <img src=x onerror=alert(1)>' },
       { ...base, cli_key: 'joao', cliente: 'João', telefone: null, fone: null, vendedor: null },
