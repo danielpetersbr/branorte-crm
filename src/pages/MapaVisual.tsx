@@ -14,12 +14,13 @@ const CATEGORIAS = [
 const NUMERO = new Intl.NumberFormat('pt-BR')
 
 function iconeValor(p: PontoVisual) {
-  const estrela = 'M12 2L15 8.1L21.8 9.1L16.9 13.9L18 20.7L12 17.5L6 20.7L7.1 13.9L2.2 9.1L9 8.1Z'
+  const tam = p.forma === 'diamante' ? 22 : 24
+  const estrela = 'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z'
   const desenho = p.forma === 'estrela'
-    ? `<path d="${estrela}" fill="${p.cor}" stroke="white" stroke-width="1.3" stroke-linejoin="round"/>`
-    : `<path d="M5 3H19L22 9L12 22L2 9Z" fill="${p.cor}" stroke="white" stroke-width="1.3" stroke-linejoin="round"/><path d="M2 9H22M5 3L12 9L19 3M12 9V22" fill="none" stroke="white" stroke-width="1"/>`
-  return L.divIcon({ className: 'mapa-visual-valor', iconSize: [24, 24], iconAnchor: [12, 12],
-    html: `<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" style="filter:drop-shadow(0 1px 2px #0008)">${desenho}</svg>` })
+    ? `<path d="${estrela}" fill="${p.cor}" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/>`
+    : `<path d="M5 3H19L22 9L12 22L2 9Z" fill="${p.cor}" stroke="#fff" stroke-width="1.3" stroke-linejoin="round"/><g stroke="#fff" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity=".85"><path d="M2 9H22"/><path d="M5 3L12 9M19 3L12 9M12 9V22"/></g>`
+  return L.divIcon({ className: 'mapa-visual-valor', iconSize: [tam, tam], iconAnchor: [tam / 2, tam / 2], popupAnchor: [0, -tam / 2],
+    html: `<svg aria-hidden="true" width="${tam}" height="${tam}" viewBox="0 0 24 24" style="display:block;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.5))">${desenho}</svg>` })
 }
 
 function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
@@ -35,8 +36,8 @@ function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
     const marcadores: Array<{ ponto: (typeof desenho)[number]; marcador: L.CircleMarker | L.Marker }> = []
     // Primeiro os círculos; os símbolos de maior valor ficam por cima.
     for (const p of desenho.filter(p => p.forma === 'circulo')) {
-      const marcador = L.circleMarker([p.lat, p.lng], { renderer: canvas, radius: 6, color: '#fff', weight: 1.5,
-        fillColor: p.cor, fillOpacity: 1, interactive: false }).addTo(map)
+      const marcador = L.circleMarker([p.lat, p.lng], { renderer: canvas, ...p.circulo,
+        fillColor: p.cor, opacity: 1, interactive: false }).addTo(map)
       marcadores.push({ ponto: p, marcador })
     }
     for (const p of desenho.filter(p => p.forma !== 'circulo')) {
@@ -70,7 +71,16 @@ export function MapaVisual() {
   const visitas = useVisitas()
   const categorias = useMemo(() => selecionarMapaVisual(orcamentos.data ?? [], visitas.data ?? []),
     [orcamentos.data, visitas.data])
-  const consulta = modo === 'visitas' ? visitas : orcamentos
+  // A paleta de visitas usa vendedores das duas fontes, assim como no mapa completo.
+  const consultas = {
+    vendidos: orcamentos, orcados: orcamentos,
+    visitas: {
+      isPending: visitas.isPending || orcamentos.isPending,
+      isError: visitas.isError || orcamentos.isError,
+      refetch: () => Promise.all([visitas.refetch(), orcamentos.refetch()]),
+    },
+  }
+  const consulta = consultas[modo ?? 'orcados']
   const aberta = modo && !consulta.isPending && !consulta.isError && categorias[modo].pontos.length > 0
 
   if (aberta && modo) {
@@ -95,7 +105,7 @@ export function MapaVisual() {
         <h1 className="sr-only">Mapa visual</h1>
         <div className="space-y-4">
           {CATEGORIAS.map(({ modo: m, nome, icon: Icon, cor }) => {
-            const q = m === 'visitas' ? visitas : orcamentos
+            const q = consultas[m]
             const dados = categorias[m]
             const carregando = q.isPending
             const erro = q.isError
