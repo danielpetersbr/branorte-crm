@@ -14,6 +14,34 @@ function visita(props: Partial<Visita> = {}): Visita {
     lat: -27.1, lng: -52.6, created_at: '2012-01-01', vendido: false, n_vendas: 0, ...props }
 }
 
+test('cartão conserva equipamento e valor do último orçamento sem somar os orçamentos do cliente', () => {
+  const equipamento = 'Misturador horizontal de 2.000 litros com conjunto completo de transporte e dosagem'
+  const dados = selecionarMapaVisual([
+    cliente({ cli_key: 'orcado', equipamento, total: 128_750.5, n_orcamentos: 6, data_recente: '2026-10-08' }),
+    cliente({ cli_key: 'vendido', vendido: true, equipamento: 'Fábrica de ração', total: 940_500, n_vendas: 3 }),
+  ], [])
+  assert.equal(dados.orcados.pontos[0].detalhes.equipamento, equipamento)
+  assert.equal(dados.orcados.pontos[0].detalhes.valor, 128_750.5)
+  assert.equal(dados.vendidos.pontos[0].detalhes.equipamento, 'Fábrica de ração')
+  assert.equal(dados.vendidos.pontos[0].detalhes.valor, 940_500)
+})
+
+test('cartão preserva valor zero e informa ausência sem inventar equipamento', () => {
+  const dados = selecionarMapaVisual([
+    cliente({ cli_key: 'zero', total: 0 }),
+    cliente({ cli_key: 'sem-dados', equipamento: null, total: null }),
+  ], [visita({ interesse: 'Avaliar uma linha de produção', valor_negociando: 0 })])
+  assert.equal(dados.orcados.pontos[0].detalhes.valor, 0)
+  assert.equal(dados.orcados.pontos[0].detalhes.equipamento, null)
+  assert.equal(dados.orcados.pontos[1].detalhes.valor, null)
+  assert.equal(dados.orcados.pontos[1].detalhes.equipamento, null)
+  assert.equal(dados.visitas.pontos[0].detalhes.equipamento, 'Avaliar uma linha de produção')
+  assert.equal(dados.visitas.pontos[0].detalhes.valor, 0)
+  const semInteresse = selecionarMapaVisual([], [visita()]).visitas.pontos[0]
+  assert.equal(semInteresse.detalhes.equipamento, null)
+  assert.equal(semInteresse.detalhes.valor, null)
+})
+
 test('vendidos inclui clientes sem orçamento e antigos; comprador com vários orçamentos sai de orçados', () => {
   const dados = selecionarMapaVisual([
     cliente({ cli_key: 'comprador', vendido: true, n_vendas: 1, n_orcamentos: 8 }),
@@ -81,12 +109,14 @@ test('os pontos preservam identidade, contato e responsável para consultar no m
   assert.deepEqual(dados.vendidos.pontos[0].detalhes, {
     cliente: 'Maria & Filhos', telefone: '5548999990000', contato: '(48) 99999-0000',
     vendedor: 'EDER', cidade: 'Chapecó', uf: 'SC', categoria: 'Vendido',
+    equipamento: null, valor: 50_000,
   })
   assert.equal(dados.orcados.pontos[0].detalhes.telefone, '5548999990001')
   assert.equal(dados.orcados.pontos[0].detalhes.vendedor, null)
   assert.deepEqual(dados.visitas.pontos[0].detalhes, {
     cliente: 'Pedro', telefone: '5549999990002', contato: '5549999990002', vendedor: 'DANIEL',
     cidade: 'Chapecó', uf: 'SC', categoria: 'Pode visitar',
+    equipamento: null, valor: null,
   })
 })
 

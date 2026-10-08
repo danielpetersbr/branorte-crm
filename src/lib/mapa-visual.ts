@@ -18,6 +18,8 @@ export interface PontoVisual {
     telefone: string
     contato: string | null
     vendedor: string | null
+    equipamento: string | null
+    valor: number | null
     cidade: string | null
     uf: string | null
     categoria: 'Vendido' | 'Orçado' | 'Pode visitar' | 'É para visitar'
@@ -69,6 +71,7 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
     categoria.pontos.push({ id: p.cli_key, lat: p.lat, lng: p.lng, circulo: CIRCULO_ORCAMENTO,
       detalhes: { cliente: p.cliente, telefone: telefoneVisual(p.telefone || p.fone),
         contato: p.fone || p.telefone, vendedor: p.vendedor, cidade: p.cidade, uf: p.uf,
+        equipamento: p.equipamento?.trim() || null, valor: p.total,
         categoria: vendido ? 'Vendido' : 'Orçado' },
       ...(vendido ? { forma: 'circulo' as const, cor: corDoEstado(p.uf, false) } : estiloOrcadoVisual(p.total, p.data_recente)) })
     categoria.total++
@@ -81,6 +84,7 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
       cor: corVisitaMarcada(v.visita_obrigatoria), circulo: CIRCULO_VISITA,
       detalhes: { cliente: v.nome, telefone: telefoneVisual(v.telefone), contato: v.telefone,
         vendedor: v.vendedor_nome, cidade: v.cidade, uf: v.estado,
+        equipamento: v.interesse?.trim() || null, valor: v.valor_negociando,
         categoria: v.visita_obrigatoria === true ? 'É para visitar' : 'Pode visitar' } })
   }
   return { vendidos, orcados, visitas: pendentes }
