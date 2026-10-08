@@ -87,6 +87,7 @@ export function PainelClientesVisita({
               className="h-7 rounded-md border border-border px-2 font-semibold leading-7 text-accent hover:bg-surface-2">WhatsApp ↗</a>}
           </div>}
           <p className="mt-1 text-xs text-ink-muted">{[v.cidade, v.estado].filter(Boolean).join(' / ') || 'Cidade não informada'} · {v.vendedor_nome || 'Sem vendedor'}</p>
+          {v.vendido && <p className="mt-1 text-xs font-semibold text-blue-500">✓ VENDIDO · já comprou</p>}
           {!temLocalizacao && <p className="mt-1 text-xs text-warning">Sem localização no mapa</p>}
           <label className="mt-2 flex items-center gap-2 text-xs text-ink-muted">
             <input type="checkbox" aria-label={`Visitar ${v.nome || v.telefone || 'cliente'}`} checked={v.visitar === true}

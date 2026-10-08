@@ -310,6 +310,7 @@ function popupVisita(v: Visita, isFollowUp: boolean, labels: string[]): string {
       <div style="font-weight:600;font-size:13px">${esc(v.nome) || 'Sem nome'}</div>
       ${loc ? `<div style="font-size:12px;color:#64748b">${loc}</div>` : ''}
       ${badge ? `<div style="margin-top:4px">${badge}</div>` : ''}
+      ${v.vendido ? '<div style="margin-top:4px;color:#1e40af;font-weight:700">✓ VENDIDO · já comprou</div>' : ''}
       ${v.interesse ? `<div style="font-size:12px;margin-top:4px">🎯 ${esc(v.interesse)}</div>` : ''}
       ${v.valor_negociando != null ? `<div style="font-size:13px;font-weight:600;color:#10b981;margin-top:2px">${brl(v.valor_negociando)}</div>` : ''}
       <div style="font-size:11px;color:#64748b;margin-top:4px">Vendedor: ${esc(v.vendedor_nome) || '—'}</div>
@@ -759,9 +760,21 @@ export function MapaVisitas() {
     return [...s].sort()
   }, [visitas, orcPontos])
 
+  // A situação de compra também vale para a lista de contatos das visitas.
+  const passaFiltro = (vendido: boolean, total: number | null) => {
+    switch (vendFiltro) {
+      case 'vendidos': return vendido
+      case 'orcados': return !vendido
+      case 'alto': return !vendido && (total ?? 0) >= LIMITE_ESTRELA
+      case 'diamante': return !vendido && (total ?? 0) >= LIMITE_DIAMANTE
+      default: return true
+    }
+  }
   const visitasSelecionadas = useMemo(() =>
-    filtrarVisitasWhatsApp(visitas, vendedorSel || null, soMarcados),
-    [visitas, vendedorSel, soMarcados])
+    filtrarVisitasWhatsApp(visitas, vendedorSel || null, soMarcados)
+      .filter(v => passaFiltro(!!v.vendido, v.valor_negociando)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visitas, vendedorSel, soMarcados, vendFiltro])
   const comCoord = useMemo(() => visitasSelecionadas.filter(v => v.lat != null && v.lng != null), [visitasSelecionadas])
   const semCoord = visitasSelecionadas.length - comCoord.length
   const termo = normalizarBuscaMapa(buscaProcessada)
@@ -772,17 +785,6 @@ export function MapaVisitas() {
   const buscaLista = useMemo(() => criarIndiceBusca(showLista ? lista : LISTA_VAZIA, r =>
     [r.numero, r.cliente, r.equipamento, r.cidade, r.uf, r.vendedor]), [lista, showLista])
   const clientesDaLista = useMemo(() => indexarClientesDaLista(showLista ? orcPontos : PONTOS_VAZIOS, showLista ? lista : LISTA_VAZIA), [orcPontos, lista, showLista])
-  // filtro por status/valor. 'alto' = orçado ≥100 mil (estrela+diamante);
-  // 'diamante' = orçado ≥300 mil. Ambos só valem pra NÃO vendidos.
-  const passaFiltro = (vendido: boolean, total: number | null) => {
-    switch (vendFiltro) {
-      case 'vendidos': return vendido
-      case 'orcados': return !vendido
-      case 'alto': return !vendido && (total ?? 0) >= LIMITE_ESTRELA
-      case 'diamante': return !vendido && (total ?? 0) >= LIMITE_DIAMANTE
-      default: return true // 'todos'
-    }
-  }
   // ── COR e FORMA do pino: quem manda é o MODO, não o filtro ──────────────────
   // Trocar entre "Só orçados" e "Vendidos" não altera a leitura visual; só muda
   // quem aparece. Quem altera a leitura é o seletor de modo.
@@ -822,10 +824,11 @@ export function MapaVisitas() {
     () => comCoord.filter(v =>
       (!vendedorSel || vendedorVisitaCorresponde(v.vendedor_nome, vendedorSel)) &&
       (!ufSel || ufKey(v.estado) === ufSel) &&
+      passaFiltro(!!v.vendido, v.valor_negociando) &&
       passaEtiqueta(etiquetasSel, etiquetasDaVisita(v))
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [comCoord, vendedorSel, ufSel, etiquetasSel, byVendId, globId]
+    [comCoord, vendedorSel, ufSel, vendFiltro, etiquetasSel, byVendId, globId]
   )
   const visFiltradas = useMemo(
     () => visSemBusca.filter(v => passaBuscaMapa(buscaVisitas.get(v), termo)),
