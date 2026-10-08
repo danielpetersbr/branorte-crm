@@ -75,6 +75,7 @@ export interface OrcamentoPonto {
   cidade: string | null
   uf: string | null
   total: number | null
+  equipamento?: string | null
   n_orcamentos: number
   data_recente: string | null
   vendedor: string | null

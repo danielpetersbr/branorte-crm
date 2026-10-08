@@ -13,6 +13,7 @@ const CATEGORIAS = [
   { modo: 'visitas', nome: 'Visitas', icon: MapPin, cor: '#fbbf24' },
 ] as const
 const NUMERO = new Intl.NumberFormat('pt-BR')
+const MOEDA = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
 function iconeValor(p: PontoVisual) {
   const tam = p.forma === 'diamante' ? 22 : 24
@@ -81,6 +82,10 @@ function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
       <h3 className="mt-2 break-words text-lg font-semibold">{selecionado.detalhes.cliente || 'Cliente sem nome'}</h3>
       <p className="mt-1 text-sm text-gray-500">{selecionado.detalhes.categoria} · {[selecionado.detalhes.cidade, selecionado.detalhes.uf].filter(Boolean).join(' / ') || 'Localização não informada'}</p>
       <dl className="mt-4 space-y-3 text-sm">
+        <div><dt className="text-gray-500">{selecionado.detalhes.categoria === 'Orçado' || selecionado.detalhes.categoria === 'Vendido' ? 'Equipamento' : 'Interesse'}</dt>
+          <dd className="break-words whitespace-pre-wrap font-medium">{selecionado.detalhes.equipamento || 'Não informado'}</dd></div>
+        <div><dt className="text-gray-500">{selecionado.detalhes.categoria === 'Orçado' ? 'Valor do orçamento' : selecionado.detalhes.categoria === 'Vendido' ? 'Valor' : 'Valor negociando'}</dt>
+          <dd className="break-words font-medium">{selecionado.detalhes.valor == null ? 'Não informado' : MOEDA.format(selecionado.detalhes.valor)}</dd></div>
         <div><dt className="text-gray-500">Contato</dt><dd className="break-words font-medium">{selecionado.detalhes.contato || 'Não informado'}</dd></div>
         <div><dt className="text-gray-500">Vendedor</dt><dd className="break-words font-medium">{selecionado.detalhes.vendedor || 'Não informado'}</dd></div>
       </dl>
