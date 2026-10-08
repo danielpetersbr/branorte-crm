@@ -90,6 +90,20 @@ test('os pontos preservam identidade, contato e responsável para consultar no m
   })
 })
 
+test('contatos brasileiros antigos sem DDI abrem no Brasil e o número já completo não duplica 55', () => {
+  const dados = selecionarMapaVisual([
+    cliente({ cli_key: 'importado', vendido: true, telefone: null, fone: '(49) 9 9922-5692' }),
+    cliente({ cli_key: 'fixo', vendido: true, telefone: '48 3212-3456' }),
+    cliente({ cli_key: 'ddd-55', vendido: true, telefone: '55 99999-0000' }),
+    cliente({ cli_key: 'completo', vendido: true, telefone: '+55 49 99922-5692' }),
+    cliente({ cli_key: 'sem-telefone', vendido: true, telefone: null, fone: null }),
+    cliente({ cli_key: 'estrangeiro', vendido: true, telefone: '+1 555 123 4567' }),
+  ], [visita({ telefone: '(49) 9 9922-5692' })])
+  assert.deepEqual(dados.vendidos.pontos.map(p => p.detalhes.telefone),
+    ['5549999225692', '554832123456', '5555999990000', '5549999225692', '', '15551234567'])
+  assert.equal(dados.visitas.pontos[0].detalhes.telefone, '5549999225692')
+})
+
 test('visitas mantém a cor de cada vendedor do mapa completo, mesmo com outros vendedores fora do filtro', () => {
   const orcamentos = [cliente({ vendedor: 'ANA', vendido: true }), cliente({ vendedor: 'DANIEL' })]
   const visitas = [
