@@ -1,9 +1,18 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import {
   motorDoPreco, classeDeMotor, valorPorVoltagem, acharMotorCompativel,
   type MotorCatalogoBase, type PrecoComMotor,
 } from './motor-do-preco'
+
+test('o grafo serverless usa imports relativos compatíveis com Node ESM', async () => {
+  const source = await readFile(new URL('./motor-do-preco.ts', import.meta.url), 'utf8')
+  const importsRelativos = [...source.matchAll(/from\s+['\"](\.[^'\"]+)['\"]/g)]
+    .map((match) => match[1])
+
+  assert.deepEqual(importsRelativos, ['./calcChupim.js'])
+})
 
 // Recorte real de `catalogo_motores` (conferido no banco em 2026-08-18).
 // ⚠️ Monofásico só existe até 15 CV — isso não é lacuna do fixture, é o catálogo.

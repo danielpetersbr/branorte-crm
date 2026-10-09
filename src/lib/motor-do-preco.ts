@@ -20,7 +20,7 @@ import {
   recomendarMotorChupim,
   type InclinacaoChupim,
   type MaterialChupim,
-} from './calcChupim'
+} from './calcChupim.js'
 
 export type VoltagemMotor = 'monofasico' | 'trifasico'
 
