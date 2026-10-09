@@ -29,9 +29,18 @@ export function buildProposal({ snapshot, intent, model, resolvedItems, resolved
     : snapshot.acessorios ? { ...snapshot.acessorios, items: [...snapshot.acessorios.items] } : null
   const componentes = (model?.componentes ?? snapshot.componentes).map((component) => ({ ...component }))
   const equipamentos = cents(itens.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0))
-  if (!model && intent.instrucoesExplicitas.percentualAcessorios !== undefined) {
+  if (intent.instrucoesExplicitas.percentualAcessorios !== undefined) {
     const percentual = intent.instrucoesExplicitas.percentualAcessorios
-    acessorios = { mode: 'percentual', percentual, valor: cents(equipamentos * percentual / 100), items: acessorios?.items ?? [], source: 'pedido_explicito' }
+    const explicitItems = intent.instrucoesExplicitas.itensAcessorios ?? []
+    acessorios = { mode: 'percentual', percentual, valor: cents(equipamentos * percentual / 100), items: explicitItems.length ? explicitItems : acessorios?.items ?? [], source: 'pedido_explicito' }
+  } else if (intent.instrucoesExplicitas.itensAcessorios?.length) {
+    acessorios = {
+      mode: acessorios?.mode ?? 'fixo',
+      percentual: acessorios?.percentual,
+      valor: acessorios?.valor ?? 0,
+      items: [...intent.instrucoesExplicitas.itensAcessorios],
+      source: 'pedido_explicito',
+    }
   }
   const motorTotal = cents(motores.reduce((sum, motor) => sum + (motor.incluso ? 0 : motor.valor), 0))
   const accessoryTotal = cents(acessorios?.valor ?? 0)
@@ -52,7 +61,7 @@ export function buildProposal({ snapshot, intent, model, resolvedItems, resolved
     componentes,
     voltagem: intent.modeloPedido?.voltagem ?? model?.voltagem ?? snapshot.voltagem,
     fotoPrincipalUrl: model?.fotoUrl ?? snapshot.fotoPrincipalUrl,
-    condicoes: { ...snapshot.condicoes },
+    condicoes: { ...snapshot.condicoes, ...(intent.condicoes ?? {}) },
     totais: {
       equipamentos,
       motores: motorTotal,

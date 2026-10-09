@@ -16,7 +16,11 @@ export function matchModel(intent: IntencaoOrcamento, candidates: ModeloCandidat
   const sameLine = candidates.filter(candidate => !requested.linha || candidate.linha === requested.linha)
   const sameMaster = sameLine.filter(candidate => requested.master === undefined || candidate.master === requested.master)
   const sameVoltage = sameMaster.filter(candidate => !requested.voltagem || candidate.voltagem === requested.voltagem)
-  const exact = sameVoltage.filter(candidate =>
+  const sameCapacity = sameVoltage.filter(candidate =>
+    (requested.producaoKgH == null || Number(candidate.producaoKgH) === requested.producaoKgH) &&
+    (requested.armazenamentoKg == null || Number(candidate.armazenamentoKg) === requested.armazenamentoKg),
+  )
+  const exact = sameCapacity.filter(candidate =>
     !requested.basenameToken || folded(candidate.basename).includes(folded(requested.basenameToken)),
   )
 
@@ -25,7 +29,7 @@ export function matchModel(intent: IntencaoOrcamento, candidates: ModeloCandidat
     return { status: 'requer_escolha', match: null, alternatives: exact, reason: 'Mais de um modelo corresponde ao pedido.' }
   }
 
-  const alternatives = (sameVoltage.length ? sameVoltage : sameMaster.length ? sameMaster : sameLine).slice(0, 5)
+  const alternatives = (sameCapacity.length ? sameCapacity : sameVoltage.length ? sameVoltage : sameMaster.length ? sameMaster : sameLine).slice(0, 5)
   if (alternatives.length) {
     return { status: 'requer_escolha', match: null, alternatives, reason: 'Não há correspondência exata; confirme uma alternativa.' }
   }

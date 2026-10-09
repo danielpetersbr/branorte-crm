@@ -113,7 +113,26 @@ export function OrcamentoAIChat({ snapshot, onApplyProposal, onRequestFinalize, 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 pb-5 sm:p-4">
         {!messages.length && <div className="rounded-2xl border border-emerald-200 bg-white p-3.5 sm:p-4 text-[13px] sm:text-sm leading-relaxed text-slate-700 shadow-sm"><span className="mb-1 block font-semibold text-emerald-800">Comece por aqui</span>Envie os dados do cliente e diga o modelo ou os equipamentos. Exemplo: “Ronaldo Biazi, Hidrolândia/GO, Compacta 03 Master 150500-4000-4000 monofásica”.</div>}
         {messages.map((message, index) => <div key={`${message.role}-${index}`} className={`max-w-[96%] sm:max-w-[92%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13px] sm:text-sm leading-relaxed ${message.role === 'user' ? 'ml-auto rounded-br-md bg-emerald-700 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-900 shadow-sm'}`}>{compactChatMessage(message.content)}</div>)}
-        {questions.flatMap((question) => question.options ?? []).length > 0 && <div className="rounded-xl border border-slate-300 bg-white p-4 text-slate-900 shadow-sm"><p className="mb-3 text-sm font-bold">Escolha o modelo correto:</p><div className="space-y-2">{questions.flatMap((question) => question.options ?? []).map((option) => <button key={option.id} type="button" onClick={() => void send(`Confirmo o modelo: ${option.label}`, option.id)} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 hover:border-emerald-600 hover:bg-emerald-50">{option.label}</button>)}</div></div>}
+        {questions.some((question) => question.options?.length) && <div className="space-y-4 rounded-xl border border-slate-300 bg-white p-4 text-slate-900 shadow-sm">
+          {questions.filter((question) => question.options?.length).map((question) => {
+            const isModelChoice = question.code.startsWith('MODEL_CHOICE')
+            const choiceName = isModelChoice ? 'modelo' : 'equipamento'
+            return <div key={question.code}>
+              <p className="mb-3 text-sm font-bold">Escolha o {choiceName} correto:</p>
+              <div className="space-y-2">{question.options?.map((option) => <button
+                key={`${question.code}:${option.id}`}
+                type="button"
+                onClick={() => void send(
+                  `Confirmo o ${choiceName}: ${option.label}`,
+                  isModelChoice
+                    ? { kind: 'model', optionId: option.id }
+                    : { kind: 'item', questionCode: question.code, optionId: option.id },
+                )}
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 hover:border-emerald-600 hover:bg-emerald-50"
+              >{option.label}</button>)}</div>
+            </div>
+          })}
+        </div>}
         {proposal && <OrcamentoAIProposalCard proposal={proposal} applied={appliedProposalId === proposal.id} applying={applying} onApply={apply} onCorrect={() => inputRef.current?.focus()} onFinalize={onRequestFinalize} />}
         {(loading || transcribing) && <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 size={16} className="animate-spin" />{transcribing ? 'Transcrevendo áudio…' : 'Montando e conferindo a proposta…'}</div>}
         {(error || localError) && <p className="rounded-lg bg-red-50 p-2 text-sm text-red-700">{localError || error}</p>}

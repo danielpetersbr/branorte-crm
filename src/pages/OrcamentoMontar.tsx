@@ -22,7 +22,7 @@ import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada, stripSufixoVoltagem } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
-import { applyProposal } from '@/lib/orcamento-ai/apply-proposal'
+import { applyProposal, proposalExtrasForModel } from '@/lib/orcamento-ai/apply-proposal'
 import type { OrcamentoAISnapshot, PropostaOrcamento } from '@/lib/orcamento-ai/types'
 import { useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
@@ -1121,13 +1121,14 @@ export function OrcamentoMontar() {
         nome: clienteDados.nome ?? initialModal?.cliente_nome ?? '',
         telefone: clienteDados.fone ?? initialModal?.cliente_dados?.fone ?? undefined,
         cidade: clienteDados.cidade ?? initialModal?.cliente_dados?.cidade ?? undefined,
-        uf: initialModal?.cliente_dados?.uf ?? undefined,
+        uf: clienteDados.uf ?? initialModal?.cliente_dados?.uf ?? undefined,
         endereco: clienteDados.endereco ?? initialModal?.cliente_dados?.endereco ?? undefined,
         bairro: clienteDados.bairro ?? initialModal?.cliente_dados?.bairro ?? undefined,
         cep: clienteDados.cep ?? initialModal?.cliente_dados?.cep ?? undefined,
         cpfCnpj: clienteDados.cnpj ?? initialModal?.cliente_dados?.cnpj ?? undefined,
         ie: clienteDados.ie ?? initialModal?.cliente_dados?.ie ?? undefined,
         email: clienteDados.email ?? initialModal?.cliente_dados?.email ?? undefined,
+        contato: clienteDados.ac ?? initialModal?.cliente_dados?.ac ?? undefined,
       },
       modelo: aiModeloAtual ?? (modeloSalvo ? {
         id: modeloSalvo.id,
@@ -1180,8 +1181,7 @@ export function OrcamentoMontar() {
     const next = applyProposal(aiSnapshot, proposal)
     const localModel = proposal.modelo ? (modelos ?? []).find((modelo) => modelo.id === proposal.modelo!.id) : null
     if (proposal.modelo && !localModel) throw new Error('O modelo escolhido não está mais disponível. Atualize a página e tente novamente.')
-    if (localModel) carregarDoModelo(localModel, false, true)
-    else setCarrinho(next.itens.map((item) => {
+    const materializarItem = (item: PropostaOrcamento['itens'][number]): CarrinhoItem => {
       const preco = item.catalogoId != null ? (precos ?? []).find((entry) => entry.id === item.catalogoId) : null
       const catalogo = preco ? (items ?? []).find((entry) => entry.preco_branorte_id === preco.id) : null
       const motor = next.motores.find((entry) => entry.itemCatalogoId === item.catalogoId)
@@ -1201,7 +1201,18 @@ export function OrcamentoMontar() {
         motor_valor_unit: motor?.incluso ? 0 : motor?.valor ?? 0,
         foto_url: item.fotoUrl ?? catalogo?.foto_url ?? null,
       }
-    }))
+    }
+    if (localModel) {
+      // O servidor monta a proposta como [itens do modelo, itens adicionais].
+      // Carrega o pacote oficial (preservando toda a lógica local de motores/fotos)
+      // e acrescenta somente o que o vendedor pediu fora dele. Antes, esses extras
+      // apareciam na conferência da IA e sumiam silenciosamente ao aplicar.
+      const extras = proposalExtrasForModel(next.itens, localModel.itens).map(materializarItem)
+      carregarDoModelo(localModel, false, true)
+      if (extras.length) setCarrinho((current) => [...current, ...extras])
+    } else {
+      setCarrinho(next.itens.map(materializarItem))
+    }
     setAiModeloAtual(next.modelo)
     setVoltagem(next.voltagem ?? voltagem)
     setAcessorios(next.acessorios ? {
@@ -1213,12 +1224,12 @@ export function OrcamentoMontar() {
     setFotoPrincipal(next.fotoPrincipalUrl)
     setClienteDados({
       nome: next.cliente.nome, fone: next.cliente.telefone, cidade: next.cliente.cidade,
-      bairro: next.cliente.bairro, endereco: next.cliente.endereco, cep: next.cliente.cep,
-      cnpj: next.cliente.cpfCnpj, ie: next.cliente.ie, email: next.cliente.email,
+      uf: next.cliente.uf, bairro: next.cliente.bairro, endereco: next.cliente.endereco, cep: next.cliente.cep,
+      cnpj: next.cliente.cpfCnpj, ie: next.cliente.ie, email: next.cliente.email, ac: next.cliente.contato,
     })
     setInitialModal((previous) => ({
       cliente_nome: next.cliente.nome,
-      cliente_dados: { ...(previous?.cliente_dados ?? {}), nome: next.cliente.nome, fone: next.cliente.telefone, cidade: next.cliente.cidade, uf: next.cliente.uf, endereco: next.cliente.endereco, bairro: next.cliente.bairro, cep: next.cliente.cep, cnpj: next.cliente.cpfCnpj, ie: next.cliente.ie, email: next.cliente.email },
+      cliente_dados: { ...(previous?.cliente_dados ?? {}), nome: next.cliente.nome, ac: next.cliente.contato, fone: next.cliente.telefone, cidade: next.cliente.cidade, uf: next.cliente.uf, endereco: next.cliente.endereco, bairro: next.cliente.bairro, cep: next.cliente.cep, cnpj: next.cliente.cpfCnpj, ie: next.cliente.ie, email: next.cliente.email },
       observacoes: next.condicoes.observacoes || null,
       forma_pagamento: next.condicoes.formaPagamento || null,
       prazo_entrega: `${next.condicoes.prazoDias} dias ${next.condicoes.prazoTipo === 'uteis' ? 'úteis' : next.condicoes.prazoTipo === 'corridos' ? 'corridos' : ''}`.trim(),

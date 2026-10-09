@@ -80,6 +80,43 @@ test('adds requested equipment to a selected factory model without changing its 
   assert.deepEqual(result.body.proposal?.acessorios, compacta03Master150500Mono.acessorios)
 })
 
+test('keeps an equipment choice separate from the selected factory model', async () => {
+  const withExtra: IntencaoOrcamento = {
+    ...intent,
+    itensPedidos: [{ textoOriginal: 'uma ensacadeira', categoria: 'ENSACADEIRA', quantidade: 1 }],
+  }
+  let selectedModelSeen: string | undefined
+  let selectedItemsSeen: Record<string, string> | undefined
+  const result = await service({
+    interpret: async () => withExtra,
+    findModels: async (_intent, _seller, selectedModelId) => {
+      selectedModelSeen = selectedModelId
+      return [compacta03Master150500Mono]
+    },
+    resolveItems: async (_intent, _seller, selectedItemChoices) => {
+      selectedItemsSeen = selectedItemChoices
+      return {
+        itens: [{ catalogoId: 999, nome: 'ENSACADEIRA SACO ABERTO', quantidade: 1, valorUnitario: 26400, categoria: 'ENSACADEIRA' }],
+        motores: [],
+        perguntas: [],
+      }
+    },
+  }).execute({
+    token: 'valid',
+    body: {
+      message: 'Compacta e uma ensacadeira',
+      snapshot: emptyQuoteSnapshot,
+      selected_model_id: String(compacta03Master150500Mono.id),
+      selected_item_choices: { 'ITEM_CHOICE:0': '999' },
+    },
+  })
+
+  assert.equal(result.status, 200)
+  assert.equal(selectedModelSeen, String(compacta03Master150500Mono.id))
+  assert.deepEqual(selectedItemsSeen, { 'ITEM_CHOICE:0': '999' })
+  assert.equal(result.body.proposal?.itens.at(-1)?.catalogoId, 999)
+})
+
 test('never exposes server secrets in responses or errors', async () => {
   const result = await service({ interpret: async () => { throw new Error('OPENAI_API_KEY=secret SUPABASE_SERVICE_ROLE_KEY=secret') } })
     .execute({ token: 'valid', body: { message: 'teste', snapshot: emptyQuoteSnapshot } })
@@ -87,10 +124,10 @@ test('never exposes server secrets in responses or errors', async () => {
   assert.doesNotMatch(JSON.stringify(result.body), /secret|OPENAI_API_KEY|SERVICE_ROLE/i)
 })
 
-test('orçamentista usa GPT-5.6 Luna como modelo padrão econômico', async () => {
+test('orçamentista usa GPT-6 Luna como modelo padrão', async () => {
   const source = await readFile(new URL('../../../api/_lib/orcamento-ai-openai.ts', import.meta.url), 'utf8')
 
-  assert.match(source, /OPENAI_ORCAMENTO_MODEL\s*\|\|\s*'gpt-5\.6-luna'/)
+  assert.match(source, /OPENAI_ORCAMENTO_MODEL\s*\|\|\s*'gpt-6-luna'/)
 })
 
 test('builds an ad-hoc equipment proposal with explicit 10 percent accessories', async () => {
@@ -111,4 +148,49 @@ test('builds an ad-hoc equipment proposal with explicit 10 percent accessories',
   assert.equal(result.body.proposal?.acessorios?.percentual, 10)
   assert.equal(result.body.proposal?.totais.acessorios, 579.5)
   assert.equal(result.body.proposal?.totais.proposta, 8910.5)
+})
+
+test('preserves explicit payment, delivery and freight conditions from the seller', async () => {
+  const withConditions: IntencaoOrcamento = {
+    ...intent,
+    condicoes: {
+      formaPagamento: '50% no pedido, 25% em 30 dias e saldo na emissão da nota',
+      prazoDias: 60,
+      prazoTipo: 'corridos',
+      freteTipo: 'CIF',
+      freteTexto: 'por conta da Branorte',
+    },
+  }
+  const result = await service({ interpret: async () => withConditions })
+    .execute({ token: 'valid', body: { message: 'pedido com as condições informadas', snapshot: emptyQuoteSnapshot } })
+
+  assert.equal(result.body.proposal?.condicoes.formaPagamento, withConditions.condicoes?.formaPagamento)
+  assert.equal(result.body.proposal?.condicoes.prazoDias, 60)
+  assert.equal(result.body.proposal?.condicoes.prazoTipo, 'corridos')
+  assert.equal(result.body.proposal?.condicoes.freteTipo, 'CIF')
+})
+
+test('keeps the exact accessory list and percentage requested by the seller', async () => {
+  const customIntent: IntencaoOrcamento = {
+    operacao: 'novo',
+    cliente: { nome: 'Pedro Victor' },
+    itensPedidos: [{ textoOriginal: 'moinho martelo 50 CV', categoria: 'MOINHO', quantidade: 1, motorCv: 50 }],
+    instrucoesExplicitas: {
+      percentualAcessorios: 15,
+      itensAcessorios: ['Torre de fixação', 'Boca de entrada', 'Boca de descarga'],
+    },
+    ambiguidades: [],
+  }
+  const result = await service({
+    interpret: async () => customIntent,
+    resolveItems: async () => ({
+      itens: [{ catalogoId: 50, nome: 'MOINHO MARTELO 50 CV', quantidade: 1, valorUnitario: 100_000, categoria: 'MOINHO' }],
+      motores: [],
+      perguntas: [],
+    }),
+  }).execute({ token: 'valid', body: { message: 'moinho com 15% e acessórios listados', snapshot: emptyQuoteSnapshot } })
+
+  assert.equal(result.body.proposal?.acessorios?.percentual, 15)
+  assert.deepEqual(result.body.proposal?.acessorios?.items, customIntent.instrucoesExplicitas.itensAcessorios)
+  assert.equal(result.body.proposal?.totais.acessorios, 15_000)
 })

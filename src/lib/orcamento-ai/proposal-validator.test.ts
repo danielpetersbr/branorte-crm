@@ -43,3 +43,53 @@ test('blocks voltage, Master, missing price and stale-revision inconsistencies',
   assert.ok(codes.has('PRECO_AUSENTE'))
   assert.ok(codes.has('REVISAO_DESATUALIZADA'))
 })
+
+test('bloqueia proposta com quantidade zero', () => {
+  const changed = proposal()
+  changed.itens[0] = { ...changed.itens[0], quantidade: 0 }
+
+  const result = validateProposal(
+    changed,
+    {
+      operacao: 'novo',
+      cliente: {},
+      itensPedidos: [],
+      instrucoesExplicitas: {},
+      ambiguidades: [],
+    },
+    emptyQuoteSnapshot,
+    compacta03Master150500Mono,
+  )
+
+  assert.ok(
+    result.some(
+      (alert) =>
+        alert.code === 'QUANTIDADE_INVALIDA' && alert.severity === 'blocking',
+    ),
+  )
+})
+
+test('bloqueia proposta com quantidade fracionaria', () => {
+  const changed = proposal()
+  changed.itens[0] = { ...changed.itens[0], quantidade: 1.5 }
+
+  const result = validateProposal(
+    changed,
+    {
+      operacao: 'novo',
+      cliente: {},
+      itensPedidos: [],
+      instrucoesExplicitas: {},
+      ambiguidades: [],
+    },
+    emptyQuoteSnapshot,
+    compacta03Master150500Mono,
+  )
+
+  assert.ok(
+    result.some(
+      (alert) =>
+        alert.code === 'QUANTIDADE_INVALIDA' && alert.severity === 'blocking',
+    ),
+  )
+})

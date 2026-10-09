@@ -11,17 +11,41 @@ function fold(text: string): string {
 }
 
 function detectVoltage(text: string): VoltagemOrcamento | undefined {
-  if (/\b(mono|monofasico|monofasica)\b/.test(text)) return 'monofasico'
-  if (/\b(tri|trifasico|trifasica)\b/.test(text)) return 'trifasico'
-  return undefined
+  const matches = [
+    ...Array.from(text.matchAll(/\b(mono|monofasico|monofasica)\b/g), (match) => ({ index: match.index ?? -1, value: 'monofasico' as const })),
+    ...Array.from(text.matchAll(/\b(tri|trifasico|trifasica)\b/g), (match) => ({ index: match.index ?? -1, value: 'trifasico' as const })),
+  ]
+  return matches.sort((left, right) => right.index - left.index)[0]?.value
 }
 
 function detectLine(text: string): 'MINI' | 'COMPACTA_01' | 'COMPACTA_02' | 'COMPACTA_03' | undefined {
-  if (/\bcompacta\s*0?1\b/.test(text)) return 'COMPACTA_01'
-  if (/\bcompacta\s*0?2\b/.test(text)) return 'COMPACTA_02'
-  if (/\bcompacta\s*0?3\b/.test(text)) return 'COMPACTA_03'
-  if (/\bmini(?:\s*fabrica)?\b/.test(text)) return 'MINI'
-  return undefined
+  const matches = [
+    ...Array.from(text.matchAll(/\bcompacta\s*0?1\b/g), (match) => ({ index: match.index ?? -1, value: 'COMPACTA_01' as const })),
+    ...Array.from(text.matchAll(/\bcompacta\s*0?2\b/g), (match) => ({ index: match.index ?? -1, value: 'COMPACTA_02' as const })),
+    ...Array.from(text.matchAll(/\bcompacta\s*0?3\b/g), (match) => ({ index: match.index ?? -1, value: 'COMPACTA_03' as const })),
+    ...Array.from(text.matchAll(/\bmini(?:\s*fabrica)?\b/g), (match) => ({ index: match.index ?? -1, value: 'MINI' as const })),
+  ]
+  return matches.sort((left, right) => right.index - left.index)[0]?.value
+}
+
+function detectModelToken(text: string): string | undefined {
+  const mentions = Array.from(text.matchAll(/\b(?:compacta\s*0?[123]|mini(?:\s*fabrica)?)\b/g))
+  const lastMention = mentions[mentions.length - 1]
+  if (!lastMention) return undefined
+  return text
+    .slice(lastMention.index ?? 0)
+    .match(/^(?:compacta\s*0?[123]|mini(?:\s*fabrica)?)\b[\s:–—-]*(?:(?:master|standard|padrao|normal)\b[\s:–—-]*)?(\d{4,7}(?:\s*[-x]\s*\d{3,5}){0,2})\b/)?.[1]
+    ?.replace(/\s+/g, '')
+    .replace(/x/g, '-')
+}
+
+function detectMaster(text: string): boolean | undefined {
+  const masterMatches = Array.from(text.matchAll(/\bmaster\b/g))
+  const standardMatches = Array.from(text.matchAll(/\b(?:standard|padrao|normal)\b/g))
+  const master = masterMatches[masterMatches.length - 1]?.index ?? -1
+  const standard = standardMatches[standardMatches.length - 1]?.index ?? -1
+  if (master < 0 && standard < 0) return undefined
+  return master > standard
 }
 
 function parseItems(raw: string, text: string): ItemPedido[] {
@@ -40,16 +64,14 @@ function parseItems(raw: string, text: string): ItemPedido[] {
 export function normalizeIntent(input: RawIntentInput): IntencaoOrcamento {
   const text = fold(input.texto.trim())
   const line = detectLine(text)
-  const token = text.match(/\b(\d{4,6}\s*[-x]\s*\d{3,5}\s*[-x]\s*\d{3,5})\b/)?.[1]
-    ?.replace(/\s+/g, '')
-    .replace(/x/g, '-')
+  const token = detectModelToken(text)
 
   return {
     operacao: input.operacao ?? 'novo',
     cliente: input.cliente ?? {},
     modeloPedido: line ? {
       linha: line,
-      master: /\bmaster\b/.test(text),
+      master: detectMaster(text),
       voltagem: detectVoltage(text),
       basenameToken: token,
       textoOriginal: input.texto,

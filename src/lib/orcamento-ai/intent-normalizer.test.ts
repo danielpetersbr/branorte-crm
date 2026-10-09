@@ -10,10 +10,29 @@ test('preserves exact compacta basename token instead of guessing its decomposit
   assert.equal(intent.modeloPedido?.voltagem, 'monofasico')
 })
 
-test('does not infer master when seller did not say master', () => {
+test('keeps master undefined when seller did not say master or standard', () => {
   const intent = normalizeIntent({ texto: 'compacta 3 150500-4000-4000 monofásica' })
-  assert.equal(intent.modeloPedido?.master, false)
+  assert.equal(intent.modeloPedido?.master, undefined)
   assert.equal(intent.modeloPedido?.voltagem, 'monofasico')
+})
+
+test('recognizes compact model tokens used by real Branorte requests', () => {
+  assert.equal(normalizeIntent({ texto: 'Compacta 02 150500 monofásica' }).modeloPedido?.basenameToken, '150500')
+  assert.equal(normalizeIntent({ texto: 'Mini fábrica 30150 tri' }).modeloPedido?.basenameToken, '30150')
+  assert.equal(normalizeIntent({ texto: 'Compacta 01 1001000 tri' }).modeloPedido?.basenameToken, '1001000')
+})
+
+test('does not use a phone or document number as the model token', () => {
+  const intent = normalizeIntent({ texto: 'Compacta 02 trifásica para João, telefone 9192514886, CPF 01058112201' })
+  assert.equal(intent.modeloPedido?.basenameToken, undefined)
+})
+
+test('latest correction wins for line, voltage and master variant', () => {
+  const intent = normalizeIntent({ texto: 'Compacta 03 Master 150500 mono. Correção: Compacta 02 padrão 150500 trifásica.' })
+  assert.equal(intent.modeloPedido?.linha, 'COMPACTA_02')
+  assert.equal(intent.modeloPedido?.basenameToken, '150500')
+  assert.equal(intent.modeloPedido?.master, false)
+  assert.equal(intent.modeloPedido?.voltagem, 'trifasico')
 })
 
 test('recognizes support for bag without funnel as an exact constraint', () => {

@@ -17,7 +17,7 @@ export async function handleTransactionalOrcamentoAI(req: VercelRequest, res: Ve
     authenticate: (value) => authenticateSeller(supabase, value),
     interpret: (message) => interpretQuoteRequest(message, openAIKey),
     findModels: (intent, _seller, selectedModelId) => findModelCandidates(supabase, intent, selectedModelId),
-    resolveItems: (intent) => resolveCatalogComposition(supabase, intent),
+    resolveItems: (intent, _seller, selectedItemChoices) => resolveCatalogComposition(supabase, intent, selectedItemChoices),
     audit: (event) => writeOrcamentoAIAudit(supabase, event),
   })
   const result = await service.execute({ token, body: req.body })

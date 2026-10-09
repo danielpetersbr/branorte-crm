@@ -30,7 +30,11 @@ export function OrcamentoAIProposalCard({
       <section>
         <h4 className="font-semibold">Modelo</h4>
         <p>{proposal.modelo?.basename ?? 'Orçamento composto'}</p>
-        <p className="text-xs text-slate-600">{proposal.modelo?.master ? 'Master' : 'Standard'} · {proposal.voltagem === 'monofasico' ? 'Monofásico' : 'Trifásico'}</p>
+        <p className="text-xs text-slate-600">
+          {[proposal.modelo ? (proposal.modelo.master ? 'Master' : 'Padrão') : null,
+            proposal.voltagem === 'monofasico' ? 'Monofásico' : proposal.voltagem === 'trifasico' ? 'Trifásico' : 'Voltagem pendente']
+            .filter(Boolean).join(' · ')}
+        </p>
       </section>
 
       <section>

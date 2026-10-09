@@ -8,7 +8,7 @@ interface ServiceDeps {
   authenticate(token: string): Promise<AuthenticationResult>
   interpret(message: string): Promise<IntencaoOrcamento>
   findModels(intent: IntencaoOrcamento, seller: AuthenticatedSeller, selectedModelId?: string): Promise<ModeloCandidato[]>
-  resolveItems?(intent: IntencaoOrcamento, seller: AuthenticatedSeller): Promise<ComposicaoResolvida>
+  resolveItems?(intent: IntencaoOrcamento, seller: AuthenticatedSeller, selectedItemChoices?: Record<string, string>): Promise<ComposicaoResolvida>
   audit?(event: AuditEvent): Promise<void>
 }
 
@@ -17,6 +17,7 @@ interface ServiceBody {
   snapshot?: OrcamentoAISnapshot
   conversation_id?: string
   selected_model_id?: string
+  selected_item_choices?: Record<string, string>
   event_type?: Extract<AuditEventType, 'applied' | 'finalized'>
   proposal_id?: string
   orcamento_id?: number | string | null
@@ -69,7 +70,7 @@ export function createOrcamentoAIService(deps: ServiceDeps) {
           }
           let resolvedItems: ComposicaoResolvida | undefined
           if (intent.itensPedidos.length) {
-            resolvedItems = await deps.resolveItems?.(intent, auth.seller)
+            resolvedItems = await deps.resolveItems?.(intent, auth.seller, input.body.selected_item_choices)
             if (!resolvedItems || resolvedItems.perguntas.length) {
               const questions = resolvedItems?.perguntas ?? [{ code: 'ITEMS_UNAVAILABLE', question: 'Não consegui consultar os equipamentos adicionais agora.' }]
               await audit({ eventType: 'blocked', quoteId: snapshot.orcamentoId, result: { status: 'requer_escolha', questions } })
@@ -78,7 +79,7 @@ export function createOrcamentoAIService(deps: ServiceDeps) {
           }
           proposal = buildProposal({ snapshot, intent, model: match.match, resolvedItems: resolvedItems?.itens, resolvedMotors: resolvedItems?.motores })
         } else {
-          const composition = await deps.resolveItems?.(intent, auth.seller)
+          const composition = await deps.resolveItems?.(intent, auth.seller, input.body.selected_item_choices)
           if (!composition || composition.perguntas.length) {
             const questions = composition?.perguntas ?? [{ code: 'ITEMS_UNAVAILABLE', question: 'Não consegui consultar os equipamentos agora.' }]
             await audit({ eventType: 'blocked', quoteId: snapshot.orcamentoId, result: { status: 'requer_escolha', questions } })

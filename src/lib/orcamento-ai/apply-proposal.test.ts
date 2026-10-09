@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { compacta03Master150500Mono, emptyQuoteSnapshot } from './__fixtures__/compacta-03-master-150500-mono'
-import { applyProposal } from './apply-proposal'
+import { applyProposal, proposalExtrasForModel } from './apply-proposal'
 import { buildProposal } from './proposal-builder'
 
 const intent = {
@@ -29,4 +29,24 @@ test('applies every proposal field together into a new snapshot', () => {
   assert.equal(next.voltagem, 'monofasico')
   assert.equal(next.fotoPrincipalUrl, compacta03Master150500Mono.fotoUrl)
   assert.notEqual(next.itens, proposal.itens)
+})
+
+test('keeps proposal extras after the official model prefix, including a repeated catalog item', () => {
+  const modelItems = [
+    { nome: 'TRANSPORTADOR HELICOIDAL 160 X 3,5 M' },
+    { nome: 'Motor 10 CV 2 polos' },
+    { nome: 'TRITURADOR DE GRÃOS 10 CV' },
+  ]
+  const modelTransportador = { catalogoId: 10, nome: 'TRANSPORTADOR HELICOIDAL 160 X 3,5 M', quantidade: 1, valorUnitario: 5795 }
+  const modelMoinho = { catalogoId: 20, nome: 'TRITURADOR DE GRÃOS 10 CV', quantidade: 1, valorUnitario: 14708 }
+  const repeatedTransportador = { ...modelTransportador, quantidade: 2 }
+  const ensacadeira = { catalogoId: 999, nome: 'ENSACADEIRA SACO ABERTO', quantidade: 1, valorUnitario: 26400 }
+
+  const extras = proposalExtrasForModel(
+    [modelTransportador, modelMoinho, repeatedTransportador, ensacadeira],
+    modelItems,
+  )
+
+  assert.deepEqual(extras, [repeatedTransportador, ensacadeira])
+  assert.notEqual(extras[0], repeatedTransportador)
 })

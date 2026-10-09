@@ -116,10 +116,12 @@ export interface IntencaoOrcamento {
     textoOriginal?: string
   }
   itensPedidos: ItemPedido[]
+  condicoes?: Partial<CondicoesComerciais>
   instrucoesExplicitas: {
     preservarAcessoriosDoModelo?: boolean
     alterarAcessorios?: boolean
     percentualAcessorios?: number
+    itensAcessorios?: string[]
     enviarWhatsapp?: boolean
   }
   ambiguidades: PerguntaPendente[]
