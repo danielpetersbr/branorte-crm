@@ -7,6 +7,10 @@ test('normalizes known equipment transcription mistakes locally', () => {
     normalizeKnownTerms('um chumbim de 160 por 6 e um eletor de canecas'),
     'um chupim de 160 por 6 e um elevador de canecas',
   )
+  assert.equal(
+    normalizeKnownTerms('MOINHO MNARTLEO DE 20 CV'),
+    'MOINHO martelo DE 20 CV',
+  )
 })
 
 test('does not replace short technical aliases inside customer names', () => {

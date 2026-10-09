@@ -147,6 +147,8 @@ export const BRANORTE_VOCAB = {
     { errado: 'cubim', certo: 'chupim' },
     { errado: 'tupim', certo: 'chupim' },
     { errado: 'supim', certo: 'chupim' },
+    // Moinho martelo
+    { errado: 'mnartleo', certo: 'martelo' },
     // BNMM e códigos BN
     { errado: 'B&M', certo: 'BNMM' },
     { errado: 'BM&M', certo: 'BNMM' },
