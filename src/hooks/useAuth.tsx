@@ -26,7 +26,7 @@ export interface AuthState {
   profileError: boolean
 }
 
-type AuthContextValue = AuthState & { signOut: () => Promise<void>; updateDisplayName: (confirmedId: string, displayName: string) => void }
+type AuthContextValue = AuthState & { signOut: () => Promise<void>; retryProfile: () => void; updateDisplayName: (confirmedId: string, displayName: string) => void }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
@@ -36,10 +36,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const identity = useRef<string | null>(null)
   const profileRequest = useRef<{ userId: string; controller: AbortController } | null>(null)
+  const profileStatus = useRef<'pending' | 'failed' | 'ready'>('pending')
+  const sessionToken = useRef<string | null>(null)
+  const signOutPending = useRef(false)
+  const profileLoadDeferred = useRef(false)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [profileError, setProfileError] = useState(false)
+  const [profileLoadGeneration, setProfileLoadGeneration] = useState(0)
+
+  const retryProfile = () => {
+    if (signOutPending.current || !identity.current || profileStatus.current !== 'failed') return
+    profileStatus.current = 'pending'
+    setProfileError(false)
+    setLoading(true)
+    setProfileLoadGeneration(current => current + 1)
+  }
 
   useEffect(() => {
     let mounted = true
@@ -56,17 +69,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
       if (!mounted) return
       const nextId = sess?.user.id ?? null
+      const nextToken = sess?.access_token ?? null
+      const tokenChanged = !!nextToken && sessionToken.current !== nextToken
+      if (nextToken || !sess) sessionToken.current = nextToken
       if (identity.current !== nextId) {
-        if (profileRequest.current && profileRequest.current.userId !== nextId) {
-          profileRequest.current.controller.abort()
+        // INITIAL_SESSION pode chegar depois da carga iniciada por getSession.
+        // Preserva também seu resultado ou erro se já pertencem à mesma conta.
+        if (profileRequest.current?.userId !== nextId) {
+          if (signOutPending.current) profileLoadDeferred.current = true
+          profileRequest.current?.controller.abort()
+          profileStatus.current = 'pending'
+          setProfile(null)
+          setProfileError(false)
+          setLoading(!!nextId)
         }
         // Limpa também logout em outra aba e troca direta de conta. Não limpar
         // em TOKEN_REFRESHED: a identidade e a carteira continuam as mesmas.
         queryClient.clear()
-        setProfile(null)
-        setProfileError(false)
-        setLoading(!!nextId)
         identity.current = nextId
+      } else if (!signOutPending.current && tokenChanged && (_evt === 'TOKEN_REFRESHED' || _evt === 'SIGNED_IN')) {
+        // Retoma só uma carga que falhou. Perfil confirmado e eventos com o
+        // mesmo token não refazem consultas nem criam uma sequência de retries.
+        retryProfile()
       }
       setSession(sess)
       if (!sess) {
@@ -80,16 +104,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [queryClient])
 
-  // Carrega profile só quando o user_id muda (evita refetch em TOKEN_REFRESHED/foco da aba).
+  // Carrega ao mudar a identidade ou solicitar retomada de uma carga que falhou.
   const userId = session?.user?.id ?? null
   useEffect(() => {
+    if (signOutPending.current) {
+      profileLoadDeferred.current = true
+      return
+    }
     if (!userId) {
+      profileStatus.current = 'pending'
       setProfile(null)
       setProfileError(false)
       return
     }
     const lifecycle = new AbortController()
     profileRequest.current = { userId, controller: lifecycle }
+    profileStatus.current = 'pending'
     // Só mostra full-page loading se ainda não temos profile (primeiro load).
     setProfile(prev => {
       if (!prev || prev.id !== userId) setLoading(true)
@@ -149,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (lifecycle.signal.aborted) return
           if (error) throw error
           // Resposta definitiva (data pode ser null = sem perfil de verdade → /pendente)
+          profileStatus.current = 'ready'
           setProfile(data as UserProfile | null)
           setProfileError(false)
           setLoading(false)
@@ -165,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (lifecycle.signal.aborted) return
       // Falhou após retries: NÃO assumir "não aprovado". Sinaliza erro pra UI
       // mostrar tela de reconexão (não a tela de "Aguardando aprovação").
+      profileStatus.current = 'failed'
       setProfileError(true)
       setLoading(false)
     }
@@ -174,15 +206,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       lifecycle.abort()
       if (profileRequest.current?.controller === lifecycle) profileRequest.current = null
     }
-  }, [userId])
+  }, [userId, profileLoadGeneration])
 
   const signOut = async () => {
+    if (signOutPending.current) return
+    const signOutUserId = identity.current
+    const wasReady = profileStatus.current === 'ready'
+    profileLoadDeferred.current = false
+    signOutPending.current = true
+    profileStatus.current = 'pending'
     profileRequest.current?.controller.abort()
-    await supabase.auth.signOut()
-    queryClient.clear()
-    identity.current = null
-    setSession(null)
-    setProfile(null)
+    try {
+      await supabase.auth.signOut()
+      queryClient.clear()
+      identity.current = null
+      setSession(null)
+      setProfile(null)
+      setProfileError(false)
+      setLoading(false)
+    } catch (error) {
+      profileStatus.current = wasReady && identity.current === signOutUserId && !profileLoadDeferred.current ? 'ready' : 'failed'
+      if (profileStatus.current === 'failed') setProfileError(true)
+      setLoading(false)
+      throw error
+    } finally {
+      signOutPending.current = false
+      if (profileLoadDeferred.current) {
+        profileLoadDeferred.current = false
+        retryProfile()
+      }
+    }
   }
 
   const updateDisplayName = (confirmedId: string, displayName: string) => {
@@ -190,7 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile: profile?.id === userId ? profile : null, loading: loading || (!!userId && !!profile && profile.id !== userId), profileError, signOut, updateDisplayName }}>
+    <AuthContext.Provider value={{ session, profile: profile?.id === userId ? profile : null, loading: loading || (!!userId && !!profile && profile.id !== userId), profileError, signOut, retryProfile, updateDisplayName }}>
       {children}
     </AuthContext.Provider>
   )
