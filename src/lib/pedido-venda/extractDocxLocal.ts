@@ -666,7 +666,7 @@ function extractVoltagem(lines: string[], tensao: string | null): string | null 
 }
 
 function extractDescricaoEquipamento(fileName: string, cliente: string | null): string | null {
-  const base = fileName.replace(/\.docx$/i, "");
+  const base = fileName.replace(/\.(?:pdf|docx)$/i, "");
 
   // 1) Try extracting from parentheses: "Carlos Hobold (Peneiras e Martelos)"
   const parenMatch = base.match(/\(([^)]+)\)\s*$/);
@@ -700,15 +700,25 @@ function extractDescricaoEquipamento(fileName: string, cliente: string | null): 
 function extractObservacoes(lines: string[]): string[] {
   const obs: string[] = [];
   let inObs = false;
+  const heading = /^\s*OBSERVA[ÇC][ÕO]ES(?:\s*[:|\-–—]\s*(.*)|\s*)$/i;
+  // Cabeçalhos do orçamento delimitam a anotação livre. Palavras como "prazo"
+  // e "garantia" dentro de uma frase do vendedor continuam sendo observações.
+  const sectionEnd = /^\s*(?:NOSSAS\s+REDES\s+SOCIAIS|DADOS\s+DO\s+FABRICANTE|CONTA\s+PARA\s+DEP[ÓO]SITO|CAIXA\s+POSTAL|OBSERVA[ÇC][ÃA]O\s*(?:[:\-–—]\s*)?POR\s+CONTA\s+DO\s+CLIENTE|TRIBUTOS|CL[ÁA]USULA\s+DE\s+CANCELAMENTO|GARANTIA)\s*(?::|\||$)/i;
+  const commercialEnd = /^\s*(?:VALOR\s*TOTAL(?:\s+(?:DA\s+PROPOSTA|DE\s+EQUIPAMENTOS))?(?:\s+(?:COM\s+MOTOR\s+NOVO|COM\s+DESCONTO))?(?:\s+\(SEM\s+DESCONTO\))?|FORMA\s*DE\s*PAGAMENTO|PRAZO(?:\s+DE\s+ENTREGA)?)\s*(?:[:|\-–—]|R\$|$)/i;
+  const signatureEnd = /^\s*METAL[ÚU]RGICA\s+BBA\s+LTDA\s*(?:\||$)/i;
   for (const ln of lines) {
-    if (/OBSERVA[ÇC][ÕO]ES/i.test(ln)) {
+    const match = ln.match(heading);
+    if (match) {
       inObs = true;
-      const after = ln.replace(/.*OBSERVA[ÇC][ÕO]ES\s*[:\-–]?\s*/i, "").trim();
+      const after = (match[1] || "").trim();
       if (after) obs.push(after);
       continue;
     }
     if (inObs) {
-      if (/VALOR\s*TOTAL|FORMA\s*DE\s*PAGAMENTO|PRAZO/i.test(ln)) break;
+      if (sectionEnd.test(ln) || commercialEnd.test(ln) || signatureEnd.test(ln)) break;
+      // A anotação pode continuar na próxima página: o footer não encerra a seção.
+      if (/^\s*P[ÁA]GINA\s+\d+(?:\s+DE\s+\d+)?\s*$/i.test(ln) ||
+          /^\s*OR[ÇC]AMENTO(?:\s+\d{4}\s*[-–]\s*\d{3,6})?\s*·\s*BRANORTE\s+BBA(?:\s+P[ÁA]GINA\s+\d+(?:\s+DE\s+\d+)?)?\s*$/i.test(ln)) continue;
       obs.push(ln);
     }
   }
