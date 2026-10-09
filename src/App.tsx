@@ -172,7 +172,7 @@ function HomeRouter() {
 // Supabase). Diferente de "Aguardando aprovação": aqui não sabemos o status, então
 // oferecemos retry em vez de bloquear como não-aprovado.
 function ProfileLoadError() {
-  const { signOut } = useAuth()
+  const { signOut, retryProfile } = useAuth()
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-bg">
       <div className="w-full max-w-md bg-surface-1 border border-border rounded-2xl p-8 text-center">
@@ -185,7 +185,7 @@ function ProfileLoadError() {
           ok — é só tentar de novo.
         </p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={retryProfile}
           className="w-full mb-3 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90"
         >
           Tentar de novo
