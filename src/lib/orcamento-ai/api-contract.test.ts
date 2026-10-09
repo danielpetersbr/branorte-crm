@@ -114,7 +114,8 @@ test('keeps an equipment choice separate from the selected factory model', async
   assert.equal(result.status, 200)
   assert.equal(selectedModelSeen, String(compacta03Master150500Mono.id))
   assert.deepEqual(selectedItemsSeen, { 'ITEM_CHOICE:0': '999' })
-  assert.equal(result.body.proposal?.itens.at(-1)?.catalogoId, 999)
+  const proposalItems = result.body.proposal?.itens ?? []
+  assert.equal(proposalItems[proposalItems.length - 1]?.catalogoId, 999)
 })
 
 test('never exposes server secrets in responses or errors', async () => {
