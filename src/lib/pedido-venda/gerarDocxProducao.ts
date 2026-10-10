@@ -16,14 +16,18 @@ const MONEY_RX = /R\s?\$\s*\d+(?:[.\s]\d{3})*(?:,\d{1,2})?/g;
 
 const KW_DINHEIRO = /TOTAL|VALOR|PRE[ÇC]O|UNIT|SUBTOTAL|DESCONTO|ENTRADA|PARCELA|SALDO|PAGAMENTO|BOLETO/i;
 
-// ——— Dados do cliente: produção só pode ver NOME, CIDADE e ESTADO ———
+// ——— Dados do cliente: produção vê NOME, A/C, CIDADE, ESTADO e o ENDEREÇO ———
+// Endereço, bairro e CEP passam desde 06/10/2026 (roadmap #72, decisão do Daniel:
+// o pedido vai pro projeto com o endereço completo). Telefone e documento não.
 // Segmentos rotulados proibidos (do rótulo até o próximo rótulo conhecido ou fim
 // da linha) + padrões diretos de CPF/CNPJ/fone/CEP onde quer que apareçam.
 // A/C é PERMITIDO (aos cuidados — regra 2026-07-14/21: produção vê CLIENTE, A/C,
 // CIDADE, Nº e DATA); saiu dos proibidos e entrou como fronteira em LABELS_TODOS.
 const LABELS_PROIBIDOS =
-  "FONE|TELEFONE|CELULAR|WHATSAPP|ENDERE[ÇC]O|BAIRRO|CEP|CPF\\s*\\/?\\s*CNPJ|CPF|CNPJ|INSCRI[ÇC][ÃA]O\\s+ESTADUAL|E-?MAIL";
-const LABELS_TODOS = `CLIENTE|CIDADE|ESTADO|UF|DATA|OR[ÇC]AMENTO|A\\s*\\/\\s*C|${LABELS_PROIBIDOS}`;
+  "FONE|TELEFONE|CELULAR|WHATSAPP|CPF\\s*\\/?\\s*CNPJ|CPF|CNPJ|INSCRI[ÇC][ÃA]O\\s+ESTADUAL|E-?MAIL";
+// ENDEREÇO/BAIRRO/CEP seguem como FRONTEIRA: sem eles aqui, um "FONE: …" na mesma
+// linha apagaria o endereço que vem depois até o próximo rótulo conhecido.
+const LABELS_TODOS = `CLIENTE|CIDADE|ESTADO|UF|DATA|OR[ÇC]AMENTO|A\\s*\\/\\s*C|ENDERE[ÇC]O|BAIRRO|CEP|${LABELS_PROIBIDOS}`;
 const SEG_PROIBIDO_RX = new RegExp(
   `\\b(?:${LABELS_PROIBIDOS})\\s*:[^]*?(?=\\b(?:${LABELS_TODOS})\\s*:|$)`,
   "gi"
@@ -33,7 +37,6 @@ const PII_RX: RegExp[] = [
   /\d{2}\.\d{3}\.\d{3}\s?\/\s?\d{4}\s?-?\s?\d{2}/g, // CNPJ
   /\(\d{2}\)\s?\d{4,5}[-.\s]?\d{4}\b/g, // telefone (xx) xxxxx-xxxx
   /\b\d{2}\s\d{4,5}[-\s]\d{4}\b/g, // telefone xx xxxxx-xxxx
-  /\b\d{5}-\d{3}\b/g, // CEP
 ];
 
 export function redigirDadosCliente(l: string): string {
