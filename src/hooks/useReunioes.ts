@@ -38,9 +38,19 @@ interface SlideBase {
   eyebrow?: string
 }
 
+export interface CallWeek {
+  label: string
+  from: string
+  to: string
+  made: number
+  answered: number
+  total: number
+  sellers: { name: string; made: number; answered: number; total: number }[]
+}
+
 export type ApresentacaoSlide =
   | (SlideBase & { type: 'cover'; subtitle?: string; dateLabel?: string; highlight?: string })
-  | (SlideBase & { type: 'calls'; total: number; teamTarget: number; individualTarget: number; metCount: number; sellerCount: number; sellers: { name: string; count: number }[]; takeaway?: string })
+  | (SlideBase & { type: 'calls'; total: number; teamTarget: number; individualTarget: number; metCount: number; sellerCount: number; sellers: { name: string; count: number }[]; weeks?: [CallWeek, CallWeek]; takeaway?: string })
   | (SlideBase & { type: 'sales'; monthTotal: number; beforeWeek: number; weekTotal: number; goal: number; effectiveSales: number; aboveTenK: number; individualTarget: number; metCount: number; sellerCount: number; takeaway?: string })
   | (SlideBase & { type: 'teams'; teams: { name: string; total: number; goal?: number; members: { name: string; value: number }[] }[]; globalOnly?: { name: string; value: number }[]; takeaway?: string })
   | (SlideBase & { type: 'agenda'; totalMinutes: number; items: { title: string; minutes: number; detail?: string }[] })
