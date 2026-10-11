@@ -79,20 +79,26 @@ function CallsClientsContent({ slide, weeks }: {
   weeks: NonNullable<Extract<ApresentacaoSlide, { type: 'calls' }>['weeks']>
 }) {
   const names = [...new Set(weeks.flatMap(week => week.sellers.map(seller => seller.name)))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  const showRepeated = weeks.some(week => typeof week.clientsRepeated === 'number')
   return <div className="br-template br-calls-comparison">
     <div className="br-template-heading"><h2>{slide.title}</h2><p>Clientes diferentes · segunda a domingo</p></div>
     <div className="br-call-weeks">{weeks.map(week => <div className="br-call-week" key={week.from}>
       <h3>{week.label}</h3>
-      <div className="br-call-week-metrics" style={{ gridTemplateColumns: '1fr' }}><div>
+      <div className="br-call-week-metrics" style={{ gridTemplateColumns: showRepeated ? '1fr 1fr' : '1fr' }}><div style={showRepeated ? { flexDirection: 'column' } : undefined}>
         <strong style={{ fontSize: 'clamp(42px, 5cqw, 80px)' }}>{typeof week.clientsAnswered === 'number' ? numero.format(week.clientsAnswered) : '—'}</strong>
-        <span>clientes com quem conversamos</span>
-      </div></div>
+        <span>{showRepeated ? 'clientes únicos' : 'clientes com quem conversamos'}</span>
+      </div>{showRepeated && <div style={{ flexDirection: 'column' }}>
+        <strong style={{ fontSize: 'clamp(42px, 5cqw, 80px)' }}>{typeof week.clientsRepeated === 'number' ? numero.format(week.clientsRepeated) : '—'}</strong>
+        <span>desses, conversaram 2+ vezes</span>
+      </div>}</div>
     </div>)}</div>
     <div className="br-call-table-wrap"><table className="br-call-table" aria-label="Clientes com quem conversamos por ligação nas duas semanas">
-      <thead><tr><th scope="col">Vendedor</th>{weeks.map((week, i) => <th key={week.from} scope="col" className={i === 1 ? 'br-call-period-start' : undefined}>{week.label}</th>)}</tr></thead>
+      <thead><tr><th rowSpan={showRepeated ? 2 : undefined} scope="col">Vendedor</th>{weeks.map((week, i) => <th key={week.from} colSpan={showRepeated ? 2 : undefined} scope={showRepeated ? 'colgroup' : 'col'} className={i === 1 ? 'br-call-period-start' : undefined}>{week.label}</th>)}</tr>
+        {showRepeated && <tr>{weeks.map((week, i) => <Fragment key={week.from}><th scope="col" style={{ width: 'auto', textAlign: 'center' }} className={i === 1 ? 'br-call-period-start' : undefined}>Únicos</th><th scope="col">Repetidos</th></Fragment>)}</tr>}
+      </thead>
       <tbody>{names.map(name => <tr key={name}><th scope="row">{name}</th>{weeks.map((week, i) => {
         const seller = week.sellers.find(row => row.name === name)
-        return <td key={week.from} className={i === 1 ? 'br-call-period-start' : undefined}>{typeof seller?.clientsAnswered === 'number' ? numero.format(seller.clientsAnswered) : '—'}</td>
+        return <Fragment key={week.from}><td className={i === 1 ? 'br-call-period-start' : undefined}>{typeof seller?.clientsAnswered === 'number' ? numero.format(seller.clientsAnswered) : '—'}</td>{showRepeated && <td>{typeof seller?.clientsRepeated === 'number' ? numero.format(seller.clientsRepeated) : '—'}</td>}</Fragment>
       })}</tr>)}</tbody>
     </table></div>
   </div>
