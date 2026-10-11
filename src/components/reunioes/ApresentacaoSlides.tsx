@@ -97,7 +97,7 @@ function CallsClientsContent({ slide, weeks }: {
         <div style={{ color: 'var(--muted)' }}>{week.total < slide.teamTarget ? `Faltaram ${numero.format(slide.teamTarget - week.total)} ligações` : 'Meta atingida'}{slide.individualTarget > 0 && ` · ${week.sellers.filter(seller => seller.total >= slide.individualTarget).length} de ${week.sellers.length} atingiram ${numero.format(slide.individualTarget)}`}</div>
       </div>}
     </div>)}</div>
-    <div className="br-call-table-wrap"><table className="br-call-table" aria-label="Clientes com quem conversamos por ligação nas duas semanas">
+    <div className="br-call-table-wrap"><table className="br-call-table" style={slide.showCallTargets ? { lineHeight: 1.15 } : undefined} aria-label="Clientes com quem conversamos por ligação nas duas semanas">
       <thead><tr><th rowSpan={showRepeated ? 2 : undefined} scope="col">Vendedor</th>{weeks.map((week, i) => <th key={week.from} colSpan={showRepeated ? 2 : undefined} scope={showRepeated ? 'colgroup' : 'col'} className={i === 1 ? 'br-call-period-start' : undefined}>{week.label}</th>)}</tr>
         {showRepeated && <tr>{weeks.map((week, i) => <Fragment key={week.from}><th scope="col" style={{ width: 'auto', textAlign: 'center' }} className={i === 1 ? 'br-call-period-start' : undefined}>Únicos</th><th scope="col">Repetidos</th></Fragment>)}</tr>}
       </thead>
