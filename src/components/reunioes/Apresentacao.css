@@ -48,6 +48,30 @@
 .br-template-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; flex: none; margin: .5% 0 1.7%; }
 .br-template-heading h2 { margin: 0; color: var(--ink); font-size: clamp(30px, 4.05cqw, 66px); line-height: 1.05; font-weight: 760; letter-spacing: -.025em; }
 .br-template-heading p { margin: 0; color: var(--muted); font-size: clamp(12px, 1.2cqw, 19px); text-align: right; }
+
+.br-calls-comparison .br-template-heading { margin-bottom: 1.1%; }
+.br-calls-comparison .br-template-heading h2 { font-size: clamp(27px, 3.25cqw, 52px); }
+.br-call-weeks { display: grid; grid-template-columns: 1fr 1fr; gap: 2%; margin-bottom: 1.1%; }
+.br-call-week { border: 1px solid var(--line); border-radius: 9px; padding: .7cqw 1.5cqw; background: #e9f1ed; }
+.br-call-week h3 { margin: 0 0 .45cqw; font-size: clamp(14px, 1.35cqw, 22px); color: var(--muted); }
+.br-call-week-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1cqw; }
+.br-call-week-metrics div { display: flex; align-items: baseline; gap: .55cqw; }
+.br-call-week-metrics strong { font-size: clamp(26px, 3.2cqw, 51px); line-height: 1; font-variant-numeric: tabular-nums; }
+.br-call-week-metrics span { font-size: clamp(12px, 1.12cqw, 18px); color: var(--muted); }
+.br-call-valid { color: #078753; font-weight: 750; }
+.br-call-table-wrap { flex: 1; min-height: 0; padding-bottom: .65cqw; }
+.br-call-table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; font-size: clamp(12px, 1.22cqw, 20px); font-variant-numeric: tabular-nums; }
+.br-call-table th, .br-call-table td { padding: .3cqw .65cqw; text-align: center; border-bottom: 1px solid var(--line); }
+.br-call-table thead th { background: #e3ece7; font-weight: 650; }
+.br-call-table thead tr:first-child th:not(:first-child) { color: #075e3c; }
+.br-call-table th:first-child { width: 22%; text-align: left; }
+.br-call-table tbody th { font-weight: 600; }
+.br-call-table tbody tr:nth-child(even) { background: #edf3ef; }
+.br-call-table tbody td:nth-child(5), .br-call-table thead tr:first-child th:nth-child(3), .br-call-table thead tr:nth-child(2) th:nth-child(4) { border-left: 2px solid #aacabb; }
+@media (max-width: 760px) {
+  .br-call-week-metrics div { flex-direction: column; gap: 3px; }
+  .br-call-table { min-height: 330px; }
+}
 .br-data-label { color: var(--muted); font-size: clamp(12px, 1.22cqw, 19px); font-weight: 600; }
 .br-interaction-hint { display: inline-flex; align-items: center; gap: .5em; color: #217753; font-size: clamp(12px, 1.12cqw, 18px); font-weight: 650; }
 .br-slide-action, .br-calls-reset, .br-funnel-back { display: inline-flex; align-items: center; justify-content: center; gap: .5em; padding: .6em .9em; color: #0d6942; background: #e1f3e8; border: 1px solid #7ccba1; border-radius: 8px; font-size: clamp(11px, 1.07cqw, 17px); font-weight: 700; transition: background .18s ease, transform .18s ease; }
