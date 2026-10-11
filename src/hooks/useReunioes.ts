@@ -54,6 +54,8 @@ export type ApresentacaoSlide =
   | (SlideBase & { type: 'cover'; subtitle?: string; dateLabel?: string; highlight?: string })
   | (SlideBase & { type: 'calls'; total: number; teamTarget: number; individualTarget: number; metCount: number; sellerCount: number; sellers: { name: string; count: number }[]; weeks?: [CallWeek, CallWeek]; clientsOnly?: boolean; showCallTargets?: boolean; takeaway?: string })
   | (SlideBase & { type: 'sales'; monthTotal: number; beforeWeek: number; weekTotal: number; goal: number; effectiveSales: number; aboveTenK: number; individualTarget: number; metCount: number; sellerCount: number; takeaway?: string })
+  | (SlideBase & { type: 'scorecard'; periodLabel?: string; amountLabel: string; amount: number; goal?: number; comparison?: { label: string; value: number }; metrics: { label: string; value: string }[]; takeaway?: string })
+  | (SlideBase & { type: 'calendar'; monthLabel: string; rangeLabel: string; note?: string; remainingWeeks: number; workingDays: number; weeks: { label: string; remaining: boolean; workingDays: number; days: { day: number | null; state: 'past' | 'workday' | 'weekend' | 'holiday'; label?: string }[] }[]; takeaway?: string })
   | (SlideBase & { type: 'teams'; teams: { name: string; total: number; goal?: number; members: { name: string; value: number }[] }[]; globalOnly?: { name: string; value: number }[]; takeaway?: string })
   | (SlideBase & { type: 'agenda'; totalMinutes: number; items: { title: string; minutes: number; detail?: string }[] })
   | (SlideBase & { type: 'video'; prompt?: string; videoPath: string; youtubeId?: string; chapterLabel?: string; source?: string })
@@ -96,7 +98,7 @@ export interface ReuniaoFeedback {
 function normalizeManifesto(value: unknown): ApresentacaoManifesto | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const raw = value as Record<string, unknown>
-  const tipos = new Set(['cover', 'calls', 'sales', 'teams', 'agenda', 'video', 'funnel'])
+  const tipos = new Set(['cover', 'calls', 'sales', 'teams', 'agenda', 'video', 'funnel', 'scorecard', 'calendar'])
   const slides = Array.isArray(raw.slides)
     ? raw.slides.filter((slide): slide is ApresentacaoSlide =>
       !!slide && typeof slide === 'object' &&
