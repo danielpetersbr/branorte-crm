@@ -44,8 +44,9 @@ export interface CallWeek {
   to: string
   made: number
   answered: number
+  clientsAnswered?: number
   total: number
-  sellers: { name: string; made: number; answered: number; total: number }[]
+  sellers: { name: string; made: number; answered: number; total: number; clientsAnswered?: number }[]
 }
 
 export type ApresentacaoSlide =
