@@ -92,6 +92,46 @@
 .br-slide-video .br-slide-page { color: #57db98; }
 .br-slide-video .br-data-label { color: #8edeb0; }
 .br-cover-layout { height: 100%; display: grid; grid-template-columns: 55% 45%; align-items: center; }
+.br-scorecard-main { display: flex; align-items: center; justify-content: space-between; gap: 3cqw; padding: 2cqw 0; }
+.br-scorecard-amount { display: flex; flex-direction: column; gap: 1cqw; }
+.br-scorecard-amount > span, .br-scorecard-goal > span { color: var(--muted); font-size: 1.65cqw; }
+.br-scorecard-amount > strong { color: #087e50; font-size: 6.6cqw; line-height: 1; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.br-scorecard-goal { display: flex; flex-direction: column; gap: .7cqw; text-align: right; }
+.br-scorecard-goal > strong { color: var(--ink); font-size: 2.7cqw; }
+.br-scorecard-goal > b { color: #087e50; font-size: 2cqw; }
+.br-scorecard-progress { height: 1.3cqw; background: #d8e5dd; overflow: hidden; margin: 0 0 1.5cqw; }
+.br-scorecard-progress > span { display: block; height: 100%; background: #16a66a; }
+.br-scorecard-comparison { display: flex; align-items: center; gap: 2cqw; color: var(--muted); font-size: 1.7cqw; padding: 1cqw 0; border-bottom: 1px solid var(--line); }
+.br-scorecard-comparison strong { color: var(--ink); font-size: 2.4cqw; }
+.br-scorecard-metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 3cqw; margin-top: auto; padding: 2cqw 0; }
+.br-scorecard-metrics > div { display: flex; flex-direction: column; gap: 1cqw; padding-top: 1cqw; border-top: 3px solid #b9d5c5; }
+.br-scorecard-metrics span { color: var(--muted); font-size: 1.5cqw; }
+.br-scorecard-metrics strong { color: var(--ink); font-size: 2.6cqw; font-variant-numeric: tabular-nums; }
+.br-calendar-layout { display: grid; grid-template-columns: minmax(0,1fr) 20%; gap: 3cqw; margin-top: 1cqw; flex: 1; min-height: 0; }
+.br-calendar-month { display: flex; flex-direction: column; }
+.br-calendar-row { display: grid; grid-template-columns: 1.35fr repeat(7,1fr) 1fr; gap: .3cqw; flex: 1; min-height: 0; margin-bottom: .35cqw; }
+.br-calendar-row.br-calendar-weekdays { flex: none; height: 2.5cqw; }
+.br-calendar-weekdays span { text-align: center; color: var(--muted); font-size: 1.15cqw; font-weight: 650; }
+.br-calendar-day { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #e8efeb; color: var(--muted); gap: .25cqw; }
+.br-calendar-day > strong { font-size: 2.4cqw; font-weight: 650; line-height: 1; }
+.br-calendar-day > small { font-size: .8cqw; }
+.br-calendar-day.is-workday { background: #d7eddf; color: #075e3a; border-bottom: 3px solid #16a66a; }
+.br-calendar-day.is-holiday { background: #f6e4d2; color: #825027; border-bottom: 3px solid #ce8743; }
+.br-calendar-day.is-past { background: #edf0ee; color: #85958d; }
+.br-calendar-day.is-empty { background: transparent; border-bottom: 0; }
+.br-calendar-weeklabel, .br-calendar-weekcount { display: flex; justify-content: center; align-items: center; text-align: center; color: var(--muted); font-size: 1.25cqw; }
+.is-remaining .br-calendar-weeklabel { color: #075e3a; font-weight: 700; }
+.br-calendar-weekcount { font-size: 2.2cqw; color: #075e3a; font-weight: 750; }
+.br-calendar-summary { display: flex; flex-direction: column; justify-content: space-around; border-left: 1px solid var(--line); padding-left: 2cqw; }
+.br-calendar-summary > div { display: flex; flex-direction: column; gap: .8cqw; }
+.br-calendar-summary strong { font-size: 6cqw; color: #087e50; line-height: 1; }
+.br-calendar-summary span { font-size: 1.7cqw; color: var(--ink); line-height: 1.25; }
+.br-calendar-summary p { font-size: 1.2cqw; color: var(--muted); line-height: 1.4; }
+.br-calendar-legend { display: flex; gap: 2cqw; padding-top: 1cqw; color: var(--muted); font-size: 1.15cqw; }
+.br-calendar-legend span { display: flex; align-items: center; gap: .5cqw; }
+.br-calendar-legend i { width: 1cqw; height: 1cqw; background: #d7eddf; border: 1px solid #16a66a; }
+.br-calendar-legend .is-holiday { background: #f6e4d2; border-color: #ce8743; }
+.br-calendar-legend .is-past { background: #edf0ee; border-color: #85958d; }
 .br-cover-copy { padding-right: 9%; }
 .br-cover-date { margin: 0 0 3.5%; color: #b8dbc3; font-size: clamp(14px, 1.4cqw, 22px); }
 .br-cover-copy h2 { max-width: 660px; margin: 0; color: #f6faf6; font-size: clamp(44px, 5.8cqw, 94px); line-height: 1.04; letter-spacing: -.025em; font-weight: 760; text-wrap: balance; }
@@ -292,4 +332,33 @@
 @media (min-width: 801px) and (max-width: 1150px) { .br-overview-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) {
   .br-player *, .br-player *::before, .br-player *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+@media (max-width: 800px) {
+  .br-scorecard-main { flex-direction: column; align-items: stretch; gap: 24px; padding: 20px 0; }
+  .br-scorecard-amount > span, .br-scorecard-goal > span { font-size: 16px; }
+  .br-scorecard-amount > strong { font-size: clamp(30px, 8.5vw, 58px); }
+  .br-scorecard-goal { text-align: left; }
+  .br-scorecard-goal > strong { font-size: 26px; }
+  .br-scorecard-goal > b { font-size: 20px; }
+  .br-scorecard-progress { min-height: 12px; }
+  .br-scorecard-comparison { font-size: 15px; flex-wrap: wrap; }
+  .br-scorecard-comparison strong { font-size: 22px; }
+  .br-scorecard-metrics { grid-template-columns: 1fr; gap: 18px; padding: 20px 0; }
+  .br-scorecard-metrics span { font-size: 15px; }
+  .br-scorecard-metrics strong { font-size: 24px; }
+  .br-calendar-layout { grid-template-columns: 1fr; overflow-x: auto; flex: none; }
+  .br-calendar-month { min-width: 610px; min-height: 370px; }
+  .br-calendar-row.br-calendar-weekdays { height: 26px; }
+  .br-calendar-weekdays span { font-size: 12px; }
+  .br-calendar-day > strong { font-size: 24px; }
+  .br-calendar-day > small { font-size: 10px; }
+  .br-calendar-weeklabel { font-size: 13px; }
+  .br-calendar-weekcount { font-size: 24px; }
+  .br-calendar-summary { flex-direction: row; gap: 20px; border-left: 0; padding: 18px 0; }
+  .br-calendar-summary strong { font-size: 44px; }
+  .br-calendar-summary span { font-size: 16px; }
+  .br-calendar-summary p { font-size: 13px; }
+  .br-calendar-legend { font-size: 12px; flex-wrap: wrap; gap: 12px; padding-top: 14px; }
+  .br-calendar-legend i { width: 12px; height: 12px; }
 }
