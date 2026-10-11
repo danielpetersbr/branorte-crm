@@ -67,7 +67,13 @@
 .br-call-table th:first-child { width: 22%; text-align: left; }
 .br-call-table tbody th { font-weight: 600; }
 .br-call-table tbody tr:nth-child(even) { background: #edf3ef; }
-.br-call-table tbody td:nth-child(5), .br-call-table thead tr:first-child th:nth-child(3), .br-call-table thead tr:nth-child(2) th:nth-child(4) { border-left: 2px solid #aacabb; }
+.br-call-table .br-call-period-start { border-left: 2px solid #aacabb; }
+.has-client-count .br-call-week-metrics { grid-template-columns: repeat(4, 1fr); }
+.has-client-count .br-call-week-metrics div { flex-direction: column; gap: .25cqw; }
+.has-client-count .br-call-week-metrics strong { font-size: clamp(25px, 2.8cqw, 45px); }
+.has-client-count .br-call-week-metrics span { font-size: clamp(11px, 1.05cqw, 17px); }
+.has-client-count .br-call-table th:first-child { width: auto; }
+.has-client-count .br-call-table thead tr:first-child > th:first-child, .has-client-count .br-call-table tbody th { width: 18%; }
 @media (max-width: 760px) {
   .br-call-week-metrics div { flex-direction: column; gap: 3px; }
   .br-call-table { min-height: 330px; }
