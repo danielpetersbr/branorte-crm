@@ -58,15 +58,15 @@ export function useWaVendedores() {
   })
 }
 
-export function useWaKanban(vendedor: string | null) {
+export function useWaKanban(vendedor: string | null, incluirAna = true) {
   const userId = useAuth().session?.user.id
   const todos = vendedor === TODOS
   return useQuery<WaKanban>({
-    queryKey: ['wa-kanban', vendedor, userId],
+    queryKey: ['wa-kanban', vendedor, userId, todos ? incluirAna : true],
     enabled: !!vendedor && !!userId,
     refetchInterval: 30_000, // mesma cadência da extensão
     queryFn: async ({ signal }) => {
-      const fora = `(${NOMES_FORA_DO_RANKING.join(',')})`
+      const fora = `(${[...NOMES_FORA_DO_RANKING, ...(!incluirAna ? ['ANA'] : [])].join(',')})`
       const [etiquetas, linhasChats] = await Promise.all([
         todasAsLinhas(async (de, ate) => {
           let q = supabase
