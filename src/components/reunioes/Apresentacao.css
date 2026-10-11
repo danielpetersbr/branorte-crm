@@ -362,3 +362,16 @@
   .br-calendar-legend { font-size: 12px; flex-wrap: wrap; gap: 12px; padding-top: 14px; }
   .br-calendar-legend i { width: 12px; height: 12px; }
 }
+
+.br-slide-cover.is-minimal { background: var(--paper); color: #0a2e22; }
+.br-slide-cover.is-minimal .br-slide-content { padding: 0; }
+.br-cover-minimal { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4cqw; padding: 6cqw; text-align: center; }
+.br-cover-photo { display: block; width: 25cqw; height: 10cqw; object-fit: cover; object-position: center top; border-radius: 3px; }
+.br-cover-minimal h2 { max-width: 78%; margin: 0; font-size: clamp(32px, 4.3cqw, 70px); font-weight: 650; line-height: 1.18; letter-spacing: -.025em; text-wrap: balance; }
+.br-cover-minimal p { margin: 0; font-size: clamp(13px, 1.4cqw, 22px); color: var(--muted); line-height: 1.3; }
+@media (max-width: 800px) {
+  .br-cover-minimal { min-height: 70dvh; height: auto; gap: 36px; padding: 48px 24px; }
+  .br-cover-photo { width: 240px; max-width: 65%; height: 96px; }
+  .br-cover-minimal h2 { max-width: 100%; font-size: clamp(32px, 7vw, 54px); }
+  .br-cover-minimal p { font-size: 16px; }
+}
