@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import type { ApresentacaoSlide } from '@/hooks/useReunioes'
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 })
@@ -70,6 +70,44 @@ function CoverContent({ slide, onNavigate }: { slide: Extract<ApresentacaoSlide,
 }
 
 function CallsContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'calls' }> }) {
+  return slide.weeks?.length === 2 ? <CallsComparisonContent slide={slide} weeks={slide.weeks} /> : <CallsSingleContent slide={slide} />
+}
+
+function CallsComparisonContent({ slide, weeks }: {
+  slide: Extract<ApresentacaoSlide, { type: 'calls' }>
+  weeks: NonNullable<Extract<ApresentacaoSlide, { type: 'calls' }>['weeks']>
+}) {
+  const names = [...new Set(weeks.flatMap(week => week.sellers.map(seller => seller.name)))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  return (
+    <div className="br-template br-calls-comparison">
+      <div className="br-template-heading"><h2>{slide.title}</h2><p>Segunda a domingo · consulta em 11/10</p></div>
+      <div className="br-call-weeks">
+        {weeks.map(week => <div className="br-call-week" key={week.from}>
+          <h3>{week.label}</h3>
+          <div className="br-call-week-metrics">
+            <div><strong>{numero.format(week.made)}</strong><span>feitas</span></div>
+            <div><strong>{numero.format(week.answered)}</strong><span>atendidas</span></div>
+            <div className="br-call-valid"><strong>{numero.format(week.total)}</strong><span>válidas</span></div>
+          </div>
+        </div>)}
+      </div>
+      <div className="br-call-table-wrap">
+        <table className="br-call-table" aria-label="Ligações por vendedor nas duas semanas">
+          <thead>
+            <tr><th rowSpan={2} scope="col">Vendedor</th>{weeks.map(week => <th key={week.from} colSpan={3} scope="colgroup">{week.label}</th>)}</tr>
+            <tr>{weeks.map(week => <Fragment key={week.from}><th scope="col">Feitas</th><th scope="col">Atendidas</th><th scope="col" className="br-call-valid">Válidas</th></Fragment>)}</tr>
+          </thead>
+          <tbody>{names.map(name => <tr key={name}><th scope="row">{name}</th>{weeks.map(week => {
+            const seller = week.sellers.find(row => row.name === name)
+            return <Fragment key={week.from}><td>{seller ? numero.format(seller.made) : '—'}</td><td>{seller ? numero.format(seller.answered) : '—'}</td><td className="br-call-valid">{seller ? numero.format(seller.total) : '—'}</td></Fragment>
+          })}</tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function CallsSingleContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'calls' }> }) {
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const vendedores = [...(slide.sellers ?? [])].sort((a, b) => b.count - a.count)
   const selected = vendedores.find(v => v.name === selectedName)
