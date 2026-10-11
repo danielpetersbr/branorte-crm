@@ -78,8 +78,9 @@ function CallsComparisonContent({ slide, weeks }: {
   weeks: NonNullable<Extract<ApresentacaoSlide, { type: 'calls' }>['weeks']>
 }) {
   const names = [...new Set(weeks.flatMap(week => week.sellers.map(seller => seller.name)))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  const showClients = weeks.some(week => typeof week.clientsAnswered === 'number')
   return (
-    <div className="br-template br-calls-comparison">
+    <div className={`br-template br-calls-comparison${showClients ? ' has-client-count' : ''}`}>
       <div className="br-template-heading"><h2>{slide.title}</h2><p>Segunda a domingo · consulta em 11/10</p></div>
       <div className="br-call-weeks">
         {weeks.map(week => <div className="br-call-week" key={week.from}>
@@ -87,6 +88,7 @@ function CallsComparisonContent({ slide, weeks }: {
           <div className="br-call-week-metrics">
             <div><strong>{numero.format(week.made)}</strong><span>feitas</span></div>
             <div><strong>{numero.format(week.answered)}</strong><span>atendidas</span></div>
+            {showClients && <div><strong>{typeof week.clientsAnswered === 'number' ? numero.format(week.clientsAnswered) : '—'}</strong><span>clientes atendidos</span></div>}
             <div className="br-call-valid"><strong>{numero.format(week.total)}</strong><span>válidas</span></div>
           </div>
         </div>)}
@@ -94,12 +96,12 @@ function CallsComparisonContent({ slide, weeks }: {
       <div className="br-call-table-wrap">
         <table className="br-call-table" aria-label="Ligações por vendedor nas duas semanas">
           <thead>
-            <tr><th rowSpan={2} scope="col">Vendedor</th>{weeks.map(week => <th key={week.from} colSpan={3} scope="colgroup">{week.label}</th>)}</tr>
-            <tr>{weeks.map(week => <Fragment key={week.from}><th scope="col">Feitas</th><th scope="col">Atendidas</th><th scope="col" className="br-call-valid">Válidas</th></Fragment>)}</tr>
+            <tr><th rowSpan={2} scope="col">Vendedor</th>{weeks.map((week, i) => <th key={week.from} colSpan={showClients ? 4 : 3} scope="colgroup" className={i === 1 ? 'br-call-period-start' : undefined}>{week.label}</th>)}</tr>
+            <tr>{weeks.map((week, i) => <Fragment key={week.from}><th scope="col" className={i === 1 ? 'br-call-period-start' : undefined}>Feitas</th><th scope="col">Atendidas</th>{showClients && <th scope="col">Clientes atendidos</th>}<th scope="col" className="br-call-valid">Válidas</th></Fragment>)}</tr>
           </thead>
-          <tbody>{names.map(name => <tr key={name}><th scope="row">{name}</th>{weeks.map(week => {
+          <tbody>{names.map(name => <tr key={name}><th scope="row">{name}</th>{weeks.map((week, i) => {
             const seller = week.sellers.find(row => row.name === name)
-            return <Fragment key={week.from}><td>{seller ? numero.format(seller.made) : '—'}</td><td>{seller ? numero.format(seller.answered) : '—'}</td><td className="br-call-valid">{seller ? numero.format(seller.total) : '—'}</td></Fragment>
+            return <Fragment key={week.from}><td className={i === 1 ? 'br-call-period-start' : undefined}>{seller ? numero.format(seller.made) : '—'}</td><td>{seller ? numero.format(seller.answered) : '—'}</td>{showClients && <td>{typeof seller?.clientsAnswered === 'number' ? numero.format(seller.clientsAnswered) : '—'}</td>}<td className="br-call-valid">{seller ? numero.format(seller.total) : '—'}</td></Fragment>
           })}</tr>)}</tbody>
         </table>
       </div>
