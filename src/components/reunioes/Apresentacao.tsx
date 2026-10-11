@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, ArrowRight, Download, Filter, Flag, LayoutGrid, ListChecks, Loader2, Maximize2, Minimize2, Phone, Play, Presentation, TrendingUp, Upload, Users, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Download, Filter, Flag, LayoutGrid, ListChecks, Loader2, Maximize2, Minimize2, Phone, Play, Presentation, TrendingUp, Upload, Users, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { ApresentacaoManifesto, ApresentacaoSlide } from '@/hooks/useReunioes'
 import { NativeSlide } from './ApresentacaoSlides'
@@ -12,6 +12,8 @@ const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.
 const chapters = {
   cover: { label: 'Abertura', Icon: Flag },
   calls: { label: 'Ligações', Icon: Phone },
+  scorecard: { label: 'Placar', Icon: TrendingUp },
+  calendar: { label: 'Calendário', Icon: CalendarDays },
   sales: { label: 'Vendas', Icon: TrendingUp },
   teams: { label: 'Times', Icon: Users },
   agenda: { label: 'Pauta', Icon: ListChecks },
@@ -23,6 +25,8 @@ function chapterSummary(slide: ApresentacaoSlide): string {
   switch (slide.type) {
     case 'cover': return slide.subtitle || 'Vamos começar a reunião'
     case 'calls': return slide.weeks?.length === 2 ? `${slide.weeks.map(week => week.label).join(' e ')} · ${slide.clientsOnly ? 'clientes com quem conversamos por ligação' : 'feitas, atendidas e válidas'}` : `${slide.total} chamadas válidas · ${slide.metCount} de ${slide.sellerCount} na meta`
+    case 'scorecard': return slide.periodLabel || 'Resultado e meta do mês'
+    case 'calendar': return `${slide.remainingWeeks} semanas · ${slide.workingDays} dias úteis disponíveis`
     case 'sales': return `${slide.effectiveSales} vendas na semana · ${slide.aboveTenK} acima de R$ 10 mil`
     case 'teams': return `${slide.teams.length} times · clique para explorar cada resultado`
     case 'agenda': return `${slide.totalMinutes} minutos · vá direto ao assunto`
