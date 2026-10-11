@@ -209,6 +209,39 @@ function SalesContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'sa
   )
 }
 
+function ScorecardContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'scorecard' }> }) {
+  const goal = typeof slide.goal === 'number' && slide.goal > 0 ? slide.goal : null
+  const pct = goal === null ? null : slide.amount / goal * 100
+  return <div className="br-template br-scorecard">
+    <div className="br-template-heading"><h2>{slide.title}</h2><p>{slide.periodLabel}</p></div>
+    <div className="br-scorecard-main">
+      <div className="br-scorecard-amount"><span>{slide.amountLabel}</span><strong>{brl.format(slide.amount)}</strong></div>
+      {goal !== null && <div className="br-scorecard-goal"><span>Meta do mês</span><strong>{brlInteiro.format(goal)}</strong><b>{pct!.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% atingido</b></div>}
+    </div>
+    {goal !== null && <div className="br-scorecard-progress" role="progressbar" aria-label="Resultado ante a meta mensal" aria-valuenow={Math.min(goal, Math.max(0, slide.amount))} aria-valuemin={0} aria-valuemax={goal} aria-valuetext={`${brl.format(slide.amount)} de ${brl.format(goal)}`}><span style={{ width: `${Math.min(100, Math.max(0, pct!))}%` }} /></div>}
+    {slide.comparison && <div className="br-scorecard-comparison"><span>{slide.comparison.label}</span><strong>{brl.format(slide.comparison.value)}</strong></div>}
+    <div className="br-scorecard-metrics">{slide.metrics.map(m => <div key={m.label}><span>{m.label}</span><strong>{m.value}</strong></div>)}</div>
+  </div>
+}
+
+function CalendarContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'calendar' }> }) {
+  return <div className="br-template br-calendar">
+    <div className="br-template-heading"><h2>{slide.title}</h2><p>{slide.monthLabel}</p></div>
+    <div className="br-calendar-layout">
+      <div className="br-calendar-month" role="table" aria-label={`Calendário de ${slide.monthLabel}, semanas de segunda a domingo`}>
+        <div className="br-calendar-row br-calendar-weekdays" role="row"><span role="columnheader">Semana</span>{['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(d => <span role="columnheader" key={d}>{d}</span>)}<span role="columnheader">Dias úteis</span></div>
+        {slide.weeks.map(week => <div className={`br-calendar-row${week.remaining ? ' is-remaining' : ''}`} role="row" key={week.label}>
+          <span className="br-calendar-weeklabel" role="rowheader">{week.label}</span>
+          {week.days.map((d, i) => <div role="cell" className={`br-calendar-day is-${d.state}${d.day === null ? ' is-empty' : ''}`} key={i} aria-label={d.day === null ? 'Fora do mês' : `${d.day}: ${d.label || ({ past: 'já passou', workday: 'dia útil disponível', weekend: 'fim de semana', holiday: 'feriado' }[d.state])}`}><strong>{d.day}</strong>{d.label && <small>{d.label}</small>}</div>)}
+          <span className="br-calendar-weekcount" role="cell">{week.remaining ? week.workingDays : '—'}</span>
+        </div>)}
+      </div>
+      <aside className="br-calendar-summary"><div><strong>{slide.remainingWeeks}</strong><span>semanas para trabalhar</span></div><div><strong>{slide.workingDays}</strong><span>dias úteis disponíveis</span></div><p>{slide.rangeLabel}<br />{slide.note}</p></aside>
+    </div>
+    <div className="br-calendar-legend"><span><i className="is-workday" />Dias úteis restantes</span><span><i className="is-holiday" />Feriado</span><span><i className="is-past" />Já passou</span></div>
+  </div>
+}
+
 function TeamsContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'teams' }> }) {
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const times = [...(slide.teams ?? [])].sort((a, b) => b.total - a.total)
@@ -358,11 +391,13 @@ export function NativeSlide({ slide, pagina, total, videoUrl, videoLoading, vide
   videoError: string | null
   onNavigate?: NavigateSlide
 }) {
-  const footer = slide.type === 'calls' || slide.type === 'sales' || slide.type === 'teams' ? slide.takeaway
+  const footer = slide.type === 'calls' || slide.type === 'sales' || slide.type === 'teams' || slide.type === 'scorecard' || slide.type === 'calendar' ? slide.takeaway
     : slide.type === 'funnel' ? slide.noteShort : undefined
   return <SlideShell slide={slide} pagina={pagina} total={total} footer={footer}>
     {slide.type === 'cover' && <CoverContent slide={slide} onNavigate={onNavigate} />}
     {slide.type === 'calls' && <CallsContent slide={slide} />}
+    {slide.type === 'scorecard' && <ScorecardContent slide={slide} />}
+    {slide.type === 'calendar' && <CalendarContent slide={slide} />}
     {slide.type === 'sales' && <SalesContent slide={slide} />}
     {slide.type === 'teams' && <TeamsContent slide={slide} />}
     {slide.type === 'agenda' && <AgendaContent slide={slide} onNavigate={onNavigate} />}
