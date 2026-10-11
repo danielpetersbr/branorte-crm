@@ -70,7 +70,32 @@ function CoverContent({ slide, onNavigate }: { slide: Extract<ApresentacaoSlide,
 }
 
 function CallsContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'calls' }> }) {
+  if (slide.clientsOnly && slide.weeks?.length === 2) return <CallsClientsContent slide={slide} weeks={slide.weeks} />
   return slide.weeks?.length === 2 ? <CallsComparisonContent slide={slide} weeks={slide.weeks} /> : <CallsSingleContent slide={slide} />
+}
+
+function CallsClientsContent({ slide, weeks }: {
+  slide: Extract<ApresentacaoSlide, { type: 'calls' }>
+  weeks: NonNullable<Extract<ApresentacaoSlide, { type: 'calls' }>['weeks']>
+}) {
+  const names = [...new Set(weeks.flatMap(week => week.sellers.map(seller => seller.name)))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  return <div className="br-template br-calls-comparison">
+    <div className="br-template-heading"><h2>{slide.title}</h2><p>Clientes diferentes · segunda a domingo</p></div>
+    <div className="br-call-weeks">{weeks.map(week => <div className="br-call-week" key={week.from}>
+      <h3>{week.label}</h3>
+      <div className="br-call-week-metrics" style={{ gridTemplateColumns: '1fr' }}><div>
+        <strong style={{ fontSize: 'clamp(42px, 5cqw, 80px)' }}>{typeof week.clientsAnswered === 'number' ? numero.format(week.clientsAnswered) : '—'}</strong>
+        <span>clientes com quem conversamos</span>
+      </div></div>
+    </div>)}</div>
+    <div className="br-call-table-wrap"><table className="br-call-table" aria-label="Clientes com quem conversamos por ligação nas duas semanas">
+      <thead><tr><th scope="col">Vendedor</th>{weeks.map((week, i) => <th key={week.from} scope="col" className={i === 1 ? 'br-call-period-start' : undefined}>{week.label}</th>)}</tr></thead>
+      <tbody>{names.map(name => <tr key={name}><th scope="row">{name}</th>{weeks.map((week, i) => {
+        const seller = week.sellers.find(row => row.name === name)
+        return <td key={week.from} className={i === 1 ? 'br-call-period-start' : undefined}>{typeof seller?.clientsAnswered === 'number' ? numero.format(seller.clientsAnswered) : '—'}</td>
+      })}</tr>)}</tbody>
+    </table></div>
+  </div>
 }
 
 function CallsComparisonContent({ slide, weeks }: {
