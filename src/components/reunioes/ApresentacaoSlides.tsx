@@ -40,22 +40,28 @@ function SlideShell({ slide, pagina, total, children, footer }: {
   children: React.ReactNode
   footer?: React.ReactNode
 }) {
+  const minimalCover = slide.type === 'cover' && slide.minimal
   return (
-    <section className={`br-slide br-slide-${slide.type}`} role="group" aria-label={`Slide ${pagina} de ${total}: ${slide.title}`}>
-      <div className="br-slide-top">
+    <section className={`br-slide br-slide-${slide.type}${minimalCover ? ' is-minimal' : ''}`} role="group" aria-label={`Slide ${pagina} de ${total}: ${slide.title}`}>
+      {!minimalCover && <div className="br-slide-top">
         <span className="br-slide-brand">Branorte<span className="br-brand-square" /></span>
         {slide.eyebrow && <span className="br-slide-eyebrow">{slide.eyebrow}</span>}
-      </div>
+      </div>}
       <div className="br-slide-content">{children}</div>
-      <div className="br-slide-bottom">
+      {!minimalCover && <div className="br-slide-bottom">
         <span className="br-slide-bottom-note">{footer}</span>
         <span className="br-slide-page">{String(pagina).padStart(2, '0')} / {String(total).padStart(2, '0')}</span>
-      </div>
+      </div>}
     </section>
   )
 }
 
 function CoverContent({ slide, onNavigate }: { slide: Extract<ApresentacaoSlide, { type: 'cover' }>; onNavigate?: NavigateSlide }) {
+  if (slide.minimal) return <div className="br-cover-minimal">
+    {slide.imageUrl && <img className="br-cover-photo" src={slide.imageUrl} alt={slide.imageAlt || 'Branorte'} />}
+    <h2>{slide.title}</h2>
+    <p>{slide.dateLabel}</p>
+  </div>
   return (
     <div className="br-cover-layout">
       <div className="br-cover-copy">
