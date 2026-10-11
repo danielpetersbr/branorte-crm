@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, Menu, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, Route, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Wallet, Wheat, Workflow, X, Zap,
+  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, Menu, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, Route, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Video, Wallet, Wheat, Workflow, X, Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState, Suspense, type CSSProperties, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -237,6 +237,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/ia-atendente', label: 'IA Atendente', icon: Bot, permKey: 'menu.ia_atendente' },
       { to: '/fluxos', label: 'Fluxos do Funil', icon: Workflow, permKey: 'menu.fluxos_funil' },
       { to: '/ia-teste', label: 'Testar a IA', icon: Bot, permKey: 'menu.ia_teste' },
+      { to: '/estudio-video', label: 'Estúdio de vídeo', icon: Video, adminOnly: true },
     ],
   },
   {

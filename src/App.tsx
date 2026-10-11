@@ -52,6 +52,7 @@ const OrcamentoMontar = lazy(() => import('@/pages/OrcamentoMontar').then(m => (
 const CatalogoAdmin = lazy(() => import('@/pages/CatalogoAdmin').then(m => ({ default: m.CatalogoAdmin })))
 const Projeto = lazy(() => import('@/pages/Projeto').then(m => ({ default: m.Projeto })))
 const Projeto3D = lazy(() => import('@/pages/Projeto3D').then(m => ({ default: m.Projeto3D })))
+const EstudioVideo = lazy(() => import('@/pages/EstudioVideo').then(m => ({ default: m.EstudioVideo })))
 const ProducaoFabrica=lazy(()=>import('@/pages/controle/ProducaoFabrica'))
 const ProducaoPropria = lazy(() => import('@/pages/ProducaoPropria').then(m => ({ default: m.ProducaoPropria })))
 const VendaRacao = lazy(() => import('@/pages/VendaRacao').then(m => ({ default: m.VendaRacao })))
@@ -338,6 +339,10 @@ function AppRoutes() {
   // Logado mas sem profile aprovado → /pendente (ou portal, se for transportadora)
   if (!profile || !profile.approved_at || profile.role === 'pending' || profile.role === 'rejected') {
     return <PendenteOuTransportadora />
+  }
+
+  if (loc.pathname.startsWith('/estudio-video') && profile.role !== 'admin') {
+    return <Navigate to="/" replace />
   }
 
   const factoryRoute=decidirRotaProducaoFabrica(loc.pathname,fabrica)
@@ -651,6 +656,7 @@ function AppRoutes() {
         <Route path="/funil/relatorio" element={<FunilRelatorio />} />
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D />} />
+        {profile.role === 'admin' && <Route path="/estudio-video" element={<EstudioVideo />} />}
         {/* DUAS telas de ração, com propósitos opostos — não confundir:
             /producao-propria = vale a pena o CLIENTE parar de comprar e produzir?
                                 (economia, payback, investimento). Absorveu a

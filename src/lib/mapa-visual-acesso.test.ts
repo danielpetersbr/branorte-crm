@@ -89,6 +89,59 @@ test('papéis existentes mantêm mapa visual e suas guardas anteriores', () => {
   assert.equal(routesFixture('/dashboard', { role: 'consultor' }).tree.props.to, '/producao-propria')
 })
 
+function findRoute(tree: Element, pathname: string): Element | undefined {
+  if (tree?.props?.path === pathname) return tree
+  const children = [tree?.props?.children].flat(Infinity).filter(Boolean) as Element[]
+  for (const child of children) {
+    const found = findRoute(child, pathname)
+    if (found) return found
+  }
+}
+
+test('estúdio de vídeo registra a página somente para administrador aprovado', () => {
+  const tree = routesFixture('/estudio-video', { role: 'admin' }).tree
+  assert.equal(findRoute(tree, '/estudio-video')?.props.element.type, 'EstudioVideo')
+  for (const [options, type] of [
+    [{ role: 'admin', session: false }, 'Navigate'],
+    [{ role: 'admin', approved: false }, 'PendenteOuTransportadora'],
+    [{ role: 'admin', profileError: true }, 'ProfileLoadError'],
+    [{ role: 'admin', loading: true }, 'PageLoading'],
+  ] as const) assert.equal(routesFixture('/estudio-video', options).tree.type, type)
+})
+
+test('URL direta do estúdio nega demais papéis mesmo com todas as permissões liberadas', () => {
+  for (const role of ['financeiro', 'marketing', 'vendor', 'visualizador', 'mapa', 'representante', 'consultor', 'mapa_visual']) {
+    const tree = routesFixture('/estudio-video', { role }).tree
+    assert.equal(tree.type, 'Navigate', role)
+    assert.equal(findRoute(tree, '/estudio-video'), undefined, role)
+  }
+})
+
+test('menu do estúdio fica disponível apenas ao administrador', () => {
+  const source = readFileSync(new URL('../components/layout/Layout.tsx', import.meta.url), 'utf8')
+  const ast = ts.createSourceFile('Layout.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let groups: ts.Expression | undefined
+  let visible: ts.Expression | undefined
+  const icons = new Set<string>()
+  function visit(node: ts.Node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'NAV_GROUPS') groups = node.initializer
+    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'visible') visible = node.initializer
+    if (ts.isPropertyAssignment(node) && node.name.getText(ast) === 'icon' && ts.isIdentifier(node.initializer)) icons.add(node.initializer.text)
+    ts.forEachChild(node, visit)
+  }
+  visit(ast)
+  assert.ok(groups)
+  assert.ok(visible)
+  const code = ts.transpileModule(`const groups = ${groups.getText(ast)}; const visible = ${visible.getText(ast)}; groups.flatMap(g => g.items).filter(i => !i.hidden && visible(i)).map(i => i.to)`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText
+  for (const role of ['admin', 'financeiro', 'marketing', 'vendor', 'visualizador', 'mapa', 'representante', 'consultor', 'mapa_visual']) {
+    const context = { profile: { role }, can: () => true, ...Object.fromEntries([...icons].map(icon => [icon, icon])) }
+    const destinations = vm.runInNewContext(code, context) as string[]
+    assert.equal(destinations.includes('/estudio-video'), role === 'admin', role)
+  }
+})
+
 test('catálogo e can negam papel exclusivo mesmo com row/override true e não consultam override', () => {
   let role = 'mapa_visual'
   const queries: any[] = []
