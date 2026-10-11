@@ -91,6 +91,11 @@ function CallsClientsContent({ slide, weeks }: {
         <strong style={{ fontSize: 'clamp(42px, 5cqw, 80px)' }}>{typeof week.clientsRepeated === 'number' ? numero.format(week.clientsRepeated) : '—'}</strong>
         <span>desses, conversaram 2+ vezes</span>
       </div>}</div>
+      {slide.showCallTargets && slide.teamTarget > 0 && <div style={{ marginTop: '.75cqw', paddingTop: '.6cqw', borderTop: '1px solid var(--line)', fontSize: 'clamp(12px, 1.15cqw, 18px)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1cqw' }}><span>Meta de ligações: <strong>{numero.format(week.total)} / {numero.format(slide.teamTarget)}</strong></span><strong>{Math.round(week.total / slide.teamTarget * 100)}% atingido</strong></div>
+        <div role="progressbar" aria-label={`Meta de ligações em ${week.label}`} aria-valuemin={0} aria-valuemax={slide.teamTarget} aria-valuenow={Math.min(week.total, slide.teamTarget)} aria-valuetext={`${numero.format(week.total)} de ${numero.format(slide.teamTarget)} ligações`} style={{ height: '.4cqw', minHeight: '4px', margin: '.45cqw 0', background: '#d0e2d9', borderRadius: '4px' }}><div style={{ width: `${Math.min(100, Math.max(0, week.total / slide.teamTarget * 100))}%`, height: '100%', background: '#078753', borderRadius: 'inherit' }} /></div>
+        <div style={{ color: 'var(--muted)' }}>{week.total < slide.teamTarget ? `Faltaram ${numero.format(slide.teamTarget - week.total)} ligações` : 'Meta atingida'}{slide.individualTarget > 0 && ` · ${week.sellers.filter(seller => seller.total >= slide.individualTarget).length} de ${week.sellers.length} atingiram ${numero.format(slide.individualTarget)}`}</div>
+      </div>}
     </div>)}</div>
     <div className="br-call-table-wrap"><table className="br-call-table" aria-label="Clientes com quem conversamos por ligação nas duas semanas">
       <thead><tr><th rowSpan={showRepeated ? 2 : undefined} scope="col">Vendedor</th>{weeks.map((week, i) => <th key={week.from} colSpan={showRepeated ? 2 : undefined} scope={showRepeated ? 'colgroup' : 'col'} className={i === 1 ? 'br-call-period-start' : undefined}>{week.label}</th>)}</tr>
