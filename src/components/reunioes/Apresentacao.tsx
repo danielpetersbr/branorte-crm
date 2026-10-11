@@ -22,7 +22,7 @@ const chapters = {
 function chapterSummary(slide: ApresentacaoSlide): string {
   switch (slide.type) {
     case 'cover': return slide.subtitle || 'Vamos começar a reunião'
-    case 'calls': return slide.weeks?.length === 2 ? `${slide.weeks.map(week => week.label).join(' e ')} · feitas, atendidas e válidas` : `${slide.total} chamadas válidas · ${slide.metCount} de ${slide.sellerCount} na meta`
+    case 'calls': return slide.weeks?.length === 2 ? `${slide.weeks.map(week => week.label).join(' e ')} · ${slide.clientsOnly ? 'clientes com quem conversamos por ligação' : 'feitas, atendidas e válidas'}` : `${slide.total} chamadas válidas · ${slide.metCount} de ${slide.sellerCount} na meta`
     case 'sales': return `${slide.effectiveSales} vendas na semana · ${slide.aboveTenK} acima de R$ 10 mil`
     case 'teams': return `${slide.teams.length} times · clique para explorar cada resultado`
     case 'agenda': return `${slide.totalMinutes} minutos · vá direto ao assunto`
