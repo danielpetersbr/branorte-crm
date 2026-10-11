@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import {
   Copy, Check, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
   MapPin, Contact2, Ban, PhoneCall,
-  Search, SlidersHorizontal, Columns3, BarChart3, ListFilter, Users,
+  Search, SlidersHorizontal, Columns3, BarChart3, ListFilter, Users, Eye, EyeOff,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -553,6 +553,7 @@ export function FunilWhatsApp() {
   const { data: vendedores = [], isLoading: carregandoVendedores, error: erroVendedores } = useWaVendedores()
   const { data: vendorsData, isLoading: carregandoCadastro, error: erroCadastro } = useVendors()
   const [vendedorSel, setVendedorSel] = useState<string | null>(null)
+  const [mostrarAna, setMostrarAna] = useState(false)
   const [busca, setBusca] = useState('')
   const [chatSelecionado, setChatSelecionado] = useState<Pick<WaChat, 'phone' | 'vendedor'> | null>(null)
   const [limites, setLimites] = useState<Record<string, number>>({})
@@ -587,21 +588,28 @@ export function FunilWhatsApp() {
       ?? null
   }, [profile, vendorsData, vendedores])
 
-  // O vendedor vê o PRÓPRIO quadro e o da ANA (o chip da IA que recebe o lead do
-  // anúncio antes de passar pra ele) — nunca o de um colega nem o da equipe toda.
+  // O vendedor vê o próprio quadro; Ana (chip da IA) só após ativar o botão.
+  // Nunca mostra o de um colega nem o da equipe toda.
   // Sem vínculo resolvido, não mostra nenhum: nem o da Ana cai de fallback.
   const quadrosDoVendedor = useMemo(() => {
     if (!vendedorTravado) return []
-    const ana = vendedores.find(w => w === VENDEDOR_ANA)
+    const ana = mostrarAna && vendedores.find(w => w === VENDEDOR_ANA)
     return ana && ana !== vendedorTravado ? [vendedorTravado, ana] : [vendedorTravado]
-  }, [vendedorTravado, vendedores])
+  }, [vendedorTravado, vendedores, mostrarAna])
+
+  const vendedoresVisiveis = vendedores.filter(v => mostrarAna || v !== VENDEDOR_ANA)
+  const alternarAna = () => {
+    setMostrarAna(!mostrarAna)
+    if (mostrarAna && vendedorSel === VENDEDOR_ANA) setVendedorSel(profile?.role === 'vendor' ? vendedorTravado : TODOS)
+    setChatSelecionado(null)
+  }
 
   // Um perfil de vendedor sem vínculo resolvido não pode cair no quadro da equipe.
   const vendedor = profile?.role === 'vendor'
     ? (vendedorSel && quadrosDoVendedor.includes(vendedorSel) ? vendedorSel : vendedorTravado)
-    : vendedorSel ?? (vendedores.length ? TODOS : null)
+    : (vendedorSel === VENDEDOR_ANA && !mostrarAna ? TODOS : vendedorSel) ?? (vendedores.length ? TODOS : null)
   const modoTodos = vendedor === TODOS
-  const { data, isLoading, error } = useWaKanban(vendedor)
+  const { data, isLoading, error } = useWaKanban(vendedor, mostrarAna)
   const { data: agendadasMap } = useWaAgendadas(vendedor)
 
   useEffect(() => { setChatSelecionado(null) }, [vendedor])
@@ -747,7 +755,7 @@ export function FunilWhatsApp() {
               : <span className="funil-vendor-current">{vendedorTravado && nomeVendedor(vendedorTravado)}</span>
           ) : (<>
             <button onClick={() => setVendedorSel(TODOS)} aria-pressed={modoTodos}><Users size={15} />Toda a equipe</button>
-            {vendedores.map(v => <button key={v} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)}
+            {vendedoresVisiveis.map(v => <button key={v} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)}
           </>)}
         </div>
         <div className="funil-toolbar">
@@ -756,6 +764,13 @@ export function FunilWhatsApp() {
           <span className="sr-only">Buscar cliente ou telefone</span>
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente ou telefone…" />
         </label>
+
+        {vendedores.includes(VENDEDOR_ANA) && (profile?.role !== 'vendor' || vendedorTravado) && <button type="button" onClick={alternarAna} aria-pressed={mostrarAna}
+          className={'h-9 px-3 rounded-lg text-[13px] border inline-flex items-center gap-1.5 ' + (mostrarAna
+            ? 'bg-accent-bg text-accent border-accent/30 font-semibold'
+            : 'bg-surface text-ink-muted border-border hover:text-ink hover:border-border-strong')}>
+          {mostrarAna ? <EyeOff size={15} aria-hidden /> : <Eye size={15} aria-hidden />}{mostrarAna ? 'Ocultar leads da Ana' : 'Mostrar leads da Ana'}
+        </button>}
 
         {/* Ordenação */}
         <label className="relative">
