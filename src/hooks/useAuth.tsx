@@ -24,9 +24,10 @@ export interface AuthState {
   // true quando a query do profile falhou (timeout/erro) após retries.
   // Distingue "não consegui carregar" de "carregou e não está aprovado".
   profileError: boolean
+  sessionError: boolean
 }
 
-type AuthContextValue = AuthState & { signOut: () => Promise<void>; retryProfile: () => void; updateDisplayName: (confirmedId: string, displayName: string) => void }
+type AuthContextValue = AuthState & { signOut: () => Promise<void>; retryProfile: () => void; retrySession: () => void; updateDisplayName: (confirmedId: string, displayName: string) => void }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
@@ -40,11 +41,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const sessionToken = useRef<string | null>(null)
   const signOutPending = useRef(false)
   const profileLoadDeferred = useRef(false)
+  const sessionStatus = useRef<'pending' | 'failed' | 'ready'>('pending')
+  const sessionLifecycle = useRef<{ cancelGetter: () => void; invalidate: () => void } | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [profileError, setProfileError] = useState(false)
   const [profileLoadGeneration, setProfileLoadGeneration] = useState(0)
+  const [sessionError, setSessionError] = useState(false)
+  const [sessionLoadGeneration, setSessionLoadGeneration] = useState(0)
+
+  const retrySession = () => {
+    if (signOutPending.current || sessionStatus.current !== 'failed') return
+    sessionLifecycle.current?.invalidate()
+    sessionStatus.current = 'pending'
+    setSessionError(false)
+    setLoading(true)
+    setSessionLoadGeneration(current => current + 1)
+  }
 
   const retryProfile = () => {
     if (signOutPending.current || !identity.current || profileStatus.current !== 'failed') return
@@ -56,18 +70,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    supabase.auth.getSession()
-      .then(({ data }) => {
-        if (!mounted) return
-        setSession(data.session)
-        if (!data.session) setLoading(false)
-      })
-      .catch(() => {
-        if (!mounted) return
-        setLoading(false)
-      })
+    let getterPending = true
+    const cancelGetter = () => {
+      getterPending = false
+      window.clearTimeout(timer)
+    }
+    const fail = () => {
+      if (!mounted || !getterPending) return
+      cancelGetter()
+      sessionStatus.current = 'failed'
+      setSessionError(true)
+      setLoading(false)
+    }
+    const timer = window.setTimeout(fail, 8000)
+    const lifecycle = { cancelGetter, invalidate: () => { mounted = false; cancelGetter() } }
+    sessionLifecycle.current = lifecycle
+    sessionStatus.current = 'pending'
+    try {
+      supabase.auth.getSession()
+        .then(({ data, error }) => {
+          if (!mounted || !getterPending) return
+          if (error) { fail(); return }
+          cancelGetter()
+          sessionStatus.current = 'ready'
+          setSessionError(false)
+          setSession(data.session)
+          if (!data.session) setLoading(false)
+        })
+        .catch(fail)
+    } catch { fail() }
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
       if (!mounted) return
+      // Eventos atuais prevalecem sobre o snapshot iniciado antes deles.
+      cancelGetter()
+      sessionStatus.current = 'ready'
+      setSessionError(false)
       const nextId = sess?.user.id ?? null
       const nextToken = sess?.access_token ?? null
       const tokenChanged = !!nextToken && sessionToken.current !== nextToken
@@ -99,10 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
     return () => {
-      mounted = false
+      lifecycle.invalidate()
+      if (sessionLifecycle.current === lifecycle) sessionLifecycle.current = null
       sub.subscription.unsubscribe()
     }
-  }, [queryClient])
+  }, [queryClient, sessionLoadGeneration])
 
   // Carrega ao mudar a identidade ou solicitar retomada de uma carga que falhou.
   const userId = session?.user?.id ?? null
@@ -214,6 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const wasReady = profileStatus.current === 'ready'
     profileLoadDeferred.current = false
     signOutPending.current = true
+    sessionLifecycle.current?.cancelGetter()
     profileStatus.current = 'pending'
     profileRequest.current?.controller.abort()
     try {
@@ -223,6 +262,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null)
       setProfile(null)
       setProfileError(false)
+      sessionStatus.current = 'ready'
+      setSessionError(false)
       setLoading(false)
     } catch (error) {
       profileStatus.current = wasReady && identity.current === signOutUserId && !profileLoadDeferred.current ? 'ready' : 'failed'
@@ -243,7 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, profile: profile?.id === userId ? profile : null, loading: loading || (!!userId && !!profile && profile.id !== userId), profileError, signOut, retryProfile, updateDisplayName }}>
+    <AuthContext.Provider value={{ session, profile: profile?.id === userId ? profile : null, loading: loading || (!!userId && !!profile && profile.id !== userId), profileError, sessionError, signOut, retryProfile, retrySession, updateDisplayName }}>
       {children}
     </AuthContext.Provider>
   )

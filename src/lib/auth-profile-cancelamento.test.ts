@@ -13,6 +13,7 @@ let effectDependenciesSource = ''
 let sessionEffectSource = ''
 let signOutSource = ''
 let retryProfileSource = ''
+let retrySessionSource = ''
 function findEffect(node: ts.Node) {
   if (ts.isCallExpression(node) && node.expression.getText(source) === 'useEffect' && node.arguments[0]?.getText(source).includes('const fetchProfile')) {
     effectSource = node.arguments[0].getText(source)
@@ -23,6 +24,7 @@ function findEffect(node: ts.Node) {
   }
   if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'signOut') signOutSource = node.initializer!.getText(source)
   if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'retryProfile') retryProfileSource = node.initializer!.getText(source)
+  if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'retrySession') retrySessionSource = node.initializer!.getText(source)
   ts.forEachChild(node, findEffect)
 }
 findEffect(source)
@@ -32,6 +34,7 @@ const effectDependenciesJs = ts.transpileModule(`(${effectDependenciesSource})`,
 const sessionEffectJs = ts.transpileModule(`(${sessionEffectSource})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 const signOutJs = ts.transpileModule(`(${signOutSource})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 const retryProfileJs = retryProfileSource ? ts.transpileModule(`(${retryProfileSource})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText : '() => {}'
+const retrySessionJs = retrySessionSource ? ts.transpileModule(`(${retrySessionSource})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText : '() => {}'
 
 type Profile = { id: string; display_name: string; role: string; approved_at: string | null }
 type Response = { data: Profile | null; error: unknown }
@@ -53,6 +56,12 @@ function harness(client?: unknown) {
   const identity = { current: null as string | null }
   const signOutPending = { current: false }
   const profileLoadDeferred = { current: false }
+  const sessionStatus = { current: 'pending' as 'pending' | 'failed' | 'ready' }
+  const sessionLifecycle = { current: null as { cancelGetter: () => void; invalidate: () => void } | null }
+  let sessionError = false
+  let sessionGeneration = 0
+  let authCleanup: (() => void) | undefined
+  let lastSessionGeneration = -1
   type TestSession = { user: { id: string }; access_token: string }
   let session: TestSession | null = null
   let nextUserId: string | null = null
@@ -60,6 +69,9 @@ function harness(client?: unknown) {
   let lastProfileDependencies: unknown[] | null = null
   let profileCleanup: (() => void) | undefined
   let authCallback: ((event: string, next: TestSession | null) => void) | undefined
+  const authCallbacks: Array<(event: string, next: TestSession | null) => void> = []
+  const sessionRequests: Array<{ resolve: (value: { data: { session: TestSession | null }; error: unknown }) => void; reject: (error: unknown) => void }> = []
+  let subscriptionsClosed = 0
   const setProfileLoadGeneration = (updater: (value: number) => number) => {
     generation = updater(generation)
   }
@@ -75,6 +87,11 @@ function harness(client?: unknown) {
   }
   const retryProfile = vm.runInNewContext(retryProfileJs, {
     identity, profileStatus, signOutPending, profileLoadDeferred, setProfileLoadGeneration, setLoading, setProfileError,
+  }) as () => void
+  const setSessionError = (value: boolean) => { sessionError = value }
+  const retrySession = vm.runInNewContext(retrySessionJs, {
+    sessionStatus, sessionLifecycle, signOutPending, setSessionError, setLoading,
+    setSessionLoadGeneration: (update: (value: number) => number) => { sessionGeneration = update(sessionGeneration) },
   }) as () => void
   const window = {
     setTimeout(fn: () => void, delay: number) {
@@ -119,17 +136,28 @@ function harness(client?: unknown) {
     return profileCleanup
   }
   function mountAuth() {
+    lastSessionGeneration = sessionGeneration
     const effect = vm.runInNewContext(sessionEffectJs, {
       profileRequest, profileStatus, sessionToken, identity, signOutPending, profileLoadDeferred, retryProfile,
+      sessionStatus, sessionLifecycle, setSessionError, window,
       supabase: { auth: {
-        getSession: () => new Promise(() => {}),
-        onAuthStateChange: (callback: typeof authCallback) => { authCallback = callback; return { data: { subscription: { unsubscribe() {} } } } },
+        getSession: () => new Promise((resolve, reject) => { sessionRequests.push({ resolve, reject }) }),
+        onAuthStateChange: (callback: typeof authCallback) => { authCallback = callback; authCallbacks.push(callback!); return { data: { subscription: { unsubscribe() { subscriptionsClosed++ } } } } },
       } },
       queryClient: { clear() {} },
       setSession,
       setProfile, setLoading, setProfileError,
     })
-    return effect() as () => void
+    authCleanup = effect() as () => void
+    return authCleanup
+  }
+  async function renderSessionEffect() {
+    await flush()
+    if (sessionGeneration !== lastSessionGeneration) {
+      authCleanup?.()
+      mountAuth()
+      await flush()
+    }
   }
   async function renderProfileEffect() {
     await flush()
@@ -143,6 +171,7 @@ function harness(client?: unknown) {
   function signOutWith(confirmation: Promise<void>) {
     const signOut = vm.runInNewContext(signOutJs, {
       profileRequest, profileStatus, signOutPending, profileLoadDeferred, identity, retryProfile,
+      sessionLifecycle, sessionStatus, setSessionError,
       supabase: { auth: { signOut: () => confirmation } }, queryClient: { clear() {} },
       setSession, setProfile, setProfileError, setLoading,
     })
@@ -161,7 +190,7 @@ function harness(client?: unknown) {
     now = end
     await flush()
   }
-  return { mount, mountAuth, renderProfileEffect, retryProfile, signOutWith, emitAuth: (event: string, next: TestSession | null) => authCallback!(event, next), advance, requests, state, errors, profileWrites, profileRequest, profileStatus, sessionToken, signOutPending, profileLoadDeferred, identity, delays, timers, get session() { return session }, get maxActive() { return maxActive } }
+  return { mount, mountAuth, renderSessionEffect, renderProfileEffect, retryProfile, retrySession, signOutWith, emitAuth: (event: string, next: TestSession | null) => authCallback!(event, next), advance, requests, sessionRequests, authCallbacks, state, errors, profileWrites, profileRequest, profileStatus, sessionToken, signOutPending, profileLoadDeferred, sessionStatus, sessionLifecycle, identity, delays, timers, window, get sessionError() { return sessionError }, get subscriptionsClosed() { return subscriptionsClosed }, get session() { return session }, get maxActive() { return maxActive } }
 }
 const profile = (id: string, name = id): Profile => ({ id, display_name: name, role: 'vendor', approved_at: '2026-10-08' })
 
@@ -365,6 +394,7 @@ test('logout cancela imediatamente mesmo se a confirmação de signOut ainda est
   let clears = 0
   const signOut = vm.runInNewContext(signOutJs, {
     profileRequest: h.profileRequest, profileStatus: h.profileStatus, signOutPending: h.signOutPending, profileLoadDeferred: h.profileLoadDeferred, retryProfile: h.retryProfile,
+    sessionLifecycle: h.sessionLifecycle, sessionStatus: h.sessionStatus, setSessionError: () => {},
     supabase: { auth: { signOut: () => new Promise<void>(resolve => { confirmLogout = resolve }) } },
     queryClient: { clear: () => { clears++ } }, identity: { current: 'a' },
     setSession: () => {}, setProfile: () => {}, setProfileError: () => {}, setLoading: () => {},
@@ -388,6 +418,7 @@ test('callback Auth preserva perfil iniciado antes de INITIAL_SESSION e refresh;
   let clears = 0
   const sessionEffect = vm.runInNewContext(sessionEffectJs, {
     profileRequest: h.profileRequest, profileStatus: h.profileStatus, sessionToken: h.sessionToken, signOutPending: h.signOutPending, profileLoadDeferred: h.profileLoadDeferred, retryProfile: h.retryProfile, identity: { current: null },
+    window: h.window, sessionLifecycle: h.sessionLifecycle, sessionStatus: h.sessionStatus, setSessionError: () => {},
     supabase: { auth: {
       getSession: () => new Promise(() => {}),
       onAuthStateChange: (fn: typeof callback) => { callback = fn; return { data: { subscription: { unsubscribe() {} } } } },
@@ -664,4 +695,174 @@ test('logout rejeitado após sair e entrar no mesmo UID consulta perfil novo em 
   h.requests[1].resolve({ data: profile('a', 'Perfil atual'), error: null })
   await flush()
   assert.deepEqual(h.state, { profile: profile('a', 'Perfil atual'), loading: false, profileError: false })
+})
+
+test('bootstrap silencioso encerra loading em oito segundos sem presumir logout nem repetir consulta', async () => {
+  const h = harness()
+  h.mountAuth()
+  await h.advance(7999)
+  assert.equal(h.state.loading, true)
+  assert.equal(h.sessionError, false)
+  await h.advance(1)
+  assert.equal(h.state.loading, false)
+  assert.equal(h.sessionError, true)
+  assert.equal(h.state.profileError, false)
+  assert.equal(h.session, null)
+  assert.equal(h.timers.size, 0)
+  await h.advance(60_000)
+  assert.equal(h.sessionRequests.length, 1)
+})
+
+test('retry do bootstrap invalida getter e callback antigos já no clique e não duplica tentativa em voo', async () => {
+  const h = harness()
+  h.mountAuth()
+  await h.advance(8000)
+  h.retrySession()
+  h.retrySession()
+  h.authCallbacks[0]('SIGNED_IN', sessionFor('antigo'))
+  h.sessionRequests[0].resolve({ data: { session: sessionFor('antigo') }, error: null })
+  await flush()
+  assert.equal(h.session, null)
+  assert.equal(h.state.loading, true)
+  assert.equal(h.sessionError, false)
+  await h.renderSessionEffect()
+  assert.equal(h.sessionRequests.length, 2)
+  assert.equal(h.subscriptionsClosed, 1)
+  h.sessionRequests[1].resolve({ data: { session: sessionFor('atual') }, error: null })
+  await h.renderProfileEffect()
+  assert.equal(h.session?.user.id, 'atual')
+  assert.equal(h.requests.length, 1)
+  assert.equal(h.requests[0].uid, 'atual')
+  h.requests[0].resolve({ data: profile('atual'), error: null })
+  await flush()
+  assert.equal(h.state.loading, false)
+  assert.equal(h.sessionError, false)
+  assert.equal(h.timers.size, 0)
+})
+
+test('evento legítimo após deadline recupera sessão e getter tardio não substitui identidade nem erro', async () => {
+  const h = harness()
+  h.mountAuth()
+  await h.advance(8000)
+  h.emitAuth('SIGNED_IN', sessionFor('confirmada'))
+  await h.renderProfileEffect()
+  h.requests[0].resolve({ data: profile('confirmada'), error: null })
+  await flush()
+  assert.equal(h.sessionError, false)
+  h.sessionRequests[0].resolve({ data: { session: sessionFor('obsoleta') }, error: null })
+  await h.renderProfileEffect()
+  assert.equal(h.session?.user.id, 'confirmada')
+  assert.deepEqual(h.state.profile, profile('confirmada'))
+  assert.equal(h.requests.length, 1)
+  assert.equal(h.timers.size, 0)
+})
+
+test('INITIAL_SESSION null e SIGNED_OUT prevalecem sobre getter antigo com sessão', async () => {
+  for (const event of ['INITIAL_SESSION', 'SIGNED_OUT']) {
+    const h = harness()
+    h.mountAuth()
+    h.emitAuth(event, null)
+    h.sessionRequests[0].resolve({ data: { session: sessionFor('obsoleta') }, error: null })
+    await h.renderProfileEffect()
+    await h.advance(30_000)
+    assert.equal(h.session, null)
+    assert.equal(h.state.loading, false)
+    assert.equal(h.sessionError, false)
+    assert.equal(h.requests.length, 0)
+    assert.equal(h.timers.size, 0)
+  }
+})
+
+test('erro retornado ou rejeição do getter mostram falha recuperável, enquanto null confirmado libera login', async () => {
+  for (const kind of ['returned-error', 'rejected', 'confirmed-null']) {
+    const h = harness()
+    h.mountAuth()
+    if (kind === 'rejected') h.sessionRequests[0].reject(new Error('unavailable'))
+    else h.sessionRequests[0].resolve({ data: { session: null }, error: kind === 'returned-error' ? new Error('unavailable') : null })
+    await flush()
+    assert.equal(h.sessionError, kind !== 'confirmed-null')
+    assert.equal(h.state.loading, false)
+    assert.equal(h.timers.size, 0)
+    await h.advance(60_000)
+    assert.equal(h.sessionRequests.length, 1)
+  }
+})
+
+test('bootstrap vencido ignora resolução e rejeição tardias até retry ou evento legítimo', async () => {
+  for (const kind of ['resolve', 'reject']) {
+    const h = harness()
+    h.mountAuth()
+    await h.advance(8000)
+    if (kind === 'resolve') h.sessionRequests[0].resolve({ data: { session: sessionFor('tardia') }, error: null })
+    else h.sessionRequests[0].reject(new Error('late failure'))
+    await h.renderProfileEffect()
+    assert.equal(h.session, null)
+    assert.equal(h.sessionError, true)
+    assert.equal(h.state.loading, false)
+    assert.equal(h.requests.length, 0)
+  }
+})
+
+test('desmontagem e remount ignoram getter, callback e deadline do ciclo anterior', async () => {
+  const h = harness()
+  const cleanup = h.mountAuth()
+  cleanup()
+  assert.equal(h.timers.size, 0)
+  h.mountAuth()
+  h.sessionRequests[0].reject(new Error('previous mount'))
+  h.authCallbacks[0]('SIGNED_IN', sessionFor('anterior'))
+  await flush()
+  assert.equal(h.sessionError, false)
+  assert.equal(h.session, null)
+  assert.equal(h.state.loading, true)
+  h.emitAuth('INITIAL_SESSION', null)
+  await h.advance(30_000)
+  assert.equal(h.sessionError, false)
+  assert.equal(h.state.loading, false)
+  assert.equal(h.timers.size, 0)
+  assert.equal(h.subscriptionsClosed, 1)
+})
+
+test('logout explícito invalida getter pendente mesmo sem evento SDK antes da confirmação', async () => {
+  const h = harness()
+  h.mountAuth()
+  let confirm!: () => void
+  const pending = h.signOutWith(new Promise<void>(resolve => { confirm = resolve }))
+  h.sessionRequests[0].resolve({ data: { session: sessionFor('não-restaurar') }, error: null })
+  await flush()
+  assert.equal(h.session, null)
+  assert.equal(h.timers.size, 0)
+  h.retrySession()
+  await h.renderSessionEffect()
+  assert.equal(h.sessionRequests.length, 1)
+  confirm()
+  await pending
+  h.emitAuth('SIGNED_IN', sessionFor('novo-login'))
+  await h.renderProfileEffect()
+  assert.equal(h.session?.user.id, 'novo-login')
+  assert.equal(h.requests[0].uid, 'novo-login')
+})
+
+test('tela de erro de sessão permite retry sem logout/reload e não afirma login confirmado', () => {
+  const app = ts.createSourceFile('App.tsx', readFileSync(new URL('../App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const component = app.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'SessionLoadError')
+  assert.ok(component, 'tela recuperável de sessão encontrada')
+  const js = ts.transpileModule(`(${component.getText(app)})`, { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText
+  let retries = 0
+  const render = vm.runInNewContext(js, {
+    React: { createElement }, useAuth: () => ({ retrySession: () => { retries++ } }),
+  })
+  type Element = { type: unknown; props: { children?: unknown; onClick?: () => void } }
+  const buttons: Element[] = []
+  function visit(node: unknown) {
+    if (!node || typeof node !== 'object') return
+    const element = node as Element
+    if (element.type === 'button') buttons.push(element)
+    for (const child of [element.props?.children].flat()) visit(child)
+  }
+  visit(render())
+  assert.equal(buttons.length, 1)
+  assert.equal(buttons[0].props.children, 'Tentar novamente')
+  buttons[0].props.onClick!()
+  assert.equal(retries, 1)
 })

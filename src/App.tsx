@@ -169,6 +169,21 @@ function HomeRouter() {
   return isMobile ? <MobileHome /> : <Dashboard />
 }
 
+function SessionLoadError() {
+  const { retrySession } = useAuth()
+  return (
+    <div role="alert" className="min-h-screen flex items-center justify-center p-4 bg-bg">
+      <div className="w-full max-w-md bg-surface-1 border border-border rounded-2xl p-8 text-center">
+        <h1 className="font-bold text-ink mb-2">Não foi possível confirmar sua sessão</h1>
+        <p className="text-sm text-ink-muted mb-6">A resposta demorou ou a conexão falhou. Tente novamente para continuar.</p>
+        <button onClick={retrySession} className="w-full min-h-12 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">
+          Tentar novamente
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Tela mostrada quando a sessão existe mas o perfil não carregou (timeout/erro do
 // Supabase). Diferente de "Aguardando aprovação": aqui não sabemos o status, então
 // oferecemos retry em vez de bloquear como não-aprovado.
@@ -231,7 +246,7 @@ function PendenteOuTransportadora() {
 }
 
 function AppRoutes() {
-  const { session, profile, loading, profileError } = useAuth()
+  const { session, profile, loading, profileError, sessionError } = useAuth()
   const can = useCan()
   const fabrica=useProducaoEspelhoPermissions()
   const catalogo = useCatalogoPermissions()
@@ -317,6 +332,7 @@ function AppRoutes() {
     return <TransportadoraApp />
   }
 
+  if (sessionError) return <SessionLoadError />
   if (loading) return <PageLoading />
 
   // Não logado → /login (exceto /signup)
