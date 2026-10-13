@@ -60,8 +60,8 @@
 .funil-column-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px; font-size: 11px; color: hsl(var(--ink-faint)); font-variant-numeric: tabular-nums; }
 .funil-column-value { color: hsl(var(--success)); font-weight: 600; font-size: 12px; }
 .funil-temperature { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-.funil-temperature-item { display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 5px 6px; border-radius: 5px; font-size: 10px; color: hsl(var(--ink-muted)); background: hsl(var(--surface) / .6); border: 1px solid transparent; font-variant-numeric: tabular-nums; }
-.funil-temperature-item strong { font-size: 11px; font-weight: 600; color: hsl(var(--ink)); }
+.funil-temperature-item { display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 5px 4px; border-radius: 5px; font-size: 10px; white-space: nowrap; color: hsl(var(--ink-muted)); background: hsl(var(--surface) / .6); border: 1px solid transparent; font-variant-numeric: tabular-nums; }
+.funil-temperature-item strong { font-size: 10px; font-weight: 600; color: hsl(var(--ink)); }
 .funil-temperature-item--parado:not(:disabled) strong { color: hsl(var(--danger)); }
 .funil-temperature-item:hover:not(:disabled), .funil-temperature-item[aria-pressed="true"] { border-color: hsl(var(--accent)); background: hsl(var(--accent) / .09); }
 .funil-temperature-item:disabled { opacity: .5; }
