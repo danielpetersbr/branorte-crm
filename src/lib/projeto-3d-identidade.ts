@@ -4,3 +4,9 @@ export function idExternoProjeto(project: unknown): string | null {
   const id = (project as { id?: unknown }).id
   return typeof id === 'string' && id.trim() ? id : null
 }
+
+export function nomeClienteProjeto(project: unknown): string | null {
+  if (!project || typeof project !== 'object') return null
+  const name = (project as { clientName?: unknown }).clientName
+  return typeof name === 'string' ? name.trim() || null : null
+}

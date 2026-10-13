@@ -13,6 +13,7 @@ import {
   ChevronDown, X, Search, Check, Loader2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { idExternoProjeto, nomeClienteProjeto } from '@/lib/projeto-3d-identidade'
 import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
   useBuscarContatos, fetchConfiguradorProjeto, fetchConfiguradorProjetoMetaAtual, type ConfiguradorProjetoMeta,
@@ -33,7 +34,7 @@ const rid = () => Math.random().toString(36).slice(2)
 const fmtData = (s: string) =>
   new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 
-export function Projeto3D() {
+export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [loading, setLoading] = useState(true)
   const [abrindo, setAbrindo] = useState(false)
@@ -46,9 +47,10 @@ export function Projeto3D() {
   const [showLista, setShowLista] = useState(false)
   // Lupa da lista (roadmap #98): acha o projeto pelo nome do cliente/projeto/vendedor.
   const [buscaLista, setBuscaLista] = useState('')
-  // Novo projeto pede o nome ANTES de abrir o editor (roadmap #100).
+  // Novo projeto pede o cliente ANTES de abrir o editor.
   const [novoNomeAberto, setNovoNomeAberto] = useState(false)
   const [novoNome, setNovoNome] = useState('')
+  const [novoClienteNome, setNovoClienteNome] = useState('')
   const [toast, setToast] = useState<{ msg: string; erro?: boolean } | null>(null)
   const toastTimerRef = useRef<number | null>(null)
 
@@ -65,7 +67,7 @@ export function Projeto3D() {
   useEffect(() => { profileRef.current = profile }, [profile])
   const qc = useQueryClient()
   // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
-  const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
+  const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}&entry=${entry}`
   const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos(showLista)
   const termoLista = semAcento(buscaLista.trim())
   const projetosFiltrados = termoLista
@@ -234,16 +236,19 @@ export function Projeto3D() {
 
   // ---- Ações ----
   const abrirNovo = async () => {
-    const nome = novoNome.trim()
-    if (!nome) return
+    const clientName = novoClienteNome.trim()
+    if (!clientName) return
+    const nome = novoNome.trim() || `Layout — ${clientName}`
     if (!iniciarOperacao()) return
     setShowLista(false)
     setNovoNomeAberto(false)
     setNovoNome('')
+    setNovoClienteNome('')
     try {
-      await pedirAbertura({ type: 'branorte:new', name: nome })
+      await pedirAbertura({ type: 'branorte:new', name: nome, clientName })
       limparVinculo()
       setProjetoNome(nome)
+      setSaveContactNome(clientName)
       flash(`Novo projeto: ${nome}`)
     } catch (error) {
       limparVinculo()
@@ -283,7 +288,7 @@ export function Projeto3D() {
       setProjetoId(metaAtual?.id ?? null)
       setProjetoNome(metaAtual?.nome ?? '')
       setSaveContactId(metaAtual?.contact_id ?? null)
-      setSaveContactNome(metaAtual?.cliente_nome ?? null)
+      setSaveContactNome(nomeClienteProjeto(project) ?? metaAtual?.cliente_nome ?? null)
       const nomeInterno = (project as { name?: string })?.name
       setSaveNome(metaAtual?.nome || nomeInterno || 'Projeto sem nome')
       setSaveBusca('')
@@ -295,18 +300,29 @@ export function Projeto3D() {
 
   const confirmarSalvar = () => {
     if (!projetoDataRef.current || salvar.isPending || abrindoRef.current) return
+    const clienteNome = saveContactNome?.trim() || nomeClienteProjeto(projetoDataRef.current)
+    if (!projetoId && !clienteNome) {
+      flash('Informe o nome do cliente antes de criar o layout.', true)
+      return
+    }
     salvar.mutate(
       {
         id: projetoId,
         nome: saveNome.trim() || 'Projeto sem nome',
         contact_id: saveContactId,
-        cliente_nome: saveContactNome,
+        cliente_nome: clienteNome,
         data: projetoDataRef.current,
         created_by: profile?.id ?? null,
         created_by_nome: profile?.display_name ?? null,
       },
       {
         onSuccess: (row) => {
+          postToFrame({
+            type: 'branorte:metadata',
+            id: idExternoProjeto(projetoDataRef.current),
+            name: row.nome,
+            clientName: row.cliente_nome,
+          })
           setProjetoId(row.id)
           setProjetoNome(row.nome)
           setSaveOpen(false)
@@ -373,27 +389,36 @@ export function Projeto3D() {
                       onSubmit={e => { e.preventDefault(); void abrirNovo() }}
                       className="px-2 py-2 space-y-2"
                     >
+                      <label htmlFor="novo-projeto-cliente" className="block text-xs font-semibold text-ink">Nome do cliente</label>
+                      <input
+                        id="novo-projeto-cliente"
+                        autoFocus
+                        required
+                        value={novoClienteNome}
+                        onChange={e => setNovoClienteNome(e.target.value)}
+                        placeholder="Ex.: João da Silva"
+                        className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-sm text-ink outline-none focus:border-accent"
+                      />
                       <label htmlFor="novo-projeto-nome" className="block text-xs font-semibold text-ink">Nome do projeto</label>
                       <input
                         id="novo-projeto-nome"
-                        autoFocus
                         value={novoNome}
                         onChange={e => setNovoNome(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Escape') { setNovoNomeAberto(false); setNovoNome('') } }}
-                        placeholder="Ex.: Fábrica João da Silva"
+                        onKeyDown={e => { if (e.key === 'Escape') { setNovoNomeAberto(false); setNovoNome(''); setNovoClienteNome('') } }}
+                        placeholder="Ex.: Galpão 5 t/h (opcional)"
                         className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-sm text-ink outline-none focus:border-accent"
                       />
                       <div className="flex gap-2">
                         <button
                           type="submit"
-                          disabled={!novoNome.trim()}
+                          disabled={!novoClienteNome.trim()}
                           className="flex-1 h-8 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-40"
                         >
                           Criar e abrir
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setNovoNomeAberto(false); setNovoNome('') }}
+                          onClick={() => { setNovoNomeAberto(false); setNovoNome(''); setNovoClienteNome('') }}
                           className="h-8 px-3 rounded-lg border border-border text-sm text-ink-muted hover:bg-bg"
                         >
                           Cancelar
@@ -537,13 +562,24 @@ export function Projeto3D() {
               className="w-full h-10 px-3 rounded-lg border border-border bg-bg text-ink text-sm mb-4 focus:outline-none focus:border-accent"
             />
 
-            <label className="block text-xs font-semibold text-ink-muted mb-1">Cliente (opcional)</label>
-            {saveContactNome ? (
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Nome do cliente</label>
+            <input
+              value={saveContactNome ?? ''}
+              aria-label="Nome do cliente"
+              required={!projetoId}
+              onChange={e => { setSaveContactNome(e.target.value); setSaveContactId(null) }}
+              placeholder="Ex.: Maria Silva"
+              className="w-full h-10 px-3 rounded-lg border border-border bg-bg text-ink text-sm mb-4 focus:outline-none focus:border-accent"
+            />
+
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Contato cadastrado (opcional)</label>
+            {saveContactId ? (
               <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-accent/40 bg-accent/5 mb-4">
                 <Check className="h-4 w-4 text-accent shrink-0" />
                 <span className="text-sm text-ink truncate flex-1">{saveContactNome}</span>
                 <button
-                  onClick={() => { setSaveContactId(null); setSaveContactNome(null); setSaveBusca('') }}
+                  aria-label="Remover vínculo com contato"
+                  onClick={() => { setSaveContactId(null); setSaveBusca('') }}
                   className="text-ink-faint hover:text-ink"
                 >
                   <X className="h-4 w-4" />
@@ -585,7 +621,7 @@ export function Projeto3D() {
               </button>
               <button
                 onClick={confirmarSalvar}
-                disabled={salvar.isPending || !saveNome.trim()}
+                disabled={salvar.isPending || !saveNome.trim() || (!projetoId && !saveContactNome?.trim())}
                 className="h-10 px-4 rounded-lg bg-accent text-white hover:opacity-90 text-sm font-semibold flex items-center gap-1.5 disabled:opacity-50"
               >
                 {salvar.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

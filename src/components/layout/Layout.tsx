@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
-  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, Menu, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, Route, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Video, Wallet, Wheat, Workflow, X, Zap,
+  Activity, BarChart2, Beef, BookCheck, BookOpen, Bot, Boxes, Calculator, CalendarDays, CheckCircle, ChevronDown, ChevronsLeft, ChevronsRight, ClipboardList, Compass, FilePlus2, FileSignature, FileText, FolderOpen, GitBranch, Headphones, History, LayoutDashboard, Link2, List, LogOut, MapPin, Megaphone, Menu, MessageSquare, MessageSquarePlus, Moon, Package, PhoneCall, Route, ScanEye, Search, Settings, Shield, ShoppingBag, Sun, Target, TrendingUp, Truck, UserPlus, Users, Video, Wallet, Wheat, Workflow, X, Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState, Suspense, type CSSProperties, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
@@ -137,7 +137,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: 'layout-3d', label: 'Layout 3D', icon: Boxes, section: 'comercial',
     items: [
-      { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
+      { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, end: true, permKey: 'menu.projeto_3d' },
+      { to: '/projeto-3d/meus', label: 'Meus Layouts', icon: FolderOpen, permKey: 'menu.projeto_3d' },
     ],
   },
   {
@@ -261,7 +262,7 @@ const MOBILE_NAV: NavItem[] = [
   { to: '/whatsapp', label: 'WhatsApp', icon: MessageSquarePlus, permKey: 'menu.whatsapp', roles: ['admin', 'vendor'] },
   { to: '/orcamentos/montar', label: 'Orçar', icon: FilePlus2 },
   { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
-  { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, permKey: 'menu.projeto_3d' },
+  { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, end: true, permKey: 'menu.projeto_3d' },
 ]
 
 function useCollapsed(): [boolean, () => void] {

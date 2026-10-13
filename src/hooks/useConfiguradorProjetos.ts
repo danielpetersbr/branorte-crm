@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { idExternoProjeto } from '@/lib/projeto-3d-identidade'
+import { idExternoProjeto, nomeClienteProjeto } from '@/lib/projeto-3d-identidade'
 
 // Projetos 3D do configurador (branorte-configurador-3d), salvos no Supabase pra
-// sincronizar entre dispositivos e (opcionalmente) ficarem ligados a um cliente.
+// sincronizar entre dispositivos. Novos layouts exigem nome do cliente;
+// o vínculo com um contato cadastrado continua opcional.
 // O campo `data` guarda o Project inteiro (JSON do configurador). A lista NÃO traz
 // `data` (pode ser grande) — o blob só é buscado ao abrir um projeto.
 
@@ -18,8 +19,17 @@ export interface ConfiguradorProjetoMeta {
 }
 
 export interface ConfiguradorProjeto extends ConfiguradorProjetoMeta {
+  ext_id?: string | null
   data: unknown
   thumbnail: string | null
+}
+
+// A galeria identifica a linha antiga por UUID quando não há ext_id.
+// O JSON aberto deve usar a mesma identidade para os saves voltarem àquela linha.
+function dataParaAbrir(row: { id: string; ext_id?: string | null; data: unknown }): unknown {
+  return row.ext_id === null && row.data && typeof row.data === 'object'
+    ? { ...row.data, id: row.id }
+    : row.data
 }
 
 const KEY = ['configurador-projetos']
@@ -48,7 +58,8 @@ export async function fetchConfiguradorProjeto(id: string): Promise<Configurador
     .eq('id', id)
     .single()
   if (error) throw error
-  return data as ConfiguradorProjeto
+  const row = data as ConfiguradorProjeto
+  return { ...row, data: dataParaAbrir(row) }
 }
 
 export interface SalvarProjetoInput {
@@ -69,7 +80,11 @@ export async function fetchConfiguradorProjetoMetaAtual(project: unknown): Promi
   if (!extId) throw new Error('O projeto aberto não informou sua identidade. Reabra o editor e tente novamente.')
   const { data, error } = await supabase.from('configurador_projetos').select(META_COLS).eq('ext_id', extId).maybeSingle()
   if (error) throw error
-  return data as ConfiguradorProjetoMeta | null
+  if (data || !UUID_RE.test(extId)) return data as ConfiguradorProjetoMeta | null
+  const { data: legacy, error: legacyError } = await supabase.from('configurador_projetos')
+    .select(META_COLS).eq('id', extId).is('ext_id', null).maybeSingle()
+  if (legacyError) throw legacyError
+  return legacy as ConfiguradorProjetoMeta | null
 }
 
 // ext_id = id interno do projeto no configurador (fica dentro do JSON `data`). É a chave
@@ -84,16 +99,21 @@ export function useSalvarConfiguradorProjeto() {
   return useMutation({
     mutationFn: async (input: SalvarProjetoInput): Promise<ConfiguradorProjetoMeta> => {
       const extId = extIdOf(input.data)
+      const clienteNome = input.cliente_nome?.trim() || nomeClienteProjeto(input.data)
+      const projectData = input.data && typeof input.data === 'object'
+        ? { ...input.data, name: input.nome, ...(clienteNome ? { clientName: clienteNome } : {}) }
+        : input.data
+      const patch = {
+        nome: input.nome,
+        ...(input.contact_id !== undefined ? { contact_id: input.contact_id } : {}),
+        ...(clienteNome ? { cliente_nome: clienteNome } : {}),
+        data: projectData,
+        thumbnail: input.thumbnail ?? null,
+      }
       if (input.id) {
         const { data, error } = await supabase
           .from('configurador_projetos')
-          .update({
-            nome: input.nome,
-            contact_id: input.contact_id ?? null,
-            cliente_nome: input.cliente_nome ?? null,
-            data: input.data,
-            thumbnail: input.thumbnail ?? null,
-          })
+          .update(patch)
           .eq('id', input.id)
           .select(META_COLS)
           .single()
@@ -103,25 +123,25 @@ export function useSalvarConfiguradorProjeto() {
       if (extId) {
         const { data: upd, error: updErr } = await supabase
           .from('configurador_projetos')
-          .update({
-            nome: input.nome,
-            contact_id: input.contact_id ?? null,
-            cliente_nome: input.cliente_nome ?? null,
-            data: input.data,
-            thumbnail: input.thumbnail ?? null,
-          })
+          .update(patch)
           .eq('ext_id', extId)
           .select(META_COLS)
-        if (!updErr && upd && upd.length) return upd[0] as ConfiguradorProjetoMeta
+        if (updErr) throw updErr
+        if (upd && upd.length) return upd[0] as ConfiguradorProjetoMeta
+        if (UUID_RE.test(extId)) {
+          const { data: legacy, error: legacyError } = await supabase.from('configurador_projetos')
+            .update(patch).eq('id', extId).is('ext_id', null).select(META_COLS)
+          if (legacyError) throw legacyError
+          if (legacy && legacy.length) return legacy[0] as ConfiguradorProjetoMeta
+        }
       }
+      if (!clienteNome) throw new Error('Informe o nome do cliente antes de criar o layout.')
       const { data, error } = await supabase
         .from('configurador_projetos')
         .insert({
-          nome: input.nome,
+          ...patch,
           contact_id: input.contact_id ?? null,
-          cliente_nome: input.cliente_nome ?? null,
-          data: input.data,
-          thumbnail: input.thumbnail ?? null,
+          cliente_nome: clienteNome,
           created_by: input.created_by ?? null,
           created_by_nome: input.created_by_nome ?? null,
           ext_id: extId,
@@ -173,9 +193,9 @@ export async function bridgeLoad(id: string): Promise<unknown | null> {
   if (data) return data.data
   if (!UUID_RE.test(id)) return null
   const { data: byRow, error: e2 } = await supabase
-    .from('configurador_projetos').select('data').eq('id', id).maybeSingle()
+    .from('configurador_projetos').select('id,ext_id,data').eq('id', id).maybeSingle()
   if (e2) throw e2
-  return byRow?.data ?? null
+  return byRow ? dataParaAbrir(byRow) : null
 }
 
 export async function bridgeSave(
@@ -186,12 +206,24 @@ export async function bridgeSave(
   const extId = extIdOf(project)
   if (!extId) throw new Error('projeto sem id')
   const nome = ((project as { name?: unknown })?.name as string) || 'Projeto sem nome'
-  const patch: Record<string, unknown> = { nome, data: project }
+  const clienteNome = nomeClienteProjeto(project)
+  const patch: Record<string, unknown> = {
+    nome,
+    data: clienteNome ? { ...project as object, clientName: clienteNome } : project,
+    ...(clienteNome ? { cliente_nome: clienteNome } : {}),
+  }
   if (thumbnail) patch.thumbnail = thumbnail
   const { data: upd, error: updErr } = await supabase
     .from('configurador_projetos').update(patch).eq('ext_id', extId).select('id')
   if (updErr) throw updErr
   if (upd && upd.length) return
+  if (UUID_RE.test(extId)) {
+    const { data: legacy, error: legacyError } = await supabase.from('configurador_projetos')
+      .update(patch).eq('id', extId).is('ext_id', null).select('id')
+    if (legacyError) throw legacyError
+    if (legacy && legacy.length) return
+  }
+  if (!clienteNome) throw new Error('Informe o nome do cliente antes de criar o layout.')
   const { error: insErr } = await supabase.from('configurador_projetos').insert({
     ...patch,
     ext_id: extId,
