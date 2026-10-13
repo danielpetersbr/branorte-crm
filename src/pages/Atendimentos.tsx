@@ -18,6 +18,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { limparEquipamento } from '@/lib/atendimentos-texto'
+import { etapaAtendimento, ETAPAS_ATENDIMENTO } from '@/lib/atendimento-etapa'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
 import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useAnuncioPorTelefone, lookupAnuncio, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useQualificacaoPorTelefone, lookupQualificacao, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
@@ -539,6 +540,10 @@ export function Atendimentos() {
     return true
   }
 
+  function etapaDaLinha(r: typeof rows[number]) {
+    return etapaAtendimento(r, vendedorEfetivo(r), lookupWaLabels(waLabelsMap, r.telefone).map(label => label.vendedor))
+  }
+
   const clearFilters = () => {
     setFilters({ search: '', responsavel: '', status_real: '', uf: '', data: '', origem: '', criativo: '', etiqueta: '', comOrcamento: false, page: 0 })
     setSearchInput('')
@@ -885,6 +890,15 @@ export function Atendimentos() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted shrink-0" aria-label="Cores dos atendimentos">
+            {Object.entries(ETAPAS_ATENDIMENTO).map(([etapa, visual]) => (
+              <span key={etapa} className="inline-flex items-center gap-1.5">
+                <span className={`h-2 w-2 rounded-full ${visual.indicador}`} aria-hidden="true" />
+                {visual.label}
+              </span>
+            ))}
+          </div>
+
           {/* ─── MOBILE: cards verticais ─── */}
           <div className="md:hidden space-y-2">
             {rows.map(r => {
@@ -900,16 +914,14 @@ export function Atendimentos() {
               const nomeReal = r.nome && !/^\(sem nome\)$/i.test(r.nome.trim()) ? r.nome : null
               const semResp = isSemResposta(r)
               const ia = lookupIaStatus(iaStatusMap, r.telefone)
+              const etapa = etapaDaLinha(r)
+              const visual = ETAPAS_ATENDIMENTO[etapa]
               return (
                 <div
                   key={r.id}
-                  className={`rounded-lg border p-3 ${
-                    semResp
-                      ? 'bg-red-500/10 border-red-500/40'
-                      : isHot
-                        ? 'bg-danger-bg/40 border-danger/30'
-                        : 'bg-surface border-border'
-                  }`}
+                  data-etapa-atendimento={etapa}
+                  title={visual.label}
+                  className={`rounded-lg border p-3 ${visual.cartao}`}
                 >
                   <div className="flex items-start gap-2.5">
                     <div className="flex-1 min-w-0">
@@ -941,6 +953,7 @@ export function Atendimentos() {
                         ) : null
                       })()}
                       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <span className="text-[10px] text-ink-muted">{visual.label}</span>
                         {semResp && (
                           <Badge className="text-[10px] font-semibold" style={{
                             background: 'hsl(var(--danger-bg))',
@@ -1098,17 +1111,15 @@ export function Atendimentos() {
                     // Lead sem vendedor que já falou = está na fila esperando alguém pegar
                     const semVendedor = !vendedorEfetivo(r)
                     const esperando = semVendedor && !semResp && !!(r.last_message_at || r.created_at)
+                    const etapa = etapaDaLinha(r)
+                    const visual = ETAPAS_ATENDIMENTO[etapa]
                     return (
                       <tr key={r.id}
+                          data-etapa-atendimento={etapa}
+                          title={visual.label}
                           className={`group h-[64px] [&>td]:h-[64px] [&>td]:py-[8px] [&>td]:align-middle border-b border-border/30 last:border-0 transition-all duration-150
-                                     ${semResp
-                                        ? 'bg-red-500/10 hover:bg-red-500/[0.16]'
-                                        : isHot
-                                          ? 'bg-danger-bg/30 hover:bg-danger-bg/50'
-                                          : 'odd:bg-surface even:bg-surface-2/20 hover:bg-surface-2/60 hover:shadow-sm'}`}
-                          style={semResp
-                            ? { boxShadow: 'inset 3px 0 0 0 rgb(239 68 68)' }
-                            : isHot ? { boxShadow: 'inset 3px 0 0 0 hsl(var(--danger))' } : undefined}>
+                                     ${visual.linha}`}
+                          style={{ boxShadow: `inset 3px 0 0 0 ${visual.borda}` }}>
                         {/* SELEÇÃO pra chamada em massa */}
                         <td className="px-1 py-2.5">
                           <input
