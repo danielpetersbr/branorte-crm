@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import {
   Copy, Check, Clock, Mic, Image as ImageIcon, Video, FileText, Sticker,
   MapPin, Contact2, Ban, PhoneCall,
-  Search, SlidersHorizontal, Columns3, BarChart3, ListFilter, Users, Eye, EyeOff,
+  Search, SlidersHorizontal, Columns3, BarChart3, ListFilter, Users, Eye, EyeOff, Maximize2, Minimize2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -139,7 +139,7 @@ function ChatCard({
       className={`funil-card ${compacto ? 'funil-card--compact' : ''}`}
     >
       <div className="funil-card-identity">
-        <Avatar name={nome} src={chat.foto_url ?? undefined} size="lg" />
+        <Avatar name={nome} src={chat.foto_url ?? undefined} size={compacto ? 'sm' : 'md'} />
         <div className="min-w-0 flex-1">
           <div className="funil-card-name" title={nome}>{nome}</div>
           <div className="funil-card-phone">{tel}</div>
@@ -159,7 +159,7 @@ function ChatCard({
       )}
 
       <div className="funil-card-meta">
-        {mostrarVendedor && chat.vendedor && <span className="funil-card-owner">{nomeVendedor(chat.vendedor)}</span>}
+        {mostrarVendedor && chat.vendedor && <span className="funil-card-owner" title={`Vendedor: ${nomeVendedor(chat.vendedor)}`}><Users size={11} aria-hidden /><span>{nomeVendedor(chat.vendedor)}</span></span>}
         <span className={parado ? 'funil-card-age funil-card-age--stale' : 'funil-card-age'} title={meta.label}>
           <Clock size={12} aria-hidden />{parado && dias != null ? `Parado há ${dias}d` : tempoRelativo(chat.last_message_at)}
         </span>
@@ -560,7 +560,18 @@ export function FunilWhatsApp() {
   const [seletorAberto, setSeletorAberto] = useState(false)
   const [ordenacao, setOrdenacao] = useState<'recente' | 'parado'>('recente')
   const [filtroTemp, setFiltroTemp] = useState<Temperatura | null>(null)
-  const [compacto, setCompacto] = useState(false)
+  const [compacto, setCompacto] = useState(() => {
+    try { return localStorage.getItem('wa-funil-compacto') !== 'false' } catch { return true }
+  })
+  const [modoVisualizacao, setModoVisualizacao] = useState(() => {
+    try { return localStorage.getItem('wa-funil-visualizacao') === 'true' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('wa-funil-compacto', String(compacto)) } catch { /* preferência opcional */ }
+  }, [compacto])
+  useEffect(() => {
+    try { localStorage.setItem('wa-funil-visualizacao', String(modoVisualizacao)) } catch { /* preferência opcional */ }
+  }, [modoVisualizacao])
 
   const [escondidas, setEscondidas] = useState<Set<string>>(() => {
     try {
@@ -716,11 +727,11 @@ export function FunilWhatsApp() {
   }, [chatAberto, data])
 
   return (
-    <div className="funil-page">
+    <div className={`funil-page${compacto ? ' funil-page--compact' : ''}${modoVisualizacao ? ' funil-page--visualizacao' : ''}`}>
       <header className="funil-header">
         <div>
           <h1>Funil de vendas</h1>
-          <p>Acompanhe cada conversa até o fechamento.</p>
+          {!modoVisualizacao && <p>Acompanhe cada conversa até o fechamento.</p>}
         </div>
         <div className="funil-header-actions">
           {data?.ultimaSync && <span className="funil-sync">Atualizado {tempoRelativo(data.ultimaSync)}</span>}
@@ -730,11 +741,17 @@ export function FunilWhatsApp() {
             <Link to="/funil/manual" className="funil-link">Funil manual</Link>
             <Link to="/funil/relatorio" className="funil-report"><BarChart3 size={15} />Relatório</Link>
           </>}
+          <button type="button" className="funil-view-toggle" aria-pressed={modoVisualizacao}
+            aria-controls="funil-indicadores" onClick={() => setModoVisualizacao(v => !v)}
+            title={modoVisualizacao ? 'Mostrar o resumo e os indicadores' : 'Ocultar o resumo e ampliar o quadro'}>
+            {modoVisualizacao ? <Minimize2 size={14} aria-hidden /> : <Maximize2 size={14} aria-hidden />}
+            {modoVisualizacao ? 'Sair da visualização' : 'Modo visualização'}
+          </button>
         </div>
       </header>
 
       {data && (
-        <div className="funil-overview">
+        <div id="funil-indicadores" className="funil-overview" hidden={modoVisualizacao}>
           <div className="funil-metric funil-metric--value" title="Último orçamento cadastrado de cada telefone nas colunas visíveis Follow-up, Lead quente e Orçamento enviado. Valor bruto, antes dos descontos, incluindo rascunhos e todo o histórico. Busca e temperatura não alteram este resumo. Não confirma negociação ativa nem venda.">
             <span>Orçamentos vinculados</span>
             <strong>{carregandoOrcamentos || erroOrcamentos ? '—' : brl(resumoOrcamentos.total)}</strong>
@@ -751,11 +768,11 @@ export function FunilWhatsApp() {
         <div className="funil-vendors" aria-label="Filtrar por vendedor">
           {profile?.role === 'vendor' ? (
             quadrosDoVendedor.length > 1
-              ? quadrosDoVendedor.map(v => <button key={v} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)
+              ? quadrosDoVendedor.map(v => <button key={v} title={nomeVendedor(v)} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)
               : <span className="funil-vendor-current">{vendedorTravado && nomeVendedor(vendedorTravado)}</span>
           ) : (<>
             <button onClick={() => setVendedorSel(TODOS)} aria-pressed={modoTodos}><Users size={15} />Toda a equipe</button>
-            {vendedoresVisiveis.map(v => <button key={v} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)}
+            {vendedoresVisiveis.map(v => <button key={v} title={nomeVendedor(v)} onClick={() => setVendedorSel(v)} aria-pressed={v === vendedor}>{nomeVendedor(v)}</button>)}
           </>)}
         </div>
         <div className="funil-toolbar">
