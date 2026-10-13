@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useDashboard } from '@/hooks/useDashboard'
+import { useDashboard, type DashboardData } from '@/hooks/useDashboard'
 import { useDashboardEtiquetas } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardExtra } from '@/hooks/useDashboardExtra'
 import { useDashboardVendedorFunil } from '@/hooks/useDashboardVendedorFunil'
@@ -50,21 +50,46 @@ function Esqueleto() {
  * times e painel individual (→ Equipe).
  */
 export function TabVisaoGeral() {
+  const { preset } = useJanela()
+  const { data, isLoading, error } = useDashboard({ preset })
+
+  if (isLoading) return <Esqueleto />
+  if (error || !data) {
+    return (
+      <div className="rounded-xl border border-danger/30 bg-danger-bg p-5">
+        <h2 className="text-title text-danger">Não deu para carregar o dashboard.</h2>
+        {error && <p className="mt-1 break-all font-mono text-micro text-danger/80">{(error as Error).message}</p>}
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-4 rounded-lg bg-danger px-3 py-2 text-label font-semibold text-accent-fg hover:bg-danger/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+        >
+          Tentar de novo
+        </button>
+      </div>
+    )
+  }
+
+  // Evita competir com o snapshot na primeira abertura (ou quando ele falha).
+  // Os complementos só montam depois; o cache continua compartilhado entre abas.
+  return <VisaoGeralDados data={data} />
+}
+
+function VisaoGeralDados({ data }: { data: DashboardData }) {
   const { preset, periodoLabel, temPeriodo } = useJanela()
   const [, setTab] = useDashboardTab()
   const [drill, setDrill] = useState<null | 'orcamentos' | 'vendidos' | 'valor'>(null)
 
-  const { data, isLoading, error } = useDashboard({ preset })
-  const { data: etq, isPlaceholderData: etqVelho } = useDashboardEtiquetas(preset)
+  const { data: etq, isPending: etqPendente, isPlaceholderData: etqVelho } = useDashboardEtiquetas(preset)
   const { data: extra } = useDashboardExtra()
-  const { data: vendFunil, isPlaceholderData: vendFunilVelho } = useDashboardVendedorFunil(preset)
-  const { data: funilUnion, isPlaceholderData: funilUnionVelho } = useFunilUnion(preset)
+  const { data: vendFunil, isPending: vendFunilPendente, isPlaceholderData: vendFunilVelho } = useDashboardVendedorFunil(preset)
+  const { data: funilUnion, isPending: funilUnionPendente, isPlaceholderData: funilUnionVelho } = useFunilUnion(preset)
   const { data: orcamentosReais, isPending: orcamentosReaisPendente } = useDashboardOrcamentos(preset)
-  const { data: orc, isPlaceholderData: orcVelho } = useOrcamentosResumo(preset)
+  const { data: orc, isPending: orcPendente, isPlaceholderData: orcVelho } = useOrcamentosResumo(preset)
   const { data: vendas, isPending: vendasPendente } = useDashboardVendas(preset)
-  const { data: vendasReais } = useVendasReais()
-  const { data: propStatus, isPlaceholderData: propStatusVelho } = usePropostasStatus(preset)
-  const { data: cobertura, isPlaceholderData: coberturaVelho } = useVendedorCobertura(preset)
+  const { data: vendasReais, isPending: vendasReaisPendente } = useVendasReais()
+  const { data: propStatus, isPending: propStatusPendente, isPlaceholderData: propStatusVelho } = usePropostasStatus(preset)
+  const { data: cobertura, isPending: coberturaPendente, isPlaceholderData: coberturaVelho } = useVendedorCobertura(preset)
 
   // TROCA DE PERÍODO (29/09/2026). O useDashboard troca de preset na hora (select
   // sobre o cache), mas os hooks por período abaixo têm key própria: na troca eles
@@ -75,8 +100,10 @@ export function TabVisaoGeral() {
   // número ainda não é do período que você escolheu". Background refetch da MESMA
   // key não liga nenhuma das duas flags, então não pisca a cada poll.
   const funilPendente = orcamentosReaisPendente || vendasPendente
-  const numerosPendentes = funilPendente || funilUnionVelho || orcVelho
-  const decisoesPendentes = etqVelho || vendFunilVelho || funilUnionVelho || orcVelho || propStatusVelho || coberturaVelho
+  const numerosPendentes = funilPendente || funilUnionPendente || orcPendente || funilUnionVelho || orcVelho
+  const decisoesCarregando = etqPendente || vendFunilPendente || funilUnionPendente || orcPendente || propStatusPendente || coberturaPendente
+  const decisoesPendentes = decisoesCarregando || etqVelho || vendFunilVelho || funilUnionVelho || orcVelho || propStatusVelho || coberturaVelho
+  const decisoesSemDados = [etq, vendFunil, funilUnion, orc, propStatus, cobertura].some(value => value === undefined)
   const esmaece = (pendente: boolean) => `transition-opacity duration-200 ${pendente ? 'opacity-50' : ''}`
 
   const ir = (tab: TabId, anchor?: string) => irPara(setTab, tab, anchor)
@@ -127,24 +154,6 @@ export function TabVisaoGeral() {
     }
   }, [orc, cobertura, propStatus, funilUnion, data?.kpiQualificados.valor])
 
-  if (isLoading) return <Esqueleto />
-
-  if (error || !data) {
-    return (
-      <div className="rounded-xl border border-danger/30 bg-danger-bg p-5">
-        <h2 className="text-title text-danger">Não deu para carregar o dashboard.</h2>
-        {error && <p className="mt-1 break-all font-mono text-micro text-danger/80">{(error as Error).message}</p>}
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="mt-4 rounded-lg bg-danger px-3 py-2 text-label font-semibold text-accent-fg hover:bg-danger/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
-        >
-          Tentar de novo
-        </button>
-      </div>
-    )
-  }
-
   const qualificados = funilUnion?.qualificou ?? data.kpiQualificados.valor
   const propostasClientes = orcamentosReais ?? 0
   const propostasBrutas = orc?.propostasBrutas ?? 0
@@ -180,16 +189,16 @@ export function TabVisaoGeral() {
         />
         <Metric
           label="Qualificados"
-          valor={n(qualificados)}
-          secundario={data.kpiTotal.valor > 0 ? `${pct((qualificados / data.kpiTotal.valor) * 100, 0)} dos leads` : undefined}
+          valor={funilUnionPendente ? 'Carregando…' : funilUnion === undefined ? 'Indisponível' : n(qualificados)}
+          secundario={funilUnion !== undefined && data.kpiTotal.valor > 0 ? `${pct((qualificados / data.kpiTotal.valor) * 100, 0)} dos leads` : undefined}
           janela="periodo"
           janelaLabel={periodoLabel}
           ajuda="Qualificado pela IA OU já com etiqueta de avanço do vendedor (novo lead, follow-up, quente…)."
         />
         <Metric
           label="Clientes com proposta"
-          valor={n(propostasClientes)}
-          secundario={propostasBrutas > 0 ? `${n(propostasBrutas)} propostas emitidas` : undefined}
+          valor={orcamentosReaisPendente ? 'Carregando…' : orcamentosReais === undefined ? 'Indisponível' : n(propostasClientes)}
+          secundario={!orcPendente && propostasBrutas > 0 ? `${n(propostasBrutas)} propostas emitidas` : undefined}
           janela="periodo"
           janelaLabel={periodoLabel}
           ajuda="Clientes distintos que receberam proposta montada no builder. O número menor conta CLIENTE; o de baixo conta PROPOSTA — a diferença são as re-cotações do mesmo cliente."
@@ -197,8 +206,8 @@ export function TabVisaoGeral() {
         />
         <Metric
           label="Vendas"
-          valor={n(vendasQtd)}
-          secundario={`${n(vendasComOrigem)} com origem comprovada`}
+          valor={vendasPendente ? 'Carregando…' : vendas === undefined ? 'Indisponível' : n(vendasQtd)}
+          secundario={vendas === undefined ? undefined : `${n(vendasComOrigem)} com origem comprovada`}
           janela="periodo"
           janelaLabel={periodoLabel}
           ajuda="Pedidos não-cancelados com data de venda no período. 'Origem comprovada' é o subconjunto que dá para rastrear até um lead — é piso de rastreio, não fatia de mercado."
@@ -206,8 +215,8 @@ export function TabVisaoGeral() {
         />
         <Metric
           label="Valor vendido"
-          valor={brl(valorVendido)}
-          secundario={`${brl(valorComOrigem)} com origem comprovada`}
+          valor={vendasPendente ? 'Carregando…' : vendas === undefined ? 'Indisponível' : brl(valorVendido)}
+          secundario={vendas === undefined ? undefined : `${brl(valorComOrigem)} com origem comprovada`}
           janela="periodo"
           janelaLabel={periodoLabel}
           ajuda="Soma dos pedidos do período. Atenção: este recorte segue o filtro do topo; o card Meta do mês usa o mês calendário, por isso os dois podem divergir."
@@ -248,13 +257,13 @@ export function TabVisaoGeral() {
       {/* ── 3. Onde trava? ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         <div className={`xl:col-span-5 ${esmaece(funilPendente)}`} aria-busy={funilPendente}>
-          <FunilResumo
+          {funilPendente ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando funil do período" /> : orcamentosReais === undefined || vendas === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O funil está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <FunilResumo
             funil={data.funil}
             clientesComProposta={propostasClientes}
             vendasComOrigem={vendasComOrigem}
             periodoLabel={periodoLabel}
             onVerDetalhes={() => ir('funil')}
-          />
+          />}
         </div>
         <div className="xl:col-span-7">
           <Tendencia
@@ -266,16 +275,16 @@ export function TabVisaoGeral() {
 
       {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
       <div className={esmaece(decisoesPendentes)} aria-busy={decisoesPendentes}>
-        <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} onIr={ir} />
+        {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} onIr={ir} />}
       </div>
 
       {/* ── 5. Quem está entregando? ────────────────────────────────── */}
-      <TopEquipe
+      {vendasReaisPendente ? <div className="h-[220px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando ranking da equipe" /> : vendasReais === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O ranking está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <TopEquipe
         corrida={vendasReais?.corrida}
         metaVendedor={vendasReais?.metaVendedor ?? 0}
         degradado={vendasReais?.fonte === 'mirror-fallback'}
         onVerTodos={() => ir('equipe')}
-      />
+      />}
 
       {drill && <DrillModal kind={drill} preset={preset} onClose={() => setDrill(null)} />}
     </div>

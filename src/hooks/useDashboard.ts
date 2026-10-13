@@ -382,14 +382,6 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       if (error) throw error
       signal.throwIfAborted()
       const rows = decodeDashboardSnapshot(snapshot) as unknown as RawRow[]
-      // Criativo muda raramente: cache próprio de 30 min, fora do refetch de 3 min do read
-      // grande. fetchQuery dedupa entre abas/telas que já tenham buscado.
-      const criativoNomes = await qc.fetchQuery({
-        queryKey: ['criativo-nomes'],
-        queryFn: fetchCriativoNomes,
-        staleTime: 30 * 60_000,
-      })
-
       // "Dinheiro parado" = valor do ÚLTIMO orçamento de cada lead (NÃO a soma das revisões,
       // que infla: há telefone com 32 orçamentos → R$82M somado vs R$47M no último).
       // Fonte: orcamentos_gerados.total_proposta via RPC orcamentos_por_telefone_canon,
@@ -398,27 +390,39 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       const orcValorByCanon = new Map<string, number>()
       const orcEmByCanon = new Map<string, number>()
       const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
-      try {
-        const [orcRes, sitRes] = await Promise.all([
-          (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }).abortSignal(signal),
-          (supabase as any).rpc('dashboard_fone_situacao').abortSignal(signal),
-        ])
-        if (!orcRes?.error) {
-          for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number; ultimo_em?: string | null }[]) {
-            if (!o?.fone_canon) continue
-            orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
-            // ultimo_em = max(created_at) dos orçamentos do telefone. Orçamento montado
-            // É atividade com o cliente — ver src/lib/dashboard-risco.ts.
-            const em = o.ultimo_em ? new Date(o.ultimo_em).getTime() : NaN
-            if (Number.isFinite(em)) orcEmByCanon.set(String(o.fone_canon), em)
+      const enriquecerTelefones = async () => {
+        try {
+          const [orcRes, sitRes] = await Promise.all([
+            (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }).abortSignal(signal),
+            (supabase as any).rpc('dashboard_fone_situacao').abortSignal(signal),
+          ])
+          if (!orcRes?.error) {
+            for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number; ultimo_em?: string | null }[]) {
+              if (!o?.fone_canon) continue
+              orcValorByCanon.set(String(o.fone_canon), Number(o.ultimo_valor ?? 0))
+              // ultimo_em = max(created_at) dos orçamentos do telefone. Orçamento montado
+              // É atividade com o cliente — ver src/lib/dashboard-risco.ts.
+              const em = o.ultimo_em ? new Date(o.ultimo_em).getTime() : NaN
+              if (Number.isFinite(em)) orcEmByCanon.set(String(o.fone_canon), em)
+            }
           }
-        }
-        if (!sitRes?.error) {
-          for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string }[]) {
-            if (s?.fone_canon && (s.situacao === 'vendido' || s.situacao === 'morto')) fechados.add(String(s.fone_canon))
+          if (!sitRes?.error) {
+            for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string }[]) {
+              if (s?.fone_canon && (s.situacao === 'vendido' || s.situacao === 'morto')) fechados.add(String(s.fone_canon))
+            }
           }
-        }
-      } catch { /* maps vazios -> fallback; dashboard não quebra */ }
+        } catch { /* maps vazios -> fallback; dashboard não quebra */ }
+      }
+      // Catálogo e enriquecimento são independentes: uma só etapa de espera.
+      // Mantém a deduplicação e o cache de 30 min dos nomes, sem bloquear as RPCs.
+      const [criativoNomes] = await Promise.all([
+        qc.fetchQuery({
+          queryKey: ['criativo-nomes'],
+          queryFn: fetchCriativoNomes,
+          staleTime: 30 * 60_000,
+        }),
+        enriquecerTelefones(),
+      ])
       signal.throwIfAborted()
       return { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes }
     },
