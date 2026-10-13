@@ -20,9 +20,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCan } from "@/hooks/usePermissions";
 import { podeNavegarPedidosVendas, linhasVisiveisVendas } from "@/components/controle/vendas-original/navegacao";
 import { toast as sonnerToast } from "sonner";
-import { criarRelatorioVendasPDF, type RelatorioVendasPDFInput } from "@/components/controle/vendas-original/relatorio-pdf";
+import type { RelatorioVendasPDFInput } from "@/components/controle/vendas-original/relatorio-pdf";
 import { resumoAuditoriaVendas } from "@/components/controle/vendas-original/auditoria-dados";
-import html2canvas from "html2canvas";
 import BrazilMap from "@/components/controle/vendas-original/BrazilMap";
 
 import DOMPurify from "dompurify";
@@ -632,6 +631,11 @@ export default function ControleVendasOriginal() {
             return { vendedor: v.vendedor, quantidade: v.quantidade, valor: v.valor, percentual, comissao: v.valor * percentual / 100 };
           }) : undefined,
       };
+      const [{ criarRelatorioVendasPDF }, { default: html2canvas }] = await Promise.all([
+        import("@/components/controle/vendas-original/relatorio-pdf"),
+        import("html2canvas"),
+      ]);
+      validarExportacao();
       const mapaElemento = mapaRef.current;
       if (!mapaElemento) throw new Error('O mapa ainda não está disponível. Gere o relatório novamente.');
       const mapa = await capturaMapaPDF(async () => {

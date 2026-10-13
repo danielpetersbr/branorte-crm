@@ -321,11 +321,13 @@ function useAiDrawerOpen(): boolean {
 }
 
 export function Layout() {
-  const { data: totalAtendimentos } = useAtendimentosTotalMenu()
   const [dark, toggleDark] = useDarkMode()
   const [collapsed, toggleCollapsed] = useCollapsed()
   const { profile, signOut } = useAuth()
   const can = useCan()
+  const { data: totalAtendimentos } = useAtendimentosTotalMenu(
+    !!profile?.approved_at && !MENUS_RESTRITOS[profile.role] && can('menu.atendimentos'),
+  )
   const loc = useLocation()
   const aiDrawerOpen = useAiDrawerOpen()
   const [openGroups, toggleGroup, ensureGroupOpen] = useOpenGroups()

@@ -46,9 +46,10 @@ function local(e: { cidade: string | null; uf: string | null; pais: string | nul
   return partes.join(' / ')
 }
 
-function useUsuarios() {
+function useUsuarios(enabled = true) {
   return useQuery({
     queryKey: ['user_profiles_acesso'],
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -66,9 +67,9 @@ export function AdminAcessos() {
   const [filtroEmail, setFiltroEmail] = useState('')
   const [filtroRota, setFiltroRota] = useState('')
 
-  const online = useQuemEstaOnline()
-  const eventos = useAcessoEventos({ dias, email: filtroEmail || undefined, rota: filtroRota || undefined })
-  const usuarios = useUsuarios()
+  const online = useQuemEstaOnline(aba === 'online')
+  const eventos = useAcessoEventos({ dias, email: filtroEmail || undefined, rota: filtroRota || undefined }, aba === 'trilha')
+  const usuarios = useUsuarios(aba === 'trilha' || aba === 'janelas')
   const falhaAtiva = aba === 'online' ? online : aba === 'trilha' ? eventos : aba === 'janelas' ? usuarios : null
 
   const paginasTop = useMemo(() => {

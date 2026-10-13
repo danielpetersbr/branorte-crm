@@ -107,9 +107,10 @@ export function useTrilhaAcesso(geo?: {
 // Tela /admin/acessos
 // ============================================================
 
-export function useAcessoEventos(params: { dias: number; email?: string; rota?: string }) {
+export function useAcessoEventos(params: { dias: number; email?: string; rota?: string }, enabled = true) {
   return useQuery({
     queryKey: ['acesso_eventos', params],
+    enabled,
     queryFn: async () => {
       const desde = new Date(Date.now() - params.dias * 86_400_000).toISOString()
       let q = supabase
@@ -129,9 +130,10 @@ export function useAcessoEventos(params: { dias: number; email?: string; rota?: 
 }
 
 /** Quem está online: último evento de cada pessoa nas últimas 24h. */
-export function useQuemEstaOnline() {
+export function useQuemEstaOnline(enabled = true) {
   return useQuery({
     queryKey: ['acesso_online'],
+    enabled,
     queryFn: async () => {
       const desde = new Date(Date.now() - 86_400_000).toISOString()
       const { data, error } = await supabase

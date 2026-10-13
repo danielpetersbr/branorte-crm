@@ -72,10 +72,10 @@ export function useVendedorAtual() {
  * Não duplicamos editor: o construtor de sequências da extensão já faz texto,
  * áudio, imagem e delay por passo.
  */
-export function useSequenciasDisponiveis(vendedorNome: string | null | undefined) {
+export function useSequenciasDisponiveis(vendedorNome: string | null | undefined, enabled = true) {
   return useQuery({
     queryKey: ['sequencias-disponiveis', vendedorNome ?? ''],
-    enabled: !!vendedorNome,
+    enabled: enabled && !!vendedorNome,
     queryFn: async (): Promise<SequenciaResumo[]> => {
       const { data, error } = await (supabase as any)
         .from('quick_sequences')

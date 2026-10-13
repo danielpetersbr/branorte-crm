@@ -222,13 +222,20 @@ export function Disparos() {
 
   // Toggle GLOBAL: envio de avaliação de atendimento pro cliente.
   // A extensão lê essa flag via ext-version a cada ~30s e respeita nos 3 envios (auto + manuais).
-  const avaliacaoQuery = useQuery<boolean>({
-    queryKey: ['avaliacao-config'],
+  // As quatro flags pertencem à mesma linha; uma leitura mantém o mesmo frescor.
+  const configQuery = useQuery({
+    queryKey: ['avaliacao-config', 'flags'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('wa_avaliacao_config').select('ativa').eq('id', 1).maybeSingle()
+      const { data, error } = await supabase.from('wa_avaliacao_config')
+        .select('ativa, auto_prospec_ativa, funil_auto_ativa, funil_dry_run').eq('id', 1).maybeSingle()
       if (error) throw error
-      if (!data) throw new Error('Configuração de avaliação indisponível.')
-      return data?.ativa !== false
+      if (!data) throw new Error('Configuração de avaliação e funil indisponível.')
+      return {
+        avaliacaoAtiva: data.ativa !== false,
+        prospecAtiva: data.auto_prospec_ativa !== false,
+        funilAtiva: data.funil_auto_ativa === true,
+        funilDryRun: data.funil_dry_run !== false,
+      }
     },
     refetchInterval: 15000,
   })
@@ -253,23 +260,13 @@ export function Disparos() {
   })
 
   // Toggle GLOBAL: auto-aplicar etiqueta PROSPECÇÃO quando cliente novo chega sem etiqueta.
-  const prospecQuery = useQuery<boolean>({
-    queryKey: ['prospec-config'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('wa_avaliacao_config').select('auto_prospec_ativa').eq('id', 1).maybeSingle()
-      if (error) throw error
-      if (!data) throw new Error('Configuração de prospecção indisponível.')
-      return data?.auto_prospec_ativa !== false
-    },
-    refetchInterval: 15000,
-  })
   const toggleProspec = useMutation({
     mutationFn: async (ativa: boolean) => {
       const { error } = await supabase.from('wa_avaliacao_config')
         .update({ auto_prospec_ativa: ativa, updated_at: new Date().toISOString() }).eq('id', 1)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['prospec-config'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
     onError: (err: any) => alert('Não foi possível alterar o auto-prospecção: ' + (err?.message || err)),
   })
 
@@ -285,44 +282,24 @@ export function Disparos() {
   })
 
   // Toggle GLOBAL: automação do funil (move etiqueta sozinho no ritmo certo). OPT-IN (nasce desligada).
-  const funilQuery = useQuery<boolean>({
-    queryKey: ['funil-config'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('wa_avaliacao_config').select('funil_auto_ativa').eq('id', 1).maybeSingle()
-      if (error) throw error
-      if (!data) throw new Error('Configuração do funil indisponível.')
-      return data?.funil_auto_ativa === true
-    },
-    refetchInterval: 15000,
-  })
   const toggleFunil = useMutation({
     mutationFn: async (ativa: boolean) => {
       const { error } = await supabase.from('wa_avaliacao_config')
         .update({ funil_auto_ativa: ativa, updated_at: new Date().toISOString() }).eq('id', 1)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['funil-config'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
     onError: (err: any) => alert('Não foi possível alterar a automação do funil: ' + (err?.message || err)),
   })
 
   // Modo teste (dry-run): quando ligado, a automação só computa/avisa, NÃO aplica etiqueta.
-  const dryRunQuery = useQuery<boolean>({
-    queryKey: ['funil-dryrun'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('wa_avaliacao_config').select('funil_dry_run').eq('id', 1).maybeSingle()
-      if (error) throw error
-      if (!data) throw new Error('Modo de teste do funil indisponível.')
-      return data?.funil_dry_run !== false
-    },
-    refetchInterval: 15000,
-  })
   const toggleFunilDryRun = useMutation({
     mutationFn: async (dry: boolean) => {
       const { error } = await supabase.from('wa_avaliacao_config')
         .update({ funil_dry_run: dry, updated_at: new Date().toISOString() }).eq('id', 1)
       if (error) throw error
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['funil-dryrun'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
     onError: (err: any) => alert('Não foi possível alterar o modo teste do funil: ' + (err?.message || err)),
   })
 
@@ -341,11 +318,11 @@ export function Disparos() {
   const efetivo = efetivoQuery.data
   const cotaCfg = cotaQuery.data
   const vendorRuntime = runtimeQuery.data
-  const avaliacaoAtiva = avaliacaoQuery.data
-  const prospecAtiva = prospecQuery.data
-  const funilAtiva = funilQuery.data
-  const funilDryRun = dryRunQuery.data
-  const consultas = [vendedoresQuery, efetivoQuery, cotaQuery, runtimeQuery, avaliacaoQuery, prospecQuery, funilQuery, dryRunQuery]
+  const avaliacaoAtiva = configQuery.data?.avaliacaoAtiva
+  const prospecAtiva = configQuery.data?.prospecAtiva
+  const funilAtiva = configQuery.data?.funilAtiva
+  const funilDryRun = configQuery.data?.funilDryRun
+  const consultas = [vendedoresQuery, efetivoQuery, cotaQuery, runtimeQuery, configQuery]
   const erroLeitura = consultas.find(q => q.error)?.error
   const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 

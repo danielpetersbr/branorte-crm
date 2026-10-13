@@ -25,9 +25,10 @@ export interface ConfiguradorProjeto extends ConfiguradorProjetoMeta {
 const KEY = ['configurador-projetos']
 
 // Lista leve (sem o blob `data`) ordenada por atualização.
-export function useConfiguradorProjetos() {
+export function useConfiguradorProjetos(enabled = true) {
   return useQuery({
     queryKey: KEY,
+    enabled,
     queryFn: async (): Promise<ConfiguradorProjetoMeta[]> => {
       const { data, error } = await supabase
         .from('configurador_projetos')

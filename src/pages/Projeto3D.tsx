@@ -66,7 +66,7 @@ export function Projeto3D() {
   const qc = useQueryClient()
   // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
   const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
-  const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos()
+  const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos(showLista)
   const termoLista = semAcento(buscaLista.trim())
   const projetosFiltrados = termoLista
     ? projetos?.filter(p => semAcento(`${p.nome ?? ''} ${p.cliente_nome ?? ''} ${p.created_by_nome ?? ''}`).includes(termoLista))

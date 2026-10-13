@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { montarAreaClientes } from '@/lib/area-vendedor'
@@ -44,13 +45,17 @@ export function useAreaVendedor(vendedorNome: string | null, vendedorId: string 
       return (data ?? []) as unknown as SupervisaoAchado[]
     },
   })
+  const clientes = useMemo(
+    () => montarAreaClientes(carteira.data, podeLerSupervisao ? analises.data : []),
+    [carteira.data, analises.data, podeLerSupervisao],
+  )
   return {
     carteira,
     analises,
     precalculadas,
     // Conservador: 1000 também pode ser o total exato. Não afirmar carteira completa.
     precalculadasLimiteAtingido: (precalculadas.data?.length ?? 0) >= 1000,
-    clientes: montarAreaClientes(carteira.data, podeLerSupervisao ? analises.data : []),
+    clientes,
     atualizadoEm: carteira.dataUpdatedAt,
     atualizar: () => Promise.all([carteira.refetch(), ...(podeLerSupervisao && vendedorId ? [analises.refetch()] : []), ...(podeLerPrecalculada && vendedorId ? [precalculadas.refetch()] : [])]),
   }

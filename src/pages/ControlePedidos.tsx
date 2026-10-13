@@ -7,8 +7,6 @@ import {
   Eye, EyeOff, ShieldAlert,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { supabase } from '@/lib/supabase'
 import { supabase as controleSupabase } from '@/lib/controle-supabase/client'
 import { regerarDocumentoPedido } from '@/lib/pedido-venda/pedidoRevisaoAcoes'
@@ -759,6 +757,10 @@ export function ControlePedidos() {
       const finais = linhas.filter(p => !patches[p.id]?.removido)
       if (finais.length === 0) { toast.error('Nenhum pedido para exportar.', { id: aviso }); return }
 
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ])
       const doc = new jsPDF()
       doc.setFontSize(16).setFont('helvetica', 'bold')
       doc.text('Pedidos de Venda', 14, 18)

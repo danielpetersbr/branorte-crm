@@ -22,7 +22,7 @@ interface Props {
 
 export function NovaCampanhaModal({ open, alvos, origemFiltro, onClose, onCriada }: Props) {
   const { data: vendedor, isLoading: carregandoVendedor } = useVendedorAtual()
-  const { data: sequencias = [], isLoading: carregandoSeqs } = useSequenciasDisponiveis(vendedor)
+  const { data: sequencias = [], isLoading: carregandoSeqs } = useSequenciasDisponiveis(vendedor, open)
   const criar = useCriarCampanha()
   const mudarStatus = useMudarStatusCampanha()
 

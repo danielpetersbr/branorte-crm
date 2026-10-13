@@ -1166,9 +1166,10 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
 // média, pior caso 8 s = teto do authenticated) MAIS a lista de hoje, que o menu descartava.
 // Era a consulta que mais pesava no banco (a view = 22,5% de todo o tempo de banco desde 15/09)
 // e ajudava a derrubar por timeout as outras telas. Selo de menu não precisa ser ao vivo.
-export function useAtendimentosTotalMenu() {
+export function useAtendimentosTotalMenu(enabled = true) {
   return useQuery({
     queryKey: ['atendimentos-total-menu'],
+    enabled,
     queryFn: async (): Promise<number | null> => {
       const vendorFirst = await getCurrentVendorFirstName()
       const { count, error } = await applyBaseFilters(

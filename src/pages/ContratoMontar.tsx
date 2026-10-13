@@ -21,7 +21,7 @@ import {
   contratoDoOrcamento, camposPendentes,
   type ContratoDados, type ContratoPessoa, type ContratoGarantidor, type TipoPessoa,
 } from '@/lib/contrato/contrato-dados'
-import { nomeArquivoContrato } from '@/lib/contrato/contrato-docx'
+import { nomeArquivoContrato } from '@/lib/contrato/contrato-blocos'
 import { gerarContratoHtml } from '@/lib/contrato/contrato-html'
 import { formatBRL } from '@/lib/contrato/extenso'
 import { useContrato, useSalvarContrato } from '@/hooks/useContratos'

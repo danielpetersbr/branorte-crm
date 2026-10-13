@@ -47,7 +47,7 @@ export function useLembretesDueNotifier(): LembreteNotifierApi {
   }, [qc])
 
   const poll = useCallback(async () => {
-    if (!nome || runningRef.current) return
+    if (!nome || runningRef.current || document.visibilityState === 'hidden') return
     runningRef.current = true
     try {
       const agora = new Date()
@@ -64,7 +64,7 @@ export function useLembretesDueNotifier(): LembreteNotifierApi {
         .order('hora', { ascending: true, nullsFirst: true })
         .limit(50)
       if (error) throw error
-      if (nomeRef.current !== nome) return
+      if (nomeRef.current !== nome || document.visibilityState === 'hidden') return
 
       const vencidos = ((data ?? []) as AgendaItem[]).filter(it => {
         if (!it.data) return false
@@ -109,7 +109,12 @@ export function useLembretesDueNotifier(): LembreteNotifierApi {
     if (!nome) return
     poll()
     const id = window.setInterval(poll, POLL_MS)
-    return () => window.clearInterval(id)
+    const aoVoltar = () => { if (document.visibilityState === 'visible') void poll() }
+    document.addEventListener('visibilitychange', aoVoltar)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', aoVoltar)
+    }
   }, [nome, poll])
 
   const executar = useCallback(async (item: AgendaItem, acao: 'concluir' | 'adiar') => {
