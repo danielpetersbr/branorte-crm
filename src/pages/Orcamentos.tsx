@@ -21,9 +21,38 @@ const BRAND_COLORS = [
 ]
 
 export function Orcamentos() {
-  const [viewMode, setViewMode] = useState<'year' | 'month'>('year')
   const loc = useLocation()
-  const tab: 'painel' | 'lista' = loc.pathname.startsWith('/orcamentos/lista') ? 'lista' : 'painel'
+  return loc.pathname.startsWith('/orcamentos/lista') ? <OrcamentosListaRota /> : <OrcamentosPainel />
+}
+
+function OrcamentosListaRota() {
+  return (
+    <div className="p-4 lg:p-8 space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-4 flex-wrap flex-1">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary">Orçamentos</h1>
+            <p className="text-sm text-text-secondary mt-1">
+              Inventário do drive de rede Z:\1 - Comercial\3 - Orçamento
+            </p>
+          </div>
+          <Link
+            to="/orcamentos/montar"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-accent text-white text-[13px] font-bold hover:bg-accent/90 shadow-sm transition-all whitespace-nowrap"
+            title="Iniciar novo orçamento personalizado"
+          >
+            <FilePlus2 className="h-4 w-4" />
+            Novo orçamento
+          </Link>
+        </div>
+      </div>
+      <OrcamentosLista />
+    </div>
+  )
+}
+
+function OrcamentosPainel() {
+  const [viewMode, setViewMode] = useState<'year' | 'month'>('year')
 
   const { data, isLoading, error, refetch, isFetching } = useOrcamentoStats()
   const { data: vendorsList } = useVendors({ incluirInativos: true })
@@ -80,7 +109,7 @@ export function Orcamentos() {
           </Link>
         </div>
 
-        {tab === 'painel' && hasMonthData && (
+        {hasMonthData && (
           <div className="flex rounded-lg border border-surface-border overflow-hidden">
             <button
               onClick={() => setViewMode('year')}
@@ -106,9 +135,6 @@ export function Orcamentos() {
         )}
       </div>
 
-      {tab === 'lista' && <OrcamentosLista />}
-      {tab === 'painel' && (
-      <>
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -430,8 +456,6 @@ export function Orcamentos() {
           </div>
         </CardContent>
       </Card>
-      </>
-      )}
     </div>
   )
 }

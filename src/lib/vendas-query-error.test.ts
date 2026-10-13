@@ -7,11 +7,12 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryNotice } from '../components/ui/QueryNotice'
 
-function realFunction(file: string, name: string, context: Record<string, unknown>) {
+function realFunction(file: string, name: string, context: Record<string, unknown>, dependencies: string[] = []) {
   const source = readFileSync(new URL(file, import.meta.url), 'utf8')
   const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
-  const fn = ast.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === name)!
-  const js = ts.transpileModule(fn.getText(ast).replace(/^export(?: default)? /, ''), {
+  const names = new Set([name, ...dependencies])
+  const functions = ast.statements.filter(n => ts.isFunctionDeclaration(n) && names.has(n.name?.text ?? ''))
+  const js = ts.transpileModule(functions.map(fn => fn.getText(ast).replace(/^export(?: default)? /, '')).join('\n'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
   }).outputText
   return vm.runInNewContext(`${js}\n${name}`, {
@@ -26,7 +27,7 @@ for (const page of ['Orcamentos', 'OrcamentosConversao']) {
     const render = realFunction(`../pages/${page}.tsx`, page, {
       useOrcamentoStats: () => query, useOrcamentosConversao: () => query,
       useLocation: () => ({ pathname: '/orcamentos' }), useVendors: () => ({}), usePipelineVendedor: () => ({}),
-    })
+    }, page === 'Orcamentos' ? ['OrcamentosPainel', 'OrcamentosListaRota'] : [])
     const html = renderToStaticMarkup(createElement(render))
     assert.match(html, /role="alert"/)
     assert.match(html, /Tentar novamente/)

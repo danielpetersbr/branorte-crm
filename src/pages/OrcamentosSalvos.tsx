@@ -204,6 +204,11 @@ export function OrcamentosSalvos() {
   const [filtroStatus, setFiltroStatus] = useState<string>('')
   const [filtroVendedor, setFiltroVendedor] = useState<string>('')
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<string>(() => ETIQUETA_PROP_OPCOES.some(o => o.value === etqParam) ? etqParam! : '')
+  const [pagina, setPagina] = useState(1)
+
+  useEffect(() => {
+    setPagina(1)
+  }, [busca, filtroStatus, filtroVendedor, filtroEtiqueta])
 
   // IDs das propostas no estágio de funil selecionado (vem da RPC, casado por telefone).
   const { data: idsEtiqueta, isLoading: loadingEtiqueta, error: erroEtiqueta, refetch: refetchEtiqueta, isFetching: fetchingEtiqueta } = useQuery({
@@ -295,6 +300,19 @@ export function OrcamentosSalvos() {
   }, [data, busca, filtroStatus, filtroVendedor, filtroEtiqueta, idsEtiqueta, loadingEtiqueta, erroEtiqueta])
 
   const totalCount = data?.length ?? 0
+  // Paginar depois de filtrar e agrupar mantém a busca completa e as ALTs com o pai.
+  const gruposPorPagina = 50
+  const totalPaginas = Math.max(1, Math.ceil(grouped.length / gruposPorPagina))
+  const paginaAtual = Math.min(pagina, totalPaginas)
+  const inicioPagina = (paginaAtual - 1) * gruposPorPagina
+  const gruposDaPagina = useMemo(
+    () => grouped.slice(inicioPagina, inicioPagina + gruposPorPagina),
+    [grouped, inicioPagina],
+  )
+
+  useEffect(() => {
+    setPagina(atual => Math.min(atual, totalPaginas))
+  }, [totalPaginas])
 
   if (isLoading) return <PageLoading />
   if (error) return <div className="p-4 lg:p-8 space-y-6"><h1 className="text-2xl font-bold text-text-primary">Orçamentos Salvos</h1><QueryNotice error={error} loading={isFetching} onRetry={() => { void refetch() }} message="Não foi possível carregar os orçamentos salvos." /></div>
@@ -403,12 +421,47 @@ export function OrcamentosSalvos() {
               </tr>
             </thead>
             <tbody>
-              {grouped.map(group => (
+              {gruposDaPagina.map(group => (
                 <OrcamentoGroupRow key={group.parent.id} group={group} />
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {grouped.length > 0 && (
+        <nav aria-label="Paginação de orçamentos" className="flex items-center justify-between gap-3 flex-wrap">
+          <p role="status" aria-live="polite" aria-atomic="true" className="text-sm text-ink-muted">
+            Grupos {inicioPagina + 1}–{Math.min(inicioPagina + gruposPorPagina, grouped.length)} de {grouped.length}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setPagina(paginaAtual - 1)}
+              disabled={paginaAtual === 1}
+              className="min-h-[44px] min-w-[44px] px-3 rounded-md border border-border bg-surface-2 text-sm hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Anterior
+            </button>
+            <select
+              aria-label="Página dos orçamentos"
+              value={paginaAtual}
+              onChange={e => setPagina(Number(e.target.value))}
+              className="min-h-[44px] min-w-[44px] px-3 rounded-md border border-border bg-surface-2 text-sm focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {Array.from({ length: totalPaginas }, (_, i) => (
+                <option key={i + 1} value={i + 1}>Página {i + 1} de {totalPaginas}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setPagina(paginaAtual + 1)}
+              disabled={paginaAtual === totalPaginas}
+              className="min-h-[44px] min-w-[44px] px-3 rounded-md border border-border bg-surface-2 text-sm hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Próxima
+            </button>
+          </div>
+        </nav>
       )}
     </div>
   )

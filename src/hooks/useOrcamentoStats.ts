@@ -40,7 +40,7 @@ async function fetchAllRows(): Promise<{ rows: OrcRow[]; total: number }> {
   while (true) {
     const { data, error, count } = await supabase
       .from('orcamentos_files')
-      .select('ano, mtime_iso, status_kanban, vendor_id', { count: 'exact' })
+      .select('ano, mtime_iso, status_kanban, vendor_id', offset === 0 ? { count: 'exact' } : undefined)
       .order('id', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1)
 
