@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { OrcamentoPonto, Visita } from '../hooks/useVisitas'
-import { selecionarMapaVisual, modoMapaVisual, estiloOrcadoVisual, prepararDesenhoVisual, deslocamentoVisual } from './mapa-visual'
+import { selecionarMapaVisual, modoMapaVisual, estiloOrcadoVisual, prepararDesenhoVisual, deslocamentoVisual, dataOrcamentoVisual } from './mapa-visual'
 
 function cliente(props: Partial<OrcamentoPonto> = {}): OrcamentoPonto {
   return { cli_key: 'cliente', cliente: 'Cliente', telefone: null, fone: null, numeros: null,
@@ -13,6 +13,23 @@ function visita(props: Partial<Visita> = {}): Visita {
     interesse: null, visitar: true, vendedor_nome: null, etiquetas: null, valor_negociando: null,
     lat: -27.1, lng: -52.6, created_at: '2012-01-01', vendido: false, n_vendas: 0, ...props }
 }
+
+test('painel dos orçados conserva números vinculados e a data do orçamento mais recente', () => {
+  const ponto = selecionarMapaVisual([cliente({ numeros: 'BN-008, BN-010', n_orcamentos: 2, data_recente: '2026-10-13', total: 131_992 })], []).orcados.pontos[0]
+  assert.deepEqual(ponto.detalhes.orcamento, { numeros: 'BN-008, BN-010', data: '2026-10-13', quantidade: 2 })
+  assert.equal(ponto.detalhes.valor, 131_992)
+})
+
+test('orçamento sem número ou data continua sem informação, sem inventar identificador', () => {
+  const ponto = selecionarMapaVisual([cliente({ numeros: '  ', data_recente: null })], []).orcados.pontos[0]
+  assert.deepEqual(ponto.detalhes.orcamento, { numeros: null, data: null, quantidade: 1 })
+})
+
+test('data de emissão aparece em português sem deslocamento de fuso', () => {
+  assert.equal(dataOrcamentoVisual('2026-10-13'), '13/10/2026')
+  assert.equal(dataOrcamentoVisual('2024-02-29'), '29/02/2024')
+  for (const data of [null, '', '2026-02-30', 'data inválida']) assert.equal(dataOrcamentoVisual(data), 'Não informado')
+})
 
 test('cartão conserva equipamento e valor do último orçamento sem somar os orçamentos do cliente', () => {
   const equipamento = 'Misturador horizontal de 2.000 litros com conjunto completo de transporte e dosagem'

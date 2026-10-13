@@ -23,6 +23,7 @@ export interface PontoVisual {
     cidade: string | null
     uf: string | null
     categoria: 'Vendido' | 'Orçado' | 'Pode visitar' | 'É para visitar'
+    orcamento?: { numeros: string | null; data: string | null; quantidade: number }
   }
 }
 export interface CategoriaVisual {
@@ -33,6 +34,14 @@ export interface CategoriaVisual {
 
 const CIRCULO_ORCAMENTO = { radius: 5, color: '#fff', weight: 1, fillOpacity: 0.92 }
 const CIRCULO_VISITA = { radius: 9, color: '#0f172a', weight: 2.5, fillOpacity: 1 }
+
+// A RPC retorna uma data civil (YYYY-MM-DD), sem horário ou conversão de fuso.
+export function dataOrcamentoVisual(data: string | null): string {
+  if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) return 'Não informado'
+  const dia = new Date(`${data}T00:00:00Z`)
+  if (Number.isNaN(dia.getTime()) || dia.toISOString().slice(0, 10) !== data) return 'Não informado'
+  return `${data.slice(8, 10)}/${data.slice(5, 7)}/${data.slice(0, 4)}`
+}
 
 export function modoMapaVisual(valor: string | null): ModoMapaVisual | null {
   return valor === 'vendidos' || valor === 'orcados' || valor === 'visitas' ? valor : null
@@ -73,7 +82,8 @@ export function selecionarMapaVisual(orcamentos: OrcamentoPonto[], visitas: Visi
       detalhes: { cliente: p.cliente, telefone: telefoneVisual(telefone),
         contato: p.fone || p.telefone, vendedor: p.vendedor, cidade: p.cidade, uf: p.uf,
         equipamento: p.equipamento?.trim() || null, valor: p.total,
-        categoria: vendido ? 'Vendido' : 'Orçado' },
+        categoria: vendido ? 'Vendido' : 'Orçado',
+        ...(!vendido ? { orcamento: { numeros: p.numeros?.trim() || null, data: p.data_recente, quantidade: p.n_orcamentos } } : {}) },
       ...(vendido ? { forma: 'circulo' as const, cor: corDoEstado(p.uf, false) } : estiloOrcadoVisual(p.total, p.data_recente)) })
     categoria.total++
   }

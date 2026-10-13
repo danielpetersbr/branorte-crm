@@ -4,7 +4,7 @@ import { ArrowLeft, CheckCircle2, ChevronRight, FileText, MapPin, X } from 'luci
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useMapaVisualPontos, useMapaVisualResumo } from '@/hooks/useMapaVisual'
-import { modoMapaVisual, prepararDesenhoVisual, deslocamentoVisual, type ModoMapaVisual, type PontoVisual } from '@/lib/mapa-visual'
+import { modoMapaVisual, prepararDesenhoVisual, deslocamentoVisual, dataOrcamentoVisual, type ModoMapaVisual, type PontoVisual } from '@/lib/mapa-visual'
 import { chaveCoordenadaMapa } from '@/lib/mapa-visitas-regras'
 
 const CATEGORIAS = [
@@ -82,9 +82,15 @@ function MapaLimpo({ pontos }: { pontos: PontoVisual[] }) {
       <h3 className="mt-2 break-words text-lg font-semibold">{selecionado.detalhes.cliente || 'Cliente sem nome'}</h3>
       <p className="mt-1 text-sm text-gray-500">{selecionado.detalhes.categoria} · {[selecionado.detalhes.cidade, selecionado.detalhes.uf].filter(Boolean).join(' / ') || 'Localização não informada'}</p>
       <dl className="mt-4 space-y-3 text-sm">
+        {selecionado.detalhes.orcamento && <>
+          <div><dt className="text-gray-500">{selecionado.detalhes.orcamento.quantidade > 1 ? 'Números dos orçamentos' : 'Número do orçamento'}</dt>
+            <dd className="break-words font-medium">{selecionado.detalhes.orcamento.numeros || 'Não informado'}</dd></div>
+          <div><dt className="text-gray-500">{selecionado.detalhes.orcamento.quantidade > 1 ? 'Data do último orçamento' : 'Data do orçamento'}</dt>
+            <dd className="font-medium">{dataOrcamentoVisual(selecionado.detalhes.orcamento.data)}</dd></div>
+        </>}
         <div><dt className="text-gray-500">{selecionado.detalhes.categoria === 'Orçado' || selecionado.detalhes.categoria === 'Vendido' ? 'Equipamento' : 'Interesse'}</dt>
           <dd className="break-words whitespace-pre-wrap font-medium">{selecionado.detalhes.equipamento || 'Não informado'}</dd></div>
-        <div><dt className="text-gray-500">{selecionado.detalhes.categoria === 'Orçado' ? 'Valor do orçamento' : selecionado.detalhes.categoria === 'Vendido' ? 'Valor' : 'Valor negociando'}</dt>
+        <div><dt className="text-gray-500">{selecionado.detalhes.categoria === 'Orçado' ? (selecionado.detalhes.orcamento?.quantidade ?? 0) > 1 ? 'Valor do último orçamento' : 'Valor do orçamento' : selecionado.detalhes.categoria === 'Vendido' ? 'Valor' : 'Valor negociando'}</dt>
           <dd className="break-words font-medium">{selecionado.detalhes.valor == null ? 'Não informado' : MOEDA.format(selecionado.detalhes.valor)}</dd></div>
         <div><dt className="text-gray-500">Contato</dt><dd className="break-words font-medium">{selecionado.detalhes.contato || 'Não informado'}</dd></div>
         <div><dt className="text-gray-500">Vendedor</dt><dd className="break-words font-medium">{selecionado.detalhes.vendedor || 'Não informado'}</dd></div>
