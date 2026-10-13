@@ -28,6 +28,7 @@ import {
 const CONFIGURADOR_ORIGIN = 'https://branorte-configurador-3d.vercel.app'
 const CONFIGURADOR_URL = CONFIGURADOR_ORIGIN
 
+const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 const rid = () => Math.random().toString(36).slice(2)
 const fmtData = (s: string) =>
   new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
@@ -43,6 +44,11 @@ export function Projeto3D() {
   const [projetoNome, setProjetoNome] = useState('')
 
   const [showLista, setShowLista] = useState(false)
+  // Lupa da lista (roadmap #98): acha o projeto pelo nome do cliente/projeto/vendedor.
+  const [buscaLista, setBuscaLista] = useState('')
+  // Novo projeto pede o nome ANTES de abrir o editor (roadmap #100).
+  const [novoNomeAberto, setNovoNomeAberto] = useState(false)
+  const [novoNome, setNovoNome] = useState('')
   const [toast, setToast] = useState<{ msg: string; erro?: boolean } | null>(null)
   const toastTimerRef = useRef<number | null>(null)
 
@@ -61,6 +67,10 @@ export function Projeto3D() {
   // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
   const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}`
   const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos()
+  const termoLista = semAcento(buscaLista.trim())
+  const projetosFiltrados = termoLista
+    ? projetos?.filter(p => semAcento(`${p.nome ?? ''} ${p.cliente_nome ?? ''} ${p.created_by_nome ?? ''}`).includes(termoLista))
+    : projetos
   const salvar = useSalvarConfiguradorProjeto()
   const deletar = useDeletarConfiguradorProjeto()
   const { data: contatos, error: contatosError, refetch: retryContatos, isFetching: fetchingContatos } = useBuscarContatos(saveBusca)
@@ -224,12 +234,17 @@ export function Projeto3D() {
 
   // ---- Ações ----
   const abrirNovo = async () => {
+    const nome = novoNome.trim()
+    if (!nome) return
     if (!iniciarOperacao()) return
     setShowLista(false)
+    setNovoNomeAberto(false)
+    setNovoNome('')
     try {
-      await pedirAbertura({ type: 'branorte:new' })
+      await pedirAbertura({ type: 'branorte:new', name: nome })
       limparVinculo()
-      flash('Editor vazio aberto')
+      setProjetoNome(nome)
+      flash(`Novo projeto: ${nome}`)
     } catch (error) {
       limparVinculo()
       flash((error as Error).message, true)
@@ -353,19 +368,77 @@ export function Projeto3D() {
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setShowLista(false)} />
                 <div className="absolute left-0 top-full mt-1 w-[340px] max-w-[85vw] max-h-[70vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-xl z-40 p-1.5">
-                  <button
-                    onClick={abrirNovo}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-accent hover:bg-accent/10"
-                  >
-                    <Plus className="h-4 w-4" /> Novo projeto (editor vazio)
-                  </button>
+                  {novoNomeAberto ? (
+                    <form
+                      onSubmit={e => { e.preventDefault(); void abrirNovo() }}
+                      className="px-2 py-2 space-y-2"
+                    >
+                      <label htmlFor="novo-projeto-nome" className="block text-xs font-semibold text-ink">Nome do projeto</label>
+                      <input
+                        id="novo-projeto-nome"
+                        autoFocus
+                        value={novoNome}
+                        onChange={e => setNovoNome(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') { setNovoNomeAberto(false); setNovoNome('') } }}
+                        placeholder="Ex.: Fábrica João da Silva"
+                        className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-sm text-ink outline-none focus:border-accent"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={!novoNome.trim()}
+                          className="flex-1 h-8 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-40"
+                        >
+                          Criar e abrir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setNovoNomeAberto(false); setNovoNome('') }}
+                          className="h-8 px-3 rounded-lg border border-border text-sm text-ink-muted hover:bg-bg"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setNovoNomeAberto(true)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold text-accent hover:bg-accent/10"
+                    >
+                      <Plus className="h-4 w-4" /> Novo projeto
+                    </button>
+                  )}
                   <div className="h-px bg-border my-1" />
+                  {!!projetos?.length && (
+                    <div className="relative px-1 pb-1">
+                      <Search className="h-4 w-4 text-ink-faint absolute left-3.5 top-2.5 pointer-events-none" />
+                      <input
+                        value={buscaLista}
+                        onChange={e => setBuscaLista(e.target.value)}
+                        placeholder="Buscar pelo cliente ou nome do projeto"
+                        aria-label="Buscar projeto"
+                        className="w-full h-9 pl-8 pr-8 rounded-lg border border-border bg-bg text-sm text-ink outline-none focus:border-accent"
+                      />
+                      {buscaLista && (
+                        <button
+                          onClick={() => setBuscaLista('')}
+                          aria-label="Limpar busca"
+                          className="absolute right-2.5 top-2 h-5 w-5 flex items-center justify-center text-ink-faint hover:text-ink"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {!!buscaLista.trim() && projetosFiltrados?.length === 0 && (
+                    <div className="px-3 py-4 text-center text-sm text-ink-faint">Nenhum projeto com "{buscaLista.trim()}".</div>
+                  )}
                   {loadingLista && <div className="px-3 py-4 text-center text-sm text-ink-faint">Carregando…</div>}
                   {projetosError && <div role="alert" className="px-3 py-4 text-sm text-danger">Não foi possível carregar os projetos. <button disabled={fetchingProjetos} onClick={() => { void retryProjetos() }} className="underline">Tentar novamente</button></div>}
                   {!loadingLista && !projetosError && (!projetos || projetos.length === 0) && (
                     <div className="px-3 py-6 text-center text-sm text-ink-faint">Nenhum projeto salvo ainda.</div>
                   )}
-                  {projetos?.map(p => (
+                  {projetosFiltrados?.map(p => (
                     <div
                       key={p.id}
                       onClick={() => abrirSalvo(p)}
