@@ -108,9 +108,11 @@ export function EquipamentosEditor({ equipamentos, equipamentosDetalhados, onCha
     <div className="space-y-4">
       {/* Header com título e total */}
       <div className="flex items-center justify-between pb-3 border-b">
-        <div className="flex items-center gap-2">
-          <Package className="h-5 w-5 text-primary" />
-          <h3 className="font-semibold text-base text-foreground">Equipamentos</h3>
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-bg text-accent">
+            <Package className="h-5 w-5" />
+          </div>
+          <h3 className="text-base sm:text-lg font-semibold text-ink">Equipamentos</h3>
           {localDetalhados && localDetalhados.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {localDetalhados.length} {localDetalhados.length === 1 ? 'item' : 'itens'}
@@ -119,7 +121,7 @@ export function EquipamentosEditor({ equipamentos, equipamentosDetalhados, onCha
         </div>
         <div className="flex items-center gap-3">
           {localDetalhados && localDetalhados.length > 0 && totalGeral > 0 && (
-            <div className="px-4 py-2 rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20">
+            <div className="px-4 py-2 rounded-xl bg-accent-bg border border-accent/30">
               <div className="flex flex-col items-end">
                 <span className="text-xs text-muted-foreground font-medium">Valor Total</span>
                 <span className="text-lg font-bold text-primary">

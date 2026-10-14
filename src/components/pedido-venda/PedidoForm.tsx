@@ -27,9 +27,10 @@ import { supabase } from "@/lib/controle-supabase/client";
 import { supabase as crmSupabase } from "@/lib/supabase";
 import { avisoValorEdicao, decidirValorEdicao, hojeSP, valorBase, valorContrato } from "@/lib/pedido-venda/revisaoPedido";
 import { regerarDocumentoPedido, sincronizarParcelasFinanceiro } from "@/lib/pedido-venda/pedidoRevisaoAcoes";
-import { FileText, Upload, Download, Calendar as CalendarIcon, User, Package, Settings, DollarSign, Loader2, CheckCircle } from "lucide-react";
+import { FileText, Upload, Download, Calendar as CalendarIcon, User, Package, Settings, DollarSign, Loader2, CheckCircle, AlertTriangle, PencilLine } from "lucide-react";
 import { Textarea } from "@/components/pedido-ui/textarea";
 import { addBusinessDays, addCalendarDays, formatDateBR } from "@/lib/pedido-venda/businessDays";
+import { prepararSomVenda, tocarSomVenda } from "@/lib/pedido-venda/somVenda";
 import { sumLineItems, sumCurrency } from "@/lib/pedido-venda/currency";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -132,6 +133,15 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   const [showValidation, setShowValidation] = useState(true); // Sempre mostra validação
   const [validationAlerts, setValidationAlerts] = useState<string[]>([]);
   const [modoPartesOutros, setModoPartesOutros] = useState(false); // Modo simplificado para partes e outros
+  // Vira true na 1ª tentativa de gerar que parou num campo: aí o contorno âmbar dos
+  // obrigatórios vazios passa a vermelho e a tela rola até o campo que faltou.
+  const [tentouEnviar, setTentouEnviar] = useState(false);
+  // Pedido já criado: o botão não volta a valer. Antes o `finally` destravava o botão e,
+  // no 1,5 s até mudar de tela, um 2º clique gerava o MESMO pedido de novo.
+  const pedidoCriadoRef = useRef(false);
+  const [pedidoCriado, setPedidoCriado] = useState(false);
+  // Prazo que estava antes de ligar o modo Partes (o modo zera o prazo).
+  const diasAntesModoPartesRef = useRef<number | null>(null);
   
   // Estados para integração App2
   // Usar useRef para evitar problema de closure/stale state
@@ -164,6 +174,15 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
     if (modoPartesOutros) return false;
     return !value || value.trim() === "";
   };
+
+  // Obrigatório vazio: contorno âmbar discreto enquanto preenche; vermelho depois de uma
+  // tentativa de gerar. Tokens do tema — o red-50/red-300 fixo de antes virava rosa-claro
+  // com texto claro no escuro (o botão "Selecione a data" ficava com contraste 1,6:1).
+  const campoVazioCls = tentouEnviar
+    ? "border-danger bg-danger-bg focus-visible:ring-danger/40"
+    : "border-warning/70";
+  const secaoCls = "rounded-xl border border-border bg-surface-2/40 p-5 sm:p-6";
+  const tituloSecaoCls = "flex items-center gap-2.5 text-base sm:text-lg font-semibold text-ink [&>svg]:h-8 [&>svg]:w-8 [&>svg]:shrink-0 [&>svg]:rounded-lg [&>svg]:bg-accent-bg [&>svg]:p-1.5 [&>svg]:text-accent";
 
   // Carregar dados do pedido quando estiver editando
   React.useEffect(() => {
@@ -311,17 +330,31 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   // Atualizar dias úteis quando modo Partes e Outros for ativado
   React.useEffect(() => {
     if (modoPartesOutros) {
+      diasAntesModoPartesRef.current = diasUteis;
       setDiasUteis(0);
+    } else if (diasAntesModoPartesRef.current !== null) {
+      setDiasUteis(diasAntesModoPartesRef.current || 90);
+      diasAntesModoPartesRef.current = null;
     }
   }, [modoPartesOutros]);
 
   // Ativar modo Partes e Outros automaticamente se vier da URL
   React.useEffect(() => {
-    const modo = searchParams.get('modo');
-    if (modo === 'acessorios' && !pedidoInicial) {
-      setModoPartesOutros(true);
-    }
+    // No pedido novo a URL manda nos DOIS sentidos. Antes só ligava: vindo de
+    // ?modo=acessorios e escolhendo "Pedido Completo", o card marcava Completo e o
+    // formulário continuava no modo Partes.
+    if (pedidoInicial) return;
+    setModoPartesOutros(searchParams.get('modo') === 'acessorios');
   }, [searchParams, pedidoInicial]);
+
+  const alternarModoPartes = () => {
+    const ligar = !modoPartesOutros;
+    if (pedidoInicial) {
+      setModoPartesOutros(ligar);
+      return;
+    }
+    navigate(ligar ? '/controle/novo-pedido?modo=acessorios' : '/controle/novo-pedido', { replace: true });
+  };
 
   // Atualizar observações automaticamente quando tensão ou voltagem mudar
   const especificacoesEletricas = React.useMemo(() => {
@@ -1078,6 +1111,9 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   };
 
   const handleGerarPedido = async (formato: 'docx' | 'pdf' = 'docx') => {
+    if (pedidoCriadoRef.current) return;
+    // Destrava o áudio AGORA (gesto do clique); o ka-ching só toca quando o pedido existir.
+    if (!pedidoInicial) prepararSomVenda();
     if (!pedidoInicial) {
       try {
         vendedorPrincipalPedido(identidadeVendedor, vendedor);
@@ -1246,10 +1282,20 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
     await new Promise(resolve => setTimeout(resolve, 100));
     
     // Função helper para resetar os estados de loading quando falhar validação
-    const resetLoading = () => {
+    const resetLoading = (campoId?: string) => {
       setIsGenerating(false);
       setIsGeneratingPDF(false);
       isProcessingRef.current = false;
+      setTentouEnviar(true);
+      // O toast some sozinho e o vendedor não achava o campo num formulário deste tamanho.
+      if (campoId) {
+        requestAnimationFrame(() => {
+          const alvo = document.getElementById(campoId);
+          if (!alvo) return;
+          alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          alvo.focus({ preventScroll: true });
+        });
+      }
     };
 
     // Se modo Partes e Outros estiver ativo, validar apenas vendedor e forma de pagamento
@@ -1269,52 +1315,52 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       // Validações completas para pedidos normais
       if (!numeroOrcamento.trim()) {
         toast.error("Número do orçamento é obrigatório");
-        resetLoading();
+        resetLoading("numero_orcamento");
         return;
       }
       if (!cliente.trim()) {
         toast.error("Nome do cliente é obrigatório");
-        resetLoading();
+        resetLoading("cliente");
         return;
       }
       if (!atencaoA.trim()) {
         toast.error("Campo 'Atenção A' é obrigatório");
-        resetLoading();
+        resetLoading("atencao_a");
         return;
       }
       if (!telefone.trim()) {
         toast.error("Telefone é obrigatório");
-        resetLoading();
+        resetLoading("telefone");
         return;
       }
       if (!cidade.trim()) {
         toast.error("Cidade é obrigatória");
-        resetLoading();
+        resetLoading("cidade");
         return;
       }
       if (!estado.trim()) {
         toast.error("Estado (UF) é obrigatório");
-        resetLoading();
+        resetLoading("estado");
         return;
       }
       if (!endereco.trim()) {
         toast.error("Endereço é obrigatório");
-        resetLoading();
+        resetLoading("endereco");
         return;
       }
       if (!bairro.trim()) {
         toast.error("Bairro é obrigatório");
-        resetLoading();
+        resetLoading("bairro");
         return;
       }
       if (!cpfCnpj.trim()) {
         toast.error("CPF/CNPJ é obrigatório");
-        resetLoading();
+        resetLoading("cpf_cnpj");
         return;
       }
       if (!cep.trim()) {
         toast.error("CEP é obrigatório");
-        resetLoading();
+        resetLoading("cep");
         return;
       }
       // Validação de formato do e-mail (opcional, mas se preenchido deve ser válido)
@@ -1322,7 +1368,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email.trim())) {
           toast.error("E-mail inválido. Verifique o formato (ex: nome@dominio.com)");
-          resetLoading();
+          resetLoading("email");
           return;
         }
       }
@@ -1330,7 +1376,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       // Validação especial para CNPJ - verificar se fantasia está preenchido
       if (isCNPJ(cpfCnpj) && !fantasia.trim()) {
         toast.error("Para CNPJ, o campo Nome Fantasia é obrigatório");
-        resetLoading();
+        resetLoading("fantasia");
         return;
       }
       
@@ -1342,12 +1388,12 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       }
       if (!descricaoEquipamento.trim()) {
         toast.error("Descrição do equipamento/fábrica é obrigatória");
-        resetLoading();
+        resetLoading("descricao_equipamento");
         return;
       }
       if (!observacoesAdicionais.trim()) {
         toast.error("Observação do vendedor é obrigatória. Clique em 'Sem observação' se não houver.");
-        resetLoading();
+        resetLoading("obs-adicionais");
         return;
       }
       if (!dataVenda) {
@@ -1366,7 +1412,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       // Validação de valor total e plano de pagamento
       if (!valorTotal || valorTotal.trim() === "" || valorTotal === "R$ 0,00") {
         toast.error("Valor total é obrigatório");
-        resetLoading();
+        resetLoading("valor_total");
         return;
       }
       if (!paymentPlan || !paymentPlan.parcelas || paymentPlan.parcelas.length === 0) {
@@ -1383,7 +1429,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       // Apenas validar fonte_origem se for pedido novo (não editando)
       if (!pedidoInicial && !fonteOrigem) {
         toast.error("Selecione como o cliente encontrou a empresa");
-        resetLoading();
+        resetLoading("fonte_origem");
         return;
       }
       
@@ -1391,22 +1437,22 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       if (enderecoEntregaDiferente) {
         if (!enderecoEntrega.trim()) {
           toast.error("Endereço de entrega é obrigatório");
-          resetLoading();
+          resetLoading("endereco_entrega");
           return;
         }
         if (!cidadeEntrega.trim()) {
           toast.error("Cidade de entrega é obrigatória");
-          resetLoading();
+          resetLoading("cidade_entrega");
           return;
         }
         if (!estadoEntrega.trim()) {
           toast.error("Estado de entrega é obrigatório");
-          resetLoading();
+          resetLoading("estado_entrega");
           return;
         }
         if (!responsavelRecebimento.trim()) {
           toast.error("Responsável pelo recebimento é obrigatório");
-          resetLoading();
+          resetLoading("responsavel_recebimento");
           return;
         }
       }
@@ -1530,6 +1576,11 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
       if (error) throw error;
 
+      // Daqui pra baixo o pedido EXISTE: trava o botão e nenhum erro posterior pode
+      // cair no fallback (que criaria um 2º pedido igual).
+      pedidoCriadoRef.current = true;
+      setPedidoCriado(true);
+      tocarSomVenda();
       setArquivoUrl(data.arquivo_url);
       const tipoArquivo = formato === 'pdf' ? 'PDF' : 'Word (DOCX)';
       toast.success(`Pedido ${tipoArquivo} gerado com sucesso!`);
@@ -1561,6 +1612,10 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       }, 1500);
     } catch (error: any) {
       console.error('Erro na geração:', error);
+      if (pedidoCriadoRef.current) {
+        toast.error(`Pedido criado, mas algo falhou depois: ${error?.message || 'erro desconhecido'}. Confira o pedido antes de lançar de novo.`, { duration: 12000 });
+        return;
+      }
       
       // Detectar erro de rede/bloqueio (inclui FunctionsFetchError do Supabase)
       const isNetworkError = 
@@ -1680,7 +1735,10 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
             .single();
           
           if (dbError) throw dbError;
-          
+
+          pedidoCriadoRef.current = true;
+          setPedidoCriado(true);
+          tocarSomVenda();
           console.log('[Fallback] Pedido salvo no banco:', insertedOrder.id);
           
           // 3. Criar registro na produção
@@ -1803,41 +1861,81 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
     }
   };
 
+  // O que impede gerar — exatamente o que desativa o botão. Antes o botão ficava verde
+  // e morto, sem dizer por quê, quando faltava o número do orçamento.
+  const pendenciasGerar: string[] = [];
+  if (vendedorBloqueado) pendenciasGerar.push(identidadeVendedor.aviso || "Seu usuário não pode lançar pedido por aqui");
+  if (!vendedor) pendenciasGerar.push("Selecione o vendedor responsável");
+  if (!numeroOrcamento) pendenciasGerar.push("Informe o número do orçamento");
+  if (!planoPagamentoValido) {
+    pendenciasGerar.push(paymentPlan?.parcelas?.length
+      ? "Plano de pagamento incompleto ou a soma não bate com o valor total"
+      : "Monte as condições de pagamento");
+  }
+  if (erroChecklistProjeto) pendenciasGerar.push(`Informações para o projeto: ${erroChecklistProjeto.toLowerCase()}`);
+  if (!voltagem && !porContaCliente && tensao === "Trifásico") pendenciasGerar.push("Selecione a voltagem dos motores");
+  const ocupado = isGenerating || isGeneratingPDF || isExtracting;
+  const podeGerar = pendenciasGerar.length === 0 && !ocupado && !pedidoCriado;
+
   return (
-    <Card className="shadow-[var(--shadow-large)] border-2 bg-card overflow-hidden">
-      {/* Header do Card */}
-      <div className="bg-[var(--gradient-primary)] p-6 text-primary-foreground">
-        <h2 className="text-2xl font-bold flex items-center gap-3">
-          <FileText className="h-7 w-7" />
-          Novo Pedido de Venda
-        </h2>
-        <p className="text-primary-foreground/80 mt-1">Preencha os dados ou faça upload de um orçamento DOCX</p>
+    <Card className="rounded-2xl border border-border bg-card shadow-lg overflow-hidden">
+      {/* Cabeçalho. Era `bg-[var(--gradient-primary)]` + `text-primary-foreground`: a var é
+          do app do controle e não existe no CRM — o fundo sumia e o título ficava invisível
+          nos dois temas (contraste 1,0:1 no claro, 1,09:1 no escuro). E dizia "Novo" até na edição. */}
+      <div className="border-b border-border bg-accent-bg px-5 py-5 sm:px-6">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-fg shadow-sm">
+            {pedidoInicial ? <PencilLine className="h-6 w-6" /> : <FileText className="h-6 w-6" />}
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold leading-tight text-ink">
+              {pedidoInicial
+                ? `Editar pedido${pedidoInicial.pedido_numero ? ` ${pedidoInicial.pedido_numero}` : ""}`
+                : modoPartesOutros ? "Novo pedido de acessórios" : "Novo pedido de venda"}
+            </h2>
+            <p className="mt-0.5 text-sm text-ink-muted">
+              {pedidoInicial
+                ? "Altere o que precisar e salve — o Word e a Produção são atualizados juntos."
+                : "Suba o orçamento (.docx ou .pdf) e confira os dados — quase tudo é preenchido sozinho."}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="p-6 space-y-6">
-        {/* Botão Modo Partes e Outros - oculto quando já está ativo via URL */}
-        {!modoPartesOutros && (
-          <div className="flex items-center justify-between p-4 rounded-lg border-2 bg-muted/30" style={{
-            borderColor: modoPartesOutros ? 'hsl(var(--primary))' : 'hsl(var(--border))',
-            backgroundColor: modoPartesOutros ? 'hsl(var(--primary) / 0.05)' : 'hsl(var(--muted) / 0.3)'
-          }}>
-            <div className="flex items-center gap-3">
-              <Package className="h-5 w-5 text-primary" />
-              <div>
-                <h3 className="font-semibold text-base">Modo: Partes e Outros</h3>
-                <p className="text-xs text-muted-foreground">Apenas Vendedor e Forma de Pagamento são obrigatórios</p>
-              </div>
+        {/* Modo Partes e Outros. Antes o bloco sumia ao ativar — não havia como desligar
+            sem recarregar a página. Fica visível nos dois estados. */}
+        <div className={cn(
+          "flex flex-col gap-3 rounded-xl border p-4 transition-colors sm:flex-row sm:items-center sm:justify-between",
+          modoPartesOutros ? "border-accent/50 bg-accent-bg" : "border-border bg-surface-2/50"
+        )}>
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+              modoPartesOutros ? "bg-accent text-accent-fg" : "bg-surface-3 text-ink-muted"
+            )}>
+              <Package className="h-5 w-5" />
             </div>
-            <Button
-              type="button"
-              variant={modoPartesOutros ? "default" : "outline"}
-              onClick={() => setModoPartesOutros(!modoPartesOutros)}
-              className="font-semibold"
-            >
-              {modoPartesOutros ? "Ativo" : "Ativar"}
-            </Button>
+            <div>
+              <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                Modo Partes e Outros
+                {modoPartesOutros && (
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-fg">Ativo</span>
+                )}
+              </h3>
+              <p className="text-xs text-ink-muted">Para peças e acessórios: dispensa os dados completos do cliente e da entrega.</p>
+            </div>
           </div>
-        )}
+          <Button
+            type="button"
+            size="sm"
+            variant={modoPartesOutros ? "outline" : "default"}
+            onClick={alternarModoPartes}
+            className="shrink-0 font-semibold"
+          >
+            {modoPartesOutros ? "Desativar" : "Ativar"}
+          </Button>
+        </div>
 
         {/* Upload de Orçamento */}
         <div className="space-y-3">
@@ -1847,8 +1945,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           </Label>
           <div 
             className={cn(
-              "border-2 border-dashed rounded-lg p-6 transition-colors bg-muted/30",
-              isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+              "rounded-xl border-2 border-dashed p-8 transition-colors",
+              isDragging ? "border-accent bg-accent-bg" : "border-border bg-surface-2/40 hover:border-accent/60 hover:bg-accent-bg/50"
             )}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -1865,7 +1963,9 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                 </>
               ) : (
                 <>
-                  <Upload className={cn("h-10 w-10", isDragging ? "text-primary" : "text-muted-foreground")} />
+                  <div className={cn("flex h-14 w-14 items-center justify-center rounded-2xl transition-colors", isDragging ? "bg-accent text-accent-fg" : "bg-accent-bg text-accent")}>
+                    <Upload className="h-7 w-7" />
+                  </div>
                   <span className={cn("text-sm font-medium", isDragging ? "text-primary" : "text-foreground")}>
                     {isDragging ? "Solte o arquivo aqui" : "Clique ou arraste o arquivo .docx ou .pdf"}
                   </span>
@@ -1885,19 +1985,19 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           
           {/* Feedback de status do App2 */}
           {statusApp2 === 'sending' && (
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-300 mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900">
+            <div className="flex items-center gap-2 text-info mt-3 p-3 rounded-xl bg-info-bg border border-info/30">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-sm font-medium">Enviando à Produção...</span>
             </div>
           )}
           {statusApp2 === 'done' && (
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-300 mt-3 p-3 rounded-lg bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-900">
+            <div className="flex items-center gap-2 text-success mt-3 p-3 rounded-xl bg-success-bg border border-success/30">
               <CheckCircle className="h-4 w-4" />
               <span className="text-sm font-medium">Documento tratado enviado para Produção ✅</span>
             </div>
           )}
           {statusApp2 === 'error' && (
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-300 mt-3 p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900">
+            <div className="flex items-center gap-2 text-danger mt-3 p-3 rounded-xl bg-danger-bg border border-danger/30">
               <span className="text-sm font-medium">❌ Erro ao enviar para limpeza de preços</span>
             </div>
           )}
@@ -1909,8 +2009,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         <div className="space-y-6">
           {/* Dados do Cliente */}
           <div className="space-y-4">
-            <div className="bg-muted/30 p-6 rounded-lg border">
-              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2 text-primary">
+            <div className={secaoCls}>
+              <h3 className={cn(tituloSecaoCls, "mb-4")}>
                 <User className="h-5 w-5" />
                 Informações do Cliente
               </h3>
@@ -1925,7 +2025,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: João Silva Ltda"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(cliente) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                      isFieldEmpty(cliente) && campoVazioCls
                     )}
                   />
                 </div>
@@ -1941,7 +2041,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Nome do contato"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(atencaoA) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                        isFieldEmpty(atencaoA) && campoVazioCls
                       )}
                     />
                   </div>
@@ -1954,7 +2054,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: (11) 98765-4321"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(telefone) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                        isFieldEmpty(telefone) && campoVazioCls
                       )}
                     />
                   </div>
@@ -1969,10 +2069,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Ex: cliente@email.com"
-                    className={cn(
-                      "mt-1",
-                      isFieldEmpty(email) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
-                    )}
+                    className="mt-1"
                   />
                 </div>
 
@@ -1987,7 +2084,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: 000.000.000-00 ou 00.000.000/0001-00"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(cpfCnpj) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                        isFieldEmpty(cpfCnpj) && campoVazioCls
                       )}
                     />
                   </div>
@@ -2014,7 +2111,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Nome fantasia (obrigatório para CNPJ)"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(fantasia) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                        isFieldEmpty(fantasia) && campoVazioCls
                       )}
                     />
                   </div>
@@ -2030,7 +2127,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: Rua das Flores, 123"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(endereco) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                      isFieldEmpty(endereco) && campoVazioCls
                     )}
                   />
                 </div>
@@ -2045,7 +2142,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: Centro"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(bairro) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                      isFieldEmpty(bairro) && campoVazioCls
                     )}
                   />
                 </div>
@@ -2060,7 +2157,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: 12345-678"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(cep) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                      isFieldEmpty(cep) && campoVazioCls
                     )}
                   />
                 </div>
@@ -2076,7 +2173,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: São Paulo"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(cidade) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                        isFieldEmpty(cidade) && campoVazioCls
                       )}
                     />
                   </div>
@@ -2090,9 +2187,9 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                        maxLength={2}
                        className={cn(
                          "mt-1 uppercase",
-                         isFieldEmpty(estado) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600",
+                         isFieldEmpty(estado) && campoVazioCls,
                          // Destacar em laranja se houver inconsistência cidade x estado
-                         detectarEstadoNaCidade(cidade) && detectarEstadoNaCidade(cidade) !== estado.toUpperCase() && "border-orange-400 bg-orange-50/50 focus:border-orange-400 focus:ring-orange-400"
+                         detectarEstadoNaCidade(cidade) && detectarEstadoNaCidade(cidade) !== estado.toUpperCase() && "border-warning bg-warning-bg focus-visible:ring-warning/40"
                        )}
                      />
                    </div>
@@ -2100,8 +2197,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
                  {/* Alerta de inconsistência cidade x estado */}
                  {detectarEstadoNaCidade(cidade) && detectarEstadoNaCidade(cidade) !== estado.toUpperCase() && estado.trim() !== '' && (
-                   <div className="flex items-center gap-2 p-3 rounded-lg bg-orange-50 border border-orange-300 text-orange-800">
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-orange-500 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                   <div className="flex items-center gap-2 p-3 rounded-xl bg-warning-bg border border-warning/40 text-warning">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-warning flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                      </svg>
                      <span className="text-sm font-medium">
@@ -2134,7 +2231,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Ex: Rua das Flores, 123"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(enderecoEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                              enderecoEntregaDiferente && isFieldEmpty(enderecoEntrega) && campoVazioCls
                             )}
                           />
                         </div>
@@ -2147,7 +2244,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Ex: Centro"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(bairroEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                              enderecoEntregaDiferente && isFieldEmpty(bairroEntrega) && campoVazioCls
                             )}
                           />
                         </div>
@@ -2160,7 +2257,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Ex: 12345-678"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(cepEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                              enderecoEntregaDiferente && isFieldEmpty(cepEntrega) && campoVazioCls
                             )}
                           />
                         </div>
@@ -2174,7 +2271,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                               placeholder="Ex: São Paulo"
                               className={cn(
                                 "mt-1",
-                                enderecoEntregaDiferente && isFieldEmpty(cidadeEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                                enderecoEntregaDiferente && isFieldEmpty(cidadeEntrega) && campoVazioCls
                               )}
                             />
                           </div>
@@ -2188,7 +2285,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                               maxLength={2}
                               className={cn(
                                 "mt-1 uppercase",
-                                enderecoEntregaDiferente && isFieldEmpty(estadoEntrega) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                                enderecoEntregaDiferente && isFieldEmpty(estadoEntrega) && campoVazioCls
                               )}
                             />
                           </div>
@@ -2202,7 +2299,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                             placeholder="Nome do responsável"
                             className={cn(
                               "mt-1",
-                              enderecoEntregaDiferente && isFieldEmpty(responsavelRecebimento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                              enderecoEntregaDiferente && isFieldEmpty(responsavelRecebimento) && campoVazioCls
                             )}
                           />
                         </div>
@@ -2221,7 +2318,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                              className={cn(
                                "w-full justify-start text-left font-normal mt-1",
                                !dataPrimeiroContato && "text-muted-foreground",
-                               showValidation && !modoPartesOutros && !dataPrimeiroContato && "border-red-300 bg-red-50/50"
+                               showValidation && !modoPartesOutros && !dataPrimeiroContato && campoVazioCls
                              )}
                              onFocus={(e) => e.currentTarget.click()}
                            >
@@ -2245,7 +2342,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                         <Select value={fonteOrigem} onValueChange={setFonteOrigem}>
                           <SelectTrigger id="fonte_origem" className={cn(
                             "mt-1",
-                            !modoPartesOutros && isFieldEmpty(fonteOrigem) && "border-red-300 bg-red-50/50"
+                            !modoPartesOutros && isFieldEmpty(fonteOrigem) && campoVazioCls
                           )}>
                             <SelectValue placeholder="Selecione a fonte" />
                           </SelectTrigger>
@@ -2276,8 +2373,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
            {/* Dados do Orçamento */}
           <div className="space-y-4">
-            <div className="bg-muted/30 p-6 rounded-lg border">
-              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2 text-primary">
+            <div className={secaoCls}>
+              <h3 className={cn(tituloSecaoCls, "mb-4")}>
                 <FileText className="h-5 w-5" />
                 Dados do Orçamento
               </h3>
@@ -2292,19 +2389,19 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                       placeholder="Ex: 2025 - 1234"
                       className={cn(
                         "mt-1",
-                        isFieldEmpty(numeroOrcamento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                        isFieldEmpty(numeroOrcamento) && campoVazioCls
                       )}
                     />
                   </div>
                   <div>
                     <Label htmlFor="vendedor" className="font-medium">
                       Vendedor Responsável *
-                      {modoPartesOutros && <span className="ml-2 text-red-500 font-semibold animate-pulse">• Obrigatório</span>}
+                      {modoPartesOutros && <span className="ml-2 text-xs font-semibold text-danger">• obrigatório</span>}
                     </Label>
                     <Select value={vendedor} onValueChange={setVendedor} disabled={vendedorFixo}>
                       <SelectTrigger className={cn(
                         "mt-1",
-                        (isFieldEmpty(vendedor) || (modoPartesOutros && !vendedor)) && "border-red-300 bg-red-50/50"
+                        (isFieldEmpty(vendedor) || (modoPartesOutros && !vendedor)) && campoVazioCls
                       )}>
                         <SelectValue placeholder="Selecione o vendedor" />
                       </SelectTrigger>
@@ -2352,7 +2449,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: Fabrica de Ração Master - 300500 com moega e silos"
                     className={cn(
                       "mt-1",
-                      isFieldEmpty(descricaoEquipamento) && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                      isFieldEmpty(descricaoEquipamento) && campoVazioCls
                     )}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
@@ -2417,7 +2514,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: 30"
                     className={cn(
                       "mt-1",
-                      (!diasUteis || (diasUteis === 0 && !modoPartesOutros)) && showValidation && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                      !modoPartesOutros && !diasUteis && campoVazioCls
                     )}
                   />
                 </div>
@@ -2470,7 +2567,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
               </div>
               
               {dataEntrega && (
-                <div className="mt-6 p-4 rounded-lg bg-accent/10 border border-accent/30">
+                <div className="mt-6 p-4 rounded-xl bg-accent-bg border border-accent/30">
                   <p className="text-sm font-semibold text-accent flex items-center gap-2">
                     <CalendarIcon className="h-4 w-4" />
                     Data prevista de entrega: {formatDateBR(dataEntrega)}
@@ -2484,7 +2581,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           {/* Itens (Equipamentos, Motores) */}
           <div className="space-y-6">
             {/* 1. EQUIPAMENTOS (A, B, C, ACESSÓRIOS, CÉLULA, FRETE, MONTAGEM, ETC) */}
-            <div className="bg-muted/30 p-6 rounded-lg border">
+            <div className={secaoCls}>
               {equipamentosDetalhados.length > 0 ? (
                 <EquipamentosEditor
                   equipamentos={equipamentos}
@@ -2502,7 +2599,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
               ) : (
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-lg flex items-center gap-2 text-primary">
+                    <h3 className={tituloSecaoCls}>
                       <Settings className="h-5 w-5" />
                       Equipamentos
                     </h3>
@@ -2517,9 +2614,9 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
             </div>
 
             {/* 2. MOTORES INCLUSOS */}
-            <div className="bg-muted/30 p-6 rounded-lg border">
+            <div className={secaoCls}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-lg flex items-center gap-2 text-primary">
+                <h3 className={tituloSecaoCls}>
                   <Package className="h-5 w-5" />
                   Motores Inclusos
                 </h3>
@@ -2543,9 +2640,9 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
             </div>
 
             {/* 2.1 CHECK LIST DE COMPRAS */}
-            <div className="bg-muted/30 p-6 rounded-lg border">
+            <div className={secaoCls}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-lg flex items-center gap-2 text-primary">
+                <h3 className={tituloSecaoCls}>
                   <Package className="h-5 w-5" />
                   Informações para o projeto
                 </h3>
@@ -2563,8 +2660,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
             {/* 3. OBSERVAÇÕES DO ORÇAMENTO — ESCRITÓRIO (readonly) */}
             {observacoesOrcamento && observacoesOrcamento.trim() && (
-              <div className="bg-muted/30 p-6 rounded-lg border">
-                <h3 className="font-semibold text-lg mb-4 flex items-center gap-2 text-primary">
+              <div className={secaoCls}>
+                <h3 className={cn(tituloSecaoCls, "mb-4")}>
                   <FileText className="h-5 w-5" />
                   Observações do Orçamento — Escritório
                 </h3>
@@ -2579,8 +2676,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
             )}
 
             {/* Tensão e Voltagem */}
-            <div className="bg-muted/30 p-6 rounded-lg border">
-              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2 text-primary">
+            <div className={secaoCls}>
+              <h3 className={cn(tituloSecaoCls, "mb-4")}>
                 <Settings className="h-5 w-5" />
                 Especificações Elétricas
               </h3>
@@ -2675,8 +2772,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
           {/* Observações / Itens Adicionais */}
           <div className="space-y-4">
-            <div className="bg-muted/30 p-6 rounded-lg border">
-              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2 text-primary">
+            <div className={secaoCls}>
+              <h3 className={cn(tituloSecaoCls, "mb-4")}>
                 <FileText className="h-5 w-5" />
                 Observações / Itens Adicionais
               </h3>
@@ -2731,7 +2828,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     value={observacoesAdicionais}
                     onChange={(e) => setObservacoesAdicionais(e.target.value)}
                     placeholder="Digite aqui a observação do vendedor sobre este pedido..."
-                    className={`mt-1 min-h-[100px] ${isFieldEmpty(observacoesAdicionais) && observacoesAdicionais !== "Sem observação" ? 'border-destructive' : ''}`}
+                    className={cn("mt-1 min-h-[100px]", isFieldEmpty(observacoesAdicionais) && campoVazioCls)}
                     disabled={observacoesAdicionais === "Sem observação"}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
@@ -2751,8 +2848,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
           {/* Valores e Forma de Pagamento */}
           <div className="space-y-4">
-            <div className="bg-muted/30 p-6 rounded-lg border">
-              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2 text-primary">
+            <div className={secaoCls}>
+              <h3 className={cn(tituloSecaoCls, "mb-4")}>
                 <DollarSign className="h-5 w-5" />
                 Valor e Forma de Pagamento
               </h3>
@@ -2767,7 +2864,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: 150.000,00"
                     className={cn(
                       "mt-1 text-lg font-semibold",
-                      (isFieldEmpty(valorTotal) || valorTotal === "R$ 0,00") && "border-red-300 bg-red-50/50 focus:border-red-400 focus:ring-red-400 dark:border-red-800 dark:bg-red-950/40 dark:focus:border-red-600"
+                      (isFieldEmpty(valorTotal) || valorTotal === "R$ 0,00") && campoVazioCls
                     )}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
@@ -2793,8 +2890,8 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
 
                 <Separator className="my-4" />
 
+                {/* O PaymentPlanEditor já traz o título "Condições de Pagamento" — havia dois. */}
                 <div>
-                  <h4 className="font-semibold text-base mb-3">Condições de Pagamento *</h4>
                   <PaymentPlanEditor
                     valorTotal={valorTotal ? parseFloat(valorTotal.replace(/[^\d,]/g, '').replace(',', '.')) : 0}
                     paymentPlan={paymentPlan}
@@ -2808,50 +2905,44 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           </div>
         </div>
 
-        {/* Botão de Gerar */}
-        <div className="pt-6">
+        {/* Gerar */}
+        <div className="space-y-3 pt-2">
+          {pendenciasGerar.length > 0 && !pedidoCriado && (
+            <div className="rounded-xl border border-warning/40 bg-warning-bg px-4 py-3" role="status">
+              <p className="flex items-center gap-2 text-sm font-semibold text-warning">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {pendenciasGerar.length === 1 ? "Falta 1 item para gerar o pedido" : `Faltam ${pendenciasGerar.length} itens para gerar o pedido`}
+              </p>
+              <ul className="mt-1.5 list-disc space-y-0.5 pl-6 text-sm text-ink marker:text-warning">
+                {pendenciasGerar.map((p) => <li key={p}>{p}</li>)}
+              </ul>
+            </div>
+          )}
           <Button
             onClick={() => handleGerarPedido('docx')}
-            disabled={isGenerating || isGeneratingPDF || isExtracting || vendedorBloqueado || !numeroOrcamento || !vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico")}
+            disabled={!podeGerar}
             className={cn(
-              "w-full h-14 text-lg font-bold shadow-[var(--shadow-medium)] transition-all hover:scale-[1.02]",
-              (vendedorBloqueado || !vendedor || !planoPagamentoValido || !!erroChecklistProjeto || (!voltagem && !porContaCliente && tensao === "Trifásico"))
-                ? "bg-muted hover:bg-muted text-muted-foreground cursor-not-allowed" 
-                : "bg-green-600 hover:bg-green-700 text-white"
+              "h-14 w-full rounded-xl text-lg font-bold transition-all",
+              podeGerar ? "bg-accent text-accent-fg shadow-md hover:bg-accent/90 hover:shadow-lg" : "bg-surface-3 text-ink-muted"
             )}
           >
             {isGenerating ? (
               <>
                 <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-                {pedidoInicial ? "Salvando..." : "Gerando..."}
+                {pedidoInicial ? "Salvando..." : "Gerando o pedido..."}
+              </>
+            ) : pedidoCriado ? (
+              <>
+                <CheckCircle className="mr-2 h-6 w-6" />
+                Pedido lançado — abrindo...
               </>
             ) : (
               <>
                 <FileText className="mr-2 h-6 w-6" />
-                {pedidoInicial ? "Salvar Alterações" : "Gerar Word (DOCX)"}
+                {pedidoInicial ? "Salvar alterações" : "Gerar pedido (Word)"}
               </>
             )}
           </Button>
-          {!planoPagamentoValido && paymentPlan && paymentPlan.parcelas && paymentPlan.parcelas.length > 0 && (
-            <p className="text-xs text-destructive mt-2 text-center">
-              Complete todas as informações do plano de pagamento (descrição, data e valor) e certifique-se que a soma está correta
-            </p>
-          )}
-          {!vendedor && (
-            <p className="text-xs text-destructive mt-2 text-center">
-              Selecione um vendedor responsável
-            </p>
-          )}
-          {erroChecklistProjeto && (
-            <p className="text-xs text-destructive mt-2 text-center">
-              Informações para o projeto: {erroChecklistProjeto.toLowerCase()}
-            </p>
-          )}
-          {!voltagem && !porContaCliente && tensao === "Trifásico" && (
-            <p className="text-xs text-destructive mt-2 text-center">
-              Selecione a voltagem
-            </p>
-          )}
         </div>
 
         {/* Mensagem de Sucesso */}
@@ -2863,7 +2954,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
              (Chaves removidas de propósito: comentário JSX entre chaves só vale em posição de
              FILHO. Aqui é posição de EXPRESSÃO, e com as chaves o arquivo não parseia — o
              build inteiro cai com TS1005/TS17002.) */
-          <div className="p-6 rounded-lg bg-accent text-accent-fg flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 shadow-lg">
+          <div className="p-6 rounded-xl bg-accent text-accent-fg flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 shadow-lg">
             <div className="p-3 rounded-lg bg-accent-fg/10">
               <FileText className="h-8 w-8" />
             </div>
