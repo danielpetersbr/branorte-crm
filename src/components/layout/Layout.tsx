@@ -659,23 +659,23 @@ export function Layout() {
           ) : (
             <>
               <NavLink to="/" title="Branorte" aria-label="Branorte" className="flex items-center gap-1.5 min-w-0 flex-1 select-none">
-                {/* Logo de verdade, não o nome imitado com duas <span>. São dois
-                    arquivos porque a marca tem duas versões oficiais: verde+preto
-                    no claro, verde+branco no escuro. Um arquivo só com filtro CSS
-                    não serve — filtro não sabe recolorir SÓ o preto e ia comer o
-                    verde junto. Troca por `dark:` (Tailwind darkMode: 'class'),
-                    sem JS: no instante do toggle já está certo. */}
+                {/* O tema escuro usa a nova marca fornecida por Daniel.
+                    O viewBox enquadra os pixels visíveis do PNG original,
+                    preservando o arquivo e sua proporção sem a margem transparente. */}
                 <img
                   src="/branorte-logo.png"
                   alt="Branorte"
                   className="h-[17px] w-auto shrink-0 dark:hidden"
                 />
-                <img
-                  src="/branorte-logo-dark.png"
-                  alt=""
+                <svg
+                  viewBox="386 633 1895 222"
+                  width="1895"
+                  height="222"
                   aria-hidden="true"
                   className="h-[17px] w-auto shrink-0 hidden dark:block"
-                />
+                >
+                  <image href="/branorte-logo-sidebar-dark-20261014.png" width="2667" height="1500" />
+                </svg>
               </NavLink>
               {profile && (
                 <NavLink
