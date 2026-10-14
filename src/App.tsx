@@ -767,8 +767,15 @@ function AppRoutes() {
  * qualquer coisa flutuante entra no PDF. Foi assim que o banner "Instalar Branorte
  * CRM" apareceu no roteiro de viagem (e aparecia no PDF de orçamento também).
  */
+// Vigia de venda nova (som + aviso). Lazy: o cliente do banco do controle não pesa
+// no carregamento de quem não usa. Representante é externo e não ouve as vendas
+// da casa; pending/rejected nem entram no sistema.
+const AvisoVendaNova = lazy(() => import('@/components/AvisoVendaNova'))
+const PAPEIS_AVISO_VENDA = new Set(['admin', 'vendor', 'marketing', 'visualizador'])
+
 function OverlaysGlobais() {
   const { pathname } = useLocation()
+  const { profile } = useAuth()
   // /reuniao/<token> é aberta no celular do vendedor por um link do WhatsApp: o
   // card de instalar o PWA senta em cima do botão de enviar. Ele já tem o CRM.
   //
@@ -790,6 +797,9 @@ function OverlaysGlobais() {
     <>
       <InstallPrompt />
       <NovaVersaoBanner />
+      {profile && PAPEIS_AVISO_VENDA.has(profile.role) && (
+        <Suspense fallback={null}><AvisoVendaNova /></Suspense>
+      )}
     </>
   )
 }
