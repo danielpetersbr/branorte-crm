@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Users, UserCheck, ChevronDown, Video,
   ArrowUp, ArrowDown, Minus, Sparkles, X, Filter, Headphones,
@@ -6,7 +6,7 @@ import {
 import {
   useLigacoesResumo, useLigacoesSerie, useLigacoesPorHora, useLigacoesDe,
   useGravacoesDe, urlDoAudio, codigoDaChamada,
-  janelaDoPeriodo, janelaAnterior, janelaValida,
+  janelaDoPeriodo, janelaAnterior, janelaValida, REFETCH_MS,
   type Periodo, type LigacaoResumo, type Janela, type Ligacao, type Gravacao,
 } from '@/hooks/useLigacoes'
 import {
@@ -56,8 +56,14 @@ const PERIODOS: Array<{ id: Periodo; label: string }> = [
   { id: 'mes', label: 'Este mês' },
   { id: 'tudo', label: 'Tudo' },
 ]
+// A comparação é com o MESMO pedaço de tempo (ver `janelaAnterior`), e o rótulo tem
+// que dizer isso: "vs ontem" sozinho deixava ler como o dia inteiro de ontem.
 const ROTULO_ANTERIOR: Record<string, string> = {
-  hoje: 'vs ontem', '7d': 'vs 7 dias antes', mes: 'vs mês anterior', custom: 'vs período anterior',
+  hoje: 'vs ontem até esta hora', '7d': 'vs 7 dias antes', mes: 'vs mês passado até o mesmo dia', custom: 'vs período anterior',
+}
+// Mesma ideia, escrita pra caber no fim da frase do resumo ("…ligou 12% mais que …").
+const FRASE_ANTERIOR: Record<string, string> = {
+  hoje: 'ontem até esta hora', '7d': 'nos 7 dias anteriores', mes: 'no mesmo ponto do mês passado', custom: 'no período anterior',
 }
 
 // "agora mesmo" / "há 2 min" / hora cheia. Relativo diz mais que carimbo de hora
@@ -198,8 +204,17 @@ export function Ligacoes() {
   const [vendedor, setVendedor] = useState<string | null>(null)
   const [aberto, setAberto] = useState<string | null>(null)
 
+  // Relógio da comparação: o período atual cresce sozinho (vai até "agora"), então o
+  // anterior tem que crescer junto — senão, com a tela aberta a manhã toda, hoje virava
+  // 4 horas contra 6 minutos de ontem.
+  const [agora, setAgora] = useState(() => Date.now())
+  useEffect(() => {
+    const t = window.setInterval(() => setAgora(Date.now()), REFETCH_MS)
+    return () => window.clearInterval(t)
+  }, [])
+
   const janela = useMemo(() => janelaDoPeriodo(periodo, custom), [periodo, custom])
-  const anterior = useMemo(() => janelaAnterior(periodo, custom), [periodo, custom])
+  const anterior = useMemo(() => janelaAnterior(periodo, custom, agora), [periodo, custom, agora])
 
   const resumoQuery = useLigacoesResumo(janela, vendedor)
   const anteriorQuery = useLigacoesResumo(anterior ?? janela, vendedor, !!anterior)
@@ -273,7 +288,7 @@ export function Ligacoes() {
             {PERIODOS.map(p => (
               <button key={p.id} onClick={() => setPeriodo(p.id)}
                 className={`px-3 py-2 sm:py-1.5 text-[12px] font-medium transition-colors ${
-                  periodo === p.id ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
+                  periodo === p.id ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
                 {p.label}
               </button>
             ))}
@@ -350,7 +365,7 @@ export function Ligacoes() {
              nota={[
                taxa !== null ? `${taxa.toFixed(1).replace('.', ',')}% de atendimento`
                              : tot.fez > 0 ? `de ${tot.fez} que ligou` : undefined,
-               atendidasRecebeu > 0 ? `+${atendidasRecebeu} que ele recebeu` : undefined,
+               atendidasRecebeu > 0 ? `+${atendidasRecebeu} que ${pessoal ? 'você recebeu' : 'ele recebeu'}` : undefined,
              ].filter(Boolean).join(' · ') || undefined}
              delta={taxa !== null && taxaAnt !== null ? { valor: taxa - taxaAnt, unidade: 'pp' } : null}
              rotuloDelta={ROTULO_ANTERIOR[periodo]} />
@@ -359,7 +374,7 @@ export function Ligacoes() {
             • o CLIENTE ligou e o VENDEDOR não atendeu → oportunidade no chão.
             A segunda é a que dói, e estava invisível. */}
         <Kpi icone={PhoneMissed} cor="text-danger" rotulo="Cliente não atendeu" valor={tot.perdidas} inverso
-             nota={tot.fez > 0 ? `${((tot.perdidas / tot.fez) * 100).toFixed(0)}% das que ele ligou` : undefined}
+             nota={tot.fez > 0 ? `${((tot.perdidas / tot.fez) * 100).toFixed(0)}% das que ${pessoal ? 'você ligou' : 'ele ligou'}` : undefined}
              delta={pctDelta(tot.perdidas, totAnt?.perdidas)} rotuloDelta={ROTULO_ANTERIOR[periodo]} />
         <Kpi icone={PhoneIncoming} cor="text-danger" rotulo="Perdeu do cliente" valor={tot.perdidas_recebidas} inverso
              nota={[
@@ -377,7 +392,7 @@ export function Ligacoes() {
       </div>
 
       {horasQuery.isSuccess && serieQuery.isSuccess && <ResumoInteligente linhas={linhas} tot={tot} totAnt={totAnt} horas={horas} serie={serie}
-                         rotuloAnterior={ROTULO_ANTERIOR[periodo]} pessoal={pessoal} />}
+                         rotuloAnterior={FRASE_ANTERIOR[periodo]} pessoal={pessoal} />}
       </>}
 
       {erroPeriodo || (isError && !resumoQuery.data) ? null : isError ? (
@@ -526,7 +541,7 @@ function ResumoInteligente({ linhas, tot, totAnt, horas, serie, rotuloAnterior, 
     if (totAnt && totAnt.fez > 0) {
       const d = ((tot.fez - totAnt.fez) / totAnt.fez) * 100
       if (Math.abs(d) >= 5) {
-        f.push(`${pessoal ? 'Você ligou' : 'A equipe ligou'} ${Math.abs(d).toFixed(0)}% ${d > 0 ? 'mais' : 'menos'} que ${(rotuloAnterior || 'no período anterior').replace('vs ', '')}.`)
+        f.push(`${pessoal ? 'Você ligou' : 'A equipe ligou'} ${Math.abs(d).toFixed(0)}% ${d > 0 ? 'mais' : 'menos'} que ${rotuloAnterior || 'no período anterior'}.`)
       }
     }
 
@@ -831,7 +846,7 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
               {([['tudo', 'Todas'], ['fez', 'Feitas'], ['recebeu', 'Recebidas']] as const).map(([id, lb]) => (
                 <button key={id} onClick={e => { e.stopPropagation(); setDirecao(id) }}
                   className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                    direcao === id ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
+                    direcao === id ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
                   {lb}
                 </button>
               ))}
@@ -847,8 +862,10 @@ function LinhaVendedor({ r, maxFez, janela, aberto, onToggle }: {
               {lista.map(l => (
                 <LinhaLigacao key={l.call_id} l={l} gravacao={gravacoes[l.call_id] ?? gravacoes[codigoDaChamada(l.call_id)]} />
               ))}
-              {lista.length >= 300 && (
-                <p className="px-3 py-2 text-[11px] text-ink-faint">Mostrando as 300 mais recentes do período.</p>
+              {/* `bruta`, não `lista`: com o filtro Feitas/Recebidas a lista encolhe e o
+                  aviso sumia justamente quando o banco tinha cortado nas 300. */}
+              {bruta.length >= 300 && (
+                <p className="px-3 py-2 text-[11px] text-ink-faint">Mostrando as 300 mais recentes do período{direcao === 'tudo' ? '' : ' (antes do filtro)'}.</p>
               )}
             </div>
           )}

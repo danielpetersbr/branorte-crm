@@ -352,7 +352,7 @@ export function PorVendedor({ linhas }: { linhas: LigacaoResumo[] }) {
           {METRICAS.map(m => (
             <button key={m.id} onClick={() => setMetrica(m.id)}
               className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                metrica === m.id ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
+                metrica === m.id ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
               {m.label}
             </button>
           ))}
@@ -442,7 +442,7 @@ export function PorHorario({ horas }: { horas: HoraLigacao[] }) {
           {([['qtd', 'Quantidade'], ['taxa', 'Taxa']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setModo(id)}
               className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                modo === id ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
+                modo === id ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-ink-faint hover:text-ink-muted'}`}>
               {label}
             </button>
           ))}
