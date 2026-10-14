@@ -31,6 +31,7 @@ function boundaries(result: unknown, uploadError: Error | null = null) {
     writes, successes, warnings, errors, navigations, sons,
     context: {
       prepararSomVenda() {},
+      marcarVendaAnunciada() {},
       tocarSomVenda: () => sons.push('ka-ching'),
       navigate: (to: string) => navigations.push(to),
       toast: { success: (text: string) => successes.push(text), warning: (text: string) => warnings.push(text), error: (text: string) => errors.push(text) },

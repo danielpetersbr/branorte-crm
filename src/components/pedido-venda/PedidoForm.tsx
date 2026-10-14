@@ -30,7 +30,7 @@ import { regerarDocumentoPedido, sincronizarParcelasFinanceiro } from "@/lib/ped
 import { FileText, Upload, Download, Calendar as CalendarIcon, User, Package, Settings, DollarSign, Loader2, CheckCircle, AlertTriangle, PencilLine } from "lucide-react";
 import { Textarea } from "@/components/pedido-ui/textarea";
 import { addBusinessDays, addCalendarDays, formatDateBR } from "@/lib/pedido-venda/businessDays";
-import { prepararSomVenda, tocarSomVenda } from "@/lib/pedido-venda/somVenda";
+import { prepararSomVenda, tocarSomVenda, marcarVendaAnunciada } from "@/lib/pedido-venda/somVenda";
 import { sumLineItems, sumCurrency } from "@/lib/pedido-venda/currency";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -1599,6 +1599,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       pedidoCriadoRef.current = true;
       setPedidoCriado(true);
       tocarSomVenda();
+      marcarVendaAnunciada(data?.pedido_id); // o vigia das outras abas não repete
       setArquivoUrl(data.arquivo_url);
       const tipoArquivo = formato === 'pdf' ? 'PDF' : 'Word (DOCX)';
       toast.success(`Pedido ${tipoArquivo} gerado com sucesso!`);
@@ -1757,6 +1758,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
           pedidoCriadoRef.current = true;
           setPedidoCriado(true);
           tocarSomVenda();
+          marcarVendaAnunciada(insertedOrder?.id);
           console.log('[Fallback] Pedido salvo no banco:', insertedOrder.id);
           
           // 3. Criar registro na produção

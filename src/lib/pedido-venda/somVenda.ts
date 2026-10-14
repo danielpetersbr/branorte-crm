@@ -77,3 +77,90 @@ export function tocarSomVenda(): void {
     sino(c, saida, t + 0.16, 2093.0, 0.55, 1.3)   // "ching" — dó acima, longo
   } catch { /* sem áudio, sem som */ }
 }
+
+// ── Venda nova em TODO CRM aberto ───────────────────────────────────────────
+// O vigia (`AvisoVendaNova`) toca em qualquer tela do CRM quando entra pedido.
+// Duas travas pra não virar sirene:
+//  • uma venda toca UMA vez por navegador, por mais abas do CRM que estejam abertas;
+//  • quem lançou já ouviu na hora (`marcarVendaAnunciada` no envio) e não ouve de novo.
+
+const CHAVE_TOCADOS = 'branorte:som-venda:tocados'
+const RETER_MS = 2 * 24 * 60 * 60 * 1000
+
+function armazem(): Storage | null {
+  try { return globalThis.localStorage ?? null } catch { return null }
+}
+
+function lerTocados(): Record<string, { por: string; em: number }> {
+  try {
+    const bruto = armazem()?.getItem(CHAVE_TOCADOS)
+    const v = bruto ? JSON.parse(bruto) : {}
+    return v && typeof v === 'object' ? v : {}
+  } catch { return {} }
+}
+
+function gravarTocados(mapa: Record<string, { por: string; em: number }>) {
+  try {
+    const agora = Date.now()
+    for (const [id, v] of Object.entries(mapa)) if (agora - (v?.em ?? 0) > RETER_MS) delete mapa[id]
+    armazem()?.setItem(CHAVE_TOCADOS, JSON.stringify(mapa))
+  } catch { /* storage cheio ou bloqueado: no pior caso toca duas vezes */ }
+}
+
+/** O pedido foi tocado NESTE navegador por quem o lançou — as outras abas não repetem. */
+export function marcarVendaAnunciada(id: string | null | undefined): void {
+  if (!id) return
+  const mapa = lerTocados()
+  mapa[id] = { por: 'local', em: Date.now() }
+  gravarTocados(mapa)
+}
+
+export function vendaJaAnunciada(id: string): boolean {
+  return !!lerTocados()[id]
+}
+
+/** Foi lançada por quem está neste navegador (já viu o sucesso e ouviu na hora). */
+export function vendaLancadaAqui(id: string): boolean {
+  return lerTocados()[id]?.por === 'local'
+}
+
+/**
+ * Disputa entre abas do mesmo navegador: cada uma escreve o próprio token, espera,
+ * e só toca quem continuar dono da chave (o último a escrever). Duas abas que veem a
+ * venda no mesmo instante não tocam juntas.
+ */
+export async function reivindicarVenda(id: string, esperaMs = 120): Promise<boolean> {
+  if (vendaJaAnunciada(id)) return false
+  const token = Math.random().toString(36).slice(2)
+  const mapa = lerTocados()
+  mapa[id] = { por: token, em: Date.now() }
+  gravarTocados(mapa)
+  await new Promise(r => setTimeout(r, esperaMs))
+  return lerTocados()[id]?.por === token
+}
+
+/** O navegador já liberou o áudio nesta aba? (sem gesto nenhum, não libera) */
+export function somVendaLiberado(): boolean {
+  return !!ctx && ctx.state === 'running'
+}
+
+/**
+ * Libera o áudio no primeiro clique ou tecla em qualquer lugar da página. Sem isso,
+ * uma aba recarregada e nunca tocada fica muda (regra do navegador, não nossa).
+ * Devolve a função que remove os ouvintes.
+ */
+export function destravarSomNoPrimeiroGesto(): () => void {
+  if (typeof document === 'undefined') return () => {}
+  const destravar = () => {
+    prepararSomVenda()
+    // `resume()` é assíncrono: confere no próximo ciclo; se ainda não liberou, o próximo gesto tenta de novo.
+    setTimeout(() => { if (somVendaLiberado()) remover() }, 0)
+  }
+  const remover = () => {
+    document.removeEventListener('pointerdown', destravar, true)
+    document.removeEventListener('keydown', destravar, true)
+  }
+  document.addEventListener('pointerdown', destravar, true)
+  document.addEventListener('keydown', destravar, true)
+  return remover
+}

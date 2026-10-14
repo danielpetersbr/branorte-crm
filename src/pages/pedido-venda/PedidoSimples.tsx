@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { useVendors } from "@/hooks/pedido-venda/useInstallments";
 import { useVendedorPedido } from "@/hooks/pedido-venda/useVendedorPedido";
 import { destinoAposCriarPedido, vendedorPrincipalPedido } from "@/lib/pedido-venda/vendedorPedido";
-import { prepararSomVenda, tocarSomVenda } from "@/lib/pedido-venda/somVenda";
+import { prepararSomVenda, tocarSomVenda, marcarVendaAnunciada } from "@/lib/pedido-venda/somVenda";
 import { PaymentPlanEditor } from "@/components/pedido-venda/PaymentPlanEditor";
 import {
   ChecklistComprasEditor,
@@ -143,6 +143,7 @@ export default function PedidoSimples() {
 
       console.log("Pedido inserido:", pedidoInserido.id);
       tocarSomVenda();
+      marcarVendaAnunciada(pedidoInserido.id);
 
       // 3. Gerar parcelas diretamente no banco
       const totalParcelas = paymentPlan.parcelas.length;
