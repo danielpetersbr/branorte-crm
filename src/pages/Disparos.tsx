@@ -6,12 +6,14 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check } from 'lucide-react'
+import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, ShieldCheck, Loader2, RefreshCw } from 'lucide-react'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import { createSequentialSave } from '@/lib/sequential-save'
+import { validarExcecoesCota } from '@/lib/roteamento-cota'
 import { TituloRecolhivel, SecaoRecolhivel, BotaoRecolherTudo } from '@/components/ui/Recolhivel'
+import './Disparos.css'
 
 /** Linha de `vendor_roteamento_efetivo`: o que o vendedor recebe DEPOIS da cota. */
 type Efetivo = {
@@ -48,6 +50,42 @@ export function Disparos() {
   const { profile } = useAuth()
   const can = useCan()
   const qc = useQueryClient()
+  const admin = profile?.role === 'admin'
+
+  const excecoesQuery = useQuery({
+    queryKey: ['roteamento-cota-excecoes'],
+    enabled: admin,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('roteamento_cota_excecoes')
+      if (error) throw error
+      return validarExcecoesCota(data)
+    },
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+  })
+  const excecoes = useMemo(() => new Map((excecoesQuery.data ?? []).map(e => [e.vendedor_nome, e])), [excecoesQuery.data])
+  const [erroCota, setErroCota] = useState<string | null>(null)
+  const alterarCota = useMutation({
+    mutationFn: async ({ nome, ignorar }: { nome: string; ignorar: boolean }) => {
+      const { data, error } = await supabase.rpc('roteamento_cota_definir', { p_vendedor: nome, p_ignorar: ignorar })
+      if (error) throw error
+      const linhas = validarExcecoesCota(data)
+      if (linhas.length !== 1 || linhas[0].vendedor_nome !== nome || linhas[0].ignorar_parados !== ignorar) {
+        throw new Error('O servidor não confirmou a alteração. Atualize para conferir o estado salvo.')
+      }
+    },
+    onMutate: () => setErroCota(null),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['roteamento-cota-excecoes'] }),
+        qc.invalidateQueries({ queryKey: ['vendor-roteamento-efetivo'] }),
+      ])
+    },
+    onError: async (erro: Error) => {
+      setErroCota('Não foi possível confirmar a alteração: ' + erro.message)
+      await qc.invalidateQueries({ queryKey: ['roteamento-cota-excecoes'] })
+    },
+  })
 
   // Vendedores status
   const vendedoresQuery = useQuery<Vendedor[]>({
@@ -225,7 +263,10 @@ export function Disparos() {
   const vendorRuntime = runtimeQuery.data
   const consultas = [vendedoresQuery, efetivoQuery, cotaQuery, runtimeQuery]
   const erroLeitura = consultas.find(q => q.error)?.error
-  const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
+  const atualizar = () => {
+    consultas.forEach(q => { void q.refetch() })
+    if (admin) void excecoesQuery.refetch()
+  }
 
   // Seções recolhíveis — cada bloco mantém a preferência de quem opera.
   // O que o usuário fecha fica fechado (localStorage), inclusive na próxima visita.
@@ -246,23 +287,31 @@ export function Disparos() {
   if (consultas.some(q => q.isPending && q.data === undefined)) return <PageLoading />
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="routing-page space-y-4">
       <QueryNotice error={erroLeitura} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar o roteamento. O último estado permanece visível; os controles aguardam uma leitura válida." onRetry={atualizar} />
       <fieldset disabled={!!erroLeitura} className="min-w-0 space-y-4">
-      <header className="flex items-start justify-between gap-3 flex-wrap">
+      <header className="routing-header flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
             <GitBranch className="h-6 w-6 text-accent" /> Central de Roteamento
           </h1>
           <p className="text-ink-muted text-sm">
-            Define qual vendedor atende cada lead que cai na central. Se o webhook do ReplyAgent mandar o campo <code className="text-accent">mensagem</code>, o WhatsApp do vendedor inicia o contato com o cliente automaticamente (via extensão Branorte).
-          </p>
-          <p className="text-ink-faint text-[11px] mt-1">
-            Clique no título de qualquer bloco pra recolher — fica assim na próxima vez que você abrir.
+            Controle o recebimento de leads, a distribuição da equipe e a cota de clientes parados.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        <button type="button" onClick={atualizar} disabled={consultas.some(q => q.isFetching)} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs text-ink-muted hover:bg-surface-2">
+          <RefreshCw className="h-3.5 w-3.5" /> Atualizar
+        </button>
         <BotaoRecolherTudo className="mt-1" />
+        </div>
       </header>
+
+      <div className="routing-overview">
+        <div><p className="text-[11px] text-ink-muted">Trabalhando agora</p><p className="mt-1 text-xl font-semibold tabular-nums">{(vendedores ?? []).filter(v => statusVendedor(v).status === 'ativo').length}<span className="ml-1.5 text-xs font-normal text-ink-faint">de {vendedores?.length ?? 0}</span></p></div>
+        <div><p className="text-[11px] text-ink-muted">Ligados</p><p className="mt-1 text-xl font-semibold tabular-nums">{(vendedores ?? []).filter(v => v.online && !v.bloqueado).length}</p></div>
+        <div><p className="text-[11px] text-ink-muted">Ignorando parados</p><p className="mt-1 text-xl font-semibold tabular-nums text-info">{admin && excecoesQuery.data && !excecoesQuery.error ? excecoesQuery.data.filter(e => e.ignorar_parados).length : '—'}</p></div>
+      </div>
 
       {/* PAINEL VENDEDORES */}
       <Card className="p-4">
@@ -286,28 +335,34 @@ export function Disparos() {
           )}
         </div>
         {!secVendedores.aberta ? null : loadingV ? <PageLoading /> : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+          <>
+          <p className="mb-3 text-xs text-ink-muted">“Ignorar parados” libera apenas a cota desse vendedor. O modo, o bloqueio e o peso de distribuição continuam valendo.</p>
+          {admin && <QueryNotice error={excecoesQuery.error} loading={excecoesQuery.isFetching} message="Não foi possível conferir as liberações. Atualize antes de usar Ignorar parados." onRetry={() => { void excecoesQuery.refetch() }} />}
+          {erroCota && <p role="alert" className="mb-3 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-xs text-danger">{erroCota}</p>}
+          <div className="routing-vendor-grid">
             {(vendedores ?? []).map(v => {
               const st = statusVendedor(v)
+              const excecao = excecoes.get(v.vendedor_nome)
+              const cotaConhecida = !!excecao && !excecoesQuery.error && !excecoesQuery.isPending
               const stCfg = {
-                ativo:         { cor: 'border-emerald-500/40 bg-emerald-500/5',  dot: 'bg-emerald-400', txt: 'text-emerald-300', label: 'TRABALHANDO',   hint: 'WhatsApp aberto E mexendo (interação na aba ou mensagem) nos últimos 10 min' },
-                ocioso:        { cor: 'border-yellow-500/30 bg-yellow-500/5',    dot: 'bg-yellow-300',  txt: 'text-yellow-200',  label: 'ABERTO, PARADO', hint: 'WhatsApp aberto e conectado, mas sem mexer na aba nem enviar mensagem há 10 min+. Ainda recebe leads.' },
-                aguardando:    { cor: 'border-cyan-500/40 bg-cyan-500/5',        dot: 'bg-cyan-400',    txt: 'text-cyan-300',    label: 'AGUARDANDO WA', hint: 'Chrome ok, mas WA Web ainda carregando — peça pra abrir e logar' },
-                wa_fechado:    { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-orange-300',  label: 'WA FECHADO',    hint: 'Extensão viva mas WhatsApp Web foi fechado — peça pra abrir web.whatsapp.com' },
-                verificar_wa:  { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-orange-300',  label: 'VERIFICAR WA',  hint: 'Extensão viva, mas WhatsApp Web retorna 0 chats há vários minutos. Provavelmente deslogado — peça pra ele abrir web.whatsapp.com e escanear o QR code.' },
-                lento:         { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'LENTO',         hint: 'WA aberto mas resposta atrasada' },
-                versao_antiga: { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-amber-300',   label: 'RECARREGAR',    hint: 'Versão antiga — recarregar Chrome' },
-                desconectado:  { cor: 'border-red-500/30 bg-red-500/5',          dot: 'bg-red-400',     txt: 'text-red-300',     label: 'DESCONECTADO', hint: 'Sem ping recente — Chrome fechado ou PC dormindo' },
-                desligado:     { cor: 'border-border bg-surface-2/30',           dot: 'bg-slate-500',   txt: 'text-slate-400',   label: 'DESLIGADO',     hint: 'Admin desligou no painel — não recebe leads' },
+                ativo:         { cor: 'border-success/40',  dot: 'bg-success', txt: 'text-success', label: 'TRABALHANDO',   hint: 'WhatsApp aberto E mexendo (interação na aba ou mensagem) nos últimos 10 min' },
+                ocioso:        { cor: 'border-yellow-500/30 bg-yellow-500/5',    dot: 'bg-yellow-300',  txt: 'text-warning',  label: 'ABERTO, PARADO', hint: 'WhatsApp aberto e conectado, mas sem mexer na aba nem enviar mensagem há 10 min+. Ainda recebe leads.' },
+                aguardando:    { cor: 'border-cyan-500/40 bg-cyan-500/5',        dot: 'bg-cyan-400',    txt: 'text-info',    label: 'AGUARDANDO WA', hint: 'Chrome ok, mas WA Web ainda carregando — peça pra abrir e logar' },
+                wa_fechado:    { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-warning',  label: 'WA FECHADO',    hint: 'Extensão viva mas WhatsApp Web foi fechado — peça pra abrir web.whatsapp.com' },
+                verificar_wa:  { cor: 'border-orange-500/40 bg-orange-500/5',    dot: 'bg-orange-400',  txt: 'text-warning',  label: 'VERIFICAR WA',  hint: 'Extensão viva, mas WhatsApp Web retorna 0 chats há vários minutos. Provavelmente deslogado — peça pra ele abrir web.whatsapp.com e escanear o QR code.' },
+                lento:         { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-warning',   label: 'LENTO',         hint: 'WA aberto mas resposta atrasada' },
+                versao_antiga: { cor: 'border-amber-500/40 bg-amber-500/5',      dot: 'bg-amber-400',   txt: 'text-warning',   label: 'RECARREGAR',    hint: 'Versão antiga — recarregar Chrome' },
+                desconectado:  { cor: 'border-red-500/30 bg-red-500/5',          dot: 'bg-red-400',     txt: 'text-danger',     label: 'DESCONECTADO', hint: 'Sem ping recente — Chrome fechado ou PC dormindo' },
+                desligado:     { cor: 'border-border bg-surface-2/30',           dot: 'bg-slate-500',   txt: 'text-ink-muted',   label: 'DESLIGADO',     hint: 'Admin desligou no painel — não recebe leads' },
               }[st.status]
               return (
-              <div key={v.vendedor_nome} className={`border rounded-xl p-3 transition-all ${stCfg.cor}`}>
+              <div key={v.vendedor_nome} className={`routing-vendor-card border rounded-xl p-3 transition-all ${stCfg.cor}`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <Avatar name={v.vendedor_nome} size="sm" />
                     <div className="min-w-0">
-                      <div className="text-[13px] font-bold text-ink truncate">{v.vendedor_nome}</div>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <div className="routing-vendor-name text-[13px] font-bold text-ink truncate">{v.vendedor_nome}</div>
+                      <div className="routing-vendor-status flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <span className={`h-1.5 w-1.5 rounded-full ${stCfg.dot} ${st.status === 'ativo' ? 'animate-pulse' : ''}`} />
                         <span className={`text-[9px] font-bold tracking-wider ${stCfg.txt}`} title={stCfg.hint}>
                           {stCfg.label}
@@ -347,7 +402,7 @@ export function Disparos() {
                           ['aval', v.avaliacao_ativa !== false, 'Pedido de avaliação (independe do toggle)'],
                         ]
                         return (
-                          <div className="flex items-center gap-1 mt-1 flex-wrap">
+                          <div className="routing-vendor-channels flex items-center gap-1 mt-1 flex-wrap">
                             {itens.map(([nome, on, hint]) => (
                               <span key={nome} title={hint}
                                 className={`text-[8px] px-1 py-0.5 rounded font-bold tracking-wide border ${
@@ -358,8 +413,8 @@ export function Disparos() {
                           </div>
                         )
                       })()}
-                      <div className="mt-1 text-[10px] text-ink-muted">
-                        fatia: <span className="text-ink font-semibold tabular-nums">{Number(v.share_percent).toFixed(0)}%</span>
+                      <div className="routing-vendor-share mt-1 text-[10px] text-ink-muted">
+                        Peso: <span className="text-ink font-semibold tabular-nums">{Number(v.share_percent).toFixed(1)}%</span>
                         {(() => {
                           const ef = efetivo?.[v.vendedor_nome]
                           if (!ef || !cotaCfg?.cota_ativa) return null
@@ -377,25 +432,30 @@ export function Disparos() {
                                 + `Teto: ${cotaCfg.cota_zero}.`}
                             >
                               {' · '}{ef.parados_topo} parados →{' '}
-                              {f === 0 ? 'NÃO RECEBE' : `recebe ${Number(ef.share_efetivo).toFixed(1)}%`}
+                              {f === 0 ? 'cota zerada' : `peso após cota: ${Number(ef.share_efetivo).toFixed(1)}%`}
                             </span>
                           )
                         })()}
                       </div>
                     </div>
                   </div>
+                </div>
+                <div className="routing-vendor-actions">
                   {(() => {
                     const modo = modoDe(v)
                     const cfg = {
-                      ligado:    { rotulo: '◉ LIGADO',    classe: 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30',
+                      ligado:    { rotulo: '◉ Ligado',    classe: 'bg-success-bg text-success hover:bg-success/15',
                                    dica: 'Recebe tudo: lead pra chamar e cliente que chama. Clique → SÓ RECEBE' },
-                      so_recebe: { rotulo: '◐ SÓ RECEBE', classe: 'bg-sky-500/20 text-sky-300 hover:bg-sky-500/30',
+                      so_recebe: { rotulo: '◐ Só recebe', classe: 'bg-info-bg text-info hover:bg-info/15',
                                    dica: 'Só cliente que CHAMA ele (link e quiz). Não recebe lead pra disparar nem prospecta. Clique → DESLIG.' },
-                      desligado: { rotulo: '○ DESLIG.',   classe: 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50',
+                      desligado: { rotulo: '○ Desligado',   classe: 'bg-surface-2 text-ink-muted hover:bg-surface-3',
                                    dica: 'Fora de tudo. Clique → LIGADO' },
                     }[modo]
                     return (
                       <button
+                        type="button"
+                        disabled={toggleVendedor.isPending}
+                        aria-label={`Modo de recebimento de ${v.vendedor_nome}: ${modo === 'ligado' ? 'Ligado' : modo === 'so_recebe' ? 'Só recebe' : 'Desligado'}`}
                         onClick={() => toggleVendedor.mutate({ nome: v.vendedor_nome, modo: PROXIMO_MODO[modo] })}
                         title={cfg.dica}
                         className={`text-[9px] px-2 py-1 rounded-full font-bold tracking-wide transition-all flex-shrink-0 ${cfg.classe}`}
@@ -404,10 +464,26 @@ export function Disparos() {
                       </button>
                     )
                   })()}
+                  {admin && <button
+                    type="button"
+                    className="routing-quota-toggle flex items-center gap-1.5"
+                    aria-label={`Ignorar parados de ${v.vendedor_nome}`}
+                    aria-pressed={cotaConhecida ? excecao.ignorar_parados : undefined}
+                    disabled={!cotaConhecida || alterarCota.isPending}
+                    title={cotaConhecida ? (excecao.ignorar_parados ? 'Clique para voltar a aplicar a cota de parados.' : 'Liberar a cota deste vendedor até você desativar.') : 'Aguardando a confirmação da cota no servidor.'}
+                    onClick={() => { if (cotaConhecida) alterarCota.mutate({ nome: v.vendedor_nome, ignorar: !excecao.ignorar_parados }) }}
+                  >
+                    {alterarCota.isPending && alterarCota.variables?.nome === v.vendedor_nome ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                    Ignorar parados{cotaConhecida && excecao.ignorar_parados ? ' · ativo' : ''}
+                  </button>}
                 </div>
+                {admin && cotaConhecida && excecao.ignorar_parados && <p className="mt-2 text-[11px] text-info">
+                  {excecao.temporario && excecao.expira_em ? `Liberação temporária até ${new Date(excecao.expira_em).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : 'Cota liberada até você desativar.'}
+                </p>}
               </div>
             )})}
           </div>
+          </>
         )}
       </Card>
 
@@ -544,7 +620,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
   }
 
   return (
-    <Card className="p-4">
+    <Card className="routing-distribution p-4">
       <div className={`flex items-center justify-between flex-wrap gap-2 ${secao.aberta ? 'mb-3' : ''}`}>
         <div>
           <TituloRecolhivel
@@ -557,19 +633,19 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
             // "9 recebendo de 9" com 7 deles zerados.
             resumo={
               soma > 0
-                ? `${online.filter(v => Number(local[v.vendedor_nome] ?? 0) > 0).length} recebendo de ${online.length} ligados`
+                ? `${online.filter(v => !v.bloqueado && efetivoDe(v.vendedor_nome) > 0).length} com peso ativo de ${online.length} ligados`
                 : 'sem distribuição definida'
             }
           >
-            Quanto cada vendedor recebe
+            Distribuição de leads
           </TituloRecolhivel>
           {secao.aberta && (
             <p className="text-[10px] text-ink-muted mt-0.5">
-              Define a fatia de leads que cada vendedor recebe quando um lead chega na central. Vale para chamadas do ReplyAgent / n8n que não enviam pesos próprios.
+              Pesos do roteamento geral. O atendimento da Ana e o rodízio dos links seguem suas próprias regras.
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="routing-distribution-toolbar flex items-center gap-2 flex-wrap">
           <div className={`text-[12px] font-bold tabular-nums px-2 py-1 rounded ${proximoDe100 ? 'bg-emerald-500/15 text-emerald-300' : soma > 0 ? 'bg-amber-500/15 text-amber-300' : 'bg-surface-2 text-ink-faint'}`}>
             soma: {soma.toFixed(0)}%{proximoDe100 ? ' ✓' : ''}
           </div>
@@ -599,10 +675,8 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
             A cota de parados está reduzindo a fatia de {cortados.length} vendedor{cortados.length > 1 ? 'es' : ''}
           </div>
           <p className="text-[10px] text-ink-muted mt-0.5">
-            Quem acumula cliente parado em PROSPECÇÃO + 2ª TENTATIVA + NOVO LEAD recebe menos lead novo,
-            e volta sozinho quando limpa. O % que você define aqui continua valendo — a cota só multiplica por cima.
-            A fatia que sobra vai pros outros ligados (por isso eles recebem mais do que o slider indica).
-            Teto: {cotaZero} parados.
+            A cota considera Prospecção, 2ª tentativa e Novo lead. Ela reduz o peso do vendedor no roteamento geral.
+            Use “Ignorar parados” no cartão do vendedor para liberar essa cota. Teto: {cotaZero} parados.
           </p>
           <div className="flex flex-wrap gap-1.5 mt-2">
             {cortados.map(v => {
@@ -618,8 +692,8 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                 >
                   {v.vendedor_nome}: {ef?.parados_topo ?? 0} parados →{' '}
                   {zerado
-                    ? 'não recebe'
-                    : `recebe ${Math.round((efetivoDe(v.vendedor_nome) / (somaEfetiva || 1)) * 100)} de cada 100`}
+                    ? 'cota zerada'
+                    : `peso após cota: ${efetivoDe(v.vendedor_nome).toFixed(1)}%`}
                 </span>
               )
             })}
@@ -653,7 +727,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
       {/* Como fica DEPOIS da cota — só aparece quando difere do configurado */}
       {cotaAtiva && cortados.length > 0 && somaEfetiva > 0 && (
         <div className="mb-3">
-          <div className="text-[10px] text-ink-muted mb-1">na prática, depois da cota:</div>
+          <div className="text-[11px] text-ink-muted mb-1">Distribuição estimada no roteamento geral, após a cota:</div>
           <div className="flex h-5 rounded-lg overflow-hidden border border-border bg-surface-2">
             {online.filter(v => !v.bloqueado && efetivoDe(v.vendedor_nome) > 0).map((v, i) => {
               const pct = (efetivoDe(v.vendedor_nome) / somaEfetiva) * 100
@@ -662,7 +736,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                   key={v.vendedor_nome}
                   className={`${cores[i % cores.length]} flex items-center justify-center text-[10px] font-bold text-black/80`}
                   style={{ width: `${pct}%` }}
-                  title={`${v.vendedor_nome}: ${pct.toFixed(1)}% dos leads`}
+                  title={`${v.vendedor_nome}: ${pct.toFixed(1)}% do peso total após a cota`}
                 >
                   {pct >= 6 ? v.vendedor_nome.substring(0, Math.max(2, Math.floor(pct / 4))) : ''}
                 </div>
@@ -674,14 +748,14 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
 
       {/* Sliders por vendedor */}
       {pendingSaves > 0 && <p role="status" className="mb-2 text-xs text-ink-muted">Salvando distribuição…</p>}
-      <fieldset disabled={pendingSaves > 0} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+      <fieldset disabled={pendingSaves > 0} className="routing-distribution-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
         {online.map((v, i) => {
           const valor = Number(local[v.vendedor_nome] ?? 0)
           const cor = cores[i % cores.length]
           const corAccent = cor.replace('bg-', 'accent-')
           const bloq = v.bloqueado
           return (
-            <div key={v.vendedor_nome} className={`border rounded-lg p-3 transition-colors ${
+            <div key={v.vendedor_nome} className={`routing-distribution-item border rounded-lg p-3 transition-colors ${
               bloq ? 'border-red-500/30 bg-red-500/5 opacity-75' :
               valor > 0 ? 'border-accent/30 bg-surface-2/50' : 'border-border bg-surface-2/50'
             }`}>
@@ -697,7 +771,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                   className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide flex-shrink-0 transition-colors ${
                     bloq
                       ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/30'
-                      : 'bg-slate-800 text-ink-muted hover:bg-red-500/20 hover:text-red-300 border border-slate-700'
+                      : 'bg-surface text-ink-muted hover:bg-danger-bg hover:text-danger border border-border'
                   }`}
                 >
                   {bloq ? '✓ DESBLOQUEAR' : '✕ BLOQUEAR'}
@@ -706,7 +780,7 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
 
               {!bloq && (
                 <>
-                  <div className="flex items-center justify-end gap-1 mb-2">
+                  <div className="routing-weight-control flex items-center justify-end gap-1 mb-2">
                     <button
                       onClick={() => ajustar(v.vendedor_nome, -5)}
                       aria-label={`Diminuir peso de ${v.vendedor_nome} em 5 pontos`}
@@ -756,21 +830,21 @@ function DistribuicaoGlobalCard({ vendedores, efetivo, cotaAtiva, cotaZero, onTo
                       if (f === 0) {
                         return (
                           <span className="text-danger font-semibold">
-                            cota travou: {ef?.parados_topo ?? 0} parados, não recebe
+                            Cota zerada: {ef?.parados_topo ?? 0} parados
                           </span>
                         )
                       }
                       if (f < 1) {
                         return (
                           <span className="text-warning">
-                            cota reduziu: recebe <span className="font-semibold">{emCada100}</span>
-                            {' '}de cada 100 ({ef?.parados_topo ?? 0} parados)
+                            Estimativa após cota: <span className="font-semibold">{emCada100}%</span>
+                            {' '}do peso total ({ef?.parados_topo ?? 0} parados)
                           </span>
                         )
                       }
                       return (
                         <span title={cotaMexe ? 'Subiu porque a cota freou outro vendedor e a fatia dele foi redistribuída.' : undefined}>
-                          recebe <span className="text-ink font-semibold">{emCada100}</span> de cada 100 leads
+                          Estimativa: <span className="text-ink font-semibold">{emCada100}%</span> do peso total
                           {cotaMexe && <span className="text-success"> ↑</span>}
                         </span>
                       )

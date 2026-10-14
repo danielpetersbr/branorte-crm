@@ -1,0 +1,227 @@
+/* Keep routing styling local; colors follow the CRM light and dark themes. */
+.routing-page {
+  min-width: 0;
+  padding: 22px;
+  color: hsl(var(--ink));
+  background: hsl(var(--bg));
+}
+
+.routing-page > fieldset > * + * {
+  margin-top: 16px;
+}
+
+.routing-header {
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 2px;
+}
+
+.routing-header h1 {
+  font-size: 23px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.3;
+}
+
+.routing-header p {
+  max-width: 94ch;
+  line-height: 1.6;
+}
+
+.routing-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.routing-overview > * {
+  min-width: 0;
+  padding: 13px 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--surface));
+}
+
+.routing-vendor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 285px), 1fr));
+  gap: 12px;
+}
+
+.routing-vendor-card {
+  min-width: 0;
+  padding: 14px;
+  border-radius: 12px;
+  border-top-color: hsl(var(--border));
+  border-right-color: hsl(var(--border));
+  border-bottom-color: hsl(var(--border));
+  border-left-width: 3px;
+  background: hsl(var(--surface));
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.routing-vendor-card:hover {
+  border-top-color: hsl(var(--border-strong));
+  border-right-color: hsl(var(--border-strong));
+  border-bottom-color: hsl(var(--border-strong));
+  box-shadow: 0 2px 8px hsl(var(--shadow-color) / 0.06);
+}
+
+.routing-vendor-name {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+}
+
+.routing-vendor-status {
+  row-gap: 3px;
+}
+
+.routing-vendor-status > span:not(:first-child) {
+  font-size: 11px;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.routing-vendor-channels {
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.routing-vendor-channels > span {
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.routing-vendor-share {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.routing-vendor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid hsl(var(--border) / 0.65);
+}
+
+.routing-vendor-actions > button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.routing-quota-toggle {
+  border: 1px solid hsl(var(--border-strong));
+  background: hsl(var(--surface));
+  color: hsl(var(--ink-muted));
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.routing-quota-toggle:hover:not(:disabled) {
+  background: hsl(var(--surface-2));
+  color: hsl(var(--ink));
+}
+
+.routing-quota-toggle[aria-pressed="true"] {
+  border-color: hsl(var(--info) / 0.45);
+  background: hsl(var(--info) / 0.1);
+  color: hsl(var(--info));
+}
+
+.routing-quota-toggle[aria-pressed="true"]:hover:not(:disabled) {
+  background: hsl(var(--info) / 0.16);
+}
+
+.routing-distribution {
+  padding: 18px;
+  border-radius: 12px;
+}
+
+.routing-distribution-toolbar {
+  gap: 6px;
+}
+
+.routing-distribution-toolbar > button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.routing-distribution-grid {
+  gap: 12px;
+}
+
+.routing-distribution-item {
+  min-width: 0;
+  padding: 13px;
+  border-radius: 10px;
+  background: hsl(var(--surface-2) / 0.45);
+}
+
+.routing-distribution-item > div > button {
+  min-height: 28px;
+  font-size: 11px;
+}
+
+.routing-weight-control > input,
+.routing-weight-control > button {
+  min-height: 32px;
+  border-color: hsl(var(--border-strong));
+  background: hsl(var(--surface));
+  color: hsl(var(--ink));
+}
+
+.routing-weight-control > button {
+  width: 32px;
+}
+
+.routing-weight-control > input {
+  width: 66px;
+}
+
+.routing-page button:focus-visible,
+.routing-page input:focus-visible {
+  outline: 2px solid hsl(var(--info));
+  outline-offset: 3px;
+}
+
+.routing-page button:disabled,
+.routing-page fieldset:disabled button {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 640px) {
+  .routing-page { padding: 12px; }
+  .routing-header { align-items: flex-start; gap: 10px; }
+  .routing-header h1 { font-size: 21px; }
+  .routing-header p { font-size: 12px; }
+  .routing-overview { gap: 6px; }
+  .routing-overview > * { padding: 10px 9px; border-radius: 9px; }
+  .routing-vendor-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .routing-vendor-actions > button,
+  .routing-distribution-toolbar > button { min-height: 40px; }
+  .routing-distribution { padding: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routing-vendor-card,
+  .routing-quota-toggle { transition: none; }
+}
