@@ -1,7 +1,9 @@
 // "Ka-ching" de caixa registradora quando o vendedor lança um pedido de venda.
 //
-// Sintetizado com Web Audio (sem arquivo de som): um estalo curto da gaveta e
-// duas batidas de sino. O navegador só libera áudio depois de um gesto do
+// O som é a GRAVAÇÃO `public/sons/venda.mp3` ("Cash Register Purchase", Freesound,
+// CC0 — ver public/licenses/som-venda.txt), escolhida pelo Daniel em 14/10/2026 entre
+// 10 opções. Se o arquivo não carregar, toca o sintetizado de antes (estalo + 2 sinos).
+// O navegador só libera áudio depois de um gesto do
 // usuário, e o som sai segundos depois do clique (depois de o servidor gravar o
 // pedido) — por isso `prepararSomVenda()` roda NO clique e destrava o contexto,
 // e `tocarSomVenda()` usa esse mesmo contexto quando o pedido existe de verdade.
@@ -17,11 +19,30 @@ function contexto(): AudioContext | null {
   return ctx
 }
 
+const URL_SOM = '/sons/venda.mp3'
+let gravacao: AudioBuffer | null = null
+let carregando: Promise<void> | null = null
+
+// Baixa e decodifica a gravação UMA vez. Falhou → `gravacao` fica null e cai no sintetizado.
+function carregarGravacao(c: AudioContext): Promise<void> {
+  if (gravacao) return Promise.resolve()
+  if (!carregando) {
+    carregando = fetch(URL_SOM)
+      .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.arrayBuffer() })
+      .then(dados => c.decodeAudioData(dados))
+      .then(buf => { gravacao = buf })
+      .catch(() => { carregando = null })
+  }
+  return carregando ?? Promise.resolve()
+}
+
 /** Chamar no clique do botão de gerar o pedido (gesto do usuário). */
 export function prepararSomVenda(): void {
   try {
     const c = contexto()
-    if (c && c.state === 'suspended') void c.resume()
+    if (!c) return
+    if (c.state === 'suspended') void c.resume()
+    void carregarGravacao(c)   // já deixa o arquivo pronto pra hora da venda
   } catch { /* sem áudio, sem som */ }
 }
 
@@ -62,19 +83,33 @@ function sino(c: AudioContext, destino: AudioNode, t: number, freq: number, volu
   }
 }
 
+function tocarSintetizado(c: AudioContext) {
+  const saida = c.createGain()
+  saida.gain.value = 0.35
+  saida.connect(c.destination)
+  const t = c.currentTime + 0.03
+  estalo(c, saida, t)
+  sino(c, saida, t + 0.06, 1567.98, 0.5, 0.5)   // "ka" — sol
+  sino(c, saida, t + 0.16, 2093.0, 0.55, 1.3)   // "ching" — dó acima, longo
+}
+
 /** Toca o ka-ching. Silencioso (e sem erro) se o navegador não deixar. */
 export function tocarSomVenda(): void {
   try {
     const c = contexto()
     if (!c) return
     if (c.state === 'suspended') void c.resume()
-    const saida = c.createGain()
-    saida.gain.value = 0.35
-    saida.connect(c.destination)
-    const t = c.currentTime + 0.03
-    estalo(c, saida, t)
-    sino(c, saida, t + 0.06, 1567.98, 0.5, 0.5)   // "ka" — sol
-    sino(c, saida, t + 0.16, 2093.0, 0.55, 1.3)   // "ching" — dó acima, longo
+    void carregarGravacao(c).then(() => {
+      try {
+        if (!gravacao) { tocarSintetizado(c); return }
+        const fonte = c.createBufferSource()
+        fonte.buffer = gravacao
+        const volume = c.createGain()
+        volume.gain.value = 0.9
+        fonte.connect(volume).connect(c.destination)
+        fonte.start(c.currentTime + 0.02)
+      } catch { /* sem áudio, sem som */ }
+    })
   } catch { /* sem áudio, sem som */ }
 }
 
