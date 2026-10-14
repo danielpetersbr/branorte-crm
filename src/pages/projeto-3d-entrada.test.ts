@@ -6,6 +6,7 @@ import ts from 'typescript'
 import React from 'react'
 import { isNavigationItemActive } from '../components/layout/navigation-active'
 import * as identidade from '../lib/projeto-3d-identidade'
+import * as catalogSession from '../lib/catalogo3d-session'
 
 function parse(path: string) {
   return ts.createSourceFile(path, readFileSync(new URL(path, import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -34,7 +35,7 @@ function routes() {
   return result
 }
 
-function page(props = {}, initial: Record<string, unknown> = {}) {
+function page(props = {}, initial: Record<string, unknown> = {}, auth: { session: any; profile: any } = { session: null, profile: { role: 'vendor', id: 'vendedor-1' } }) {
   const ast = parse('./Projeto3D.tsx')
   const fn = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'Projeto3D') as ts.FunctionDeclaration
   const names: string[] = []
@@ -58,6 +59,7 @@ function page(props = {}, initial: Record<string, unknown> = {}) {
   const messages: any[] = []
   const saves: any[] = []
   const saveCallbacks: any[] = []
+  const cleanups: Array<() => void> = []
   let listener: (event: object) => void
   const contentWindow = { postMessage(message: any) {
     messages.push(message)
@@ -68,17 +70,19 @@ function page(props = {}, initial: Record<string, unknown> = {}) {
   let stateIndex = 0
   let refIndex = 0
   const code = ast.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(ast)).join('\n')
-  const context = run(code, { ...icons, ...identidade,
+  const context = run(code, { ...icons, ...identidade, ...catalogSession,
     window: { setTimeout(fn: () => void, ms: number) { return setTimeout(fn, ms).unref() }, clearTimeout, addEventListener(_type: string, handler: typeof listener) { listener = handler }, removeEventListener() {} },
     useState(value: unknown) { const name = names[stateIndex++]; if (!(name in states)) states[name] = value; return [states[name], (next: unknown) => { states[name] = next }] },
     useRef(value: unknown) { const index = refIndex++; refs[index] ??= { current: index === 0 ? { contentWindow } : value }; namedRefs[refNames[index]] = refs[index]; return refs[index] },
-    useEffect(effect: () => void) { effect() }, useCallback: (fn: unknown) => fn,
-    useAuth: () => ({ profile: { role: 'vendor', id: 'vendedor-1' } }), useQueryClient: () => ({}),
+    useEffect(effect: () => unknown) { const cleanup = effect(); if (typeof cleanup === 'function') cleanups.push(cleanup as () => void) },
+    useLayoutEffect(effect: () => void) { effect() }, useCallback: (fn: unknown) => fn,
+    useAuth: () => auth, useQueryClient: () => ({}),
     useConfiguradorProjetos: () => ({}), useDeletarConfiguradorProjeto: () => ({}), useBuscarContatos: () => ({}),
     useSalvarConfiguradorProjeto: () => ({ isPending: false, mutate(input: unknown, callbacks: unknown) { saves.push(input); saveCallbacks.push(callbacks) } }),
   })
   const render = () => { stateIndex = 0; refIndex = 0; return context.exports.Projeto3D(props) }
-  return { render, states, messages, saves, saveCallbacks, refs: namedRefs }
+  const receive = (data: unknown, origin = catalogSession.CONFIGURADOR_ORIGIN, source: unknown = contentWindow) => listener({ data, origin, source })
+  return { render, states, messages, saves, saveCallbacks, refs: namedRefs, receive, unmount: () => cleanups.forEach(cleanup => cleanup()) }
 }
 
 function find(tree: any, match: (element: any) => boolean): any {
@@ -162,4 +166,42 @@ test('salvamento manual sincroniza metadados com identidade do JSON atual para o
   assert.equal(message.clientName, 'Nova cliente')
   assert.equal('project' in message, false)
   assert.equal(view.refs.projetoDataRef.current.floors[0].id, 'piso-original')
+})
+
+test('ponte usa a sessão atualizada, recusa outra conta e limpa o acesso ao sair', () => {
+  const id = '9cf979c3-17cc-4aee-b692-ff9d1eea5540'
+  const auth = { session: { user: { id }, access_token: 'first-token', expires_at: Math.floor(Date.now() / 1000) + 60 } as any, profile: { id, role: 'admin', approved_at: '2026-10-01T00:00:00Z' } }
+  const view = page({}, {}, auth)
+  const iframeUrl = () => new URL(find(view.render(), element => element.type === 'iframe').props.src)
+  const request = { type: 'branorte:catalog:session', requestId: 'current-session' }
+  assert.equal(iframeUrl().searchParams.get('adm'), '1')
+  view.receive(request)
+  assert.equal(view.messages.at(-1).accessToken, 'first-token')
+
+  auth.session = { ...auth.session, access_token: 'renewed-token' }
+  view.render()
+  assert.equal(view.messages.at(-1).type, 'branorte:catalog:changed')
+  view.receive(request)
+  assert.equal(view.messages.at(-1).accessToken, 'renewed-token')
+
+  const messageCount = view.messages.length
+  view.receive(request, 'https://evil.example')
+  view.receive(request, catalogSession.CONFIGURADOR_ORIGIN, {})
+  assert.equal(view.messages.length, messageCount)
+
+  auth.session = { ...auth.session, user: { id: 'another-admin' } }
+  auth.profile = { ...auth.profile, id: 'another-admin' }
+  assert.equal(iframeUrl().searchParams.get('adm'), '0')
+  assert.equal(view.messages.at(-1).type, 'branorte:catalog:clear')
+  view.receive(request)
+  assert.equal(view.messages.at(-1).accessToken, null)
+
+  auth.session = null
+  view.render()
+  assert.equal(view.messages.at(-1).type, 'branorte:catalog:clear')
+  view.receive(request)
+  assert.equal(view.messages.at(-1).accessToken, null)
+  view.unmount()
+  assert.equal(view.messages.at(-1).type, 'branorte:catalog:clear')
+  assert.equal('accessToken' in view.messages.at(-1), false)
 })

@@ -6,7 +6,7 @@
 //   Salvar  → pede o projeto atual (branorte:get) e grava no Supabase.
 //   Abrir   → busca o JSON e manda pro iframe (branorte:load), que vai pro editor.
 //   Novo    → manda o iframe abrir um editor vazio (branorte:new).
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Boxes, Maximize2, RefreshCw, Save, FolderOpen, Plus, Trash2,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { idExternoProjeto, nomeClienteProjeto } from '@/lib/projeto-3d-identidade'
+import { CONFIGURADOR_ORIGIN, catalogo3dAccessToken, catalogo3dSessionReply } from '@/lib/catalogo3d-session'
 import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
   useBuscarContatos, fetchConfiguradorProjeto, fetchConfiguradorProjetoMetaAtual, type ConfiguradorProjetoMeta,
@@ -26,7 +27,6 @@ import {
   fetchConfiguradorModelos, saveConfiguradorModelo, deleteConfiguradorModelo,
 } from '@/hooks/useConfiguradorModelos'
 
-const CONFIGURADOR_ORIGIN = 'https://branorte-configurador-3d.vercel.app'
 const CONFIGURADOR_URL = CONFIGURADOR_ORIGIN
 
 const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -62,12 +62,24 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
   const [saveBusca, setSaveBusca] = useState('')
   const projetoDataRef = useRef<unknown>(null)
 
-  const { profile } = useAuth()
+  const { profile, session } = useAuth()
   const profileRef = useRef(profile)
   useEffect(() => { profileRef.current = profile }, [profile])
+  const catalogSessionRef = useRef({ session, profile })
+  useLayoutEffect(() => {
+    // Atualiza antes de processar mensagens da janela; o listener não captura
+    // o token inicial nem continua usando uma sessão após troca de conta.
+    catalogSessionRef.current = { session, profile }
+    const type = catalogo3dAccessToken(session, profile) ? 'branorte:catalog:changed' : 'branorte:catalog:clear'
+    frameRef.current?.contentWindow?.postMessage({ type }, CONFIGURADOR_ORIGIN)
+  }, [session, profile])
+  useEffect(() => {
+    const frameWindow = frameRef.current?.contentWindow
+    return () => frameWindow?.postMessage({ type: 'branorte:catalog:clear' }, CONFIGURADOR_ORIGIN)
+  }, [])
   const qc = useQueryClient()
-  // Papel passado pro iframe: só ADMIN vê o botão "Catálogo de Produtos" no configurador (vendedor não).
-  const iframeSrc = `${CONFIGURADOR_URL}?adm=${profile?.role === 'admin' ? '1' : '0'}&entry=${entry}`
+  // Indicador visual apenas: o catálogo confirma a autorização no servidor.
+  const iframeSrc = `${CONFIGURADOR_URL}?adm=${catalogo3dAccessToken(session, profile) ? '1' : '0'}&entry=${entry}`
   const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos(showLista)
   const termoLista = semAcento(buscaLista.trim())
   const projetosFiltrados = termoLista
@@ -89,6 +101,12 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.origin !== CONFIGURADOR_ORIGIN || e.source !== frameRef.current?.contentWindow) return
+      const current = catalogSessionRef.current
+      const catalogReply = catalogo3dSessionReply(e, frameRef.current?.contentWindow, current.session, current.profile)
+      if (catalogReply) {
+        frameRef.current?.contentWindow?.postMessage(catalogReply, CONFIGURADOR_ORIGIN)
+        return
+      }
       const m = e.data
       if (!m || typeof m !== 'object') return
       if (m.type === 'branorte:project' && m.requestId) {
