@@ -34,10 +34,10 @@ export const ETAPAS_ATENDIMENTO = {
   },
   'em-atendimento': {
     label: 'Em atendimento — sem repasse',
-    linha: 'bg-orange-500/[0.09] hover:bg-orange-500/[0.15]',
-    cartao: 'bg-orange-500/[0.09] border-orange-500/25',
-    indicador: 'bg-orange-500',
-    borda: 'rgb(249 115 22 / 0.65)',
+    linha: 'bg-blue-500/[0.08] hover:bg-blue-500/[0.14]',
+    cartao: 'bg-blue-500/[0.08] border-blue-500/25',
+    indicador: 'bg-blue-500',
+    borda: 'rgb(59 130 246 / 0.65)',
   },
   'encerrado-sem-vendedor': {
     label: 'Finalizado sem passar para o vendedor',

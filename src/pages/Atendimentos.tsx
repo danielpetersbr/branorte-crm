@@ -21,9 +21,10 @@ import { limparEquipamento } from '@/lib/atendimentos-texto'
 import { etapaAtendimento, ETAPAS_ATENDIMENTO } from '@/lib/atendimento-etapa'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
-import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useAnuncioPorTelefone, lookupAnuncio, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useQualificacaoPorTelefone, lookupQualificacao, useFinalidadeInferida, lookupFinalidadeInferida, useAtendimentoKpiIaFila, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
+import { useAtendimentos, useAtendimentoKpis, useAtendimentoKpisAcao, useAtendimentoFunilContagem, useAtendimentoOrigens, useAtendimentoResponsaveis, useDeleteAtendimento, useWaLabelsByPhones, lookupWaLabels, useOrcamentosPorTelefone, lookupOrcamento, useAnuncioPorTelefone, lookupAnuncio, useVendasPorTelefone, lookupVenda, useSemRespostaPorTelefone, lookupSemResposta, useSemRespostaTelefones, useDadosIaPorTelefone, lookupDadosIa, useQualificacaoPorTelefone, lookupQualificacao, useFinalidadeInferida, lookupFinalidadeInferida, useIaStatusPorTelefone, lookupIaStatus, FILTRO_SEM_RESPOSTA, FILTRO_SEM_ETIQUETA, SEM_ETIQUETA_LIMITE, type DataPreset , useMensagensClique} from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
+import { useIaStatusContagem } from '@/hooks/useAtendimentos'
 
 function normalizarAnimal(v: string): string {
   const s = v.toLowerCase().replace(/[^\w\sáéíóúâêîôûãõç]/g, '').trim()
@@ -234,7 +235,7 @@ function PerfilFabricaCell({ finalidade, quantos, capacidade, quando }: PerfilFa
 
 interface KpiCardProps {
   label: string
-  value: number
+  value: number | null
   hero?: boolean
   tone?: Tone
   icon?: typeof Flame
@@ -287,7 +288,7 @@ function KpiCard({ label, value, hero, tone = 'neutral', icon: Icon, hint, toolt
             {label}
           </p>
           <p className={`mt-1 font-bold tabular-nums tracking-tight text-ink ${hero ? 'text-3xl' : 'text-2xl'}`}>
-            {formatNumber(value)}
+            {value == null ? '—' : formatNumber(value)}
             {pct !== undefined && (
               <span className={`ml-1.5 font-semibold text-ink-faint ${hero ? 'text-sm' : 'text-xs'}`}>{pct}%</span>
             )}
@@ -440,11 +441,8 @@ export function Atendimentos() {
   const { data: qualifMap } = useQualificacaoPorTelefone(phonesAtuais)
   // 3º fallback da coluna Finalidade — ver comentário do hook. Só os telefones da página.
   const { data: finalidadeInferidaMap } = useFinalidadeInferida(phonesAtuais)
-  // Card "I.A" (KPI do topo): sem vendedor e ainda não marcado como "nunca respondeu".
-  // Trocou useIaStatusContagem, que contava ia_atendimentos.ativo — zerado desde que a IA
-  // atendente foi desligada em 13/08. O hook por telefone abaixo continua: ainda existe
-  // chat antigo com a marca, e é ele que pinta o selo na linha.
-  const { data: iaFila } = useAtendimentoKpiIaFila(filters)
+  // Runtime atual, independente dos filtros históricos ou da página da tabela.
+  const { data: iaContagem, error: iaContagemError, isFetching: iaContagemFetching, refetch: refetchIaContagem } = useIaStatusContagem()
   // Status da IA por telefone — marca na linha quem está com a IA atendendo.
   const { data: iaStatusMap } = useIaStatusPorTelefone(phonesAtuais)
   const deleteMut = useDeleteAtendimento()
@@ -582,10 +580,10 @@ export function Atendimentos() {
             Modo análise
           </Button>
           <SyncIndicator
-            isFetching={isFetching}
+            isFetching={isFetching || iaContagemFetching}
             dataUpdatedAt={dataUpdatedAt}
             error={atendimentosError as Error | null}
-            onRefetch={() => refetch()}
+            onRefetch={() => { void refetch(); void refetchIaContagem() }}
           />
         </div>
       </div>
@@ -612,17 +610,9 @@ export function Atendimentos() {
             : undefined
         return (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* I.A — régua do Daniel (18/08): sem vendedor e ainda não marcado como "nunca
-              respondeu", CONTANDO SÓ QUEM TEM TELEFONE ("se não tem telefone nem coloca aí").
-              Antes o card contava ia_atendimentos.ativo, que virou 0 fixo quando a IA
-              atendente foi desligada em 13/08.
-              A fileira FECHA a conta desde 18/08: total = Qualificados + Nunca respondeu +
-              este card. Fechou porque os leads sem telefone saíram do universo inteiro da
-              tela (applyBaseFilters + RPC), não só deste card. */}
-          <KpiCard label="I.A" value={iaFila?.comTelefone ?? 0} hero tone="info" icon={Bot}
-                   pct={pctDe(iaFila?.comTelefone)} pctBase={pctBase}
-                   hint={(iaFila?.comTelefone ?? 0) === 0 ? 'ninguém na fila' : 'sem vendedor ainda'}
-                   tooltip={`Lead que ainda não tem vendedor e ainda não foi marcado como "nunca respondeu".\n\nFecha a conta da fileira: total = Qualificados + Nunca respondeu + este.\n\n⚠️ Quem chega sem telefone (Instagram/Facebook) não aparece em lugar nenhum desta tela — não dá pra atender por WhatsApp.${(iaFila?.semTelefone ?? 0) > 0 ? ` Hoje foram ${formatNumber(iaFila?.semTelefone ?? 0)} nessa situação.` : ''}`} />
+          <KpiCard label="I.A atendendo hoje" value={iaContagemError ? null : iaContagem?.conversando ?? null} hero tone="info" icon={Bot}
+                   hint={iaContagemError ? 'Não foi possível atualizar' : iaContagem ? `${formatNumber(iaContagem.ligados)} chats com IA ligada` : 'Consultando a IA…'}
+                   tooltip="Chats com IA ativa que receberam uma resposta dela hoje, no horário de Brasília. Exclui IA pausada, bloqueada ou desligada e conta cada telefone uma vez. O total abaixo inclui também chats com IA ligada que ainda não receberam resposta hoje. Esta contagem atual independe dos filtros históricos da lista." />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
                    icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
                    active={filters.data === 'hoje'}

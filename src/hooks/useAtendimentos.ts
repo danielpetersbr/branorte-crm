@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabaseAuditoria, supabase } from '@/lib/supabase'
+import { validarContagemIa } from '@/lib/ia-status-contagem'
 import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal, type StatusVendedor } from '@/types/atendimento'
 import { DDD_TO_UF } from '@/lib/ddd-uf'
 import { codigosParaFiltro } from '@/lib/criativo-codigo'
@@ -563,12 +564,12 @@ export function useIaStatusContagem(enabled = true) {
     queryFn: async (): Promise<IaStatusContagem> => {
       const { data, error } = await (supabase as any).rpc('ia_status_contagem')
       if (error) throw error
-      const d = (data ?? {}) as { ligados?: number; conversando?: number }
-      return { ligados: Number(d.ligados ?? 0), conversando: Number(d.conversando ?? 0) }
+      return validarContagemIa(data)
     },
     staleTime: 30_000,
-    refetchInterval: 45_000,
+    refetchInterval: 30_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   })
 }
 
