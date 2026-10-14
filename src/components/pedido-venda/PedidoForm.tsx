@@ -1391,6 +1391,14 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         resetLoading("descricao_equipamento");
         return;
       }
+      // O rótulo sempre teve "*", mas o envio não cobrava: 107 dos 300 últimos pedidos
+      // (maio→out/2026) foram pra fábrica sem tensão — a maioria peça (peneira, martelo),
+      // onde a resposta certa é "Sem motor". Um clique, e a fábrica não fica na dúvida.
+      if (!tensao) {
+        toast.error("Escolha o tipo de tensão. Peça ou equipamento sem motor: \"Sem motor\".");
+        resetLoading("tipo_tensao");
+        return;
+      }
       if (!observacoesAdicionais.trim()) {
         toast.error("Observação do vendedor é obrigatória. Clique em 'Sem observação' se não houver.");
         resetLoading("obs-adicionais");
@@ -1430,6 +1438,12 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
       if (!pedidoInicial && !fonteOrigem) {
         toast.error("Selecione como o cliente encontrou a empresa");
         resetLoading("fonte_origem");
+        return;
+      }
+      // Também tinha "*" sem cobrança. 90% dos pedidos completos já vinham com ela.
+      if (!pedidoInicial && !dataPrimeiroContato) {
+        toast.error("Informe a data do primeiro contato com o cliente");
+        resetLoading("data_primeiro_contato");
         return;
       }
       
@@ -1550,6 +1564,10 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         acessorios_valor: (window as any).acessoriosValor || null,
         motores_por_conta_cliente: motoresPorContaCliente,
         observacoes: [
+          // `pedidos_venda` (banco do controle) não tem coluna de e-mail e a edge ignora o
+          // campo `email` — o que o vendedor digitava sumia. Nas observações ele sai no Word
+          // do pedido. (Na edição o Word é regerado do banco e o e-mail não volta.)
+          ...(email.trim() ? [`E-MAIL DO CLIENTE: ${email.trim()}`] : []),
           ...(especificacoesEletricas ? [especificacoesEletricas] : []),
           ...observacoes,
           ...(observacoesAdicionais.trim() ? [observacoesAdicionais.trim()] : [])
@@ -2071,6 +2089,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     placeholder="Ex: cliente@email.com"
                     className="mt-1"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Sai nas observações do Word do pedido.</p>
                 </div>
 
                 {/* Grid para CPF/CNPJ e Inscrição Estadual */}
@@ -2315,6 +2334,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                          <PopoverTrigger asChild>
                            <Button
                              variant="outline"
+                             id="data_primeiro_contato"
                              className={cn(
                                "w-full justify-start text-left font-normal mt-1",
                                !dataPrimeiroContato && "text-muted-foreground",
@@ -2683,13 +2703,13 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label className="font-medium">Tipo de Tensão *</Label>
+                  <Label htmlFor="tipo_tensao" className="font-medium">Tipo de Tensão {!modoPartesOutros && "*"}</Label>
                   <Select value={tensao} onValueChange={(value: "" | "Trifásico" | "Monofásico" | "Trifásico: Motores por conta do cliente" | "Monofásico: Por conta do cliente" | "Sem motor") => {
                     setTensao(value);
                     setVoltagem("");
                   }}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Selecione" />
+                    <SelectTrigger id="tipo_tensao" className={cn("mt-1", !modoPartesOutros && isFieldEmpty(tensao) && campoVazioCls)}>
+                      <SelectValue placeholder="Selecione (peça sem motor: Sem motor)" />
                     </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Trifásico">Trifásico</SelectItem>
