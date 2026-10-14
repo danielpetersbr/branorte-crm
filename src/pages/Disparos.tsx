@@ -7,12 +7,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, ShieldCheck, Loader2, RefreshCw } from 'lucide-react'
-import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import { createSequentialSave } from '@/lib/sequential-save'
 import { validarExcecoesCota } from '@/lib/roteamento-cota'
-import { TituloRecolhivel, SecaoRecolhivel, BotaoRecolherTudo } from '@/components/ui/Recolhivel'
+import { TituloRecolhivel, BotaoRecolherTudo } from '@/components/ui/Recolhivel'
 import './Disparos.css'
 
 /** Linha de `vendor_roteamento_efetivo`: o que o vendedor recebe DEPOIS da cota. */
@@ -498,17 +497,6 @@ export function Disparos() {
 
       {/* OUTBOUND DISPATCH — webhook do ReplyAgent + log */}
       <OutboundDispatchCard />
-
-      {/* ATIVIDADE DIÁRIA — gráfico 7d + ranking.
-          Recolhido o bloco nem monta: os gráficos param de buscar dados. */}
-      <SecaoRecolhivel
-        id="disparos.atividade"
-        icone={<Activity className="h-4 w-4 text-accent" />}
-        titulo="Atividade Diária"
-        resumo="gráfico dos últimos dias + ranking"
-      >
-        <AtividadeDiaria />
-      </SecaoRecolhivel>
 
       </fieldset>
     </div>
