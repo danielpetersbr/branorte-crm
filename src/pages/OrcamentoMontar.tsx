@@ -5,7 +5,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import {
   Sparkles, Search, Plus, Minus, Trash2, Package,
   Zap, X, AlertCircle, Star, FileText, Eye, ListChecks, Check, Loader2, FolderOpen,
-  Save, RotateCcw, ChevronRight, ChevronDown, RefreshCw,
+  Save, RotateCcw, ChevronRight, ChevronDown, RefreshCw, ArrowLeft, Edit3,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -24,7 +24,7 @@ import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectar
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
 import { applyProposal, proposalExtrasForModel } from '@/lib/orcamento-ai/apply-proposal'
 import type { OrcamentoAISnapshot, PropostaOrcamento } from '@/lib/orcamento-ai/types'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
 import { useAuth } from '@/hooks/useAuth'
 import { useVendors } from '@/hooks/useVendors'
@@ -774,7 +774,10 @@ export function OrcamentoMontar() {
   // builder inteiro — o rascunho de um orçamento novo aparecia dentro de outro
   // salvo aberto pra editar, e "Recuperar" trocava foto/pagamento/itens pelos dele.
   const draftScope = editingId ? `edit-${editingId}` : ''
-  const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores, draftScope)
+  // ?ver=1 (botão "Ver" dos Orçamentos Salvos): só leitura. Sem rascunho local —
+  // abrir pra conferir não pode deixar rascunho nem banner de "Recuperar" pra trás.
+  const somenteLeitura = editingId != null && searchParams.get('ver') === '1'
+  const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores && !somenteLeitura, draftScope)
 
   // ─── HISTÓRICO PRA UNDO (Ctrl+Z) ──────────────────────────────────────────
   // Guarda snapshots anteriores do estado pra vendedor desfazer mudanças
@@ -3168,6 +3171,90 @@ export function OrcamentoMontar() {
     }
     return null
   })()
+
+  // Modo só leitura (?ver=1): a mesma folha do Editar, sem catálogo, sem edição
+  // inline e sem Salvar. Nenhum callback chega no preview, então nada muda o
+  // orçamento; motor removido some como no PDF.
+  if (somenteLeitura) {
+    if (orcamentoEditando && !orcamentoHidratado) return <PageLoading />
+    return (
+      <div className="h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] md:h-screen lg:h-[calc(100vh-1rem)] flex flex-col gap-2 p-2 lg:pl-1 lg:pr-2 overflow-hidden">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="min-w-0">
+            <h1 className="text-[16px] sm:text-[18px] font-bold text-ink flex items-center gap-2 leading-tight">
+              <Eye className="h-5 w-5 text-accent" />
+              Orçamento {orcamentoEditando?.numero ?? ''}
+            </h1>
+            <p className="text-[11px] text-ink-faint mt-0.5 truncate">
+              {orcamentoEditando
+                ? `${orcamentoEditando.cliente_nome || 'Sem nome'} · ${orcamentoEditando.vendedor_nome || '—'} · só visualização, nada é alterado aqui`
+                : 'Só visualização'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/orcamentos/salvos"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-surface-2 text-ink-muted border border-border hover:bg-surface-3 hover:text-ink text-[13px] font-bold transition min-h-[40px]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </Link>
+            {orcamentoEditando && (
+              <Link
+                to={`/orcamentos/montar?id=${editingId}`}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-accent text-white hover:bg-accent/90 text-[13px] font-bold shadow-sm transition min-h-[40px]"
+                title="Abrir este orçamento pra editar e salvar"
+              >
+                <Edit3 className="h-4 w-4" />
+                Editar
+              </Link>
+            )}
+          </div>
+        </div>
+        <Card className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
+            {!orcamentoEditando || carrinho.length === 0 ? (
+              <div className="h-full flex items-center justify-center px-4 py-10 text-center text-[14px] text-gray-500">
+                {orcamentoEditando ? 'Este orçamento não tem itens.' : 'Orçamento não encontrado — ou você não tem acesso a ele.'}
+              </div>
+            ) : (
+              <ResponsiveScaler documentWidth={1024}>
+                <OrcamentoPreview
+                  carrinho={carrinhoFinal}
+                  finameMode={finameMode}
+                  numero={orcamentoEditando.numero}
+                  dataEmissao={dataEmissaoTxt || undefined}
+                  motoresAgrupados={motoresAgrupadosFinal.filter(m => !m.removido)}
+                  voltagem={voltagem}
+                  totalItems={totalItemsFinal}
+                  totalMotores={totalMotoresFinal}
+                  totalEquip={totalEquipFinal}
+                  totalGeral={totalGeralFinal}
+                  acessorios={acessoriosFinal}
+                  valorAcessorios={valorAcessoriosFinal}
+                  fotoPrincipal={finameMode ? null : fotoPrincipal}
+                  observacoesExtra={observacoesTxt || null}
+                  observacoesFoto={finameMode ? null : observacoesFoto}
+                  obsPorConta={obsPorConta}
+                  componentesExtras={componentesExtrasFinal}
+                  montagem={finameMode ? null : montagem}
+                  montagemBase={totalSemMontagemExib}
+                  tensaoMotores={tensaoMotores}
+                  marcaMotores={marcaMotores}
+                  desconto={descontoCfg}
+                  terms={{ dataVenda: dataVendaTxt, prazoEntrega: prazoEntregaTxt, formaPagamento: formaPagamentoTxt, freteTipo, freteTxt, validadeDias }}
+                  parcelas={parcelasPagamento}
+                  vendedoresContato={vendedoresContato}
+                  vendedorResponsavelNome={orcamentoEditando.vendedor_nome || null}
+                  cliente={clienteDados}
+                />
+              </ResponsiveScaler>
+            )}
+          </div>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div
