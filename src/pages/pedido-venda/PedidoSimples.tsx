@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useVendors } from "@/hooks/pedido-venda/useInstallments";
 import { useVendedorPedido } from "@/hooks/pedido-venda/useVendedorPedido";
 import { destinoAposCriarPedido, vendedorPrincipalPedido } from "@/lib/pedido-venda/vendedorPedido";
+import { prepararSomVenda, tocarSomVenda } from "@/lib/pedido-venda/somVenda";
 import { PaymentPlanEditor } from "@/components/pedido-venda/PaymentPlanEditor";
 import {
   ChecklistComprasEditor,
@@ -76,6 +77,8 @@ export default function PedidoSimples() {
     : 0;
 
   const onSubmit = async (data: FormData) => {
+    // Destrava o áudio no clique; o ka-ching toca quando o pedido estiver gravado.
+    prepararSomVenda();
     try {
       const vendedorResponsavel = vendedorPrincipalPedido(identidadeVendedor, data.vendedor);
       setLoading(true);
@@ -139,6 +142,7 @@ export default function PedidoSimples() {
       }
 
       console.log("Pedido inserido:", pedidoInserido.id);
+      tocarSomVenda();
 
       // 3. Gerar parcelas diretamente no banco
       const totalParcelas = paymentPlan.parcelas.length;

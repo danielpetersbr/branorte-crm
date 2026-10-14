@@ -26,10 +26,12 @@ function submit(page: string, context: Record<string, unknown>) {
 }
 
 function boundaries(result: unknown, uploadError: Error | null = null) {
-  const writes: unknown[] = [], successes: string[] = [], warnings: string[] = [], errors: string[] = [], navigations: string[] = []
+  const writes: unknown[] = [], successes: string[] = [], warnings: string[] = [], errors: string[] = [], navigations: string[] = [], sons: string[] = []
   return {
-    writes, successes, warnings, errors, navigations,
+    writes, successes, warnings, errors, navigations, sons,
     context: {
+      prepararSomVenda() {},
+      tocarSomVenda: () => sons.push('ka-ching'),
       navigate: (to: string) => navigations.push(to),
       toast: { success: (text: string) => successes.push(text), warning: (text: string) => warnings.push(text), error: (text: string) => errors.push(text) },
       supabase: {
@@ -57,6 +59,7 @@ test('warranty order is not inserted when its mandatory document upload fails', 
   assert.equal(fake.navigations.length, 0)
   assert.equal(fake.successes.length, 0)
   assert.equal(fake.errors.length, 1)
+  assert.equal(fake.sons.length, 0)
 })
 
 for (const page of ['PedidoSimples', 'PedidoGarantia']) {
@@ -69,6 +72,8 @@ for (const page of ['PedidoSimples', 'PedidoGarantia']) {
       assert.equal(fake.warnings.length, 1)
       assert.equal(fake.successes.length, 0)
       assert.equal(fake.errors.length, 0, 'delivery failure must not suggest recreating the saved order')
+      // Venda gravada toca o ka-ching uma vez, mesmo sem a fábrica confirmar; garantia não é venda.
+      assert.equal(fake.sons.length, page === 'PedidoSimples' ? 1 : 0)
     })
   }
 }

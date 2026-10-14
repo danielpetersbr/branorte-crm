@@ -472,9 +472,18 @@ export function PaymentPlanEditor({ valorTotal, paymentPlan, onChange, dataEntre
       {/* `--destructive` é var do app de origem e NÃO existe no CRM: quando as parcelas
           NÃO fechavam com o total, a cor inválida caía fora e o bloco ficava SEM FUNDO —
           justamente o caso em que o alerta precisa aparecer. Aqui a var é `--danger`. */}
-      <div className="p-3 rounded-lg border" style={{ backgroundColor: estaCorreto ? 'hsl(var(--accent) / 0.1)' : 'hsl(var(--danger) /0.1)' }}>
-        <p className={`text-sm font-semibold ${estaCorreto ? 'text-accent' : 'text-destructive'}`}>
-          Soma = R$ {somaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {estaCorreto ? '✓ OK' : `(falta R$ ${diferenca.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`}
+      {/* Sem valor e sem parcela, 0 = 0 dava "✓ OK" verde num plano vazio. */}
+      <div className={`p-3 rounded-xl border ${
+        parcelas.length === 0 || valorTotal <= 0
+          ? 'border-border bg-surface-2/50'
+          : estaCorreto ? 'border-accent/30 bg-accent-bg' : 'border-danger/30 bg-danger-bg'
+      }`}>
+        <p className={`text-sm font-semibold ${
+          parcelas.length === 0 || valorTotal <= 0 ? 'text-ink-muted' : estaCorreto ? 'text-accent' : 'text-danger'
+        }`}>
+          {parcelas.length === 0 || valorTotal <= 0
+            ? 'Informe o valor total e as parcelas'
+            : <>Soma = R$ {somaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {estaCorreto ? '✓ fecha com o total' : `(${somaTotal < valorTotal ? 'falta' : 'passou'} R$ ${diferenca.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`}</>}
         </p>
       </div>
 
