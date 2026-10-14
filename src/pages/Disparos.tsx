@@ -6,9 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Star, Tag, Building2 } from 'lucide-react'
+import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Building2 } from 'lucide-react'
 import { EscritorioMapa } from '@/components/EscritorioMapa'
-import { LinksRoteamento } from '@/components/LinksRoteamento'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
 import { QueryNotice } from '@/components/ui/QueryNotice'
@@ -220,109 +219,12 @@ export function Disparos() {
     },
   })
 
-  // Toggle GLOBAL: envio de avaliação de atendimento pro cliente.
-  // A extensão lê essa flag via ext-version a cada ~30s e respeita nos 3 envios (auto + manuais).
-  // As quatro flags pertencem à mesma linha; uma leitura mantém o mesmo frescor.
-  const configQuery = useQuery({
-    queryKey: ['avaliacao-config', 'flags'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('wa_avaliacao_config')
-        .select('ativa, auto_prospec_ativa, funil_auto_ativa, funil_dry_run').eq('id', 1).maybeSingle()
-      if (error) throw error
-      if (!data) throw new Error('Configuração de avaliação e funil indisponível.')
-      return {
-        avaliacaoAtiva: data.ativa !== false,
-        prospecAtiva: data.auto_prospec_ativa !== false,
-        funilAtiva: data.funil_auto_ativa === true,
-        funilDryRun: data.funil_dry_run !== false,
-      }
-    },
-    refetchInterval: 15000,
-  })
-  const toggleAvaliacao = useMutation({
-    mutationFn: async (ativa: boolean) => {
-      const { error } = await supabase.from('wa_avaliacao_config')
-        .update({ ativa, updated_at: new Date().toISOString() }).eq('id', 1)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
-    onError: (err: any) => alert('Não foi possível alterar o envio de avaliação: ' + (err?.message || err)),
-  })
-
-  // Override POR VENDEDOR do envio de avaliação (efetivo = geral E este).
-  const toggleAvaliacaoVendedor = useMutation({
-    mutationFn: async ({ nome, ativa }: { nome: string; ativa: boolean }) => {
-      const { error } = await supabase.from('vendor_dispatch_status').update({ avaliacao_ativa: ativa }).eq('vendedor_nome', nome)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
-    onError: (err: any) => alert('Não foi possível alterar a avaliação do vendedor: ' + (err?.message || err)),
-  })
-
-  // Toggle GLOBAL: auto-aplicar etiqueta PROSPECÇÃO quando cliente novo chega sem etiqueta.
-  const toggleProspec = useMutation({
-    mutationFn: async (ativa: boolean) => {
-      const { error } = await supabase.from('wa_avaliacao_config')
-        .update({ auto_prospec_ativa: ativa, updated_at: new Date().toISOString() }).eq('id', 1)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
-    onError: (err: any) => alert('Não foi possível alterar o auto-prospecção: ' + (err?.message || err)),
-  })
-
-  // Override POR VENDEDOR da prospecção (opt-out; efetivo = Geral E este). Tira quem está
-  // no WhatsApp pessoal sem desligar a frota.
-  const toggleProspecVendedor = useMutation({
-    mutationFn: async ({ nome, ativa }: { nome: string; ativa: boolean }) => {
-      const { error } = await supabase.from('vendor_dispatch_status').update({ prospec_ativa: ativa }).eq('vendedor_nome', nome)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
-    onError: (err: any) => alert('Não foi possível alterar a prospecção do vendedor: ' + (err?.message || err)),
-  })
-
-  // Toggle GLOBAL: automação do funil (move etiqueta sozinho no ritmo certo). OPT-IN (nasce desligada).
-  const toggleFunil = useMutation({
-    mutationFn: async (ativa: boolean) => {
-      const { error } = await supabase.from('wa_avaliacao_config')
-        .update({ funil_auto_ativa: ativa, updated_at: new Date().toISOString() }).eq('id', 1)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
-    onError: (err: any) => alert('Não foi possível alterar a automação do funil: ' + (err?.message || err)),
-  })
-
-  // Modo teste (dry-run): quando ligado, a automação só computa/avisa, NÃO aplica etiqueta.
-  const toggleFunilDryRun = useMutation({
-    mutationFn: async (dry: boolean) => {
-      const { error } = await supabase.from('wa_avaliacao_config')
-        .update({ funil_dry_run: dry, updated_at: new Date().toISOString() }).eq('id', 1)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['avaliacao-config'] }),
-    onError: (err: any) => alert('Não foi possível alterar o modo teste do funil: ' + (err?.message || err)),
-  })
-
-  // Override POR VENDEDOR da automação do funil (opt-in; efetivo = Geral E este).
-  const toggleFunilVendedor = useMutation({
-    mutationFn: async ({ nome, ativa }: { nome: string; ativa: boolean }) => {
-      const { error } = await supabase.from('vendor_dispatch_status').update({ funil_ativa: ativa }).eq('vendedor_nome', nome)
-      if (error) throw error
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-dispatch-status'] }),
-    onError: (err: any) => alert('Não foi possível alterar o funil do vendedor: ' + (err?.message || err)),
-  })
-
   const vendedores = vendedoresQuery.data
   const loadingV = vendedoresQuery.isLoading
   const efetivo = efetivoQuery.data
   const cotaCfg = cotaQuery.data
   const vendorRuntime = runtimeQuery.data
-  const avaliacaoAtiva = configQuery.data?.avaliacaoAtiva
-  const prospecAtiva = configQuery.data?.prospecAtiva
-  const funilAtiva = configQuery.data?.funilAtiva
-  const funilDryRun = configQuery.data?.funilDryRun
-  const consultas = [vendedoresQuery, efetivoQuery, cotaQuery, runtimeQuery, configQuery]
+  const consultas = [vendedoresQuery, efetivoQuery, cotaQuery, runtimeQuery]
   const erroLeitura = consultas.find(q => q.error)?.error
   const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
@@ -336,11 +238,8 @@ export function Disparos() {
     return m
   }, [vendedores, vendorRuntime])
 
-  // Seções recolhíveis — a tela tem 9 blocos e quem opera usa 2 ou 3 por vez.
+  // Seções recolhíveis — cada bloco mantém a preferência de quem opera.
   // O que o usuário fecha fica fechado (localStorage), inclusive na próxima visita.
-  const secAvaliacao = useSecaoRecolhivel('disparos.avaliacao')
-  const secProspec = useSecaoRecolhivel('disparos.prospec')
-  const secFunil = useSecaoRecolhivel('disparos.funil')
   const secVendedores = useSecaoRecolhivel('disparos.vendedores')
 
   if (!profile) return <PageLoading />
@@ -375,182 +274,6 @@ export function Disparos() {
         </div>
         <BotaoRecolherTudo className="mt-1" />
       </header>
-
-      {/* LINKS DE ROTEAMENTO: link colável que joga o cliente no WhatsApp do
-          próximo vendedor da fila, com texto configurável e rastreio do clique. */}
-      <LinksRoteamento />
-
-      {/* AVALIAÇÃO: geral (master) + por vendedor */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="min-w-0">
-            <TituloRecolhivel
-              secao={secAvaliacao}
-              icone={<Star className="h-4 w-4 text-accent" />}
-              resumo={`${(vendedores ?? []).filter(v => v.avaliacao_ativa !== false).length} de ${(vendedores ?? []).length} vendedores enviando`}
-            >
-              Avaliação de atendimento
-            </TituloRecolhivel>
-            {secAvaliacao.aberta && (
-              <p className="text-ink-muted text-xs mt-1 max-w-2xl">
-                A extensão pede a nota (1 a 5) ao cliente no fim do atendimento. <b>Geral</b> é a chave-mestra; abaixo você escolhe <b>vendedor por vendedor</b>. Efetivo = Geral <b>e</b> o vendedor ligado. Muda em ~30s.
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => toggleAvaliacao.mutate(!avaliacaoAtiva)}
-            disabled={toggleAvaliacao.isPending || avaliacaoAtiva === undefined}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${avaliacaoAtiva === false ? 'bg-red-500/15 text-red-300 border-red-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
-          >
-            {avaliacaoAtiva === undefined ? '…' : avaliacaoAtiva ? '⭐ Geral LIGADO' : '⛔ Geral DESLIGADO'}
-          </button>
-        </div>
-        {secAvaliacao.aberta && (
-          <div className={`mt-3 border-t border-border pt-3 ${avaliacaoAtiva === false ? 'opacity-60' : ''}`}>
-            <p className="text-ink-muted text-[11px] mb-2">
-              Por vendedor{avaliacaoAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém envia; ligue o Geral acima pra valer</span>}:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {(vendedores ?? []).map((v) => {
-                const on = v.avaliacao_ativa !== false
-                return (
-                  <button
-                    key={v.vendedor_nome}
-                    onClick={() => toggleAvaliacaoVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
-                    disabled={toggleAvaliacaoVendedor.isPending}
-                    title={on ? 'Envia avaliação — clique pra desligar' : 'Não envia — clique pra ligar'}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
-                  >
-                    {on ? '⭐' : '☆'} {v.vendedor_nome}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {/* TOGGLE: auto-etiqueta Prospecção */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="min-w-0">
-            <TituloRecolhivel
-              secao={secProspec}
-              icone={<Tag className="h-4 w-4 text-accent" />}
-              resumo={`${(vendedores ?? []).filter(v => v.prospec_ativa !== false).length} de ${(vendedores ?? []).length} vendedores marcando`}
-            >
-              Etiqueta automática · Prospecção
-            </TituloRecolhivel>
-            {secProspec.aberta && (
-              <p className="text-ink-muted text-xs mt-1 max-w-2xl">
-                Quando <b>ligado</b>, todo cliente que manda mensagem e está <b>sem nenhuma etiqueta</b> recebe a etiqueta <b>PROSPECÇÃO</b> sozinho (só conversas individuais, não grupos; cria a etiqueta se não existir). Pega clientes novos que chegam; os vendedores aplicam em ~30s.
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => toggleProspec.mutate(!prospecAtiva)}
-            disabled={toggleProspec.isPending || prospecAtiva === undefined}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${prospecAtiva === false ? 'bg-red-500/15 text-red-300 border-red-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
-          >
-            {prospecAtiva === undefined ? '…' : prospecAtiva ? '🏷️ Geral LIGADO' : '⛔ Geral DESLIGADO'}
-          </button>
-        </div>
-        {secProspec.aberta && (
-          <div className={`mt-3 border-t border-border pt-3 ${prospecAtiva === false ? 'opacity-60' : ''}`}>
-            <p className="text-ink-muted text-[11px] mb-2">
-              Por vendedor{prospecAtiva === false && <span className="text-red-300"> — Geral desligado, ninguém marca; ligue o Geral acima pra valer</span>}.
-              <span className="text-ink-faint"> Desligue quem está no WhatsApp pessoal pra não etiquetar os contatos dele.</span>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {(vendedores ?? []).map((v) => {
-                const on = v.prospec_ativa !== false
-                return (
-                  <button
-                    key={v.vendedor_nome}
-                    onClick={() => toggleProspecVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
-                    disabled={toggleProspecVendedor.isPending}
-                    title={on ? 'Marca prospecção — clique pra desligar' : 'Não marca — clique pra ligar'}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
-                  >
-                    {on ? '🏷️' : '○'} {v.vendedor_nome}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </Card>
-
-      {/* AUTOMAÇÃO DO FUNIL: geral (master) + modo teste + por vendedor */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="min-w-0">
-            <TituloRecolhivel
-              secao={secFunil}
-              icone={<GitBranch className="h-4 w-4 text-accent" />}
-              resumo={`${(vendedores ?? []).filter(v => v.funil_ativa === true).length} de ${(vendedores ?? []).length} vendedores no automático`}
-            >
-              Automação do Funil
-              {funilAtiva && funilDryRun !== false && (
-                <span className="ml-2 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40 font-bold tracking-wide">MODO TESTE</span>
-              )}
-            </TituloRecolhivel>
-            {secFunil.aberta && (
-              <p className="text-ink-muted text-xs mt-1 max-w-2xl">
-                Move a etiqueta do lead sozinho no ritmo certo (começa por <b>PROSPECÇÃO → NOVO LEAD</b> após o cliente responder + 2 dias úteis). <b>Opt-in</b>: nasce desligada; ligue o <b>Geral</b> e depois <b>só os vendedores de teste</b>. Vale só pra conversas <b>novas</b> a partir de ligar — não mexe no histórico. Muda em ~30s.
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => toggleFunil.mutate(!funilAtiva)}
-            disabled={toggleFunil.isPending || funilAtiva === undefined}
-            className={`shrink-0 px-4 py-2 rounded-lg text-sm font-semibold border transition disabled:opacity-50 ${funilAtiva ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-red-500/15 text-red-300 border-red-500/40'}`}
-          >
-            {funilAtiva === undefined ? '…' : funilAtiva ? '⚙️ Geral LIGADO' : '⛔ Geral DESLIGADO'}
-          </button>
-        </div>
-
-        {secFunil.aberta && (
-          <>
-            {/* Modo teste (dry-run) */}
-            <div className={`mt-3 border-t border-border pt-3 flex items-center justify-between flex-wrap gap-2 ${!funilAtiva ? 'opacity-60' : ''}`}>
-              <p className="text-ink-muted text-[11px] max-w-xl">
-                <b>Modo teste (dry-run)</b>: a automação só <b>avisa</b> o que faria, sem mexer na etiqueta de verdade. Deixe ligado no 1º dia; depois desligue pra valer.
-              </p>
-              <button
-                onClick={() => toggleFunilDryRun.mutate(!(funilDryRun !== false))}
-                disabled={toggleFunilDryRun.isPending || funilDryRun === undefined}
-                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${funilDryRun !== false ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'}`}
-              >
-                {funilDryRun === undefined ? '…' : funilDryRun !== false ? '🧪 Teste (não aplica)' : '✅ Valendo (aplica)'}
-              </button>
-            </div>
-
-            {/* Por vendedor */}
-            <div className={`mt-3 border-t border-border pt-3 ${!funilAtiva ? 'opacity-60' : ''}`}>
-              <p className="text-ink-muted text-[11px] mb-2">
-                Por vendedor{!funilAtiva && <span className="text-red-300"> — Geral desligado; ligue o Geral acima pra valer</span>}:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {(vendedores ?? []).map((v) => {
-                  const on = v.funil_ativa === true
-                  return (
-                    <button
-                      key={v.vendedor_nome}
-                      onClick={() => toggleFunilVendedor.mutate({ nome: v.vendedor_nome, ativa: !on })}
-                      disabled={toggleFunilVendedor.isPending}
-                      title={on ? 'Funil ligado — clique pra desligar' : 'Funil desligado — clique pra ligar'}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition disabled:opacity-60 ${on ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40' : 'bg-surface-2/40 text-ink-muted border-border'}`}
-                    >
-                      {on ? '⚙️' : '○'} {v.vendedor_nome}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </>
-        )}
-      </Card>
 
       {/* PAINEL VENDEDORES */}
       <Card className="p-4">
