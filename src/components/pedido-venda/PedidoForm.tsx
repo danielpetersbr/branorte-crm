@@ -1409,7 +1409,12 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
         resetLoading();
         return;
       }
-      
+      if (!usarDataEntregaManual && !diasUteis) {
+        toast.error("Informe o prazo de entrega em dias");
+        resetLoading("dias_uteis");
+        return;
+      }
+
       // Validação de voltagem - só exigir para Trifásico padrão
       if (tensao === "Trifásico" && !voltagem && !porContaCliente) {
         toast.error("Selecione a voltagem para motores trifásicos");
@@ -1894,6 +1899,7 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
   }
   if (erroChecklistProjeto) pendenciasGerar.push(`Informações para o projeto: ${erroChecklistProjeto.toLowerCase()}`);
   if (!voltagem && !porContaCliente && tensao === "Trifásico") pendenciasGerar.push("Selecione a voltagem dos motores");
+  if (!modoPartesOutros && !usarDataEntregaManual && !diasUteis) pendenciasGerar.push("Informe o prazo de entrega (dias)");
   const ocupado = isGenerating || isGeneratingPDF || isExtracting;
   const podeGerar = pendenciasGerar.length === 0 && !ocupado && !pedidoCriado;
 
@@ -2531,8 +2537,13 @@ export function PedidoForm({ pedidoInicial }: { pedidoInicial?: any }) {
                     id="dias_uteis"
                     type="number"
                     min="1"
-                    value={diasUteis}
-                    onChange={(e) => setDiasUteis(parseInt(e.target.value) || 1)}
+                    // Vazio fica vazio. Com "|| 1", apagar o 90 virava "1" e digitar 20 dava 120
+                    // (Pedro, pedido do Jean Carlos Sandman, 14/10/2026). O envio cobra o campo.
+                    value={diasUteis || ""}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      setDiasUteis(Number.isFinite(n) && n > 0 ? n : 0);
+                    }}
                     placeholder="Ex: 30"
                     className={cn(
                       "mt-1",
