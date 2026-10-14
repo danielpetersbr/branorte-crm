@@ -140,6 +140,23 @@ test('calls reject inverted or invalid periods without inventing a previous wind
   assert.equal(api.janelaAnterior('tudo'), null)
 })
 
+test('calls compare the same slice of time, not the whole previous period', () => {
+  const source = read('hooks/useLigacoes.ts')
+  const helpers = source.slice(source.indexOf('function meiaNoiteBRT('), source.indexOf('// ── Consultas')).replace(/export function/g, 'function')
+  const api = evaluate(`${helpers}; ({ janelaAnterior })`, {})
+  // 14/10/2026 08:06 em Brasília. Antes: 6 minutos de hoje contra o dia inteiro de ontem.
+  const agora = Date.parse('2026-10-14T11:06:30Z')
+  assert.deepEqual({ ...api.janelaAnterior('hoje', undefined, agora) }, { from: '2026-10-13T03:00:00.000Z', to: '2026-10-13T11:06:00.000Z' })
+  const seteDias = api.janelaAnterior('7d', undefined, agora)
+  assert.equal(seteDias.from, '2026-10-01T03:00:00.000Z')
+  assert.equal(seteDias.to, '2026-10-07T11:06:00.000Z')
+  // mesma duração que o período atual (08/10 00:00 BRT até agora)
+  assert.equal(Date.parse(seteDias.to) - Date.parse(seteDias.from), Date.parse('2026-10-14T11:06:00Z') - Date.parse('2026-10-08T03:00:00Z'))
+  assert.deepEqual({ ...api.janelaAnterior('mes', undefined, agora) }, { from: '2026-09-01T03:00:00.000Z', to: '2026-09-14T11:06:00.000Z' })
+  // 31/03: fevereiro é mais curto — a comparação para no fim dele, sem invadir março.
+  assert.deepEqual({ ...api.janelaAnterior('mes', undefined, Date.parse('2026-03-31T12:00:00Z')) }, { from: '2026-02-01T03:00:00.000Z', to: '2026-03-01T03:00:00.000Z' })
+})
+
 test('an unavailable calls comparison remains unavailable instead of becoming zero', () => {
   const source = read('pages/Ligacoes.tsx')
   const start = source.indexOf('  const totAnt = useMemo(')

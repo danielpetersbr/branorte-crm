@@ -117,30 +117,43 @@ export function janelaValida(j: Janela): boolean {
   return (de === null || Number.isFinite(de)) && (ate === null || Number.isFinite(ate)) && (de === null || ate === null || de < ate)
 }
 
-// Período ANTERIOR de mesmo tamanho: hoje→ontem, 7d→7 dias antes, mês→mês passado.
+// Período ANTERIOR comparável: o MESMO pedaço de tempo, não o período cheio.
+// hoje → ontem até esta hora; 7d → os 7 dias anteriores, deslocados uma semana;
+// mês → o mês passado até o mesmo dia e hora.
+// ⚠️ Antes era o período CHEIO: às 08:06 a tela comparava 6 minutos de hoje com o
+// dia inteiro de ontem e dizia "a equipe ligou 97% menos que ontem" (14/10/2026) —
+// toda manhã uma queda vermelha que não existia. Mesmo defeito no mês (dia 14 contra
+// o mês passado inteiro) e, menor, no 7d (hoje parcial contra um dia cheio).
+// `agoraMs` existe pra tela andar junto com o relógio (e pros testes).
 // "Tudo" não tem anterior — e comparar com o nada seria inventar contexto.
-export function janelaAnterior(p: Periodo, custom?: Janela): Janela | null {
+export function janelaAnterior(p: Periodo, custom?: Janela, agoraMs: number = Date.now()): Janela | null {
   if (p === 'tudo') return null
-  const hoje0 = meiaNoiteBRT(new Date())
+  // Minuto cheio: a chave da consulta não muda a cada render, só a cada minuto.
+  const agora = new Date(Math.floor(agoraMs / 60_000) * 60_000)
+  const hoje0 = meiaNoiteBRT(agora)
+  const decorrido = agora.getTime() - hoje0.getTime()
   if (p === 'hoje') {
     const ini = new Date(hoje0); ini.setUTCDate(ini.getUTCDate() - 1)
-    return { from: ini.toISOString(), to: hoje0.toISOString() }
+    return { from: ini.toISOString(), to: new Date(ini.getTime() + decorrido).toISOString() }
   }
   if (p === '7d') {
-    const fim = new Date(hoje0); fim.setUTCDate(fim.getUTCDate() - 6)
-    const ini = new Date(fim); ini.setUTCDate(ini.getUTCDate() - 7)
+    const iniAtual = new Date(hoje0); iniAtual.setUTCDate(iniAtual.getUTCDate() - 6)
+    const ini = new Date(iniAtual); ini.setUTCDate(ini.getUTCDate() - 7)
+    const fim = new Date(agora); fim.setUTCDate(fim.getUTCDate() - 7)
     return { from: ini.toISOString(), to: fim.toISOString() }
   }
   if (p === 'mes') {
     const inicioMes = new Date(hoje0); inicioMes.setUTCDate(1)
     const iniAnterior = new Date(inicioMes); iniAnterior.setUTCMonth(iniAnterior.getUTCMonth() - 1)
-    return { from: iniAnterior.toISOString(), to: inicioMes.toISOString() }
+    // Mês passado mais curto (31/03 contra fevereiro): para no fim dele, nunca invade o atual.
+    const fim = Math.min(iniAnterior.getTime() + (agora.getTime() - inicioMes.getTime()), inicioMes.getTime())
+    return { from: iniAnterior.toISOString(), to: new Date(fim).toISOString() }
   }
   // custom: janela de mesma duração, imediatamente antes
   if (custom?.from) {
     if (!janelaValida(custom)) return null
     const ini = new Date(custom.from)
-    const fim = custom.to ? new Date(custom.to) : new Date()
+    const fim = custom.to ? new Date(custom.to) : agora
     const dur = fim.getTime() - ini.getTime()
     if (dur <= 0) return null
     return { from: new Date(ini.getTime() - dur).toISOString(), to: custom.from }
