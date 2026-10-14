@@ -6,8 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useCan } from '@/hooks/usePermissions'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check, Building2 } from 'lucide-react'
-import { EscritorioMapa } from '@/components/EscritorioMapa'
+import { GitBranch, Users, AlertCircle, Activity, Send, Copy, Check } from 'lucide-react'
 import { AtividadeDiaria } from '@/pages/AtividadeDiaria'
 import { useSecaoRecolhivel } from '@/hooks/useSecaoRecolhivel'
 import { QueryNotice } from '@/components/ui/QueryNotice'
@@ -228,16 +227,6 @@ export function Disparos() {
   const erroLeitura = consultas.find(q => q.error)?.error
   const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
-  // Estado ao vivo por vendedor pro mapa do escritório (heartbeat + leads hoje)
-  const liveMesas = useMemo(() => {
-    const m: Record<string, { status: ReturnType<typeof statusVendedor>['status']; pingSec: number | null; versao: string | null; enviadosHoje: number; ultimoEnvio: string | null }> = {}
-    for (const v of vendedores ?? []) {
-      const st = statusVendedor(v)
-      m[v.vendedor_nome] = { status: st.status, pingSec: st.pingSec, versao: st.versao, enviadosHoje: Number(v.enviados_hoje) || 0, ultimoEnvio: v.ultimo_envio_em }
-    }
-    return m
-  }, [vendedores, vendorRuntime])
-
   // Seções recolhíveis — cada bloco mantém a preferência de quem opera.
   // O que o usuário fecha fica fechado (localStorage), inclusive na próxima visita.
   const secVendedores = useSecaoRecolhivel('disparos.vendedores')
@@ -434,7 +423,7 @@ export function Disparos() {
       {/* OUTBOUND DISPATCH — webhook do ReplyAgent + log */}
       <OutboundDispatchCard />
 
-      {/* ATIVIDADE DIÁRIA — gráfico 7d + ranking (acima do mapa pra achar fácil).
+      {/* ATIVIDADE DIÁRIA — gráfico 7d + ranking.
           Recolhido o bloco nem monta: os gráficos param de buscar dados. */}
       <SecaoRecolhivel
         id="disparos.atividade"
@@ -445,19 +434,6 @@ export function Disparos() {
         <AtividadeDiaria />
       </SecaoRecolhivel>
 
-      {/* ESCRITÓRIO — mapa de mesas (arrasta vendedor pra mesa) */}
-      <SecaoRecolhivel
-        id="disparos.escritorio"
-        icone={<Building2 className="h-4 w-4 text-accent" />}
-        titulo="Escritório"
-        resumo="mapa de mesas ao vivo"
-      >
-        {/* `online || so_recebe`: no mapa do Escritório a pergunta é "esse cara
-            está trabalhando?", não "recebe disparo?". Quem está em modo só recebe
-            atende cliente do link o dia inteiro — apagar o boneco dele seria o
-            mesmo erro que já pintava Álvaro e Lucas de cinza. */}
-        <EscritorioMapa vendedores={(vendedores ?? []).map(v => ({ vendedor_nome: v.vendedor_nome, online: v.online || v.so_recebe }))} live={liveMesas} />
-      </SecaoRecolhivel>
       </fieldset>
     </div>
   )
