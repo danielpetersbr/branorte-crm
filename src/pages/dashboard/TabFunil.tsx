@@ -2,12 +2,11 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Search, UserPlus, RefreshCw, Flame, Banknote, Clock, Ghost,
-  TrendingDown, CheckCircle2, ChevronRight, Camera, AlertTriangle,
+  TrendingDown, CheckCircle2, ChevronRight, AlertTriangle,
 } from 'lucide-react'
 
 import { useDashboard, type LeadAging, type LeadEmRisco } from '@/hooks/useDashboard'
 import { useDashboardExtra, type DashboardExtra } from '@/hooks/useDashboardExtra'
-import { useFunilEtiquetas } from '@/hooks/useFunilEtiquetas'
 import { usePropostasStatus, CATS_ABERTO, type PropostasStatus, type PropCategoria } from '@/hooks/usePropostasStatus'
 import { useOrfaosPorVendedor, type OrfaosPorVendedor } from '@/hooks/useOrfaosPorVendedor'
 import { useCicloVenda, type CicloVenda as CicloVendaData } from '@/hooks/useCicloVenda'
@@ -18,7 +17,6 @@ import { RISCO_MIN_HORAS, RISCO_MAX_HORAS, RISCO_TOP } from '@/lib/dashboard-ris
 import { Card, Inner, CardHeader } from './ui/Card'
 import { JanelaBadge } from './ui/JanelaBadge'
 import { n, brl, brlFull, pct } from './ui/format'
-import { CHART_ETAPA } from './ui/chart-tokens'
 import { useJanela } from './DashboardFilterContext'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 
@@ -26,15 +24,6 @@ import { QueryNotice } from '@/components/ui/QueryNotice'
    Aba FUNIL — "onde o lead morre?"
 
    O que mudou em relação ao arquivo antigo, e por quê:
-
-   1. O funil por etiqueta NÃO mostra mais "% de conversão" nem "N leads
-      perdidos" entre etapas. Aquele número era forjado: o hook devolve um
-      SNAPSHOT (cada telefone no seu estágio mais avançado de AGORA) e o
-      Dashboard cravava `pctAnterior = 100` e `perdidos = 0` para poder
-      reaproveitar o componente do funil sequencial. Resultado: uma faixa
-      colorida dizendo "100% conv · -0% · 0 leads perdidos" em cima de um dado
-      que simplesmente não mede transição. Ficou só o que é verdade: etapa,
-      quantidade e % sobre o topo.
 
    2. Três blocos que estavam DEFINIDOS mas nunca renderizados voltaram ao ar:
       propostas por estágio, leads a resgatar e órfãos por vendedor.
@@ -65,7 +54,7 @@ function Vazio({ children }: { children: ReactNode }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 1 · ETAPAS ABERTAS — header do funil (não é card solto)
+// 1 · ETIQUETAS DE ATENDIMENTO
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ETAPAS_ABERTAS: { chave: keyof DashboardExtra['aberto']; label: string; filtro: string; Icon: typeof Search; cor: string }[] = [
@@ -77,10 +66,10 @@ const ETAPAS_ABERTAS: { chave: keyof DashboardExtra['aberto']; label: string; fi
 
 function EtapasAbertas({ data }: { data: DashboardExtra['aberto'] }) {
   return (
-    <div className="mb-5 border-b border-border pb-5">
+    <div className="space-y-3">
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-kpi-sm text-ink tabular-nums">{n(data.total)}</span>
-        <span className="text-label text-ink-muted">atendimentos abertos, sem fechar</span>
+        <span className="text-label text-ink-muted">contatos com essas etiquetas</span>
       </div>
 
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -89,7 +78,7 @@ function EtapasAbertas({ data }: { data: DashboardExtra['aberto'] }) {
             <Link
               to={`/atendimentos?etiqueta=${encodeURIComponent(filtro)}`}
               title={`Abrir os atendimentos com etiqueta ${label} no WhatsApp`}
-              aria-label={`${label}: ${n(data[chave])} atendimentos abertos. Abrir a lista.`}
+              aria-label={`${label}: ${n(data[chave])} contatos com a etiqueta. Abrir a lista.`}
               className="flex min-h-[44px] flex-col justify-center gap-1 rounded-lg border border-border bg-surface-2 p-3 transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <span className="text-title text-ink tabular-nums">{n(data[chave])}</span>
@@ -102,54 +91,6 @@ function EtapasAbertas({ data }: { data: DashboardExtra['aberto'] }) {
         ))}
       </ul>
     </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 2 · FUNIL POR ETIQUETA (trapézio) — snapshot, SEM % de perda
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** Cor por SIGNIFICADO da etapa (não por posição) — mesma cor do mesmo conceito no resto do app. */
-function corEtapa(stage: string): string {
-  const s = (stage || '').toLowerCase()
-  if (s.includes('vendid')) return CHART_ETAPA.vendas
-  if (s.includes('orcament') || s.includes('orçament')) return CHART_ETAPA.propostas
-  if (s.includes('quente')) return CHART_ETAPA.propostas
-  if (s.includes('follow')) return CHART_ETAPA.qualificados
-  return CHART_ETAPA.leads
-}
-
-function FunilTrapezio({ etapas, carregando }: { etapas: { etapa: string; valor: number; pctTopo: number }[]; carregando: boolean }) {
-  // Base visual = a 1ª etapa EXIBIDA (o funil rebaseia em Prospecção); o % ao
-  // lado continua sendo sobre o topo real, que está no subtítulo do card.
-  const base = Math.max(1, etapas[0]?.valor ?? 1)
-  if (!etapas.length) {
-    return <Vazio>{carregando ? 'Carregando o funil…' : 'Sem contatos com etiqueta no WhatsApp.'}</Vazio>
-  }
-
-  return (
-    <ol className="space-y-3">
-      {etapas.map(e => {
-        const largura = Math.max((e.valor / base) * 100, 2)
-        return (
-          <li key={e.etapa}>
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-body text-ink" title={e.etapa}>{e.etapa}</span>
-              <span className="shrink-0 text-label text-ink tabular-nums">
-                {n(e.valor)}
-                <span className="ml-2 text-micro text-ink-faint">{pct(e.pctTopo, 0)} do topo</span>
-              </span>
-            </div>
-            <div className="mt-1 h-5 overflow-hidden rounded-sm bg-surface-2">
-              <div
-                className="h-full rounded-sm transition-all"
-                style={{ width: `${largura}%`, background: corEtapa(e.etapa) }}
-              />
-            </div>
-          </li>
-        )
-      })}
-    </ol>
   )
 }
 
@@ -791,35 +732,16 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
 
   const dashboardQuery = useDashboard({ preset })
   const extraQuery = useDashboardExtra()
-  const funilQuery = useFunilEtiquetas()
   const propostasQuery = usePropostasStatus(preset)
   const orcQuery = useOrcamentosResumo(preset)
   const orfaosQuery = useOrfaosPorVendedor(7)
   const cicloQuery = useCicloVenda(preset)
   const etiquetasQuery = useDashboardEtiquetas(preset)
-  const data = dashboardQuery.data, extra = extraQuery.data, funilEtq = funilQuery.data, propStatus = propostasQuery.data
+  const data = dashboardQuery.data, extra = extraQuery.data, propStatus = propostasQuery.data
   const orc = orcQuery.data, orfaos = orfaosQuery.data, ciclo = cicloQuery.data, etq = etiquetasQuery.data
-  const consultas = [dashboardQuery, extraQuery, funilQuery, propostasQuery, orcQuery, orfaosQuery, cicloQuery, etiquetasQuery]
+  const consultas = [dashboardQuery, extraQuery, propostasQuery, orcQuery, orfaosQuery, cicloQuery, etiquetasQuery]
   const erro = consultas.find(q => q.error)?.error
   const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
-
-  // Funil por etiqueta: SNAPSHOT. Cada telefone entra no seu estágio mais
-  // avançado — os estágios não são marcos percorridos, então não existe
-  // "perdidos entre etapas" aqui (o Dashboard antigo inventava zero).
-  const funil = useMemo(() => {
-    const rows = [...(funilEtq ?? [])].sort((a, b) => a.ord - b.ord)
-    if (!rows.length) return { total: 0, etapas: [] as { etapa: string; valor: number; pctTopo: number }[] }
-    const topo = rows.find(r => r.ord === 0)?.phones || rows[0].phones || 1
-    return {
-      total: topo,
-      // slice(1) tira a linha "Entrou" (o topo) — ela já está no subtítulo.
-      etapas: rows.slice(1).map(r => ({
-        etapa: r.stage,
-        valor: r.phones,
-        pctTopo: Math.min(100, (r.phones / topo) * 100),
-      })),
-    }
-  }, [funilEtq])
 
   const aging = (data?.leadAging ?? []).filter(a => a.valor > 0 || a.leads > 0)
   if (consultas.some(q => q.error && q.data === undefined)) return <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados do funil." onRetry={atualizar} />
@@ -828,26 +750,15 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
   return (
     <div className="space-y-5">
       <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todo o funil. Os dados anteriores permanecem visíveis." onRetry={atualizar} />
-      {/* ── 1 + 2 · Etapas abertas (header) + funil por etiqueta ───────────── */}
+      {/* ── 1 · Etiquetas de atendimento ────────────────────────────────── */}
       <Card id="funil-etiquetas">
         <CardHeader
-          title="Funil por etiqueta (WhatsApp)"
-          subtitle={`${n(funil.total)} contatos com etiqueta · cada telefone no estágio mais avançado de agora`}
+          title="Etiquetas de atendimento (WhatsApp)"
+          subtitle="Contatos por etiqueta atual, sem recorte de mês."
           janela={<JanelaBadge tipo="snapshot" label="estado de agora" />}
         />
 
         {extra ? <EtapasAbertas data={extra.aberto} /> : <Vazio>Carregando as etapas abertas…</Vazio>}
-
-        <FunilTrapezio etapas={funil.etapas} carregando={!funilEtq} />
-
-        <p className="mt-3 flex items-start gap-2 border-t border-border pt-3 text-micro text-ink-faint">
-          <Camera className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            Isto é uma fotografia do estado atual, não um percurso: os estágios não são marcos que o lead atravessou,
-            então não existe "% de perda" nem "leads perdidos" entre eles. Quem mede transição real é o ciclo de venda,
-            mais abaixo.
-          </span>
-        </p>
       </Card>
 
       {/* ── 3 · Dinheiro em jogo ───────────────────────────────────────────── */}

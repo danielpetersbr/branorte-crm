@@ -1,26 +1,14 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Edit3, Eye, Search, FileText, FileSignature, Calendar, User, DollarSign, ChevronRight } from 'lucide-react'
+import { Edit3, Eye, Search, FileText, FileSignature, Calendar, User, ChevronRight } from 'lucide-react'
 import { useOrcamentosGerados, type OrcamentoGeradoLista } from '@/hooks/useOrcamentoBuilder'
-import { supabase } from '@/lib/supabase'
+import { useOrcamentosEtiquetas } from '@/hooks/useOrcamentosEtiquetas'
+import { filtroEtiquetaOrcamento, passaEtiquetaOrcamento } from '@/lib/orcamentos-etiquetas'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import { useAuth } from '@/hooks/useAuth'
 import { semSeparadores } from '@/lib/busca-numero-orcamento'
-
-// Filtro por estágio ATUAL do funil (etiqueta WhatsApp do cliente) — casado pelo telefone
-// na RPC propostas_ids_por_categoria. 'aberto' = proposta viva (não vendida/perdida).
-const ETIQUETA_PROP_OPCOES: { value: string; label: string }[] = [
-  { value: 'aberto',       label: '🟡 Em aberto (não vendido)' },
-  { value: 'orcamento',    label: '📄 Orçamento enviado' },
-  { value: 'quente',       label: '🔥 Quente / follow-up' },
-  { value: 'lead_quente',  label: '🌡️ Lead quente' },
-  { value: 'novo',         label: '🆕 Novo (sem mexer)' },
-  { value: 'sem_etiqueta', label: '⚪ Sem etiqueta' },
-  { value: 'vendido',      label: '✅ Vendido' },
-  { value: 'perdido',      label: '❌ Perdido' },
-]
+import { ClienteWhatsAppOrcamento, EtiquetaPrincipalOrcamento, type ConsultaEtiquetasOrcamento } from '@/components/orcamento/ClienteWhatsAppOrcamento'
 
 // Mesmo arredondamento da tela de montar e do PDF: orçamento não tem centavos.
 // Sem isso a lista mostrava R$ 42.700,20 num orçamento cujo documento dizia R$ 42.700.
@@ -81,7 +69,7 @@ function AcoesOrcamento({ id }: { id: number }) {
   )
 }
 
-function OrcamentoRow({ o, isAlt }: { o: OrcamentoGeradoLista; isAlt?: boolean }) {
+function OrcamentoRow({ o, isAlt, etiquetas }: { o: OrcamentoGeradoLista; isAlt?: boolean; etiquetas: ConsultaEtiquetasOrcamento }) {
   const st = STATUS_LABEL[o.status] ?? { label: o.status, class: 'bg-gray-100 text-gray-700' }
   return (
     <tr className={`border-b border-border/60 hover:bg-surface-2/40 ${isAlt ? 'bg-surface-2/20' : ''}`}>
@@ -107,12 +95,11 @@ function OrcamentoRow({ o, isAlt }: { o: OrcamentoGeradoLista; isAlt?: boolean }
           {o.cliente_nome || <span className="italic text-ink-faint">[sem nome]</span>}
         </span>
       </td>
+      <td className="px-3 py-2"><ClienteWhatsAppOrcamento cliente={o} /></td>
+      <td className="px-3 py-2"><EtiquetaPrincipalOrcamento cliente={o} etiquetas={etiquetas} /></td>
       <td className="px-3 py-2 text-ink-muted">{o.vendedor_nome}</td>
-      <td className="px-3 py-2 text-right font-bold tabular-nums text-success">
-        <span className="flex items-center justify-end gap-1.5">
-          <DollarSign className="h-3.5 w-3.5 text-ink-faint" />
-          {formatBRL(Number(o.total_proposta))}
-        </span>
+      <td className="px-3 py-2 text-right whitespace-nowrap font-bold tabular-nums text-success">
+        {formatBRL(Number(o.total_proposta))}
       </td>
       <td className="px-3 py-2">
         <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold border ${st.class}`}>
@@ -126,7 +113,7 @@ function OrcamentoRow({ o, isAlt }: { o: OrcamentoGeradoLista; isAlt?: boolean }
   )
 }
 
-function OrcamentoGroupRow({ group }: { group: OrcamentoGroup }) {
+function OrcamentoGroupRow({ group, etiquetas }: { group: OrcamentoGroup; etiquetas: ConsultaEtiquetasOrcamento }) {
   const [expanded, setExpanded] = useState(false)
   const hasAlts = group.alts.length > 0
 
@@ -164,12 +151,11 @@ function OrcamentoGroupRow({ group }: { group: OrcamentoGroup }) {
             {group.parent.cliente_nome || <span className="italic text-ink-faint">[sem nome]</span>}
           </span>
         </td>
+        <td className="px-3 py-2"><ClienteWhatsAppOrcamento cliente={group.parent} /></td>
+        <td className="px-3 py-2"><EtiquetaPrincipalOrcamento cliente={group.parent} etiquetas={etiquetas} /></td>
         <td className="px-3 py-2 text-ink-muted">{group.parent.vendedor_nome}</td>
-        <td className="px-3 py-2 text-right font-bold tabular-nums text-success">
-          <span className="flex items-center justify-end gap-1.5">
-            <DollarSign className="h-3.5 w-3.5 text-ink-faint" />
-            {formatBRL(Number(group.parent.total_proposta))}
-          </span>
+        <td className="px-3 py-2 text-right whitespace-nowrap font-bold tabular-nums text-success">
+          {formatBRL(Number(group.parent.total_proposta))}
         </td>
         <td className="px-3 py-2">
           {(() => {
@@ -186,7 +172,7 @@ function OrcamentoGroupRow({ group }: { group: OrcamentoGroup }) {
         </td>
       </tr>
       {expanded && group.alts.map(alt => (
-        <OrcamentoRow key={alt.id} o={alt} isAlt />
+        <OrcamentoRow key={alt.id} o={alt} etiquetas={etiquetas} isAlt />
       ))}
     </>
   )
@@ -202,28 +188,26 @@ export function OrcamentosSalvos() {
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<string>('')
   const [filtroVendedor, setFiltroVendedor] = useState<string>('')
-  const [filtroEtiqueta, setFiltroEtiqueta] = useState<string>(() => ETIQUETA_PROP_OPCOES.some(o => o.value === etqParam) ? etqParam! : '')
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState<string>(() => filtroEtiquetaOrcamento(etqParam))
+  const [filtroMes, setFiltroMes] = useState('')
   const [pagina, setPagina] = useState(1)
 
   useEffect(() => {
     setPagina(1)
-  }, [busca, filtroStatus, filtroVendedor, filtroEtiqueta])
+  }, [busca, filtroStatus, filtroVendedor, filtroEtiqueta, filtroMes])
 
-  // IDs das propostas no estágio de funil selecionado (vem da RPC, casado por telefone).
-  const { data: idsEtiqueta, isLoading: loadingEtiqueta, error: erroEtiqueta, refetch: refetchEtiqueta, isFetching: fetchingEtiqueta } = useQuery({
-    queryKey: ['propostas-ids-categoria', filtroEtiqueta],
-    queryFn: async (): Promise<Set<number>> => {
-      const { data: ids, error } = await supabase.rpc('propostas_ids_por_categoria', { p_categoria: filtroEtiqueta })
-      if (error) throw error
-      return new Set(((ids ?? []) as number[]).map(Number))
-    },
-    enabled: !!filtroEtiqueta,
-    staleTime: 60_000,
-  })
+  const consultaEtiquetas = useOrcamentosEtiquetas(filtroVendedor)
+  const { data: etiquetasWa, isPending: loadingEtiqueta, error: erroEtiqueta, refetch: refetchEtiqueta, isFetching: fetchingEtiqueta } = consultaEtiquetas
+  const opcoesEtiquetas = etiquetasWa?.opcoes ?? []
 
   // Lista de vendedores únicos (pra popular o filtro), ordenada alfabeticamente.
   const vendedores = useMemo(
     () => Array.from(new Set((data ?? []).map(o => (o.vendedor_nome || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [data],
+  )
+
+  const meses = useMemo(
+    () => [...new Set((data ?? []).map(o => o.data_emissao.slice(0, 7)))].sort().reverse(),
     [data],
   )
 
@@ -239,21 +223,22 @@ export function OrcamentosSalvos() {
 
   // Pré-filtra por etiqueta de funil vinda da URL (?etiqueta=aberto, do dashboard).
   useEffect(() => {
-    if (etqParam && ETIQUETA_PROP_OPCOES.some(o => o.value === etqParam)) setFiltroEtiqueta(etqParam)
+    if (etqParam) setFiltroEtiqueta(filtroEtiquetaOrcamento(etqParam))
   }, [etqParam])
 
   // Group by numero_base: parent rows + ALT sub-rows
   const grouped = useMemo((): OrcamentoGroup[] => {
-    if (!data || (filtroEtiqueta && (loadingEtiqueta || erroEtiqueta || !idsEtiqueta))) return []
+    if (!data || (filtroEtiqueta && (loadingEtiqueta || erroEtiqueta || !etiquetasWa))) return []
     const buscaLower = busca.trim().toLowerCase()
 
     // Filter first
     const filtered = data.filter(o => {
+      if (filtroMes && o.data_emissao.slice(0, 7) !== filtroMes) return false
       if (filtroStatus && o.status !== filtroStatus) return false
       if (filtroVendedor && (o.vendedor_nome || '').trim() !== filtroVendedor) return false
-      if (filtroEtiqueta && idsEtiqueta && !idsEtiqueta.has(Number(o.id))) return false
+      if (filtroEtiqueta && etiquetasWa && !passaEtiquetaOrcamento(o, filtroEtiqueta, etiquetasWa.indice)) return false
       if (buscaLower) {
-        const hay = `${o.numero} ${o.cliente_nome} ${o.vendedor_nome} ${o.modelo_basename ?? ''}`.toLowerCase()
+        const hay = `${o.numero} ${o.cliente_nome} ${o.vendedor_nome} ${o.modelo_basename ?? ''} ${o.cliente_fone ?? ''} ${(o.cliente_fone ?? '').replace(/\D/g, '')}`.toLowerCase()
         // O número é gravado "2026 - 0241": sem ignorar espaço/traço, "2026-0241" não casava.
         if (!hay.includes(buscaLower) && !semSeparadores(hay).includes(semSeparadores(buscaLower))) return false
       }
@@ -296,7 +281,7 @@ export function OrcamentosSalvos() {
     }
 
     return order.map(k => map.get(k)!)
-  }, [data, busca, filtroStatus, filtroVendedor, filtroEtiqueta, idsEtiqueta, loadingEtiqueta, erroEtiqueta])
+  }, [data, busca, filtroStatus, filtroVendedor, filtroEtiqueta, filtroMes, etiquetasWa, loadingEtiqueta, erroEtiqueta])
 
   const totalCount = data?.length ?? 0
   // Paginar depois de filtrar e agrupar mantém a busca completa e as ALTs com o pai.
@@ -340,17 +325,31 @@ export function OrcamentosSalvos() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-faint pointer-events-none" />
           <input
             type="text"
-            placeholder="Buscar numero, cliente, vendedor..."
+            placeholder="Buscar número, cliente, WhatsApp, vendedor..."
             value={busca}
             onChange={e => setBusca(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-md bg-surface-2 focus:border-accent focus:ring-2 focus:ring-accent/20 outline-none"
           />
         </div>
         <select
+          value={filtroMes}
+          onChange={e => setFiltroMes(e.target.value)}
+          aria-label="Filtrar por mês de emissão"
+          title="Mês de emissão do orçamento"
+          className="px-3 py-2 text-sm border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
+        >
+          <option value="">Todos os meses</option>
+          {meses.map(mes => <option key={mes} value={mes}>{new Date(`${mes}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</option>)}
+        </select>
+        <select
           value={filtroVendedor}
-          onChange={e => setFiltroVendedor(e.target.value)}
+          onChange={e => {
+            setFiltroVendedor(e.target.value)
+            if (filtroEtiqueta.startsWith('etiqueta:')) setFiltroEtiqueta('')
+          }}
           className="px-3 py-2 text-sm border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
           title="Filtrar por vendedor"
+          aria-label="Filtrar por vendedor"
         >
           <option value="">Todos vendedores</option>
           {vendedores.map(v => (
@@ -361,12 +360,22 @@ export function OrcamentosSalvos() {
           value={filtroEtiqueta}
           onChange={e => setFiltroEtiqueta(e.target.value)}
           className="px-3 py-2 text-sm border border-border rounded-md bg-surface-2 focus:border-accent outline-none"
-          title="Filtrar pelo estágio atual do funil (etiqueta WhatsApp do cliente)"
+          title="Filtrar por etiqueta do WhatsApp do vendedor"
+          aria-label="Filtrar por etiqueta do WhatsApp"
+          disabled={loadingEtiqueta || !!erroEtiqueta}
         >
-          <option value="">Todas etapas do funil</option>
-          {ETIQUETA_PROP_OPCOES.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+          <option value="">{loadingEtiqueta ? 'Carregando etiquetas…' : 'Todas as etiquetas'}</option>
+          <option value="aberto">Em aberto (funil ativo)</option>
+          <optgroup label="Etiquetas do WhatsApp">
+            {opcoesEtiquetas.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </optgroup>
+          {filtroEtiqueta.startsWith('etiqueta:') && !opcoesEtiquetas.some(o => o.value === filtroEtiqueta) && (
+            <option value={filtroEtiqueta}>{filtroEtiqueta.slice(9)} (não encontrada)</option>
+          )}
+          <option value="sem_etiqueta">Sem etiqueta</option>
+          <option value="perdido">Encerrados sem venda</option>
         </select>
         <select
           value={filtroStatus}
@@ -381,8 +390,13 @@ export function OrcamentosSalvos() {
         </select>
       </div>
 
+      {filtroEtiqueta === 'aberto' && (
+        <p className="text-sm text-ink-muted">Somente propostas de clientes no funil ativo do WhatsApp do vendedor, sem etiqueta de venda ou encerramento.</p>
+      )}
+      {erroEtiqueta && <QueryNotice error={erroEtiqueta} loading={fetchingEtiqueta} onRetry={() => { void refetchEtiqueta() }} message="Não foi possível carregar as etiquetas do WhatsApp dos vendedores." />}
+
       {/* Lista */}
-      {filtroEtiqueta && erroEtiqueta ? <QueryNotice error={erroEtiqueta} loading={fetchingEtiqueta} onRetry={() => { void refetchEtiqueta() }} message="Não foi possível conferir as propostas desta etapa do funil." /> : filtroEtiqueta && (loadingEtiqueta || !idsEtiqueta) ? <PageLoading /> : grouped.length === 0 ? (
+      {filtroEtiqueta && erroEtiqueta ? null : filtroEtiqueta && (loadingEtiqueta || !etiquetasWa) ? <PageLoading /> : grouped.length === 0 ? (
         <div className="text-center py-12 text-ink-faint">
           <FileText className="h-10 w-10 mx-auto mb-2 opacity-40" />
           <p>Nenhum orçamento encontrado</p>
@@ -413,6 +427,8 @@ export function OrcamentosSalvos() {
                 <th className="text-left px-3 py-2 font-semibold text-ink-muted">Numero</th>
                 <th className="text-left px-3 py-2 font-semibold text-ink-muted">Data</th>
                 <th className="text-left px-3 py-2 font-semibold text-ink-muted">Cliente</th>
+                <th className="text-left px-3 py-2 font-semibold text-ink-muted">WhatsApp</th>
+                <th className="text-left px-3 py-2 font-semibold text-ink-muted">Etiqueta principal</th>
                 <th className="text-left px-3 py-2 font-semibold text-ink-muted">Vendedor</th>
                 <th className="text-right px-3 py-2 font-semibold text-ink-muted">Total</th>
                 <th className="text-left px-3 py-2 font-semibold text-ink-muted">Status</th>
@@ -421,7 +437,7 @@ export function OrcamentosSalvos() {
             </thead>
             <tbody>
               {gruposDaPagina.map(group => (
-                <OrcamentoGroupRow key={group.parent.id} group={group} />
+                <OrcamentoGroupRow key={group.parent.id} group={group} etiquetas={consultaEtiquetas} />
               ))}
             </tbody>
           </table>

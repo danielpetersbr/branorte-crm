@@ -172,6 +172,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText, permKey: 'menu.novo_pedido' },
       { to: '/controle/novo-pedido', label: 'Novo Pedido', icon: FilePlus2, permKey: 'menu.novo_pedido' },
       { to: '/vendidos', label: 'Vendidos', icon: CheckCircle, permKey: 'menu.vendidos' },
+      { to: '/conversao-comercial', label: 'Conversão comercial', icon: TrendingUp, permKey: 'menu.vendidos', roles: ['admin', 'vendor'] },
     ],
   },
   {

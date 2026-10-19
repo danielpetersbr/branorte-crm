@@ -1,366 +1,69 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
-import { Select } from '@/components/ui/Select'
-import { Input } from '@/components/ui/Input'
-import { Badge } from '@/components/ui/Badge'
-import { Card } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { CheckCircle, RefreshCw } from 'lucide-react'
+import { useVendidos } from '@/hooks/useVendidos'
+import { ClienteWhatsAppOrcamento } from '@/components/orcamento/ClienteWhatsAppOrcamento'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
-import { formatPhone } from '@/lib/utils'
-import { useVendorMap } from '@/hooks/useVendorMap'
-import { useVendors } from '@/hooks/useVendors'
-import { useAuth } from '@/hooks/useAuth'
-import { useContactsOrcamentos } from '@/hooks/useContactsOrcamentos'
-import { Search, ChevronLeft, ChevronRight, X, CheckCircle, Copy, Check } from 'lucide-react'
-import { ESTADOS_BR } from '@/types'
-import type { Contact } from '@/types'
-
-const PAGE_SIZE = 50
-const currentYear = new Date().getFullYear()
-const ANOS = Array.from({ length: currentYear - 2018 }, (_, i) => String(currentYear - i))
-const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-
-function getOrcamento(origin: string | null): string | null {
-  if (!origin) return null
-  const match = origin.match(/^Orcamento\s+(.+)$/)
-  return match ? match[1] : null
-}
-
-function CopyPhoneButton({ phone }: { phone: string }) {
-  const [copied, setCopied] = useState(false)
-  const handle = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    try {
-      await navigator.clipboard.writeText(phone)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      window.prompt('Copie o telefone:', phone)
-    }
-  }
-  return (
-    <button
-      onClick={handle}
-      title={copied ? 'Copiado!' : `Copiar ${phone}`}
-      className={`p-1 rounded hover:bg-surface-tertiary transition-colors ${
-        copied ? 'text-green-600' : 'text-text-muted hover:text-text-primary'
-      }`}
-    >
-      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-    </button>
-  )
-}
-
-function useSoldContacts(filters: { search: string; vendor_id: string; estado: string; ano: string; mes: string; page: number }) {
-  return useQuery({
-    queryKey: ['vendidos', filters],
-    queryFn: async () => {
-      let coberturaLimitada = false
-      let query = supabase
-        .from('contacts')
-        .select('*', { count: 'exact' })
-        .eq('status', 'FECHADO')
-        .or('origin.ilike.Orcamento%,origin.ilike.Orçamento%')
-        // Mais recentes primeiro (data_orcamento = data da venda mais nova, vinda do
-        // sync). Antes ordenava por 'origin' (número do orçamento) → vendas novas não
-        // ficavam no topo. nullsFirst:false joga os sem-data pro fim.
-        .order('data_orcamento', { ascending: false, nullsFirst: false })
-
-      if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,descricao_orcamento.ilike.%${filters.search}%,city.ilike.%${filters.search}%`)
-      }
-      if (filters.vendor_id === 'unassigned') query = query.is('vendor_id', null)
-      else if (filters.vendor_id) query = query.eq('vendor_id', filters.vendor_id)
-      if (filters.estado) query = query.eq('state', filters.estado)
-      if (filters.ano) {
-        // Cruza com orcamentos_files: pega contact_ids que têm orçamento neste ano
-        // (eventualmente filtrando por mês via mtime_iso).
-        let orcQ = supabase
-          .from('orcamentos_files')
-          .select('contact_id')
-          .eq('ano', Number(filters.ano))
-          .not('contact_id', 'is', null)
-          .limit(10000)
-        if (filters.mes) {
-          const m = Number(filters.mes)
-          const month = String(m).padStart(2, '0')
-          const yr = Number(filters.ano)
-          const nextYr = m === 12 ? yr + 1 : yr
-          const nextM = m === 12 ? '01' : String(m + 1).padStart(2, '0')
-          orcQ = orcQ
-            .gte('mtime_iso', `${yr}-${month}-01T00:00:00Z`)
-            .lt('mtime_iso', `${nextYr}-${nextM}-01T00:00:00Z`)
-        }
-        const { data: orcRows, error: orcErr } = await orcQ
-        if (orcErr) throw orcErr
-        coberturaLimitada = (orcRows?.length ?? 0) >= 10000
-        const idsSet = new Set<string>()
-        for (const r of (orcRows ?? []) as { contact_id: string | null }[]) {
-          if (r.contact_id) idsSet.add(r.contact_id)
-        }
-        const ids = Array.from(idsSet)
-        if (ids.length === 0) {
-          return { contacts: [], total: 0, coberturaLimitada }
-        }
-        query = query.in('id', ids)
-      }
-
-      const from = filters.page * PAGE_SIZE
-      query = query.range(from, from + PAGE_SIZE - 1)
-
-      const { data, error, count } = await query
-      if (error) throw error
-      return { contacts: (data ?? []) as Contact[], total: count ?? 0, coberturaLimitada }
-    },
-  })
-}
-
-function useSoldStats() {
-  return useQuery({
-    queryKey: ['vendidos-stats'],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'FECHADO')
-        .or('origin.ilike.Orcamento%,origin.ilike.Orçamento%')
-      if (error) throw error
-      return count ?? 0
-    },
-  })
-}
-
+import { QueryNotice } from '@/components/ui/QueryNotice'
+import { filtrarPedidosVendidos, contagemVendidos, SITUACOES_VENDIDOS, ETAPAS_VENDIDOS, type SituacaoVendido } from '@/lib/vendidos'
+const Historico = lazy(()=>import('@/components/vendidos/HistoricoVendidos').then(m=>({default:m.HistoricoVendidos})))
+const input='h-10 rounded-md border border-border bg-surface-2 px-3 text-sm text-ink outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/30'
+const inicial={mes:'',vendedor:'',situacao:'',busca:''}
+const dataCivil=(s:string|null)=>s?new Date(s.length===10?`${s}T12:00:00`:s).toLocaleDateString('pt-BR'):'—'
 export function Vendidos() {
-  const [filters, setFilters] = useState({ search: '', vendor_id: '', estado: '', ano: '', mes: '', page: 0 })
-  const [searchInput, setSearchInput] = useState('')
-
-  const { data, isLoading, error, isFetching, refetch } = useSoldContacts(filters)
-  const { data: totalSold, error: statsError, refetch: refetchStats } = useSoldStats()
-  const { data: vendorsData } = useVendors()
-  const { profile } = useAuth()
-  const isVendor = profile?.role === 'vendor'
-  const vendorOpts = isVendor && profile?.vendor_id
-    ? (vendorsData ?? []).filter(v => v.id === profile.vendor_id)
-    : (vendorsData ?? [])
-  const vendorSelectOptions = [
-    { value: 'unassigned', label: 'Não atribuído' },
-    ...vendorOpts.map(v => ({ value: v.id, label: v.name })),
-  ]
-  const vendorMap = useVendorMap()
-
-  const contacts = data?.contacts ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.ceil(total / PAGE_SIZE)
-
-  const contactIds = contacts.map(c => c.id)
-  const { data: orcamentosMap } = useContactsOrcamentos(contactIds)
-  const hasFilters = filters.search || filters.vendor_id || filters.estado || filters.ano || filters.mes
-
-  const clearFilters = () => {
-    setFilters({ search: '', vendor_id: '', estado: '', ano: '', mes: '', page: 0 })
-    setSearchInput('')
-  }
-
-  return (
-    <div className="p-4 lg:p-8 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            <CheckCircle className="h-7 w-7 text-green-600" />
-            Vendidos
-          </h1>
-          <p className="text-sm text-text-muted mt-1">
-            {totalSold != null ? (
-              <><span className="font-semibold text-green-600">{totalSold.toLocaleString('pt-BR')}</span> vendas fechadas</>
-            ) : statsError ? 'Total de vendas indisponível' : 'Carregando...'}
-          </p>
-        </div>
+  const {data,isPending,error,isFetching,refetch,autorizado,authLoading,isAdmin}=useVendidos()
+  const [filtros,setFiltros]=useState(inicial),[pagina,setPagina]=useState(1),[historico,setHistorico]=useState(false)
+  const alterar=(patch:Partial<typeof inicial>)=>{setFiltros(f=>({...f,...patch}));setPagina(1)}
+  const pedidos=data?.pedidos??[]
+  const meses=useMemo(()=>[...new Set(pedidos.flatMap(p=>p.dataVenda?[p.dataVenda.slice(0,7)]:[]))].sort().reverse(),[pedidos])
+  const vendedores=useMemo(()=>[...new Set(pedidos.flatMap(p=>[p.vendedor,p.vendedor2].filter((v):v is string=>!!v)))].sort(),[pedidos])
+  const base=useMemo(()=>filtrarPedidosVendidos(pedidos,filtros,false),[pedidos,filtros])
+  const filtrados=useMemo(()=>filtrarPedidosVendidos(pedidos,filtros),[pedidos,filtros])
+  const paginas=Math.max(1,Math.ceil(filtrados.length/50)),atual=Math.min(pagina,paginas)
+  useEffect(()=>{setPagina(p=>Math.min(p,paginas))},[paginas])
+  if(authLoading)return <PageLoading/>
+  if(!autorizado)return <p className="p-6 text-ink">Sem acesso aos pedidos vendidos.</p>
+  return <div className="p-4 lg:p-8 space-y-4">
+    <header className="flex items-start justify-between gap-3 flex-wrap">
+      <div><h1 className="flex items-center gap-2 text-2xl font-bold text-ink"><CheckCircle className="h-6 w-6 text-accent"/>Vendidos</h1><p className="mt-1 text-sm text-ink-muted">{isAdmin?'Pedidos de venda · produção e entrega':'Seus pedidos de venda · produção e entrega'}</p></div>
+      <div className="flex gap-2 flex-wrap"><button type="button" className={input+' inline-flex items-center gap-2'} disabled={isFetching} onClick={()=>{void refetch()}}><RefreshCw className={'h-4 w-4 '+(isFetching?'animate-spin':'')} aria-hidden/>Atualizar</button>{isAdmin&&<button type="button" className={input} aria-expanded={historico} onClick={()=>setHistorico(v=>!v)}>{historico?'Voltar aos pedidos':'Histórico de clientes'}</button>}</div>
+    </header>
+    {historico&&isAdmin?<Suspense fallback={<PageLoading/>}><Historico/></Suspense>:<>
+      <div className="flex flex-wrap gap-2">
+        <input aria-label="Buscar pedidos vendidos" placeholder="Buscar cliente, pedido, WhatsApp ou produto…" className={input+' flex-1 min-w-[220px] max-w-lg'} value={filtros.busca} onChange={e=>alterar({busca:e.target.value})}/>
+        <select aria-label="Mês da venda" className={input} value={filtros.mes} onChange={e=>alterar({mes:e.target.value})}><option value="">Todos os meses</option>{meses.map(m=><option key={m} value={m}>{new Date(`${m}-01T12:00:00`).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</option>)}</select>
+        {isAdmin&&<select aria-label="Vendedor" className={input} value={filtros.vendedor} onChange={e=>alterar({vendedor:e.target.value})}><option value="">Todos os vendedores</option>{vendedores.map(v=><option key={v} value={v}>{v}</option>)}</select>}
+        <select aria-label="Situação do pedido" className={input} value={filtros.situacao} onChange={e=>alterar({situacao:e.target.value})}><option value="">Todas as situações</option>{Object.entries(SITUACOES_VENDIDOS).map(([v,n])=><option key={v} value={v}>{n}</option>)}</select>
+        {Object.values(filtros).some(Boolean)&&<button type="button" className={input} onClick={()=>{setFiltros(inicial);setPagina(1)}}>Limpar filtros</button>}
       </div>
-
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          <Input
-            placeholder="Buscar por nome, telefone, cidade ou produto..."
-            leftIcon={<Search className="h-4 w-4" />}
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && setFilters(f => ({ ...f, search: searchInput, page: 0 }))}
-            className="lg:w-96"
-          />
-          <Select
-            options={vendorSelectOptions}
-            placeholder="Vendedor"
-            value={filters.vendor_id}
-            onChange={e => setFilters(f => ({ ...f, vendor_id: e.target.value, page: 0 }))}
-            className="lg:w-44"
-          />
-          <Select
-            options={ESTADOS_BR.map(e => ({ value: e, label: e }))}
-            placeholder="Estado"
-            value={filters.estado}
-            onChange={e => setFilters(f => ({ ...f, estado: e.target.value, page: 0 }))}
-            className="lg:w-24"
-          />
-          <Select
-            options={ANOS.map(y => ({ value: y, label: y }))}
-            placeholder="Ano"
-            value={filters.ano}
-            onChange={e => setFilters(f => ({ ...f, ano: e.target.value, mes: '', page: 0 }))}
-            className="lg:w-24"
-          />
-          {filters.ano && (
-            <Select
-              options={MESES.map((m, i) => ({ value: String(i + 1), label: m }))}
-              placeholder="Mês"
-              value={filters.mes}
-              onChange={e => setFilters(f => ({ ...f, mes: e.target.value, page: 0 }))}
-              className="lg:w-24"
-            />
-          )}
-          {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4" /> Limpar</Button>
-          )}
+      {error?<QueryNotice error={error} loading={isFetching} onRetry={()=>{void refetch()}} message="Não foi possível carregar os pedidos vendidos. Confira seu acesso e tente novamente."/>:isPending?<PageLoading/>:data&&<>
+        {(!data.producaoDisponivel||!data.entregasDisponiveis)&&<p role="alert" className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-ink">{!data.producaoDisponivel&&'Produção indisponível. As quantidades na empresa e embarcadas não podem ser conferidas agora. '}{!data.entregasDisponiveis&&'Confirmações de entrega indisponíveis.'}</p>}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {(['', 'na_empresa','embarcado','entregue'] as const).map(s=>{
+            const n=contagemVendidos(base,s||undefined),disponivel=s==='entregue'?data.entregasDisponiveis:s?data.producaoDisponivel:true
+            return <button type="button" key={s} aria-pressed={filtros.situacao===s} disabled={!disponivel} onClick={()=>alterar({situacao:s})} className={`rounded-xl border p-4 text-left transition focus-visible:ring-2 focus-visible:ring-accent ${filtros.situacao===s?'border-accent bg-accent/5':'border-border bg-surface'} disabled:opacity-60`}>
+              <span className="block text-sm text-ink-muted">{s?SITUACOES_VENDIDOS[s]:'Todos os clientes'}</span><strong className="mt-1 block text-2xl font-bold text-ink">{disponivel?n.clientes:'—'}</strong><span className="text-xs text-ink-faint">{disponivel?`${n.pedidos} pedido(s)`:'Leitura indisponível'}</span>
+            </button>
+          })}
         </div>
-      </Card>
-
-      {(error || statsError) && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
-        {error ? 'Não foi possível carregar a lista de vendas.' : 'Não foi possível carregar o total de vendas.'} {data && error && 'A lista anterior permanece visível.'}
-        <button type="button" className="ml-2 underline" disabled={isFetching} onClick={() => { void refetch(); void refetchStats() }}>Tentar novamente</button>
-      </div>}
-      {data?.coberturaLimitada && <p role="status" className="mb-3 text-sm text-warning">O filtro de ano atingiu o limite de 10.000 orçamentos consultados. A lista e sua contagem podem estar incompletas; selecione um mês para restringir a consulta.</p>}
-      {isLoading ? <PageLoading /> : error && !data ? null : (
-        <div className="space-y-4">
-          {/* Results count */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-text-muted">
-              {total.toLocaleString('pt-BR')} resultado{total !== 1 ? 's' : ''}
-              {filters.ano && <span className="ml-1 font-medium text-text-secondary">em {filters.ano}</span>}
-              {filters.mes && <span className="ml-1 font-medium text-text-secondary">/ {MESES[Number(filters.mes) - 1]}</span>}
-            </p>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" disabled={filters.page === 0}
-                  onClick={() => setFilters(f => ({ ...f, page: f.page - 1 }))}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-sm text-text-secondary">{filters.page + 1} / {totalPages}</span>
-                <Button variant="ghost" size="sm" disabled={filters.page >= totalPages - 1}
-                  onClick={() => setFilters(f => ({ ...f, page: f.page + 1 }))}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Table */}
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-surface-border bg-surface-secondary">
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3">Data</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Nome</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-3 py-3 w-12">UF</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Cidade</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Telefone</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Vendedor</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Orçamento</th>
-                    <th className="text-left text-xs font-medium text-text-muted px-4 py-3">Produto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-border">
-                  {contacts.map(c => {
-                    const phoneStr = c.phone || ''
-                    const placeholder = phoneStr.startsWith('ORC-') || phoneStr.startsWith('AUTO-')
-                    const tel = placeholder ? '' : (c.telefone_normalizado || c.phone || '')
-                    const orc = getOrcamento(c.origin)
-                    const orcsLinkados = orcamentosMap?.get(c.id) ?? []
-                    const dataOrc = c.data_orcamento || orcsLinkados[0]?.mtime_iso || null
-                    const dataFmt = dataOrc ? new Date(dataOrc).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : ''
-                    return (
-                      <tr key={c.id} className="hover:bg-green-50/30 transition-colors">
-                        <td className="px-3 py-3">
-                          <span className="text-xs text-text-muted font-mono whitespace-nowrap">{dataFmt || '-'}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm font-medium text-text-primary">{c.name || '(sem nome)'}</span>
-                        </td>
-                        <td className="px-3 py-3">
-                          {c.state ? (
-                            <Badge className="bg-blue-50 text-blue-700 font-mono text-[11px]">{c.state}</Badge>
-                          ) : (
-                            <span className="text-xs text-text-muted">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-text-secondary truncate max-w-[160px] block" title={c.city || ''}>
-                            {c.city || <span className="text-text-muted">-</span>}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {tel ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm text-text-secondary font-mono">{formatPhone(tel)}</span>
-                              <CopyPhoneButton phone={tel} />
-                            </div>
-                          ) : (
-                            <span className="text-sm text-text-muted">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm text-text-secondary">{(c.vendor_id ? vendorMap[c.vendor_id] : null) ?? '-'}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {orcsLinkados.length > 0 ? (
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <Badge
-                                className="bg-green-50 text-green-700 border border-green-200 w-fit"
-                                title={`${orcsLinkados[0].cliente} · ${orcsLinkados[0].path_principal}`}
-                              >
-                                <CheckCircle className="h-3 w-3" /> {orcsLinkados[0].ano}-{orcsLinkados[0].numero}
-                              </Badge>
-                              {orcsLinkados.length > 1 && (
-                                <Badge
-                                  className="bg-stone-100 text-stone-600 text-[10px]"
-                                  title={orcsLinkados.slice(1).map(o => `${o.ano}-${o.numero}${o.equipamento ? ' · ' + o.equipamento : ''}`).join('\n')}
-                                >
-                                  +{orcsLinkados.length - 1}
-                                </Badge>
-                              )}
-                            </div>
-                          ) : orc ? (
-                            <Badge className="bg-green-50 text-green-700 border border-green-200 w-fit">
-                              <CheckCircle className="h-3 w-3" /> {orc}
-                            </Badge>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3">
-                          {(() => {
-                            const produto = c.descricao_orcamento || orcsLinkados[0]?.equipamento || ''
-                            return (
-                              <span className="text-xs text-text-muted truncate max-w-[260px] block" title={produto}>
-                                {produto || '-'}
-                              </span>
-                            )
-                          })()}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  {contacts.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-text-muted">
-                        Nenhum resultado encontrado.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+        <p className="text-xs text-ink-muted">Mês pela data da venda. Um cliente pode ter pedidos em mais de uma situação. Embarcado significa saída da fábrica; entregue exige confirmação de recebimento.</p>
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-sm"><thead className="bg-surface-2 text-ink-muted"><tr>{['Venda','Pedido / orçamento','Cliente','WhatsApp','Vendedor','Etapa de produção','Situação','Entrega confirmada'].map(h=><th key={h} className="px-3 py-3 text-left text-xs font-semibold">{h}</th>)}</tr></thead><tbody className="divide-y divide-border">
+            {filtrados.slice((atual-1)*50,atual*50).map(p=><tr key={p.id} className="hover:bg-surface-2/50">
+              <td className="px-3 py-3 whitespace-nowrap text-ink-muted">{dataCivil(p.dataVenda)}</td>
+              <td className="px-3 py-3"><span className="font-mono font-semibold text-ink">{p.numero||'Sem número'}</span>{p.orcamento&&<span className="block text-xs text-ink-faint">Orç. {p.orcamento}</span>}</td>
+              <td className="px-3 py-3"><span className="font-medium text-ink">{p.cliente||'Sem nome'}</span><span className="block text-xs text-ink-faint">{[p.cidade,p.estado].filter(Boolean).join(' / ')}</span>{p.produto&&<span title={p.produto} className="mt-1 block max-w-[240px] truncate text-xs text-ink-muted">{p.produto}</span>}</td>
+              <td className="px-3 py-3"><ClienteWhatsAppOrcamento cliente={{cliente_nome:p.cliente,cliente_fone:p.telefone,vendedor_nome:p.vendedor,numero:p.numero}}/></td>
+              <td className="px-3 py-3 text-xs text-ink-muted">{[p.vendedor,p.vendedor2].filter(Boolean).join(' / ')}</td>
+              <td className="px-3 py-3 text-xs text-ink">{!data.producaoDisponivel?'Produção indisponível':p.etapas.length?p.etapas.map(e=>ETAPAS_VENDIDOS[e]??e).join(' · '):'Sem produção vinculada'}</td>
+              <td className="px-3 py-3"><span className="inline-flex rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-medium text-ink">{SITUACOES_VENDIDOS[p.situacao]}</span></td>
+              <td className="px-3 py-3 whitespace-nowrap text-xs text-ink-muted">{!data.entregasDisponiveis?'Indisponível':p.entregaEm?dataCivil(p.entregaEm):'Não confirmada'}</td>
+            </tr>)}
+            {!filtrados.length&&<tr><td colSpan={8} className="px-4 py-10 text-center text-ink-muted">Nenhum pedido corresponde aos filtros.</td></tr>}
+          </tbody></table>
         </div>
-      )}
-    </div>
-  )
+        <nav aria-label="Paginação de vendidos" className="flex items-center justify-between gap-3 flex-wrap"><p role="status" className="text-sm text-ink-muted">{filtrados.length} pedido(s) · {contagemVendidos(filtrados).clientes} cliente(s) · página {atual} de {paginas}</p><div className="flex gap-2"><button type="button" className={input} disabled={atual===1} onClick={()=>setPagina(atual-1)}>Anterior</button><button type="button" className={input} disabled={atual===paginas} onClick={()=>setPagina(atual+1)}>Próxima</button></div></nav>
+        <p className="text-xs text-ink-faint">Consulta em {new Date(data.consultadoEm).toLocaleString('pt-BR')}. {base.some(p=>p.situacao==='sem_info')&&'Pedidos sem produção vinculada aparecem como sem informação, sem presumir que já saíram.'}</p>
+      </>}
+    </>}
+  </div>
 }

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type CSSProperties } from 'react'
 import type { ApresentacaoSlide } from '@/hooks/useReunioes'
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 })
@@ -6,7 +6,7 @@ const brlInteiro = new Intl.NumberFormat('pt-BR', { style: 'currency', currency:
 const numero = new Intl.NumberFormat('pt-BR')
 
 
-type NavigateSlide = (type: ApresentacaoSlide['type']) => void
+type NavigateSlide = (type: ApresentacaoSlide['type'], slideId?: string) => void
 
 /** Animate presentation values only; the stored value remains the source of truth. */
 function AnimatedValue({ value, format = numero.format }: { value: number; format?: (value: number) => string }) {
@@ -289,9 +289,13 @@ function TeamsContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'te
 }
 
 function AgendaContent({ slide, onNavigate }: { slide: Extract<ApresentacaoSlide, { type: 'agenda' }>; onNavigate?: NavigateSlide }) {
+  const longest = Math.max(...slide.items.map(item => item.minutes))
+  const columns = slide.items.length + slide.items.filter(item => item.minutes === longest).length
   const destinationFor = (title: string): ApresentacaoSlide['type'] => {
     const titleKey = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    if (titleKey.includes('calendario')) return 'calendar'
     if (titleKey.includes('video')) return 'video'
+    if (titleKey.includes('melhorias comerciais')) return 'review'
     if (titleKey.includes('kanban') || titleKey.includes('funil') || titleKey.includes('compromiss')) return 'funnel'
     if (titleKey.includes('resultado') || titleKey.includes('ligac')) return 'calls'
     return 'sales'
@@ -299,11 +303,11 @@ function AgendaContent({ slide, onNavigate }: { slide: Extract<ApresentacaoSlide
   return (
     <div className="br-template br-agenda">
       <div className="br-template-heading"><h2>{slide.title}</h2><p>Roteiro de {slide.totalMinutes} minutos</p></div>
-      <div className="br-agenda-rail" aria-hidden="true">{(slide.items ?? []).map((item, i) => <span key={i} style={{ flex: Math.max(item.minutes, 2) }} className={item.minutes === Math.max(...slide.items.map(x => x.minutes)) ? 'primary' : ''} />)}</div>
-      <ol className="br-agenda-items">
+      <div className="br-agenda-rail" aria-hidden="true">{(slide.items ?? []).map((item, i) => <span key={i} style={{ flex: Math.max(item.minutes, 2) }} className={item.minutes === longest ? 'primary' : ''} />)}</div>
+      <ol className="br-agenda-items" style={{ '--br-agenda-columns': columns } as CSSProperties}>
         {(slide.items ?? []).map((item, i) => (
-          <li key={`${item.title}-${i}`} className={item.minutes === Math.max(...slide.items.map(x => x.minutes)) ? 'primary' : ''}>
-            <button type="button" className="br-agenda-link" disabled={!onNavigate} onClick={() => onNavigate?.(destinationFor(item.title))} aria-label={`${item.title}, ${item.minutes} minutos. Ir para este tema`}>
+          <li key={`${item.title}-${i}`} className={item.minutes === longest ? 'primary' : ''}>
+            <button type="button" className="br-agenda-link" disabled={!onNavigate} onClick={() => onNavigate?.(destinationFor(item.title), item.slideId)} aria-label={`${item.title}, ${item.minutes} minutos. Ir para este tema`}>
               <span className="br-agenda-time">{item.minutes}<small>min</small></span>
               <span className="br-agenda-copy"><strong>{item.title}</strong>{item.detail && <span>{item.detail}</span>}</span>
             </button>
@@ -312,6 +316,24 @@ function AgendaContent({ slide, onNavigate }: { slide: Extract<ApresentacaoSlide
       </ol>
     </div>
   )
+}
+
+function ReviewContent({ slide }: { slide: Extract<ApresentacaoSlide, { type: 'review' }> }) {
+  return <div className="br-template br-review">
+    <div className="br-template-heading"><h2>{slide.title}</h2><p>{slide.scope}</p></div>
+    <ol className="br-review-list" start={slide.findings[0].number}>
+      {slide.findings.map(item => <li key={item.number}>
+        <span className="br-review-number" aria-hidden="true">{String(item.number).padStart(2, '0')}</span>
+        <div className="br-review-point">
+          <h3><span className="sr-only">{item.number}. </span>{item.title}<small>{item.evidence}</small></h3>
+          <div className="br-review-details">
+            <p><strong>Observado</strong>{item.observed}</p>
+            <p><strong>Ajuste</strong>{item.action}</p>
+          </div>
+        </div>
+      </li>)}
+    </ol>
+  </div>
 }
 
 function VideoContent({ slide, url, carregando, erro }: {
@@ -398,7 +420,7 @@ export function NativeSlide({ slide, pagina, total, videoUrl, videoLoading, vide
   onNavigate?: NavigateSlide
 }) {
   const footer = slide.type === 'calls' || slide.type === 'sales' || slide.type === 'teams' || slide.type === 'scorecard' || slide.type === 'calendar' ? slide.takeaway
-    : slide.type === 'funnel' ? slide.noteShort : undefined
+    : slide.type === 'funnel' ? slide.noteShort : slide.type === 'review' ? slide.note : undefined
   return <SlideShell slide={slide} pagina={pagina} total={total} footer={footer}>
     {slide.type === 'cover' && <CoverContent slide={slide} onNavigate={onNavigate} />}
     {slide.type === 'calls' && <CallsContent slide={slide} />}
@@ -407,6 +429,7 @@ export function NativeSlide({ slide, pagina, total, videoUrl, videoLoading, vide
     {slide.type === 'sales' && <SalesContent slide={slide} />}
     {slide.type === 'teams' && <TeamsContent slide={slide} />}
     {slide.type === 'agenda' && <AgendaContent slide={slide} onNavigate={onNavigate} />}
+    {slide.type === 'review' && <ReviewContent slide={slide} />}
     {slide.type === 'video' && <VideoContent slide={slide} url={videoUrl} carregando={videoLoading} erro={videoError} />}
     {slide.type === 'funnel' && <FunnelContent slide={slide} />}
   </SlideShell>

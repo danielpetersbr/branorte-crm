@@ -57,7 +57,8 @@ export type ApresentacaoSlide =
   | (SlideBase & { type: 'scorecard'; periodLabel?: string; amountLabel: string; amount: number; goal?: number; comparison?: { label: string; value: number }; metrics: { label: string; value: string }[]; takeaway?: string })
   | (SlideBase & { type: 'calendar'; monthLabel: string; rangeLabel: string; note?: string; remainingWeeks: number; workingDays: number; weeks: { label: string; remaining: boolean; workingDays: number; days: { day: number | null; state: 'past' | 'workday' | 'weekend' | 'holiday'; label?: string }[] }[]; takeaway?: string })
   | (SlideBase & { type: 'teams'; teams: { name: string; total: number; goal?: number; members: { name: string; value: number }[] }[]; globalOnly?: { name: string; value: number }[]; takeaway?: string })
-  | (SlideBase & { type: 'agenda'; totalMinutes: number; items: { title: string; minutes: number; detail?: string }[] })
+  | (SlideBase & { type: 'agenda'; totalMinutes: number; items: { title: string; minutes: number; detail?: string; slideId?: string }[] })
+  | (SlideBase & { type: 'review'; scope: string; findings: { number: number; title: string; observed: string; action: string; evidence: string }[]; note?: string })
   | (SlideBase & { type: 'video'; prompt?: string; videoPath: string; youtubeId?: string; chapterLabel?: string; source?: string })
   | (SlideBase & { type: 'funnel'; scope?: string; stages: { name: string; count: number; stalled: number }[]; won: number; lost: number; note?: string; noteShort?: string; actions?: string[] })
 
@@ -98,11 +99,15 @@ export interface ReuniaoFeedback {
 function normalizeManifesto(value: unknown): ApresentacaoManifesto | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const raw = value as Record<string, unknown>
-  const tipos = new Set(['cover', 'calls', 'sales', 'teams', 'agenda', 'video', 'funnel', 'scorecard', 'calendar'])
+  const tipos = new Set(['cover', 'calls', 'sales', 'teams', 'agenda', 'video', 'funnel', 'scorecard', 'calendar', 'review'])
   const slides = Array.isArray(raw.slides)
     ? raw.slides.filter((slide): slide is ApresentacaoSlide =>
       !!slide && typeof slide === 'object' &&
-      typeof slide.id === 'string' && typeof slide.title === 'string' && tipos.has(slide.type))
+      typeof slide.id === 'string' && typeof slide.title === 'string' && tipos.has(slide.type) &&
+      (slide.type !== 'review' || (typeof slide.scope === 'string' && Array.isArray(slide.findings) &&
+        slide.findings.length > 0 && slide.findings.length <= 5 && slide.findings.every((item: Record<string, unknown>) =>
+          !!item && typeof item.number === 'number' && Number.isInteger(item.number) &&
+          ['title', 'observed', 'action', 'evidence'].every(key => typeof item[key] === 'string')))))
       .map(slide => slide.type === 'video' ? {
         ...slide,
         youtubeId: typeof slide.youtubeId === 'string' && /^[A-Za-z0-9_-]{11}$/.test(slide.youtubeId) ? slide.youtubeId : undefined,

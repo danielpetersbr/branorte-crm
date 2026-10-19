@@ -106,13 +106,17 @@ export function useWaKanban(vendedor: string | null, incluirAna = true) {
       // id Wascript é POR vendedor → chave composta vendedor::id
       const idParaNome = new Map<string, string>()
       for (const e of etiquetas) {
-        idParaNome.set(`${e.vendedor_nome}::${e.etiqueta_id_wascript}`, canonico(e.etiqueta_nome_normalizado))
+        const nome = canonico(e.etiqueta_nome_normalizado)
+        // O WhatsApp também pode ter um marcador literal "Sem etiqueta".
+        // Ele pertence à coluna sintética, não cria uma segunda etapa.
+        if (nome !== 'SEM ETIQUETA') idParaNome.set(`${e.vendedor_nome}::${e.etiqueta_id_wascript}`, nome)
       }
 
       // colunas na ordem oficial do funil (typos colapsam na mesma coluna)
       const porNome = new Map<string, WaColuna>()
       for (const e of etiquetas) {
         const nome = canonico(e.etiqueta_nome_normalizado)
+        if (nome === 'SEM ETIQUETA') continue
         if (!porNome.has(nome)) {
           porNome.set(nome, { nome, cor: corDaEtiqueta(nome), oculta: ETIQUETAS_OCULTAS.has(nome), chats: [] })
         }
@@ -131,7 +135,7 @@ export function useWaKanban(vendedor: string | null, incluirAna = true) {
           if (nome) nomesDoChat.add(nome)
         }
         if (nomesDoChat.size === 0) {
-          semEtiqueta.push(c) // etiqueta órfã (id sem catálogo)
+          semEtiqueta.push(c) // marcador Sem etiqueta ou IDs sem catálogo
           continue
         }
         for (const nome of nomesDoChat) {

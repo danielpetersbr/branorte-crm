@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 
 import { useDashboard, type SlaVendedor } from '@/hooks/useDashboard'
+import { useDashboardTimes } from '@/hooks/useDashboardTimes'
+import { TIMES_DEF, META_TIME } from '@/lib/dashboard-times'
 import { useVendasReais, type CorridaVendedor, type VendasReais } from '@/hooks/useVendasReais'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
 import { useVendedorCobertura, type VendedorCobertura } from '@/hooks/useVendedorCobertura'
@@ -38,21 +40,6 @@ import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
    · 9 painéis completos de vendedor empilhados → 1 tabela + 1 drawer sob demanda.
    · nome de time cortado ("Esquadr…", "Los Melh…") → quebra em 2 linhas, nunca corta.
    ═══════════════════════════════════════════════════════════════════════════ */
-
-/**
- * ATENÇÃO — composição dos times e meta por time são HARDCODED aqui, herdadas do
- * Dashboard antigo. Deveriam vir de `system_settings` (o Controle já guarda
- * `meta_mensal` e `corrida_vendas_meta` lá; falta `times_vendas` e `meta_time`).
- * Enquanto não vierem, trocar de time exige deploy. Mantido por ora.
- */
-export const TIMES_DEF: { nome: string; membros: string[] }[] = [
-  { nome: 'Esquadrão Classe A', membros: ['ALVARO', 'IGOR', 'EDER'] },
-  { nome: 'Los Melhores', membros: ['JARDEL', 'LUCAS', 'RAMON'] },
-  { nome: 'Os Caça Lead', membros: ['PEDRO', 'GUSTAVO', 'EDILSON'] },
-]
-
-/** Meta por time = R$ 2,5M / 3. Também deveria vir de `system_settings`. */
-export const META_TIME = 833_000
 
 /* ─── helpers locais ─────────────────────────────────────────────────────── */
 
@@ -133,17 +120,24 @@ function RankingIndividuo({ corrida, metaVendedor }: { corrida: CorridaVendedor[
 }
 
 function RankingTime({ corrida }: { corrida: CorridaVendedor[] }) {
+  const { preset, periodoLabel } = useJanela()
+  const atividade = useDashboardTimes(preset)
+  const porTime = new Map(atividade.data?.map(t => [t.time_nome, t]))
   const porVend = new Map(corrida.map(c => [chaveNome(c.vendedor), c]))
   const times = TIMES_DEF.map(t => {
     const membros = t.membros
       .map(m => ({ nome: m, valor: porVend.get(m)?.valor ?? 0, vendas: porVend.get(m)?.numVendas ?? 0 }))
       .sort((a, b) => b.valor - a.valor)
     const valor = membros.reduce((s, m) => s + m.valor, 0)
-    return { nome: t.nome, membros, valor, pct: META_TIME > 0 ? (valor / META_TIME) * 100 : 0 }
+    return { nome: t.nome, membros, valor, atividade: porTime.get(t.nome), pct: META_TIME > 0 ? (valor / META_TIME) * 100 : 0 }
   }).sort((a, b) => b.valor - a.valor)
+
+  const numeroAtividade = (valor: number | undefined) => atividade.isError
+    ? 'Indisponível' : valor === undefined ? 'Carregando…' : n(valor)
 
   return (
     <>
+      <QueryNotice error={atividade.error} loading={atividade.isFetching} message="Não foi possível carregar a atividade dos times." onRetry={() => { void atividade.refetch() }} />
       <ol className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {times.map((t, i) => (
           <li key={t.nome}>
@@ -176,6 +170,35 @@ function RankingTime({ corrida }: { corrida: CorridaVendedor[] }) {
                 />
               </div>
 
+              <div className="mt-4 border-t border-border/60 pt-3" aria-busy={atividade.isFetching}>
+                <p className="mb-2 text-micro text-ink-muted">Atividade · {periodoLabel}</p>
+                <dl className="grid grid-cols-2 gap-2">
+                  <div>
+                    <dt className="text-micro text-ink-faint">Ligações</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.ligacoes)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-micro text-ink-faint">Clientes conversados por ligação</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.clientes_conversados)}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-micro text-ink-faint">Orçamentos feitos</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.orcamentos)}</dd>
+                  </div>
+                </dl>
+                <p className="mb-2 mt-3 text-micro text-ink-muted">Carteira atual · etiquetas do WhatsApp</p>
+                <dl className="grid grid-cols-2 gap-2">
+                  <div>
+                    <dt className="text-micro text-ink-faint">Clientes em follow-up</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.follow_up)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-micro text-ink-faint">Clientes em lead quente</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.lead_quente)}</dd>
+                  </div>
+                </dl>
+              </div>
+
               <ul className="mt-3 space-y-2 border-t border-border/60 pt-3">
                 {t.membros.map(m => (
                   <li key={m.nome} className="flex items-baseline justify-between gap-2 text-micro">
@@ -191,7 +214,9 @@ function RankingTime({ corrida }: { corrida: CorridaVendedor[] }) {
         ))}
       </ol>
       <p className="mt-3 text-micro text-ink-faint tabular-nums">
-        Meta de {brl(META_TIME)} por time · composição fixa no código (deveria vir de system_settings).
+        Meta de {brl(META_TIME)} por time. Ligações = feitas + recebidas atendidas.
+        Clientes conversados contam uma vez por time no período, seja ligação feita ou recebida atendida.
+        Orçamentos incluem novas versões. Follow-up e lead quente mostram as etiquetas atuais, excluindo encerrados.
       </p>
       <LegendaMeta />
     </>
@@ -222,8 +247,8 @@ function RankingVendas({ vendas }: { vendas: VendasReais | undefined }) {
   return (
     <Card id="ranking-vendas">
       <CardHeader
-        title="Ranking de vendas"
-        subtitle="Pedidos não cancelados, ao vivo do Controle. É a mesma fonte nas duas visões — por isso viraram um bloco só."
+        title={modo === 'time' ? 'Desempenho dos times' : 'Ranking de vendas'}
+        subtitle={modo === 'time' ? 'Vendas do mês corrente e atividade conjunta dos integrantes de cada time.' : 'Pedidos não cancelados, ao vivo do Controle.'}
         janela={<JanelaBadge tipo="mes" label="mês corrente" />}
         right={
           <div className="inline-flex gap-1 rounded-lg bg-surface-2 p-1" role="group" aria-label="Ver ranking por">

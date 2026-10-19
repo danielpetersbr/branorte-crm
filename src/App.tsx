@@ -35,6 +35,7 @@ const Consulta = lazy(() => import('@/pages/Consulta').then(m => ({ default: m.C
 const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m => ({ default: m.ConsultaHistorico })))
 const Orcamentos = lazy(() => import('@/pages/Orcamentos').then(m => ({ default: m.Orcamentos })))
 const Vendidos = lazy(() => import('@/pages/Vendidos').then(m => ({ default: m.Vendidos })))
+const ConversaoComercial = lazy(() => import('@/pages/ConversaoComercial').then(m => ({ default: m.ConversaoComercial })))
 const MapaVisitas = lazy(() => import('@/pages/MapaVisitas').then(m => ({ default: m.MapaVisitas })))
 const MapaVisual = lazy(() => import('@/pages/MapaVisual').then(m => ({ default: m.MapaVisual })))
 const MinhasVisitas = lazy(() => import('@/pages/MinhasVisitas').then(m => ({ default: m.MinhasVisitas })))
@@ -394,6 +395,9 @@ function AppRoutes() {
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
   const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
+  if (loc.pathname === '/conversao-comercial' && (!['admin', 'vendor'].includes(profile.role) || !can('menu.vendidos'))) {
+    return <Navigate to={profile.role === 'vendor' ? '/atendimentos' : '/'} replace />
+  }
   if (loc.pathname === '/whatsapp' && (!['admin', 'vendor'].includes(profile.role) || !can('menu.whatsapp'))) {
     return <Navigate to={profile.role === 'vendor' ? '/atendimentos' : '/'} replace />
   }
@@ -498,8 +502,9 @@ function AppRoutes() {
      * autenticado (mesma fonte da Área do Vendedor).
      */
     const funilOk = p === '/funil' && can('menu.funil')
+    const vendidosOk = (p === '/vendidos' || p === '/conversao-comercial') && can('menu.vendidos')
     const whatsappOk = p === '/whatsapp' && can('menu.whatsapp')
-    const allowed = (rotaCatalogo(p) && catalogo.permitido) || fabricaPermitida || whatsappOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || pedidosOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
+    const allowed = (rotaCatalogo(p) && catalogo.permitido) || fabricaPermitida || whatsappOk || vendidosOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || pedidosOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
   }
 
@@ -614,6 +619,7 @@ function AppRoutes() {
         {/* /frete/aprovar aposentado → redireciona pro kanban (config do disparo migrada pra lá) */}
         <Route path="/frete/aprovar" element={<Navigate to="/frete/cotacoes" replace />} />
         <Route path="/vendidos" element={<Vendidos />} />
+        <Route path="/conversao-comercial" element={<ConversaoComercial />} />
         <Route path="/mapa-visitas" element={<MapaVisitas />} />
         <Route path="/minhas-visitas" element={<MinhasVisitas />} />
         <Route path="/organizacao-viagem" element={<OrganizacaoViagemPage />} />
