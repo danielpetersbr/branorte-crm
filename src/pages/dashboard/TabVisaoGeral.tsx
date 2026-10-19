@@ -150,11 +150,26 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
       rNegoc: propStatus?.abertoQuente.brl ?? 0,
       rMontado: orc?.valorTotalBRL ?? 0,
       qualificou: funilUnion?.qualificou ?? data?.kpiQualificados.valor ?? 0,
-      clientesComProposta: orc?.geradas ?? 0,
+      // Mesmo número do card "Clientes com proposta". `orc.geradas` deduplica por
+      // vendedor+cliente: cliente cotado por 2 vendedores contava 2× (134 × 131 em 19/10).
+      clientesComProposta: orcamentosReais ?? orc?.geradas ?? 0,
     }
-  }, [orc, cobertura, propStatus, funilUnion, data?.kpiQualificados.valor])
+  }, [orc, cobertura, propStatus, funilUnion, data?.kpiQualificados.valor, orcamentosReais])
+
+  const vendedoresComProposta = useMemo(
+    () => new Set((orc?.porVendedor ?? [])
+      .filter(v => v.propostasN > 0)
+      .map(v => (v.vendedor || '').trim().split(/\s+/)[0].toUpperCase())),
+    [orc],
+  )
 
   const qualificados = funilUnion?.qualificou ?? data.kpiQualificados.valor
+  // Divide pelo universo da MESMA RPC: dividir pelo kpiTotal misturava a contagem
+  // da RPC com a da view lida aqui no cliente.
+  const baseQualificados = funilUnion?.entrou ?? data.kpiTotal.valor
+  // Quantos entram só pela etiqueta do vendedor: é a diferença para a etapa
+  // "Qualificou" do funil abaixo, que conta só a IA.
+  const qualificadosSoEtiqueta = funilUnion ? Math.max(0, funilUnion.qualificou - funilUnion.qualif_ia) : 0
   const propostasClientes = orcamentosReais ?? 0
   const propostasBrutas = orc?.propostasBrutas ?? 0
   const vendasQtd = vendas?.qtd ?? 0
@@ -190,10 +205,12 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
         <Metric
           label="Qualificados"
           valor={funilUnionPendente ? 'Carregando…' : funilUnion === undefined ? 'Indisponível' : n(qualificados)}
-          secundario={funilUnion !== undefined && data.kpiTotal.valor > 0 ? `${pct((qualificados / data.kpiTotal.valor) * 100, 0)} dos leads` : undefined}
+          secundario={funilUnion !== undefined && baseQualificados > 0
+            ? `${pct((qualificados / baseQualificados) * 100, 0)} dos leads${qualificadosSoEtiqueta > 0 ? ` · ${n(qualificadosSoEtiqueta)} pela etiqueta` : ''}`
+            : undefined}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Qualificado pela IA OU já com etiqueta de avanço do vendedor (novo lead, follow-up, quente…)."
+          ajuda="Qualificado pela IA OU com etiqueta que só existe depois de conversa com o vendedor: LEAD QUENTE, FOLLOW UP, AGENDAMENTO, ORÇAMENTO ou VENDIDO. NOVO LEAD, PROSPECÇÃO, 2ª TENTATIVA e INTERESSE FUTURO não contam: são etapa da cadência, não qualificação. A etapa Qualificou do funil abaixo conta só a IA; a diferença entre os dois é o 'pela etiqueta'."
         />
         <Metric
           label="Clientes com proposta"
@@ -275,7 +292,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
 
       {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
       <div className={esmaece(decisoesPendentes)} aria-busy={decisoesPendentes}>
-        {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} onIr={ir} />}
+        {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} vendedoresComProposta={vendedoresComProposta} onIr={ir} />}
       </div>
 
       {/* ── 5. Quem está entregando? ────────────────────────────────── */}

@@ -4,6 +4,7 @@ import type { DashboardData } from '@/hooks/useDashboard'
 import type { useDashboardEtiquetas } from '@/hooks/useDashboardEtiquetas'
 import type { VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { RISCO_MAX_HORAS, RISCO_TOP, responsavelDoRisco } from '@/lib/dashboard-risco'
+import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
 import { Card, CardHeader } from '../ui/Card'
 import { JanelaBadge } from '../ui/JanelaBadge'
 import { useJanela } from '../DashboardFilterContext'
@@ -80,12 +81,15 @@ export function AcoesPrioritarias({
   etq,
   vendFunil,
   positivo,
+  vendedoresComProposta,
   onIr,
 }: {
   data: DashboardData
   etq: ReturnType<typeof useDashboardEtiquetas>['data']
   vendFunil: VendedorFunilRow[] | undefined
   positivo: PositivoDestaques
+  /** 1º nome em CAIXA de quem montou proposta no builder no período. */
+  vendedoresComProposta: Set<string>
   onIr: (tab: TabId, anchor?: string) => void
 }) {
   const { periodoLabel } = useJanela()
@@ -115,10 +119,11 @@ export function AcoesPrioritarias({
       })
     }
 
-    // 2. Lead sem etiqueta = invisível no funil.
-    const semEtq = (vendFunil ?? []).reduce((s, v) => s + v.sem_etiqueta, 0)
+    // 2. Lead sem etiqueta = invisível no funil. Sem o dono: o WhatsApp dele não é carteira.
+    const equipeFunil = (vendFunil ?? []).filter(v => !foraDoRanking(v.vendedor))
+    const semEtq = equipeFunil.reduce((s, v) => s + v.sem_etiqueta, 0)
     if (semEtq >= 20) {
-      const piores = [...(vendFunil ?? [])]
+      const piores = [...equipeFunil]
         .filter(v => v.sem_etiqueta >= 8)
         .sort((a, b) => b.sem_etiqueta - a.sem_etiqueta)
         .slice(0, 2)
@@ -134,13 +139,21 @@ export function AcoesPrioritarias({
     }
 
     // 3. Vendedor com lead e zero proposta.
-    if (etq && etq.sem_orc_vendedores.length > 0) {
+    // A RPC decide "sem proposta" pela ETIQUETA de orçamento no WhatsApp, não pelo
+    // builder: em 19/10 listava IGOR, que tinha montado 46 propostas no mês. Aqui
+    // vale o builder (a mesma fonte do card "Clientes com proposta"), e saem o dono
+    // e a ANA, que é a IA de atendimento e não monta orçamento.
+    const semOrc = (etq?.sem_orc_vendedores ?? []).filter(v => {
+      const nome = String(v ?? '').trim().split(/\s+/)[0]?.toUpperCase() ?? ''
+      return nome !== '' && nome !== 'ANA' && !foraDoRanking(v) && !vendedoresComProposta.has(nome)
+    })
+    if (semOrc.length > 0) {
       out.push({
         prioridade: 'alta',
-        titulo: `${etq.sem_orc_vendedores.length} vendedor(es) com lead e nenhuma proposta enviada`,
-        motivo: 'Recebeu lead no período e não montou um orçamento sequer.',
-        quantidade: etq.sem_orc_vendedores.length,
-        responsavel: etq.sem_orc_vendedores.slice(0, 3).join(', '),
+        titulo: `${semOrc.length} vendedor(es) com lead e nenhuma proposta montada`,
+        motivo: 'Recebeu lead no período e não montou um orçamento sequer no CRM.',
+        quantidade: semOrc.length,
+        responsavel: semOrc.slice(0, 3).join(', '),
         destino: { tab: 'equipe' },
       })
     }
@@ -168,7 +181,7 @@ export function AcoesPrioritarias({
     }
 
     return out.sort((a, b) => ORDEM[a.prioridade] - ORDEM[b.prioridade]).slice(0, 5)
-  }, [data.leadsEmRisco, etq, vendFunil])
+  }, [data.leadsEmRisco, etq, vendFunil, vendedoresComProposta])
 
   // Metade "reforçar". Mesmos cortes do original: cobertura só entra a partir de
   // 55% (abaixo disso não é destaque, é o normal) e negociação só com R$ > 0.

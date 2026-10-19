@@ -5,6 +5,9 @@ import { parseCustomRange, type DashboardPreset } from './useDashboard'
 // Funil com "Qualificou" = qualificado pela IA OU etiqueta de avanço do vendedor
 // (e "Engajou" = respondeu à IA OU vendedor já etiquetou) — mantém o funil
 // monotônico. Respeita o período (preset) do Dashboard.
+// "Avanço" é só LEAD QUENTE / FOLLOW UP / AGENDAMENTO / ORÇAMENTO / VENDIDO: NOVO LEAD,
+// PROSPECÇÃO e 2ª TENTATIVA são etapa da cadência e inflavam o card (505 × 255, 19/10/2026).
+// A regra mora na RPC: supabase/migrations/20261019120000_funil_union_avanco_real.sql
 export interface FunilUnion {
   entrou: number
   engajou: number

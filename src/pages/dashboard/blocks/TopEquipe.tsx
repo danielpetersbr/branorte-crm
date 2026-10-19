@@ -1,5 +1,6 @@
 import { ArrowRight, AlertTriangle } from 'lucide-react'
 import type { CorridaVendedor } from '@/hooks/useVendasReais'
+import { soVendedores } from '@/lib/vendedores-fora-do-ranking'
 import { Card, CardHeader } from '../ui/Card'
 import { JanelaBadge } from '../ui/JanelaBadge'
 import { brl, n, pct, primeiroNome } from '../ui/format'
@@ -25,7 +26,9 @@ export function TopEquipe({
   degradado: boolean
   onVerTodos: () => void
 }) {
-  const linhas = [...(corrida ?? [])].sort((a, b) => b.valor - a.valor)
+  // O dono fecha venda de verdade, mas não entra em ranking de vendedor
+  // (em 19/10 ele aparecia em 4º, com a meta individual de vendedor).
+  const linhas = (corrida ?? []).filter(soVendedores(c => c.vendedor)).sort((a, b) => b.valor - a.valor)
   const top = linhas.slice(0, 5)
   const mesLabel = new Date().toLocaleDateString('pt-BR', { month: 'long' })
 

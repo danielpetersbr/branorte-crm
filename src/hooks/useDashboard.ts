@@ -150,9 +150,26 @@ function ufFrom(tel: string | null): string {
   return ufFromTelefone(tel)
 }
 
+// Dia de Brasília (YYYY-MM-DD). O banco serializa `data` em UTC: cortar a string ISO
+// jogava o lead das 21h–24h no dia seguinte (16/10: 59 no gráfico × 51 de verdade) e
+// o gráfico divergia do tile "Atendimentos hoje", que já conta no fuso daqui.
+const DIA_SP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' })
+
+function diaSP(d: Date): string {
+  return DIA_SP.format(d)
+}
+
+/** Soma dias a um 'YYYY-MM-DD' sem passar pelo fuso do navegador. */
+function somaDias(dia: string, n: number): string {
+  const d = new Date(`${dia}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
 function dayKey(iso: string | null | undefined): string | null {
   if (!iso) return null
-  return iso.slice(0, 10)
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? null : diaSP(d)
 }
 
 function hourOf(iso: string | null | undefined): number | null {
@@ -212,14 +229,20 @@ export function rangeForPreset(preset: DashboardPreset, now: Date): DateRange | 
   return null
 }
 
-// Janela "anterior" pro delta (mesma duracao, deslocada pra tras)
-function previousRange(r: DateRange | null): DateRange | null {
+// Janela "anterior" pro delta. Compara o MESMO pedaço já decorrido:
+// - "Este mês" volta pro 1º do mês anterior (antes eram os últimos N dias do mês
+//   anterior: em 19/10 o "+20%" comparava com 12–30/09; contra 01–19/09 era −17%);
+// - o período atual só tem dado até AGORA, então o anterior para na mesma hora
+//   (hoje parcial contra um dia inteiro derrubava o delta toda manhã).
+export function previousRange(r: DateRange | null, preset: DashboardPreset = '', now: Date = new Date()): DateRange | null {
   if (!r) return null
-  const ms = r.to.getTime() - r.from.getTime()
-  return {
-    from: new Date(r.from.getTime() - ms - 1),
-    to: new Date(r.from.getTime() - 1),
-  }
+  const decorrido = Math.min(now.getTime(), r.to.getTime()) - r.from.getTime()
+  const from = preset === 'mes'
+    ? new Date(r.from.getFullYear(), r.from.getMonth() - 1, 1)
+    : new Date(r.from.getTime() - (r.to.getTime() - r.from.getTime()) - 1)
+  // Mês anterior mais curto (31/03 → fevereiro): não deixa o anterior invadir o atual.
+  const to = new Date(Math.min(from.getTime() + decorrido, r.from.getTime() - 1))
+  return { from, to }
 }
 
 function inRange(iso: string | null | undefined, r: DateRange | null): boolean {
@@ -445,8 +468,8 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
   const { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes } = raw
   const now = new Date()
   const range = rangeForPreset(preset, now)
-  const prev = previousRange(range)
-  const todayIso = now.toISOString().slice(0, 10)
+  const prev = previousRange(range, preset, now)
+  const todayIso = diaSP(now)
 
   // Filtra rows por DATA DE CHEGADA (data/created_at), igual /atendimentos.
   // Garante que Dashboard e Atendimentos mostram os mesmos números.
@@ -564,8 +587,8 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
   const projecao = ritmoDia * diasNoMes
 
   // Janela do gráfico "leads por dia" — SEMPRE últimos 30 dias (independente do filtro)
-  const chart30start = new Date(now); chart30start.setDate(chart30start.getDate() - 29); chart30start.setHours(0, 0, 0, 0)
-  const chartStartIso = chart30start.toISOString().slice(0, 10)
+  // Dias de Brasília, como as séries de propostas e ligações do mesmo gráfico.
+  const chartStartIso = somaDias(todayIso, -29)
 
   let completos = 0, parciais = 0, vazios = 0
 
@@ -788,13 +811,9 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     }
   }
   const allDays: { dia: string; total: number; qualificados: number }[] = []
-  const cursor = new Date(chart30start)
-  const endDate = now
-  while (cursor <= endDate) {
-    const k = cursor.toISOString().slice(0, 10)
+  for (let k = chartStartIso; k <= todayIso; k = somaDias(k, 1)) {
     const d = byDay.get(k) ?? { total: 0, qualificados: 0 }
     allDays.push({ dia: k, total: d.total, qualificados: d.qualificados })
-    cursor.setDate(cursor.getDate() + 1)
   }
   const firstActive = allDays.findIndex(d => d.total > 0)
   const leadsPorDia = firstActive >= 0 ? allDays.slice(firstActive) : allDays
@@ -932,7 +951,7 @@ function buildSparkSeries(
   const botao = new Array(buckets).fill(0)
   const ms = range.to.getTime() - range.from.getTime()
   const bucketMs = ms / buckets || 1
-  const today = new Date().toISOString().slice(0, 10)
+  const today = diaSP(new Date())
 
   for (const r of rows) {
     // Bucketiza por r.data (chegada) — MESMO campo do KPI; senão a curva não bate com o número.
@@ -942,7 +961,7 @@ function buildSparkSeries(
     if (t < range.from.getTime() || t > range.to.getTime()) continue
     const idx = Math.min(buckets - 1, Math.max(0, Math.floor((t - range.from.getTime()) / bucketMs)))
     total[idx]++
-    if (refIso.slice(0, 10) === today) hoje[idx]++
+    if (dayKey(refIso) === today) hoje[idx]++
     if (normQuando(r.quando_investir) === 'Agora') quentes[idx]++
     if (isQualificadoBranorte(r)) qualificados[idx]++   // mesma def do KPI Qualificados
     if (r.tocou_botao_em) botao[idx]++
