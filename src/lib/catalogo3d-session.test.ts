@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { catalogo3dAccessToken, catalogo3dSessionReply } from './catalogo3d-session'
+import { catalogo3dAccessToken, catalogo3dSessionReply, podeVerCatalogo3d } from './catalogo3d-session'
 
 const ownerId = '9cf979c3-17cc-4aee-b692-ff9d1eea5540'
 const origin = 'https://branorte-configurador-3d.vercel.app'
@@ -50,4 +50,12 @@ test('sessão expirada, token ausente e logout nunca devolvem credencial', () =>
     assert.equal(catalogo3dSessionReply(request, frame, rejectedSession, profile, now)?.accessToken, null)
   }
   assert.equal(catalogo3dAccessToken(session, profile, now), 'test-access-token')
+})
+
+test('atalho da biblioteca de blocos só aparece para a conta dona do catálogo', () => {
+  assert.equal(podeVerCatalogo3d(profile), true)
+  assert.equal(podeVerCatalogo3d({ ...profile, id: 'outro-admin' }), false)
+  assert.equal(podeVerCatalogo3d({ ...profile, role: 'vendor' }), false)
+  assert.equal(podeVerCatalogo3d({ ...profile, approved_at: null }), false)
+  assert.equal(podeVerCatalogo3d(null), false)
 })

@@ -136,7 +136,7 @@ test('menu do estúdio fica disponível apenas ao administrador', () => {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText
   for (const role of ['admin', 'financeiro', 'marketing', 'vendor', 'visualizador', 'mapa', 'representante', 'consultor', 'mapa_visual']) {
-    const context = { profile: { role }, can: () => true, ...Object.fromEntries([...icons].map(icon => [icon, icon])) }
+    const context = { profile: { role }, can: () => true, podeVerCatalogo3d: () => false, ...Object.fromEntries([...icons].map(icon => [icon, icon])) }
     const destinations = vm.runInNewContext(code, context) as string[]
     assert.equal(destinations.includes('/estudio-video'), role === 'admin', role)
   }
