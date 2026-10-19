@@ -5,7 +5,7 @@ import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { memoPorSnapshot } from '@/lib/memo-por-snapshot'
 import { decodeDashboardSnapshot } from '@/lib/dashboard-snapshot'
-import { RISCO_TOP, entraEmRisco, horasSemAtividade } from '@/lib/dashboard-risco'
+import { RISCO_TOP, entraEmRisco, horasSemAtividade, vendedoresDoRisco } from '@/lib/dashboard-risco'
 
 
 // A RPC lê o conjunto completo (teto de 50 mil) uma vez. Período continua client-side
@@ -324,6 +324,13 @@ export interface DashboardData {
   leadAging: LeadAging[]
   slaPorVendedor: SlaVendedor[]
   leadsEmRisco: LeadEmRisco[]
+  /**
+   * A lista INTEIRA de risco, antes do corte em RISCO_TOP. O card somava o R$ só dos 8
+   * maiores (R$ 1,59 mi) quando eram 47 leads e R$ 3,79 mi (19/10/2026).
+   * `indisponivel`: a busca de orçamento/situação/WhatsApp falhou — sem ela o valor
+   * vira 0 e vendido/perdido não sai da lista, então o número não é confiável.
+   */
+  riscoResumo: { qtd: number; valor: number; vendedores: { nome: string; qtd: number }[]; indisponivel: boolean }
   forecast: {
     vendidoMes: number
     pedidosMes: number
@@ -370,6 +377,10 @@ interface DashboardRaw {
   /** fone_canon → epoch ms do ÚLTIMO orçamento montado (entra na "última atividade" do risco). */
   orcEmByCanon: Map<string, number>
   fechados: Set<string>
+  /** fone_canon → epoch ms da última mensagem no WhatsApp de qualquer vendedor (últimos 15 dias). */
+  msgWaByCanon: Map<string, number>
+  /** true quando alguma das RPCs de enriquecimento falhou (os mapas acima estão incompletos). */
+  enriquecimentoFalhou: boolean
   criativoNomes: Map<string, string>
 }
 
@@ -413,12 +424,15 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       const orcValorByCanon = new Map<string, number>()
       const orcEmByCanon = new Map<string, number>()
       const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
+      const msgWaByCanon = new Map<string, number>()
+      let enriquecimentoFalhou = false
       const enriquecerTelefones = async () => {
         try {
           const [orcRes, sitRes] = await Promise.all([
             (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }).abortSignal(signal),
             (supabase as any).rpc('dashboard_fone_situacao').abortSignal(signal),
           ])
+          if (orcRes?.error || sitRes?.error) enriquecimentoFalhou = true
           if (!orcRes?.error) {
             for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number; ultimo_em?: string | null }[]) {
               if (!o?.fone_canon) continue
@@ -430,11 +444,18 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
             }
           }
           if (!sitRes?.error) {
-            for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string }[]) {
-              if (s?.fone_canon && (s.situacao === 'vendido' || s.situacao === 'morto')) fechados.add(String(s.fone_canon))
+            for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string; ultima_msg_wa?: string | null }[]) {
+              if (!s?.fone_canon) continue
+              if (s.situacao === 'vendido' || s.situacao === 'morto') fechados.add(String(s.fone_canon))
+              const em = s.ultima_msg_wa ? new Date(s.ultima_msg_wa).getTime() : NaN
+              if (Number.isFinite(em)) msgWaByCanon.set(String(s.fone_canon), em)
             }
           }
-        } catch { /* maps vazios -> fallback; dashboard não quebra */ }
+        } catch {
+          // Mapas vazios: o dashboard não quebra, mas o card de risco passa a dizer
+          // "indisponível" em vez de mostrar uma lista sem valor e sem vendido/perdido.
+          enriquecimentoFalhou = true
+        }
       }
       // Catálogo e enriquecimento são independentes: uma só etapa de espera.
       // Mantém a deduplicação e o cache de 30 min dos nomes, sem bloquear as RPCs.
@@ -447,7 +468,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
         enriquecerTelefones(),
       ])
       signal.throwIfAborted()
-      return { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes }
+      return { rows, orcValorByCanon, orcEmByCanon, fechados, msgWaByCanon, enriquecimentoFalhou, criativoNomes }
     },
     staleTime: 120_000,
     refetchInterval: 180_000,
@@ -465,14 +486,15 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
 // ============================================================================
 
 function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
-  const { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes } = raw
+  const { rows, orcValorByCanon, orcEmByCanon, fechados, msgWaByCanon, enriquecimentoFalhou, criativoNomes } = raw
   const now = new Date()
   const range = rangeForPreset(preset, now)
   const prev = previousRange(range, preset, now)
   const todayIso = diaSP(now)
 
-  // Filtra rows por DATA DE CHEGADA (data/created_at), igual /atendimentos.
-  // Garante que Dashboard e Atendimentos mostram os mesmos números.
+  // Filtra rows por DATA DE CHEGADA (data/created_at). ⚠️ NÃO é o filtro do
+  // /atendimentos: lá o período é pela ÚLTIMA mensagem e lead sem telefone some, então
+  // o mesmo "Este mês" dá outro número (19/10/2026: 1.017 aqui × 1.173 lá).
   const filtered = range ? rows.filter(r => inRange(r.data, range)) : rows
   const filteredPrev = prev ? rows.filter(r => inRange(r.data, prev)) : []
 
@@ -730,13 +752,15 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     const status = (r.status_real || '').toLowerCase()
     const fc = foneCanon(r.telefone)
     // Exclui quem já VENDEU ou foi PERDIDO pela etiqueta do funil (status_real não captura isso).
-    if (status.includes('vendid') || status.includes('perdid') || !r.last_message_at || (fc != null && fechados.has(fc))) continue
-    const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
+    if (status.includes('vendid') || status.includes('perdid') || (fc != null && fechados.has(fc))) continue
     const valor = orcValorByCanon.get(fc ?? '') ?? 0
-    if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
-    else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
-    else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
-    else if (ageH >= 720) { agingMais++; agingValorMais += valor }
+    if (r.last_message_at) {
+      const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
+      if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
+      else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
+      else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
+      else if (ageH >= 720) { agingMais++; agingValorMais += valor }
+    }
 
     // Lead em risco = quente OU com orçamento, parado entre 24h e 14 dias (29/09/2026).
     // Sem o teto de 14 dias o card Crítico ficava preso em orçamentos grandes de 2-4
@@ -744,7 +768,9 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     // não só a última mensagem do canal da IA. Regra e números: src/lib/dashboard-risco.ts.
     // O aging acima segue em `ageH` (última mensagem) de propósito — é outra pergunta.
     const momentoR = normQuando(r.quando_investir)
-    const horasRisco = horasSemAtividade(r.last_message_at, orcEmByCanon.get(fc ?? ''), now.getTime())
+    // O risco não depende de mensagem no canal da IA: lead com orçamento ou conversa no
+    // WhatsApp do vendedor e nada na IA também entra (antes o `continue` acima o pulava).
+    const horasRisco = horasSemAtividade(r.last_message_at, orcEmByCanon.get(fc ?? ''), now.getTime(), msgWaByCanon.get(fc ?? ''))
     if (entraEmRisco(momentoR, valor, horasRisco)) {
       candidatosRisco.push({
         id: r.id,
@@ -889,6 +915,12 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
   }).sort((a, b) => b.totalLeads - a.totalLeads)
 
   // ============================ Leads em risco (top RISCO_TOP) ============================
+  const riscoResumo = {
+    qtd: candidatosRisco.length,
+    valor: candidatosRisco.reduce((s, l) => s + (l.valor ?? 0), 0),
+    vendedores: vendedoresDoRisco(candidatosRisco),
+    indisponivel: enriquecimentoFalhou,
+  }
   const leadsEmRisco = candidatosRisco
     .sort((a, b) => {
       // Prioriza valor; em caso de empate, idade
@@ -918,6 +950,7 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     leadAging,
     slaPorVendedor,
     leadsEmRisco,
+    riscoResumo,
     forecast: {
       vendidoMes,
       pedidosMes,

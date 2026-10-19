@@ -11,6 +11,12 @@ export interface VendedorCobertura {
   total_passado: number
   com_etiqueta: number
   sem_etiqueta: number
+  /**
+   * false = o WhatsApp do vendedor não está sendo lido (JARDEL: 2 conversas contra 500+
+   * dos outros, 19/10/2026). A etiqueta conta só no WhatsApp DELE, então a % seria 0
+   * por falta de dado, não por falta de etiqueta.
+   */
+  wa_capturado?: boolean
 }
 
 function rangeFromPreset(preset: DashboardPreset): { from: string | null; to: string | null } {

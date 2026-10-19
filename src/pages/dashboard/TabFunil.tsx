@@ -321,9 +321,11 @@ function PropostasResumoView({ orc, periodoLabel }: { orc: OrcamentosResumo; per
 // carregava hsl() literal, que não respondia ao tema escuro).
 const PROP_CAT_META: Record<PropCategoria, { label: string; barra: string; texto: string }> = {
   orcamento:    { label: 'Orçamento enviado',  barra: 'bg-warning',    texto: 'text-warning' },
-  quente:       { label: 'Quente / follow-up', barra: 'bg-danger',     texto: 'text-danger' },
+  quente:       { label: 'Follow-up / agendamento', barra: 'bg-danger', texto: 'text-danger' },
   lead_quente:  { label: 'Lead quente',        barra: 'bg-danger/70',  texto: 'text-danger' },
-  novo:         { label: 'Novo (sem mexer)',   barra: 'bg-info',       texto: 'text-info' },
+  // Desde 19/10/2026 inclui PROSPECÇÃO, 2ª TENTATIVA, INTERESSE FUTURO e AGUARDANDO
+  // (etapa da cadência, não negociação) — ver a RPC dashboard_propostas_status.
+  novo:         { label: 'Início (novo, prospecção, 2ª tentativa, aguardando)', barra: 'bg-info', texto: 'text-info' },
   sem_etiqueta: { label: 'Sem etiqueta',       barra: 'bg-ink-faint',  texto: 'text-ink-muted' },
   vendido:      { label: 'Vendido',            barra: 'bg-success',    texto: 'text-success' },
   perdido:      { label: 'Perdido',            barra: 'bg-ink-muted',  texto: 'text-ink-muted' },

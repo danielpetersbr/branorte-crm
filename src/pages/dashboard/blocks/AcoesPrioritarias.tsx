@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronRight, CheckCircle2, Flame, Target, TrendingUp, T
 import type { DashboardData } from '@/hooks/useDashboard'
 import type { useDashboardEtiquetas } from '@/hooks/useDashboardEtiquetas'
 import type { VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
-import { RISCO_MAX_HORAS, RISCO_TOP, responsavelDoRisco } from '@/lib/dashboard-risco'
+import { RISCO_MAX_HORAS } from '@/lib/dashboard-risco'
 import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
 import { Card, CardHeader } from '../ui/Card'
 import { JanelaBadge } from '../ui/JanelaBadge'
@@ -98,23 +98,29 @@ export function AcoesPrioritarias({
     const out: Acao[] = []
 
     // 1. Lead quente sumido — o mais caro de perder.
-    if (data.leadsEmRisco.length > 0) {
-      const qtd = data.leadsEmRisco.length
-      const valor = data.leadsEmRisco.reduce((s, l) => s + (l.valor ?? 0), 0)
-      // O dono fora do ranking pode estar na lista (o lead é real), mas não é quem
-      // o gerente cobra — pula para o 1º vendedor de verdade (29/09/2026).
-      const dono = responsavelDoRisco(data.leadsEmRisco)
+    // Quantidade, R$ e responsáveis vêm da lista INTEIRA (riscoResumo), não dos 8 que a
+    // aba Funil mostra: o card somava só os 8 maiores e apontava 1 responsável para
+    // leads de 10 vendedores (19/10/2026). A janela vai no título porque quem passou de
+    // 14 dias parado não está aqui por decisão (29/09/2026), não por esquecimento.
+    const risco = data.riscoResumo
+    if (risco.indisponivel) {
       out.push({
         prioridade: 'critica',
-        // o hook corta a lista em 8 — não afirmar que são exatamente 8.
-        // A janela vai no título porque o hook agora ignora quem passou de 14 dias
-        // parado (29/09/2026): sem ela, "sem resposta há mais de 24h" prometeria
-        // TODOS os parados, e o de 4 meses não está aqui por decisão, não por esquecimento.
-        titulo: `${qtd >= RISCO_TOP ? `${RISCO_TOP}+` : n(qtd)} lead${qtd > 1 ? 's' : ''} quente${qtd > 1 ? 's' : ''} sem resposta há mais de 24h (até ${RISCO_MAX_HORAS / 24} dias)`,
-        motivo: 'Já pediram proposta e pararam de responder. Cada hora esfria.',
-        quantidade: qtd,
-        valor: valor > 0 ? valor : undefined,
-        responsavel: dono,
+        titulo: 'Leads quentes parados: não deu para conferir agora',
+        motivo: 'A busca de orçamentos e conversas do WhatsApp falhou. Sem ela não dá para dizer quem está parado nem quanto está em jogo. Use Atualizar dados.',
+        quantidade: 0,
+        destino: { tab: 'funil', anchor: 'leads-resgatar' },
+      })
+    } else if (risco.qtd > 0) {
+      const top = risco.vendedores.slice(0, 3).map(v => `${primeiroNome(v.nome)} (${n(v.qtd)})`)
+      const resto = risco.vendedores.length - top.length
+      out.push({
+        prioridade: 'critica',
+        titulo: `${n(risco.qtd)} lead${risco.qtd > 1 ? 's' : ''} com proposta ou querendo comprar agora, sem movimento há mais de 24h (até ${RISCO_MAX_HORAS / 24} dias)`,
+        motivo: 'Sem mensagem no WhatsApp, no atendimento nem proposta nova desde então. É a situação de agora: não segue o filtro de período.',
+        quantidade: risco.qtd,
+        valor: risco.valor > 0 ? risco.valor : undefined,
+        responsavel: top.length > 0 ? `${top.join(', ')}${resto > 0 ? ` e mais ${resto}` : ''}` : undefined,
         destino: { tab: 'funil', anchor: 'leads-resgatar' },
       })
     }
@@ -158,12 +164,14 @@ export function AcoesPrioritarias({
       })
     }
 
-    // 4. Órfãos parados no começo do funil.
+    // 4. Parados no começo do funil. A RPC passou a exigir também zero mensagem no
+    // WhatsApp e a tirar o dono (19/10/2026: os 6 "órfãos" eram do dono e tinham
+    // conversa no mesmo dia — "parado" olhava só quando a etiqueta mudou).
     if (etq && etq.alertas.leads_orfaos > 0) {
       out.push({
         prioridade: 'media',
-        titulo: `${n(etq.alertas.leads_orfaos)} leads órfãos parados há mais de 7 dias`,
-        motivo: 'Entraram, ninguém assumiu, e continuam no começo do funil.',
+        titulo: `${n(etq.alertas.leads_orfaos)} leads parados no começo do funil há mais de 7 dias`,
+        motivo: 'Novo lead, prospecção ou 2ª tentativa, sem etiqueta nova nem mensagem no WhatsApp há mais de 7 dias.',
         quantidade: etq.alertas.leads_orfaos,
         destino: { tab: 'funil', anchor: 'leads-orfaos' },
       })
@@ -181,7 +189,7 @@ export function AcoesPrioritarias({
     }
 
     return out.sort((a, b) => ORDEM[a.prioridade] - ORDEM[b.prioridade]).slice(0, 5)
-  }, [data.leadsEmRisco, etq, vendFunil, vendedoresComProposta])
+  }, [data.riscoResumo, etq, vendFunil, vendedoresComProposta])
 
   // Metade "reforçar". Mesmos cortes do original: cobertura só entra a partir de
   // 55% (abaixo disso não é destaque, é o normal) e negociação só com R$ > 0.
@@ -190,7 +198,8 @@ export function AcoesPrioritarias({
     if (positivo.topOrc) {
       out.push({
         Icon: Trophy,
-        titulo: `${primeiroNome(positivo.topOrc.vendedor)} lidera em propostas montadas`,
+        // Ordena por R$, não por quantidade — o título tem que dizer isso.
+        titulo: `${primeiroNome(positivo.topOrc.vendedor)} lidera em R$ de propostas montadas`,
         motivo: `${brl(positivo.topOrc.brl)} em ${n(positivo.topOrc.n)} ${positivo.topOrc.n === 1 ? 'cliente' : 'clientes'}.`,
       })
     }
@@ -199,14 +208,14 @@ export function AcoesPrioritarias({
       out.push({
         Icon: Target,
         titulo: `${primeiroNome(c.nome)} etiqueta ${c.pct}% dos clientes que recebe`,
-        motivo: `${n(c.com)} de ${n(c.total)} clientes passados entraram no funil — o resto do time some com o lead.`,
+        motivo: `${n(c.com)} de ${n(c.total)} clientes passados têm etiqueta no WhatsApp dele.`,
       })
     }
     if (positivo.rNegoc > 0) {
       out.push({
         Icon: Flame,
         titulo: `${brl(positivo.rNegoc)} em negociação quente`,
-        motivo: "Propostas com etiqueta orçamento / quente / lead quente — não conta 'novo' nem sem-etiqueta.",
+        motivo: 'Proposta do período cujo cliente está em ORÇAMENTO ENVIADO, FOLLOW UP, AGENDAMENTO ou LEAD QUENTE. Prospecção, 2ª tentativa, interesse futuro e sem etiqueta não contam.',
       })
     }
     return out
@@ -237,8 +246,8 @@ export function AcoesPrioritarias({
 
           {reforcar.length === 0 ? (
             <p className="mt-3 rounded-lg border border-border bg-surface-2 p-3 text-body text-ink-muted">
-              Sem destaque no período. Ninguém montou proposta com valor, ninguém passou de 55% de cobertura de
-              etiqueta e não há R$ em negociação quente.
+              Sem destaque no período. Ninguém montou proposta com valor, nenhum vendedor com 50 clientes ou mais
+              passou de 55% de etiquetagem e não há R$ em negociação quente.
             </p>
           ) : (
             <ul className="mt-3 flex flex-col gap-2">

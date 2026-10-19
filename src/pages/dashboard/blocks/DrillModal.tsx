@@ -22,7 +22,10 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
   const isVendas = kind === 'vendidos' || kind === 'valor'
   const vendasQ = useDashboardVendasDetalhe(preset, isVendas)
   const orcQ = useDashboardOrcamentosDetalhe(preset, kind === 'orcamentos')
-  const [soLead, setSoLead] = useState(true)
+  // Abre em "Todas": o card clicado mostra o total (27 vendas, R$ 734 mil) e o modal
+  // abria filtrado em "Origem comprovada" (6, R$ 171 mil) — número grande diferente
+  // do card que o abriu (19/10/2026).
+  const [soLead, setSoLead] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
   const fecharRef = useRef<HTMLButtonElement>(null)
 
@@ -64,7 +67,9 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
     : 'Valor vendido — de onde vem'
   const subtitle = isVendas
     ? `${n(vQtd)} venda(s) · ${brlFull(vTot)}${soLead ? ' — com origem comprovada até um lead' : ' — todas as vendas do período'}`
-    : `${n(orc.length)} cliente(s) com proposta · ${brlFull(orcValTot)} montados`
+    // valor_total é o da proposta MAIS RECENTE de cada cliente (RPC, 19/10/2026): somar as
+    // re-cotações dava R$ 32,6 mi contra R$ 17,98 mi do bloco "em propostas montadas".
+    : `${n(orc.length)} cliente(s) com proposta · ${brlFull(orcValTot)} na última proposta de cada um`
 
   const thCls = 'text-left py-2 px-2 text-micro font-semibold text-ink-muted whitespace-nowrap'
   const tdCls = 'py-2 px-2 text-body text-ink-muted'
@@ -187,7 +192,7 @@ export function DrillModal({ kind, preset, onClose }: { kind: Kind; preset: Dash
                     <th scope="col" className={thCls}>Cliente</th>
                     <th scope="col" className={thCls}>Telefone</th>
                     <th scope="col" className={`${thCls} text-right`}>Propostas</th>
-                    <th scope="col" className={`${thCls} text-right`}>Valor total</th>
+                    <th scope="col" className={`${thCls} text-right`} title="Valor da proposta mais recente do cliente no período">Última proposta</th>
                     <th scope="col" className={thCls}>Última</th>
                     <th scope="col" className={thCls}>Vendedor</th>
                     <th scope="col" className={thCls}>Origem</th>

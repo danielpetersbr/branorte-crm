@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  RISCO_MAX_HORAS, entraEmRisco, horasSemAtividade, responsavelDoRisco,
+  RISCO_MAX_HORAS, entraEmRisco, horasSemAtividade, responsavelDoRisco, vendedoresDoRisco,
 } from './dashboard-risco'
 
 const AGORA = Date.parse('2026-09-29T12:00:00Z')
@@ -44,4 +44,19 @@ test('responsável do card pula o dono e quem não tem vendedor', () => {
   assert.equal(responsavelDoRisco([{ vendedor: null }, { vendedor: 'DANIEL' }, { vendedor: 'EDER' }]), 'EDER')
   assert.equal(responsavelDoRisco([{ vendedor: 'DANIEL' }]), undefined)
   assert.equal(responsavelDoRisco([]), undefined)
+})
+
+test('mensagem no WhatsApp do vendedor conta como atividade (19/10/2026)', () => {
+  // Barnabé: 270h "parado" pela IA e pelo orçamento, mas o cliente escreveu pro Ramon há 100h.
+  assert.equal(horasSemAtividade(iso(270), AGORA - 300 * H, AGORA, AGORA - 100 * H), 100)
+  // sem a terceira data, continua igual ao de antes
+  assert.equal(horasSemAtividade(iso(270), AGORA - 300 * H, AGORA), 270)
+})
+
+test('vendedoresDoRisco conta a lista inteira e tira o dono', () => {
+  const l = [
+    { vendedor: 'Igor' }, { vendedor: 'Ramon' }, { vendedor: 'Igor' },
+    { vendedor: 'Daniel' }, { vendedor: null }, { vendedor: 'Igor' },
+  ]
+  assert.deepEqual(vendedoresDoRisco(l), [{ nome: 'Igor', qtd: 3 }, { nome: 'Ramon', qtd: 1 }])
 })

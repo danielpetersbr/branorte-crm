@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { rangeForPreset, type DashboardPreset } from './useDashboard'
 import { soVendedores } from '@/lib/vendedores-fora-do-ranking'
 import { recortarPeriodo } from '@/lib/periodo-preset'
+import { foneCanon } from '@/lib/fone-canon'
 
 // Resumo das PROPOSTAS montadas no builder de orçamento (tabela orcamentos_gerados).
 // É a única fonte real de R$ no fluxo de lead. O status 'enviado'/'rascunho' do builder
@@ -36,8 +37,12 @@ interface OrcRow {
   cliente_nome: string | null
 }
 
-/** Teto de linhas por consulta. Ver o aviso de truncamento dentro do queryFn. */
-const TETO = 20_000
+/**
+ * Teto de linhas por consulta. Ver o aviso de truncamento dentro do queryFn.
+ * Era 20.000, mas o PostgREST corta em 10.000 SEM avisar: com o teto acima do corte,
+ * o aviso nunca disparava (19/10/2026).
+ */
+const TETO = 10_000
 
 export function useOrcamentosResumo(preset: DashboardPreset = '') {
   return useQuery({
@@ -78,6 +83,16 @@ export function useOrcamentosResumo(preset: DashboardPreset = '') {
 
       type Acc = { vendedor: string; n: number; propostasN: number; brl: number; maxMs: number; clientes: Set<string> }
       const map = new Map<string, Acc>()
+      // Totais GLOBAIS por cliente (19/10/2026): somar o `porVendedor` contava 2× o
+      // cliente cotado por 2 vendedores — 134 clientes contra 131 do card e R$ 1 mi a
+      // mais em "propostas montadas". Chave igual à da RPC do card: fone canônico,
+      // senão o nome. `porVendedor` continua por vendedor, que é o que ele mostra.
+      const globais = new Map<string, number>()
+      rows.forEach((r, i) => {
+        const chaveGlobal = foneCanon(r.cliente_dados?.fone)
+          ?? (String(r.cliente_dados?.nome ?? r.cliente_nome ?? '').trim().toLowerCase() || `__sem-cliente-${i}`)
+        if (!globais.has(chaveGlobal)) globais.set(chaveGlobal, Number(r.total_proposta) || 0)  // 1º visto = mais recente
+      })
       rows.forEach((r, i) => {
         const nome = (r.vendedor_nome || '—').trim() || '—'
         const fone = String(r.cliente_dados?.fone ?? '').replace(/\D/g, '')
@@ -107,8 +122,8 @@ export function useOrcamentosResumo(preset: DashboardPreset = '') {
           ultimaDias: a.maxMs > 0 ? Math.floor((agora - a.maxMs) / 86_400_000) : null,
         }))
         .sort((a, b) => b.brl - a.brl)
-      const geradas = porVendedor.reduce((s, v) => s + v.n, 0)
-      const valorTotalBRL = porVendedor.reduce((s, v) => s + v.brl, 0)
+      const geradas = globais.size
+      const valorTotalBRL = [...globais.values()].reduce((s, v) => s + v, 0)
       return {
         geradas,
         propostasBrutas: rows.length,

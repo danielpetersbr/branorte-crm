@@ -32,12 +32,15 @@ export function FunilResumo({
   funil,
   clientesComProposta,
   vendasComOrigem,
+  vendasTotal,
   periodoLabel,
   onVerDetalhes,
 }: {
   funil: DashboardData['funil'] | undefined
   clientesComProposta: number | undefined
   vendasComOrigem: number | undefined
+  /** Total de vendas do período (o card Vendas), para dizer "6 de 27" e não deixar o 6 parecer o total. */
+  vendasTotal: number | undefined
   periodoLabel: string
   onVerDetalhes: () => void
 }) {
@@ -59,7 +62,10 @@ export function FunilResumo({
         ajuda: 'Clientes distintos com proposta montada no período — o mesmo número do card acima. Conta o cliente venha ele de onde vier, então pode incluir quem não passou por este funil.',
       },
       {
-        nome: 'Comprou',
+        // "rastreado": o 6 é só a venda que dá para ligar a um lead; o card Vendas
+        // logo acima mostra 27 (19/10/2026). Sem o qualificador as duas pareciam
+        // a mesma coisa.
+        nome: 'Comprou (rastreado até o lead)',
         coorte: false,
         valor: vendasComOrigem ?? 0,
         ajuda: 'Venda que dá para rastrear até um lead (pedido → orçamento → telefone). É piso de rastreio, não o total de vendas da fábrica.',
@@ -68,14 +74,6 @@ export function FunilResumo({
   }, [funil, clientesComProposta, vendasComOrigem])
 
   const topo = etapas[0]?.valor || 0
-  if (topo === 0) {
-    return (
-      <Card>
-        <CardHeader title="Funil do período" janela={<JanelaBadge tipo="periodo" label={periodoLabel} />} />
-        <p className="py-5 text-center text-body text-ink-faint">Nenhum lead entrou neste período.</p>
-      </Card>
-    )
-  }
 
   // Maior gargalo = maior queda percentual entre etapas consecutivas DA COORTE.
   let gargaloIdx = -1
@@ -91,8 +89,9 @@ export function FunilResumo({
   const daCoorte = etapas.filter(e => e.coorte)
   const ultimaCoorte = daCoorte[daCoorte.length - 1]
   const conversaoCoorte = topo > 0 && ultimaCoorte ? (ultimaCoorte.valor / topo) * 100 : 0
-  const proposta = etapas.find(e => e.nome === 'Recebeu proposta')?.valor ?? 0
-  const comprou = etapas.find(e => e.nome === 'Comprou')?.valor ?? 0
+  const proposta = clientesComProposta ?? 0
+  const comprou = vendasComOrigem ?? 0
+  const deVendas = vendasTotal != null && vendasTotal > 0 ? ` de ${n(vendasTotal)} vendas` : ''
 
   const linha = (e: Etapa, i: number) => {
     const larguraPct = topo > 0 ? (e.valor / topo) * 100 : 0
@@ -132,7 +131,9 @@ export function FunilResumo({
     <Card>
       <CardHeader
         title="Funil do período"
-        subtitle={`De ${n(topo)} que entraram, ${n(ultimaCoorte?.valor ?? 0)} qualificaram (${pct(conversaoCoorte, 0)}). No período, ${n(proposta)} clientes receberam proposta e ${n(comprou)} compraram — de qualquer época.`}
+        subtitle={topo > 0
+          ? `De ${n(topo)} que entraram, ${n(ultimaCoorte?.valor ?? 0)} qualificaram (${pct(conversaoCoorte, 0)}). No período, ${n(proposta)} clientes receberam proposta e ${n(comprou)}${deVendas} dá para ligar a um lead.`
+          : `Nenhum lead entrou neste período. No período, ${n(proposta)} clientes receberam proposta e ${n(comprou)}${deVendas} dá para ligar a um lead.`}
         // Proposta e compra não são desta safra: a venda de hoje pode ter vindo de
         // um lead de meses atrás. Fica no title pra não virar parágrafo na tela.
         titleHint="Proposta e compra contam o cliente venha de onde vier: a venda de hoje pode ter vindo de um lead de meses atrás. Por isso não têm '% da anterior'."
@@ -143,15 +144,19 @@ export function FunilResumo({
             onClick={onVerDetalhes}
             className="inline-flex min-h-[44px] md:min-h-0 items-center gap-1 rounded-lg px-2 py-1 text-label text-ink-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            Ver funil completo
+            Ver aba Funil
             <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         }
       />
 
-      <ol className="flex flex-col gap-3">
-        {etapas.map((e, i) => (e.coorte ? linha(e, i) : null))}
-      </ol>
+      {topo > 0 ? (
+        <ol className="flex flex-col gap-3">
+          {etapas.map((e, i) => (e.coorte ? linha(e, i) : null))}
+        </ol>
+      ) : (
+        <p className="py-3 text-center text-body text-ink-faint">Nenhum lead entrou neste período.</p>
+      )}
 
       <div className="mt-4 border-t border-border pt-3">
         <p className="mb-3 text-micro text-ink-faint">No mesmo período, de qualquer lead (não só os que entraram acima)</p>

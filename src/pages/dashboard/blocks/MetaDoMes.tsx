@@ -13,7 +13,7 @@ import { brl, brlFull, n, pct } from '../ui/format'
  * nenhum dos 11.583 atendimentos tem esse valor, então dava R$ 0 sempre.
  */
 export function MetaDoMes() {
-  const { data: v, isLoading } = useVendasReais()
+  const { data: v, isLoading, dataUpdatedAt } = useVendasReais()
 
   if (isLoading) {
     return (
@@ -30,9 +30,13 @@ export function MetaDoMes() {
     )
   }
 
-  const hoje = new Date()
-  const diaDoMes = hoje.getDate()
-  const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate()
+  // O calendário sai do DIA EM QUE O DADO FOI LIDO (Brasília), não do relógio da tela:
+  // aberta de 31/10 para 01/11, a tela mostrava "novembro · dia 1" com o vendido de
+  // outubro e uma projeção de R$ 22 mi até o próximo refetch.
+  const [anoRef, mesRef, diaRef] = v.hojeSP.split('-').map(Number)
+  const hoje = new Date(anoRef, mesRef - 1, diaRef)
+  const diaDoMes = diaRef
+  const diasNoMes = new Date(anoRef, mesRef, 0).getDate()
   const diasRestantes = Math.max(0, diasNoMes - diaDoMes)
 
   const vendido = v.vendidoMes
@@ -44,6 +48,9 @@ export function MetaDoMes() {
   const pctProjecao = meta > 0 ? (projecao / meta) * 100 : 0
   const precisaPorDia = diasRestantes > 0 ? falta / diasRestantes : falta
 
+  // Projeção com poucos dias ou poucos pedidos é ruído: em 02/10 um pedido grande dava
+  // "No ritmo da meta · 154%" e no dia 04 já era vermelho. Até lá, não projeta.
+  const cedo = diaDoMes < 7 || v.pedidosMes < 10
   const noRitmo = pctProjecao >= 100
   const perto = pctProjecao >= 85 && pctProjecao < 100
   const Icon = noRitmo ? CheckCircle2 : perto ? TrendingUp : AlertTriangle
@@ -56,6 +63,8 @@ export function MetaDoMes() {
 
   const mesLabel = hoje.toLocaleDateString('pt-BR', { month: 'long' })
   const degradado = v.fonte === 'mirror-fallback'
+  const metaPadrao = v.metaFonte === 'padrao'
+  const lidoAs = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null
 
   return (
     <Card>
@@ -68,13 +77,15 @@ export function MetaDoMes() {
           <span
             title={degradado
               ? 'O Controle não respondeu. Números vindos do espelho local: podem estar atrasados e a meta pode ser a antiga.'
-              : 'Lido ao vivo do sistema de Controle.'}
+              : metaPadrao
+                ? 'Vendas lidas ao vivo do Controle, mas a META não veio (system_settings não respondeu): está sendo usada a meta padrão do código.'
+                : 'Lido ao vivo do sistema de Controle. Relê a cada 3 minutos.'}
             className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-micro ${
-              degradado ? 'border-warning/40 bg-warning-bg text-warning' : 'border-border bg-surface-2 text-ink-muted'
+              degradado || metaPadrao ? 'border-warning/40 bg-warning-bg text-warning' : 'border-border bg-surface-2 text-ink-muted'
             }`}
           >
             {degradado ? <Database className="h-3 w-3" aria-hidden="true" /> : <RadioTower className="h-3 w-3" aria-hidden="true" />}
-            {degradado ? 'espelho (atrasado)' : 'ao vivo · Controle'}
+            {degradado ? 'espelho (atrasado)' : metaPadrao ? 'meta padrão' : 'ao vivo · Controle'}{lidoAs ? ` · ${lidoAs}` : ''}
           </span>
         </div>
         <span className="text-label tabular-nums text-ink-faint">
@@ -94,7 +105,7 @@ export function MetaDoMes() {
           className={`h-full rounded-full ${corBarra} transition-all`}
           style={{ width: `${Math.min(100, Math.max(pctMeta, 0.5))}%` }}
         />
-        {pctProjecao > 0 && pctProjecao < 100 && (
+        {!cedo && pctProjecao > 0 && pctProjecao < 100 && (
           <div
             className="absolute top-0 h-full w-0.5 bg-ink/60"
             style={{ left: `${Math.min(pctProjecao, 99)}%` }}
@@ -103,7 +114,7 @@ export function MetaDoMes() {
         )}
       </div>
       <div className="sr-only" role="status">
-        {situacao}. Vendido {brlFull(vendido)} de {brlFull(meta)}, {pct(pctMeta, 0)} da meta.
+        {cedo ? 'Cedo para projetar' : situacao}. Vendido {brlFull(vendido)} de {brlFull(meta)}, {pct(pctMeta, 0)} da meta.
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-5 lg:grid-cols-4">
@@ -112,7 +123,7 @@ export function MetaDoMes() {
           <div className="text-kpi-sm tabular-nums text-ink">{brl(falta)}</div>
         </div>
         <div>
-          <div className="text-label text-ink-faint">Dias restantes</div>
+          <div className="text-label text-ink-faint" title="Dias corridos depois de hoje. Hoje entra no ritmo (dias já corridos), não aqui.">Dias restantes</div>
           <div className="text-kpi-sm tabular-nums text-ink">{diasRestantes}</div>
         </div>
         <div>
@@ -122,11 +133,22 @@ export function MetaDoMes() {
         </div>
         <div>
           <div className="text-label text-ink-faint">No ritmo atual, fecha</div>
-          <div className={`text-kpi-sm tabular-nums ${cor}`}>{brl(projecao)}</div>
-          <div className={`mt-0.5 inline-flex items-center gap-1 text-micro ${cor}`}>
-            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-            {situacao} · {pct(pctProjecao, 0)}
-          </div>
+          {cedo ? (
+            <>
+              <div className="text-kpi-sm tabular-nums text-ink-faint">—</div>
+              <div className="mt-0.5 text-micro text-ink-faint">
+                cedo para projetar (dia {diaDoMes}, {n(v.pedidosMes)} {v.pedidosMes === 1 ? 'pedido' : 'pedidos'})
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={`text-kpi-sm tabular-nums ${cor}`}>{brl(projecao)}</div>
+              <div className={`mt-0.5 inline-flex items-center gap-1 text-micro ${cor}`}>
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                {situacao} · {pct(pctProjecao, 0)}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </Card>
