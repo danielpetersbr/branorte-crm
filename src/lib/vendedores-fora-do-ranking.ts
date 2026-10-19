@@ -75,6 +75,18 @@ export function foraDoRanking(nome: string | null | undefined): boolean {
   return FORA_DO_RANKING.has(primeiroNomeCaixa(nome))
 }
 
+/**
+ * Contas que NÃO são vendedor: a ANA é a IA de atendimento (19/10/2026 — aparecia na
+ * tabela da Equipe com 189 leads e "etiquetar 37%", e nos órfãos a cobrar).
+ * Diferente do dono: o dono vende de verdade e só fica fora do RANKING.
+ */
+const CONTAS_NAO_VENDEDOR = new Set(['ANA'])
+
+/** `true` para o dono (fora do ranking) e para conta que não é vendedor (a ANA). */
+export function naoEhVendedor(nome: string | null | undefined): boolean {
+  return foraDoRanking(nome) || CONTAS_NAO_VENDEDOR.has(primeiroNomeCaixa(nome))
+}
+
 /** Açúcar para `.filter()` numa lista de objetos com nome de vendedor. */
 export function soVendedores<T>(getNome: (item: T) => string | null | undefined) {
   return (item: T) => !foraDoRanking(getNome(item))

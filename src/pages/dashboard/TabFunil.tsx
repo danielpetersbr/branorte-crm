@@ -118,7 +118,8 @@ function NegociacaoBloco({ data }: { data: DashboardExtra['negociacao'] }) {
 
       <div className="text-kpi text-warning tabular-nums" title={brlFull(data.valor)}>{brl(data.valor)}</div>
       <p className="mt-1 text-micro text-ink-faint">
-        soma dos orçamentos de quem está em follow up + lead quente
+        última proposta de cada cliente que está AGORA em follow up ou lead quente, de qualquer data (quem já comprou fica de fora).
+        Não é o “R$ em negociação quente” da Visão geral: aquele conta só as propostas montadas no período e inclui quem está em ORÇAMENTO ENVIADO.
       </p>
 
       {data.valor_followup > 0 && (
@@ -380,7 +381,7 @@ function PropostasPorEstagio({ status }: { status: PropostasStatus }) {
         >
           <span className="text-micro text-ink-faint">Dinheiro na mesa</span>
           <span className="text-kpi-sm text-warning tabular-nums" title={brlFull(status.aberto.brl)}>{brl(status.aberto.brl)}</span>
-          <span className="text-micro text-ink-faint tabular-nums">{n(status.aberto.n)} propostas abertas</span>
+          <span className="text-micro text-ink-faint tabular-nums" title="Clientes distintos: cada um conta uma vez, mesmo com várias versões de proposta.">{n(status.aberto.n)} clientes com proposta aberta</span>
         </button>
 
         <div className="rounded-lg border border-border bg-surface-2 p-3">
@@ -627,9 +628,12 @@ const MIN_AMOSTRA = 8 // abaixo disso a mediana não é confiável → "—"
 
 function CicloVenda({ ciclo }: { ciclo: CicloVendaData }) {
   const etapas = [
-    { label: 'Lead chega → 1ª etiqueta', n: ciclo.n_chegada,     valor: ciclo.n_chegada >= MIN_AMOSTRA ? ciclo.chegada_1a_etq_horas : null, unidade: 'h', meta: 4, desc: 'SLA: classificar em menos de 4h' },
+    // 1ª etiqueta de VENDEDOR (19/10/2026): a da ANA e a do dono são automáticas e faziam isto dar 0h.
+    { label: 'Lead chega → 1ª etiqueta', n: ciclo.n_chegada,     valor: ciclo.n_chegada >= MIN_AMOSTRA ? ciclo.chegada_1a_etq_horas : null, unidade: 'h', meta: 4, desc: 'SLA: o vendedor classificar em menos de 4h (a etiqueta automática da ANA não conta)' },
     { label: 'Lead → orçamento enviado', n: ciclo.n_orcamento,   valor: ciclo.n_orcamento >= MIN_AMOSTRA ? ciclo.lead_orcamento_dias : null, unidade: 'd', meta: 3, desc: 'Data real do orçamento gerado' },
-    { label: 'Orçamento → vendido',      n: ciclo.n_orc_vendido, valor: ciclo.n_orc_vendido >= MIN_AMOSTRA ? ciclo.orcamento_vendido_dias : null, unidade: 'd', meta: 7, desc: 'Mesma coorte (orçou E vendeu)' },
+    // NÃO segue o filtro: a RPC mede todo telefone que orçou e vendeu desde sempre (o ciclo
+    // atravessa meses; filtrar zerava a amostra). "Hoje" e "Este mês" davam o mesmo n=52.
+    { label: 'Orçamento → vendido (todos os tempos)', n: ciclo.n_orc_vendido, valor: ciclo.n_orc_vendido >= MIN_AMOSTRA ? ciclo.orcamento_vendido_dias : null, unidade: 'd', meta: 7, desc: 'Histórico inteiro, não o período do topo: quem orçou E vendeu' },
   ]
 
   return (
@@ -680,7 +684,10 @@ function CicloVenda({ ciclo }: { ciclo: CicloVendaData }) {
 // 9 · MOTIVOS DE TRAVA / PERDA (variante 'trava' do MapaEtiquetas)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CATS_TRAVA: EtiquetaCategoria[] = ['perdido', 'outros', 'interno']
+// Só PERDA (19/10/2026). Com 'outros' e 'interno' o top saía NUNCA RESPONDEU, PEDRO,
+// GUSTAVO, IGOR, RAMON — as etiquetas de roteamento da ANA têm nome de vendedor e caem
+// em 'outros'; RESOLVIDOS/BRANORTE ('interno') também não são o que mata negócio.
+const CATS_TRAVA: EtiquetaCategoria[] = ['perdido']
 
 function MotivosTrava({ etq }: { etq: NonNullable<ReturnType<typeof useDashboardEtiquetas>['data']> }) {
   // Dedup por nome — a mesma etiqueta aparece uma vez por conta de WhatsApp.

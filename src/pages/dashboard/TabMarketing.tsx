@@ -22,6 +22,8 @@ import { CHART, CHART_SERIE, TOOLTIP_STYLE } from './ui/chart-tokens'
 import { brl, n, pct } from './ui/format'
 import { useJanela } from './DashboardFilterContext'
 import { QueryNotice } from '@/components/ui/QueryNotice'
+import { useDashboardCanais } from '@/hooks/useDashboardCanais'
+import { QualidadePorCanal } from './blocks/QualidadePorCanal'
 
 // ============================================================================
 // ABA MARKETING — "pra onde vai ou corta a verba?"
@@ -52,6 +54,17 @@ import { QueryNotice } from '@/components/ui/QueryNotice'
 //   score     → ≥68 escalar · ≥48 manter · resto otimizar
 //   manter*   → volume alto sem fechar = gargalo é o FECHAMENTO, não a mídia
 // Modelo desenhado por painel multi-agente + juiz adversarial contra dados reais.
+//
+// 19/10/2026 — PROPOSTA VIROU PROVA. Os sinais da IA enganavam nos dois sentidos:
+// "respondeu" é o toque no 1º botão (118 dos 130 NUNCA RESPONDEU do Meta contavam como
+// respondeu) e "qualificou" zerou para todo lead de equipamento desde 01/10 (a IA parou
+// de gravar o equipamento). Resultado: Meta ADS saía "Escalar" gerando 2,7 propostas por
+// 100 leads (abaixo da média da conta) e as landing pages saíam "Pausar" com 1 venda de
+// R$ 106 mil em 90 dias. Agora:
+//   - "Escalar" exige pelo menos 5 propostas E taxa de proposta ≥ média da conta;
+//   - taxa de proposta pior que a média COM CONFIANÇA (IC 95% inteiro abaixo) → Otimizar;
+//   - "Pausar por não responder" e "Otimizar por qualificação" só valem se a fonte
+//     também gera proposta abaixo da média — se gera proposta, o sinal da IA é que falhou.
 // ============================================================================
 const AMOSTRA_MIN = 15
 const ESCALAR_MIN = 68
@@ -93,7 +106,21 @@ interface VerdictInput {
   leadQuente: number
   vendido: number
   orcamento: number
+  /** Propostas por lead na média da conta (Σ orçamentos ÷ Σ leads das linhas da tabela). */
+  mediaProp: number
 }
+
+/** Intervalo de Wilson 95% de k em n, como fração. */
+function wilson(k: number, n: number): [number, number] {
+  if (n <= 0) return [0, 1]
+  const z = 1.96, p = k / n, z2 = z * z
+  const centro = (p + z2 / (2 * n)) / (1 + z2 / n)
+  const meia = (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / (1 + z2 / n)
+  return [Math.max(0, centro - meia), Math.min(1, centro + meia)]
+}
+
+const ESCALAR_MIN_PROPOSTAS = 5
+const por100 = (x: number) => (x * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
 
 function scoreBruto(m: VerdictInput): number {
   const erradoPen = Math.max(0, 100 - 2 * m.nfPct)
@@ -105,12 +132,20 @@ function classifyVerdict(m: VerdictInput, isOrigem: boolean): { verdict: Verdict
   const mk = (verdict: VerdictKey, score: number, reasonKey: string) => ({ verdict, score: Math.round(score), reasonKey })
   if (isOrigem && ORIGEM_NAO_RASTREAVEL.has(m.label.trim().toLowerCase())) return mk('excluir', 0, 'excluir')
   if (m.total < AMOSTRA_MIN) return mk('amostra', vClamp(scoreBruto(m) * 0.5, 0, 60), 'amostra')
-  if (m.engajouPct < 25) return mk('pausar', vClamp(m.engajouPct * 0.6, 5, 25), 'pausar_respia')
+  const taxa = m.total > 0 ? m.orcamento / m.total : 0
+  const [lo, hi] = wilson(m.orcamento, m.total)
+  const geraPropostaNaMedia = taxa >= m.mediaProp
+  if (m.engajouPct < 25 && !geraPropostaNaMedia) return mk('pausar', vClamp(m.engajouPct * 0.6, 5, 25), 'pausar_respia')
   if (m.nfPct >= 35) return mk('pausar', vClamp(20 - (m.nfPct - 35) / 2, 5, 25), 'pausar_errado')
-  if (m.qualifPct < 20) return mk('otimizar', vClamp(scoreBruto(m), 30, 55), 'otimizar_qualif')
+  if (m.qualifPct < 20 && !geraPropostaNaMedia) return mk('otimizar', vClamp(scoreBruto(m), 30, 55), 'otimizar_qualif')
   if (m.nfPct >= 20) return mk('otimizar', vClamp(scoreBruto(m), 40, 65), 'otimizar_vazamento')
+  if (m.mediaProp > 0 && hi < m.mediaProp) return mk('otimizar', vClamp(scoreBruto(m), 30, 55), 'otimizar_proposta')
   const s = scoreBruto(m)
-  if (s >= ESCALAR_MIN) return mk('escalar', s, 'escalar')
+  if (s >= ESCALAR_MIN || (m.mediaProp > 0 && lo > m.mediaProp)) {
+    if (m.orcamento < ESCALAR_MIN_PROPOSTAS) return mk('manter', vClamp(s, 48, 67), 'manter_poucas_propostas')
+    if (!geraPropostaNaMedia) return mk('manter', vClamp(s, 48, 67), 'manter_abaixo_media')
+    return mk('escalar', s, 'escalar')
+  }
   const conv = m.vendido + m.orcamento
   const convRate = m.total > 0 ? conv / m.total : 0
   if (m.total >= 40 && m.vendido === 0 && convRate < 0.01) return mk('manter', vClamp(s, 45, 72), 'manter_volume')
@@ -120,7 +155,11 @@ function classifyVerdict(m: VerdictInput, isOrigem: boolean): { verdict: Verdict
 
 function reasonFor(key: string, m: VerdictInput): string {
   const q = Math.round(m.qualifPct), r = Math.round(m.engajouPct), e = Math.round(m.nfPct)
+  const p = por100(m.total > 0 ? m.orcamento / m.total : 0), med = por100(m.mediaProp)
   switch (key) {
+    case 'otimizar_proposta': return `Gera ${p} propostas a cada 100 leads, abaixo da média da conta (${med}) mesmo contando a margem de erro: rever criativo/público antes de subir verba.`
+    case 'manter_poucas_propostas': return `Sinais da IA bons (${q}% qualif, ${r}% respondem), mas só ${m.orcamento} proposta(s) no período — ainda não prova que vira negócio. Manter e acumular.`
+    case 'manter_abaixo_media': return `Sinais da IA bons, mas ${p} propostas a cada 100 leads, abaixo da média da conta (${med}): manter, não subir.`
     case 'excluir': return 'Sem atribuição de canal — não dá pra investir nem cortar. Ação: corrigir rastreamento (UTM/pixel).'
     case 'amostra': return `Só ${m.total} leads (<${AMOSTRA_MIN}): amostra fraca. Acumular antes de decidir — nunca escalar no escuro.`
     case 'pausar_respia': return `Só ${r}% respondem à IA: atrai público errado, verba queimada. Revisar criativo/segmentação.`
@@ -128,7 +167,7 @@ function reasonFor(key: string, m: VerdictInput): string {
     case 'otimizar_qualif': return `${r}% respondem mas só ${q}% querem algo que fabricamos: público desalinhado, ajustar oferta/segmentação.`
     case 'otimizar_vazamento': return `Perfil bom (${q}% qualif) mas ${e}% chegam errados: ajustar copy/público antes de subir verba.`
     case 'otimizar_fraco': return `Morno (${q}% qualif, ${r}% engajam): testar novo ângulo antes de cortar ou subir verba.`
-    case 'escalar': return `Melhor aposta: ${q}% qualificam, ${r}% engajam, ${e}% errado. Subir verba 20-30%.`
+    case 'escalar': return `Melhor aposta: ${p} propostas a cada 100 leads (média da conta ${med}), ${q}% qualificam pela IA, ${e}% errado. Subir verba 20-30%.`
     case 'manter_volume': return `${m.total} leads, ${q}% qualif, mas ~0 fecha: a mídia entrega, o gargalo é o FECHAMENTO (vendedor). Manter verba e cobrar venda.`
     case 'manter': return `Saudável (${q}% qualif, ${r}% engajam) sem se destacar: manter verba e dar tempo ao ciclo maturar.`
     default: return ''
@@ -183,12 +222,19 @@ type RowComFonte = FunilRow & { fonte: Fonte }
 type CriativoBruto = { codigo: string; nome: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number }
 type OrigemBruta = { origem: string; total: number; qualificados: number; ctr: number; engajou: number; bovinos: number; suinos: number; aves: number; orcamentos: number; vendidos: number }
 
+/** Propostas por lead somando as linhas (a "média da conta" contra a qual cada linha é julgada). */
+function mediaPropostas(linhas: { total: number; orc: number }[]): number {
+  const leads = linhas.reduce((s, l) => s + l.total, 0)
+  return leads > 0 ? linhas.reduce((s, l) => s + l.orc, 0) / leads : 0
+}
+
 function linhasDeCriativos(
   criativos: CriativoBruto[],
   etq: DashboardEtiquetas | undefined,
   real: Map<string, OrcVendaAttr> | undefined,
 ): FunilRow[] {
   const etqByCodigo = new Map((etq?.por_criativo ?? []).map(c => [c.codigo, c]))
+  const mediaProp = mediaPropostas(criativos.map(c => ({ total: c.total, orc: real ? (real.get(c.codigo)?.orc ?? 0) : (etqByCodigo.get(c.codigo)?.orcamento ?? 0) })))
   return criativos.map(c => {
     const e = etqByCodigo.get(c.codigo)
     // Orç/Venda REAIS (match por telefone) substituem a contagem por etiqueta. Enquanto
@@ -204,11 +250,12 @@ function linhasDeCriativos(
     const nfPct = c.total > 0 ? (nf / c.total) * 100 : 0
     const leadQuente = e?.lead_quente ?? 0
     const followUp = e?.follow_up ?? 0
-    // Qualificou = IA qualificou OU o vendedor moveu o lead pro funil (follow-up/
-    // quente/orçamento/vendido). Pega o maior dos dois (não soma, pra não duplicar).
-    const qualifEf = Math.max(c.qualificados, followUp + leadQuente + orcamento + vendido)
-    const qualifPct = c.total > 0 ? (qualifEf / c.total) * 100 : 0
-    const vi: VerdictInput = { label: c.nome || c.codigo, total: c.total, engajouPct, qualifPct, nfPct, followUp, leadQuente, vendido, orcamento }
+    // Qualificou = régua da IA, a MESMA da etapa Qualificou do funil (19/10/2026). Era
+    // max(IA, follow-up + quente + orçamento + venda): o max conta a menos quando IA e
+    // etiqueta marcam leads diferentes e a soma conta 2× o lead com follow-up E orçamento.
+    // A régua "IA OU etiqueta" por lead só existe no banco — está no bloco por canal.
+    const qualifPct = c.total > 0 ? (c.qualificados / c.total) * 100 : 0
+    const vi: VerdictInput = { label: c.nome || c.codigo, total: c.total, engajouPct, qualifPct, nfPct, followUp, leadQuente, vendido, orcamento, mediaProp }
     const { verdict, score, reasonKey } = classifyVerdict(vi, false)
     return {
       key: c.codigo, codigo: c.codigo, label: c.nome || '—',
@@ -228,8 +275,9 @@ function linhasDeOrigens(
 ): FunilRow[] {
   // Junta por origem CRUA (mesma string em ambas as fontes — leem apc.origem)
   const etqByOrigem = new Map((etq?.por_origem ?? []).map(o => [o.origem, o]))
-  return origens
-    .filter(o => o.total >= 3) // tira ruído de origens com 1-2 leads
+  const visiveis = origens.filter(o => o.total >= 3) // tira ruído de origens com 1-2 leads
+  const mediaProp = mediaPropostas(visiveis.map(o => ({ total: o.total, orc: real ? (real.get(o.origem)?.orc ?? 0) : (etqByOrigem.get(o.origem)?.orcamento ?? 0) })))
+  return visiveis
     .map(o => {
       const e = etqByOrigem.get(o.origem)
       const rl = real?.get(o.origem)
@@ -243,9 +291,8 @@ function linhasDeOrigens(
       const nfPct = o.total > 0 ? (nf / o.total) * 100 : 0
       const leadQuente = e?.lead_quente ?? 0
       const followUp = e?.follow_up ?? 0
-      const qualifEf = Math.max(o.qualificados, followUp + leadQuente + orcamento + vendido)
-      const qualifPct = o.total > 0 ? (qualifEf / o.total) * 100 : 0
-      const vi: VerdictInput = { label: o.origem, total: o.total, engajouPct, qualifPct, nfPct, followUp, leadQuente, vendido, orcamento }
+      const qualifPct = o.total > 0 ? (o.qualificados / o.total) * 100 : 0
+      const vi: VerdictInput = { label: o.origem, total: o.total, engajouPct, qualifPct, nfPct, followUp, leadQuente, vendido, orcamento, mediaProp }
       const { verdict, score, reasonKey } = classifyVerdict(vi, true)
       return {
         key: o.origem, label: o.origem,
@@ -268,10 +315,10 @@ type SortDir = 'asc' | 'desc'
 const COLUNAS: { key: SortKey; label: string; align: 'left' | 'right'; ajuda: string }[] = [
   { key: 'label',      label: 'Fonte',      align: 'left',  ajuda: 'Nome do canal ou do criativo. A barra mostra o volume de leads em relação ao maior da lista.' },
   { key: 'total',      label: 'Leads',      align: 'right', ajuda: 'Leads atribuídos no período.' },
-  { key: 'engajouPct', label: 'Respondeu',  align: 'right', ajuda: 'Parte dos leads que respondeu à IA. Abaixo de 25% o veredito é Pausar.' },
-  { key: 'qualifPct',  label: 'Qualificou', align: 'right', ajuda: 'Parte que quer algo que a Branorte fabrica (IA qualificou OU o vendedor moveu no funil). Abaixo de 20% o veredito é Otimizar.' },
+  { key: 'engajouPct', label: 'Respondeu',  align: 'right', ajuda: 'Parte dos leads que tocou ao menos um botão / respondeu uma pergunta da IA. Mede o 1º toque, não conversa: lead que depois some ainda conta. Abaixo de 25% (e propostas abaixo da média) o veredito é Pausar.' },
+  { key: 'qualifPct',  label: 'Qualif. IA', align: 'right', ajuda: 'Parte que disse à IA que quer algo que a Branorte fabrica — mesma régua da etapa Qualificou do funil. ⚠️ Desde 01/10/2026 a IA não grava mais o equipamento do lead de "Só um equipamento", então criativo de equipamento aparece perto de 0%. Abaixo de 20% (e propostas abaixo da média) o veredito é Otimizar.' },
   { key: 'nfPct',      label: 'Errado',     align: 'right', ajuda: 'Parte que pediu o que NÃO fabricamos. 20% já é vazamento; 35% ou mais é Pausar.' },
-  { key: 'conv',       label: 'Orç · Venda', align: 'right', ajuda: 'Orçamentos e vendas casados pelo telefone do lead (não pela etiqueta do vendedor).' },
+  { key: 'conv',       label: 'Orç · Venda', align: 'right', ajuda: 'Leads que receberam orçamento montado a partir de 2 dias antes de chegarem (sem os do dono), e quantos compraram a partir desse orçamento. Casado pelo telefone do lead, não pela etiqueta.' },
   { key: 'score',      label: 'Score',      align: 'right', ajuda: 'Qualidade do lead de 0 a 100: 50% qualificou + 35% respondeu + 15% penalidade de "errado", com bônus pequeno por funil/venda.' },
   { key: 'verdict',    label: 'Veredito',   align: 'right', ajuda: 'Decisão de verba. Clique no veredito da linha pra ver o critério que o gerou.' },
 ]
@@ -581,9 +628,10 @@ function CriterioVeredito({ fonte }: { fonte: Fonte }) {
       ? [{ verdict: 'excluir' as VerdictKey, quando: 'origem sem canal identificável (Não identificou, Direto, Outros) — corrigir rastreio, não decidir verba' }]
       : []),
     { verdict: 'amostra',  quando: `menos de ${AMOSTRA_MIN} leads — sinal fraco demais pra julgar` },
-    { verdict: 'pausar',   quando: 'respondeu abaixo de 25%, OU 35% ou mais pedindo o que não fabricamos' },
-    { verdict: 'otimizar', quando: 'qualificou abaixo de 20%, OU entre 20% e 35% pedindo o que não fabricamos' },
-    { verdict: 'escalar',  quando: `score ${ESCALAR_MIN} ou mais` },
+    { verdict: 'pausar',   quando: 'respondeu abaixo de 25% E propostas abaixo da média da conta, OU 35% ou mais pedindo o que não fabricamos' },
+    { verdict: 'otimizar', quando: 'qualificou pela IA abaixo de 20% E propostas abaixo da média, OU entre 20% e 35% pedindo o que não fabricamos' },
+    { verdict: 'otimizar', quando: 'propostas a cada 100 leads abaixo da média da conta mesmo contando a margem de erro (IC 95%)' },
+    { verdict: 'escalar',  quando: `score ${ESCALAR_MIN} ou mais (ou propostas acima da média com confiança), COM pelo menos ${ESCALAR_MIN_PROPOSTAS} propostas e taxa de proposta na média ou acima — senão fica em Manter` },
     { verdict: 'manter',   quando: 'score entre 48 e 67 — ou muito volume qualificado sem fechar (aí o gargalo é o vendedor, não a mídia)' },
     { verdict: 'otimizar', quando: 'score abaixo de 48' },
   ]
@@ -615,10 +663,10 @@ function CriterioVeredito({ fonte }: { fonte: Fonte }) {
         </ol>
         <p className="text-micro text-ink-faint">
           <strong className="text-ink-muted">Score (0-100)</strong> = 50% qualificou + 35% respondeu + 15% de penalidade por “não fabricamos”, mais um bônus de até 10 pontos por follow-up, lead quente, orçamento e venda.
-          Conversão nunca dispara veredito sozinha — só soma no bônus, senão um único orçamento escalava criativo de amostra pequena.
+          A <strong className="text-ink-muted">taxa de proposta</strong> é a prova: nenhum veredito de subir verba sai sem ela, e um sinal ruim da IA não derruba quem gera proposta na média ou acima.
         </p>
         <p className="text-micro text-ink-faint">
-          <strong className="text-ink-muted">Orç · Venda</strong> vêm do casamento por telefone do lead, não da etiqueta do vendedor.
+          <strong className="text-ink-muted">Orç · Venda</strong> vêm do casamento por telefone do lead (orçamento a partir de 2 dias antes da chegada, sem os do dono), não da etiqueta do vendedor.
           <strong className="text-ink-muted"> Respondeu</strong> e <strong className="text-ink-muted">Qualificou</strong> vêm da IA; “Errado”, follow-up e quente vêm das etiquetas do WhatsApp.
         </p>
       </div>
@@ -1156,6 +1204,9 @@ export function TabMarketing() {
   const criativoQuery = useDashboardOrcVendaPorCriativo(preset)
   const origemQuery = useDashboardOrcVendaPorOrigem(preset)
   const motivosQuery = useMotivosPorFonte(preset)
+  // Resumo do topo na MESMA régua da Visão geral (19/10/2026): o cartão dizia 240 de 917
+  // (só IA, só leads com origem) contra 266 de 1.017 do card Qualificados.
+  const canaisPeriodo = useDashboardCanais('periodo', preset)
   const { data, isLoading } = dashboardQuery
   const etq = etiquetasQuery.data, orcVendaCriativo = criativoQuery.data, orcVendaOrigem = origemQuery.data, motivosFonte = motivosQuery.data
   const consultas = [dashboardQuery, etiquetasQuery, criativoQuery, origemQuery, motivosQuery]
@@ -1188,25 +1239,31 @@ export function TabMarketing() {
       ...todas.filter(r => r.verdict === 'otimizar').sort((a, b) => a.score - b.score),
     ].slice(0, 3)
 
-    // Sem atribuição: origens que caem na lista de canais não rastreáveis.
-    const origensBrutas = data?.porOrigem ?? []
-    const totalLeadsOrigem = origensBrutas.reduce((s, o) => s + o.total, 0)
-    const semAtribuicao = origensBrutas
-      .filter(o => ORIGEM_NAO_RASTREAVEL.has((o.origem ?? '').trim().toLowerCase()))
-      .reduce((s, o) => s + o.total, 0)
-    const qualificados = origensBrutas.reduce((s, o) => s + o.qualificados, 0)
+    // Sem atribuição e qualificação vêm da RPC por canal: conta TODOS os leads (o recorte
+    // antigo largava 100 em out/26 — origem vazia e "WhatsApp …") e qualifica pela régua
+    // do card Qualificados. Lead sem origem mas com conversa na casa é "WhatsApp direto",
+    // canal de verdade, não "sem atribuição".
+    const linhasCanal = canaisPeriodo.data?.linhas
+    const totalCanal = linhasCanal?.find(l => l.canal === 'TOTAL')
+    const naoIdent = linhasCanal?.find(l => l.canal === 'Não identificado')?.leads ?? 0
+    const whatsDireto = linhasCanal?.find(l => l.canal === 'WhatsApp direto')?.leads ?? 0
+    const totalLeads = totalCanal?.leads ?? 0
+    const qualificados = totalCanal?.qualificados ?? 0
 
     return {
       escalar,
       melhorSinal,
       revisar,
-      semAtribuicao,
-      semAtribuicaoPct: totalLeadsOrigem > 0 ? (semAtribuicao / totalLeadsOrigem) * 100 : 0,
-      totalLeadsOrigem,
+      carregado: !!totalCanal,
+      usou90: canaisPeriodo.data?.usou90 ?? false,
+      semAtribuicao: naoIdent,
+      semAtribuicaoPct: totalLeads > 0 ? (naoIdent / totalLeads) * 100 : 0,
+      whatsDireto,
+      totalLeadsOrigem: totalLeads,
       qualificados,
-      qualifPct: totalLeadsOrigem > 0 ? (qualificados / totalLeadsOrigem) * 100 : 0,
+      qualifPct: totalLeads > 0 ? (qualificados / totalLeads) * 100 : 0,
     }
-  }, [rowsOrigem, rowsCriativo, data?.porOrigem])
+  }, [rowsOrigem, rowsCriativo, canaisPeriodo.data])
 
   if (consultas.some(q => q.error && q.data === undefined)) return <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível carregar todos os dados de marketing." onRetry={atualizar} />
   if ((isLoading && !data) || consultas.some(q => q.isLoading && q.data === undefined)) {
@@ -1239,6 +1296,10 @@ export function TabMarketing() {
     <div className="space-y-5">
       {/* ═══ 1 · RESUMO — a resposta em 4 números ═══ */}
       <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todos os dados de marketing. O último retrato permanece visível." onRetry={atualizar} />
+
+      {/* ═══ 0 · QUAL CANAL TRAZ OS MELHORES LEADS — a pergunta nº 1 do dono (19/10/2026) ═══ */}
+      <QualidadePorCanal preset={preset} periodoLabel={periodoLabel} />
+
       <Card id="marketing-resumo">
         <CardHeader
           title="Decisão de verba"
@@ -1272,15 +1333,19 @@ export function TabMarketing() {
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <MiniKpi
             rotulo="Leads sem atribuição"
-            valor={n(resumo.semAtribuicao)}
-            apoio={`${pct(resumo.semAtribuicaoPct, 0)} de ${n(resumo.totalLeadsOrigem)} leads chegaram sem canal identificado. Não dá pra investir nem cortar — ação é corrigir o rastreio (UTM/pixel/código &NN).`}
+            valor={resumo.carregado ? n(resumo.semAtribuicao) : (canaisPeriodo.error ? 'Indisponível' : 'Carregando…')}
+            apoio={resumo.carregado
+              ? `${pct(resumo.semAtribuicaoPct, 0)} de ${n(resumo.totalLeadsOrigem)} leads chegaram sem origem e sem conversa no WhatsApp da casa${resumo.usou90 ? ' (últimos 90 dias)' : ''}. Não dá pra investir nem cortar — ação é corrigir o rastreio (UTM/pixel/código &NN). Outros ${n(resumo.whatsDireto)} sem origem mas com conversa na casa contam como “WhatsApp direto”.`
+              : 'Leads sem canal identificado.'}
             periodoLabel={periodoLabel}
             tone={resumo.semAtribuicaoPct >= 20 ? 'atencao' : 'neutro'}
           />
           <MiniKpi
             rotulo="Taxa de qualificação"
-            valor={pct(resumo.qualifPct, 1)}
-            apoio={`${n(resumo.qualificados)} de ${n(resumo.totalLeadsOrigem)} leads querem algo que a Branorte fabrica (qualificação da IA, somando todas as origens).`}
+            valor={resumo.carregado ? pct(resumo.qualifPct, 1) : (canaisPeriodo.error ? 'Indisponível' : 'Carregando…')}
+            apoio={resumo.carregado
+              ? `${n(resumo.qualificados)} de ${n(resumo.totalLeadsOrigem)} leads${resumo.usou90 ? ' (últimos 90 dias)' : ''}: a IA qualificou OU o vendedor marcou avanço (lead quente, follow-up, agendamento, orçamento, vendido) — a mesma régua do card Qualificados da Visão geral. Subconta lead de equipamento desde 01/10/2026 (a IA parou de gravar o equipamento).`
+              : 'Leads que querem algo que a Branorte fabrica.'}
             periodoLabel={periodoLabel}
           />
         </div>

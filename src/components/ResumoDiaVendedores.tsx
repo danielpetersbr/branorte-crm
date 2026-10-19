@@ -318,7 +318,9 @@ function textoWhatsApp(
 }
 
 export function ResumoDiaVendedores({ preset = '', periodoLabel }: { preset?: DashboardPreset; periodoLabel?: string }) {
-  const liveHoje = preset === '' || preset === 'hoje'
+  // Só "Hoje" é ao vivo (19/10/2026). Com "Tudo" o subtítulo dizia "atividade de hoje"
+  // enquanto leads e orçamentos vinham do histórico inteiro.
+  const liveHoje = preset === 'hoje'
   const {
     linhas, isLoading, isError, funilIndisponivel, carteiraIndisponivel, fluxoIndisponivel, fluxoCarregando,
   } = useResumoDia(preset)

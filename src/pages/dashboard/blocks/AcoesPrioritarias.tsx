@@ -4,7 +4,7 @@ import type { DashboardData } from '@/hooks/useDashboard'
 import type { useDashboardEtiquetas } from '@/hooks/useDashboardEtiquetas'
 import type { VendedorFunilRow } from '@/hooks/useDashboardVendedorFunil'
 import { RISCO_MAX_HORAS } from '@/lib/dashboard-risco'
-import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
+import { foraDoRanking, naoEhVendedor } from '@/lib/vendedores-fora-do-ranking'
 import { Card, CardHeader } from '../ui/Card'
 import { JanelaBadge } from '../ui/JanelaBadge'
 import { useJanela } from '../DashboardFilterContext'
@@ -151,7 +151,7 @@ export function AcoesPrioritarias({
     // e a ANA, que é a IA de atendimento e não monta orçamento.
     const semOrc = (etq?.sem_orc_vendedores ?? []).filter(v => {
       const nome = String(v ?? '').trim().split(/\s+/)[0]?.toUpperCase() ?? ''
-      return nome !== '' && nome !== 'ANA' && !foraDoRanking(v) && !vendedoresComProposta.has(nome)
+      return nome !== '' && !naoEhVendedor(v) && !vendedoresComProposta.has(nome)
     })
     if (semOrc.length > 0) {
       out.push({

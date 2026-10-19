@@ -19,7 +19,7 @@ import { Tendencia } from './blocks/Tendencia'
 import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
 import { TopEquipe } from './blocks/TopEquipe'
 import { DrillModal } from './blocks/DrillModal'
-import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
+import { naoEhVendedor } from '@/lib/vendedores-fora-do-ranking'
 
 
 function Esqueleto() {
@@ -129,7 +129,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
     for (const r of cobertura ?? []) {
       // Fora: o dono, a ANA (é a IA de atendimento, não vendedor) e quem não tem o
       // WhatsApp lido — a % dele não mede etiquetagem, mede falta de dado.
-      if (foraDoRanking(r.vendedor) || primeiroNome(r.vendedor).toUpperCase() === 'ANA' || r.wa_capturado === false) continue
+      if (naoEhVendedor(r.vendedor) || r.wa_capturado === false) continue
       const k = primeiroNome(r.vendedor)
       const cur = porNome.get(k)
       if (!cur || (r.total_passado ?? 0) > (cur.total_passado ?? 0)) porNome.set(k, r)

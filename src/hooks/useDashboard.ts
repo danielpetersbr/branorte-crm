@@ -754,8 +754,14 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     // Exclui quem já VENDEU ou foi PERDIDO pela etiqueta do funil (status_real não captura isso).
     if (status.includes('vendid') || status.includes('perdid') || (fc != null && fechados.has(fc))) continue
     const valor = orcValorByCanon.get(fc ?? '') ?? 0
-    if (r.last_message_at) {
-      const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
+    // "Sem resposta há": a última mensagem no canal da IA OU no WhatsApp do vendedor
+    // (19/10/2026 — 77 leads na faixa +30d, R$ 3,4 mi, tinham conversado com o vendedor
+    // na última semana). A WhatsApp vem dos últimos 31 dias, o que cobre as faixas até 30d.
+    const ultIa = r.last_message_at ? new Date(r.last_message_at).getTime() : NaN
+    const ultWa = msgWaByCanon.get(fc ?? '') ?? NaN
+    const ultAtiv = Math.max(...[ultIa, ultWa].filter(Number.isFinite))
+    if (Number.isFinite(ultAtiv)) {
+      const ageH = (now.getTime() - ultAtiv) / 3600000
       if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
       else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
       else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
@@ -879,8 +885,9 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
       pct: totalGeo > 0 ? (total / totalGeo) * 100 : 0,
       isBrasil: UF_NOMES[uf] !== undefined && uf !== 'INTL' && !PAIS_SIGLAS.has(uf),
     }))
+    // Sem corte (19/10/2026): o slice(0, 20) tirava SE, AM, RN, AC, AL, RR e os países —
+    // 29 leads do mês sumiam e a tabela mostrava "· · ·" com o dado no cliente.
     .sort((a, b) => b.total - a.total)
-    .slice(0, 20)
 
   const diaXHora: { weekday: number; hour: number; valor: number }[] = []
   for (let wd = 0; wd < 7; wd++) {
