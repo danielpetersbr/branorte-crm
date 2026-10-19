@@ -35,7 +35,7 @@ function routes() {
   return result
 }
 
-function page(props = {}, initial: Record<string, unknown> = {}, auth: { session: any; profile: any } = { session: null, profile: { role: 'vendor', id: 'vendedor-1' } }) {
+function page(props = {}, initial: Record<string, unknown> = {}, auth: { session: any; profile: any } = { session: null, profile: { role: 'vendor', id: 'vendedor-1' } }, origin = catalogSession.CRM_ORIGIN_CATALOGO) {
   const ast = parse('./Projeto3D.tsx')
   const fn = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'Projeto3D') as ts.FunctionDeclaration
   const names: string[] = []
@@ -71,7 +71,7 @@ function page(props = {}, initial: Record<string, unknown> = {}, auth: { session
   let refIndex = 0
   const code = ast.statements.filter(node => !ts.isImportDeclaration(node)).map(node => node.getText(ast)).join('\n')
   const context = run(code, { ...icons, ...identidade, ...catalogSession,
-    window: { setTimeout(fn: () => void, ms: number) { return setTimeout(fn, ms).unref() }, clearTimeout, addEventListener(_type: string, handler: typeof listener) { listener = handler }, removeEventListener() {} },
+    window: { location: { origin }, setTimeout(fn: () => void, ms: number) { return setTimeout(fn, ms).unref() }, clearTimeout, addEventListener(_type: string, handler: typeof listener) { listener = handler }, removeEventListener() {} },
     useState(value: unknown) { const name = names[stateIndex++]; if (!(name in states)) states[name] = value; return [states[name], (next: unknown) => { states[name] = next }] },
     useRef(value: unknown) { const index = refIndex++; refs[index] ??= { current: index === 0 ? { contentWindow } : value }; namedRefs[refNames[index]] = refs[index]; return refs[index] },
     useEffect(effect: () => unknown) { const cleanup = effect(); if (typeof cleanup === 'function') cleanups.push(cleanup as () => void) },
@@ -104,21 +104,29 @@ test('menu Layout 3D seleciona apenas Meus Layouts na sua rota e mantém a mesma
   walk(initializer)
   const groups = run(`const result = ${initializer.getText(ast)}`, Object.fromEntries([...iconNames].map(name => [name, 'icon']))).result
   const items = groups.find((group: any) => group.id === 'layout-3d').items
-  assert.deepEqual(Array.from(items, (item: any) => item.label), ['Fazer Layout', 'Meus Layouts'])
+  assert.deepEqual(Array.from(items, (item: any) => item.label), ['Fazer Layout', 'Meus Layouts', 'Blocos'])
   assert.deepEqual(Array.from(items.filter((item: any) => isNavigationItemActive(item.to, '/projeto-3d/meus', '', item.end)), (item: any) => item.label), ['Meus Layouts'])
   assert.equal(items.every((item: any) => item.permKey === 'menu.projeto_3d'), true)
+  assert.deepEqual(Array.from(items.filter((item: any) => item.catalogo3d), (item: any) => item.label), ['Blocos'])
 })
 
-test('rotas abrem iframe diretamente em criar ou meus e remontam a página ao trocar', () => {
+test('rotas abrem iframe diretamente em criar, meus ou blocos e remontam a página ao trocar', () => {
   const definitions = routes()
-  assert.equal(definitions.length, 2)
+  assert.equal(definitions.length, 3)
   const iframeUrls = definitions.map(route => {
     const view = page(route.props.element.props)
     return new URL(find(view.render(), element => element.type === 'iframe').props.src)
   })
   assert.equal(iframeUrls[0].searchParams.get('entry'), 'new')
   assert.equal(iframeUrls[1].searchParams.get('entry'), 'mine')
-  assert.notEqual(definitions[0].props.element.key, definitions[1].props.element.key)
+  assert.equal(iframeUrls[2].pathname, '/catalogo')
+  assert.equal(new Set(definitions.map(route => route.props.element.key)).size, 3)
+})
+
+test('blocos fora do endereço oficial manda pro sistema em vez de abrir o catálogo que vai recusar', () => {
+  const tree = page({ entry: 'blocos' }, {}, undefined, 'https://branorte-crm.vercel.app').render()
+  assert.equal(find(tree, element => element.type === 'iframe'), null)
+  assert.equal(find(tree, element => element.type === 'a').props.href, 'https://sistema.mbranorte.com.br/projeto-3d/blocos')
 })
 
 test('formulário parent rejeita cliente vazio antes de pedir criação', async () => {

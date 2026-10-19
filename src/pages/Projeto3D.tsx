@@ -10,11 +10,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Boxes, Maximize2, RefreshCw, Save, FolderOpen, Plus, Trash2,
-  ChevronDown, X, Search, Check, Loader2,
+  ChevronDown, X, Search, Check, Loader2, Package,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { idExternoProjeto, nomeClienteProjeto } from '@/lib/projeto-3d-identidade'
-import { CONFIGURADOR_ORIGIN, catalogo3dAccessToken, catalogo3dSessionReply } from '@/lib/catalogo3d-session'
+import { CONFIGURADOR_ORIGIN, CRM_ORIGIN_CATALOGO, catalogo3dAccessToken, catalogo3dSessionReply } from '@/lib/catalogo3d-session'
 import {
   useConfiguradorProjetos, useSalvarConfiguradorProjeto, useDeletarConfiguradorProjeto,
   useBuscarContatos, fetchConfiguradorProjeto, fetchConfiguradorProjetoMetaAtual, type ConfiguradorProjetoMeta,
@@ -34,7 +34,7 @@ const rid = () => Math.random().toString(36).slice(2)
 const fmtData = (s: string) =>
   new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 
-export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
+export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' | 'blocos' } = {}) {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [loading, setLoading] = useState(true)
   const [abrindo, setAbrindo] = useState(false)
@@ -79,7 +79,10 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
   }, [])
   const qc = useQueryClient()
   // Indicador visual apenas: o catálogo confirma a autorização no servidor.
-  const iframeSrc = `${CONFIGURADOR_URL}?adm=${catalogo3dAccessToken(session, profile) ? '1' : '0'}&entry=${entry}`
+  const iframeSrc = entry === 'blocos'
+    ? `${CONFIGURADOR_URL}/catalogo`
+    : `${CONFIGURADOR_URL}?adm=${catalogo3dAccessToken(session, profile) ? '1' : '0'}&entry=${entry}`
+  const blocosForaDoSistema = entry === 'blocos' && window.location.origin !== CRM_ORIGIN_CATALOGO
   const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos(showLista)
   const termoLista = semAcento(buscaLista.trim())
   const projetosFiltrados = termoLista
@@ -532,22 +535,40 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
       </header>
 
       <div className="relative flex-1 min-h-0">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-bg pointer-events-none z-10">
-            <div className="flex flex-col items-center gap-2 text-ink-faint">
-              <Boxes className="h-8 w-8 animate-pulse" />
-              <span className="text-sm">Carregando o configurador 3D…</span>
+        {blocosForaDoSistema ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-bg p-6">
+            <div className="flex max-w-md flex-col items-center gap-3 text-center">
+              <Package className="h-8 w-8 text-accent" />
+              <p className="text-sm font-semibold text-ink">A biblioteca de blocos só abre pelo endereço oficial do sistema</p>
+              <p className="text-xs text-ink-muted">Por este endereço o configurador não recebe o seu login e mostra "Acesso restrito". Se pedir senha lá, é a mesma do CRM.</p>
+              <a
+                href={`${CRM_ORIGIN_CATALOGO}/projeto-3d/blocos`}
+                className="h-9 px-4 rounded-lg bg-accent text-white hover:opacity-90 flex items-center gap-1.5 text-sm font-semibold"
+              >
+                Abrir em sistema.mbranorte.com.br
+              </a>
             </div>
           </div>
+        ) : (
+          <>
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-bg pointer-events-none z-10">
+                <div className="flex flex-col items-center gap-2 text-ink-faint">
+                  <Boxes className="h-8 w-8 animate-pulse" />
+                  <span className="text-sm">Carregando o configurador 3D…</span>
+                </div>
+              </div>
+            )}
+            <iframe
+              ref={frameRef}
+              src={iframeSrc}
+              title="Configurador 3D Branorte"
+              onLoad={() => setLoading(false)}
+              className="absolute inset-0 h-full w-full border-0"
+              allow={`fullscreen; accelerometer; gyroscope; xr-spatial-tracking; microphone ${CONFIGURADOR_ORIGIN}`}
+            />
+          </>
         )}
-        <iframe
-          ref={frameRef}
-          src={iframeSrc}
-          title="Configurador 3D Branorte"
-          onLoad={() => setLoading(false)}
-          className="absolute inset-0 h-full w-full border-0"
-          allow={`fullscreen; accelerometer; gyroscope; xr-spatial-tracking; microphone ${CONFIGURADOR_ORIGIN}`}
-        />
       </div>
 
       {/* Toast */}
