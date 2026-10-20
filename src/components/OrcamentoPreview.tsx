@@ -14,6 +14,7 @@ import {
   type MontagemCfg, type MontagemResponsavel,
 } from '@/lib/orcamento-montagem'
 import { letraItem } from '@/lib/utils'
+import type { OrigemAcessoriosProjeto3D } from '@/lib/projeto-3d-orcamento'
 
 export interface PreviewItem {
   uid?: string
@@ -163,7 +164,7 @@ export interface OrcamentoPreviewProps {
   totalMotores: number
   totalEquip: number
   totalGeral: number
-  acessorios: { pct: number; items: string[]; valorFixo?: number | null } | null
+  acessorios: { pct: number; items: string[]; valorFixo?: number | null; origem_projeto3d?: OrigemAcessoriosProjeto3D } | null
   valorAcessorios: number
   /** Valor fixo definido antes de o carrinho mudar — pede conferencia (nao sai no PDF). */
   acessoriosDesatualizados?: boolean
@@ -1347,7 +1348,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <span className="text-gray-900">R$ {formatBRLBare(valorAcessorios)}</span>
                 ) : (
                   <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
-                    <span className="print:hidden">⚠ {acessorios.pct}% × R$ 0,00 = R$ 0,00 (precifique os itens acima)</span>
+                    <span className="print:hidden">{acessorios.origem_projeto3d ? (renderMode ? 'R$ 0,00' : 'Sem cobrança automática — confira o valor dos acessórios') : <>⚠ {acessorios.pct}% × R$ 0,00 = R$ 0,00 (precifique os itens acima)</>}</span>
                     <span className="hidden print:inline">R$ 0,00</span>
                   </span>
                 )}
