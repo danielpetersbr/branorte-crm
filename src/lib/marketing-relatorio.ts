@@ -205,6 +205,7 @@ export const taxa = (parte: number, todo: number) => (todo > 0 ? (100 * parte) /
 export function rotuloCriativo(codigo: string, nome: string | null): string {
   const n = (nome ?? '').trim()
   if (!n) return codigo
+  if (n.startsWith('[')) return `${codigo} · ${n}`
   return `${codigo} · ${n.charAt(0) + n.slice(1).toLowerCase()}`
 }
 
@@ -320,6 +321,8 @@ export interface RelatorioMkt {
   destaques: Destaque[]
   tarefasTrafego: string[]
   tarefasVendas: string[]
+  /** período termina hoje: motivos e "sumiu" ainda vão crescer */
+  emAndamento: boolean
 }
 
 const META_CANAL = 'Meta ADS (WhatsApp)'
@@ -329,8 +332,8 @@ const ORDEM_DECISAO: Record<DecisaoMkt, number> = { subir: 0, testar: 1, cortar:
 export const semEspelho = (v: VendedorMkt) => v.contatos >= 10 && (v.medianaEnviadas ?? 0) === 0
 
 /** Contatos e "sumiu" somados só dos vendedores que etiquetam (base da média do time). */
-export function sumiuDoTime(vs: VendedorMkt[]): { c: number; s: number } {
-  return vs.filter(v => v.contatos >= 10 && !poucaEtiqueta(v)).reduce((t, v) => ({ c: t.c + v.contatos, s: t.s + v.sumiu }), { c: 0, s: 0 })
+export function sumiuDoTime(vs: VendedorMkt[], emAndamento = false): { c: number; s: number } {
+  return vs.filter(v => v.contatos >= 10 && (emAndamento || !poucaEtiqueta(v))).reduce((t, v) => ({ c: t.c + v.contatos, s: t.s + v.sumiu }), { c: 0, s: 0 })
 }
 
 /** Menos de 5% de "sumiu" com 30+ contatos = o vendedor quase não marca etiqueta de perda (não é mérito). */
@@ -338,7 +341,12 @@ export const poucaEtiqueta = (v: VendedorMkt) => v.contatos >= 30 && (taxa(v.sum
 
 export function montarRelatorio(
   fontes: FonteMkt[], vendas: VendaMkt[], gastos: GastoLinhaMkt[] = [], vendedores: VendedorMkt[] = [],
+  opts: { emAndamento?: boolean } = {},
 ): RelatorioMkt {
+  // Período que termina hoje: o vendedor ainda não encerrou (nem etiquetou) boa parte dos contatos,
+  // então "sumiu" baixo não quer dizer que ele não etiqueta.
+  const emAndamento = !!opts.emAndamento
+  const poucaEtq = (v: VendedorMkt) => !emAndamento && poucaEtiqueta(v)
   const total = fontes.find(f => f.tipo === 'total') ?? null
   const canais = fontes.filter(f => f.tipo === 'canal' && f.leads > 0).sort((a, b) => b.leads - a.leads)
   const meta = canais.find(c => c.chave === META_CANAL) ?? null
@@ -465,16 +473,16 @@ export function montarRelatorio(
     }
   }
   // Média do time só com quem etiqueta: quem quase não marca perda puxaria a média para baixo.
-  const repass = sumiuDoTime(vendOrd)
+  const repass = sumiuDoTime(vendOrd, emAndamento)
   const sumiuTime = taxa(repass.s, repass.c)
   if (sumiuTime != null) {
-    const ruins = vendOrd.filter(v => v.contatos >= 30 && !poucaEtiqueta(v) && ((taxa(v.sumiu, v.contatos) ?? 0) >= sumiuTime * 1.25 || (taxa(v.sumiu, v.contatos) ?? 0) - sumiuTime >= 10))
-    const melhor = [...vendOrd].filter(v => v.contatos >= 30 && !poucaEtiqueta(v)).sort((a, b) => (taxa(a.sumiu, a.contatos) ?? 0) - (taxa(b.sumiu, b.contatos) ?? 0))[0]
+    const ruins = vendOrd.filter(v => v.contatos >= 30 && !poucaEtq(v) && ((taxa(v.sumiu, v.contatos) ?? 0) >= sumiuTime * 1.25 || (taxa(v.sumiu, v.contatos) ?? 0) - sumiuTime >= 10))
+    const melhor = [...vendOrd].filter(v => v.contatos >= 30 && !poucaEtq(v)).sort((a, b) => (taxa(a.sumiu, a.contatos) ?? 0) - (taxa(b.sumiu, b.contatos) ?? 0))[0]
     if (ruins.length) {
-      tarefasVendas.push(`${ruins.map(v => `${nomeVendedor(v.vendedor)} (${pctTxt(taxa(v.sumiu, v.contatos))})`).join(' e ')} perdem mais contatos repassados que a média do time (${pctTxt(sumiuTime)}): rever a abordagem e a cadência de retorno.${melhor ? ` ${nomeVendedor(melhor.vendedor)} perde só ${pctTxt(taxa(melhor.sumiu, melhor.contatos))} — usar a abordagem dele como modelo.` : ''}`)
+      tarefasVendas.push(`${ruins.map(v => `${nomeVendedor(v.vendedor)} (${pctTxt(taxa(v.sumiu, v.contatos))})`).join(' e ')} ${ruins.length === 1 ? 'perde' : 'perdem'} mais contatos repassados que a média do time (${pctTxt(sumiuTime)}): rever a abordagem e a cadência de retorno.${melhor ? ` ${nomeVendedor(melhor.vendedor)} perde só ${pctTxt(taxa(melhor.sumiu, melhor.contatos))} — usar a abordagem dele como modelo.` : ''}`)
     }
-    const pe = vendOrd.filter(v => poucaEtiqueta(v) && !semEspelho(v))
-    if (pe.length) tarefasVendas.push(`${pe.map(v => nomeVendedor(v.vendedor)).join(', ')}: quase não marca etiqueta de perda — sem isso não dá para saber quem sumiu nem por quê.`)
+    const pe = vendOrd.filter(v => poucaEtq(v) && !semEspelho(v))
+    if (pe.length) tarefasVendas.push(`${pe.map(v => nomeVendedor(v.vendedor)).join(', ')}: quase não ${pe.length === 1 ? 'marca' : 'marcam'} etiqueta de perda — sem isso não dá para saber quem sumiu nem por quê.`)
   }
   for (const c of canais) {
     if (c.leads < AMOSTRA_MIN_MKT) continue
@@ -486,7 +494,7 @@ export function montarRelatorio(
   const semOrigem = vendasOrigem.find(o => o.chave === 'Não informado no pedido')
   if (semOrigem && vendasTotal) tarefasVendas.push(`Marcar a origem no pedido: ${semOrigem.vendas} de ${vendasTotal.vendas} pedidos (${brlCurto(semOrigem.valor)}) saíram sem dizer de onde veio o cliente.`)
   if (sumiuTime != null && sumiuTime >= 15) {
-    tarefasVendas.push(`${repass.s} de ${repass.c} contatos repassados (${pctTxt(sumiuTime)}, entre os vendedores que etiquetam) sumiram: revisar a cadência de retorno (ligação + áudio) antes de pôr mais verba.`)
+    tarefasVendas.push(`${repass.s} de ${repass.c} contatos repassados (${pctTxt(sumiuTime)}${emAndamento ? '' : ', entre os vendedores que etiquetam'}) sumiram: revisar a cadência de retorno (ligação + áudio) antes de pôr mais verba.`)
   }
 
   return {
@@ -495,7 +503,7 @@ export function montarRelatorio(
     gastoSemCodigo: gSem?.gasto ?? 0, anunciosSemCodigo: gSem?.anuncios ?? 0,
     gastoCarregadoAte: gTotal?.carregadoAte ?? null,
     vendasTotal, vendasGrupo, vendasOrigem, vendasCriativo,
-    vendedores: vendOrd, destaques, tarefasTrafego, tarefasVendas,
+    vendedores: vendOrd, destaques, tarefasTrafego, tarefasVendas, emAndamento,
   }
 }
 

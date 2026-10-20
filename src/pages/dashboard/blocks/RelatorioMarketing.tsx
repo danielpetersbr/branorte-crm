@@ -278,7 +278,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
         <Card id="marketing-motivos">
           <CardHeader
             title="4. Por que os atendimentos fecham"
-            subtitle={`${n(total.fechados)} dos ${n(total.leads)} contatos do período já foram encerrados pelo vendedor (um motivo por contato). Percentuais sobre todos os contatos, inclusive os que ficaram só com a Ana.`}
+            subtitle={`${n(total.fechados)} dos ${n(total.leads)} contatos do período já foram encerrados pelo vendedor (um motivo por contato). Percentuais sobre todos os contatos, inclusive os que ficaram só com a Ana.${rel.emAndamento ? ' Período ainda aberto: os motivos vão crescer até os atendimentos fecharem.' : ''}`}
           />
           <BarraMotivos f={total} />
           <ul className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -392,7 +392,7 @@ function MotivosPorCanal({ canais, total }: { canais: FonteMkt[]; total: FonteMk
 function TabelaVendedores({ rel }: { rel: RelatorioMkt }) {
   const v = rel.vendedores
   const tot = v.reduce((s, x) => ({ c: s.c + x.contatos, e: s.e + x.clienteEscreveu, s24: s.s24 + x.semResposta24h }), { c: 0, e: 0, s24: 0 })
-  const time = sumiuDoTime(v)
+  const time = sumiuDoTime(v, rel.emAndamento)
   const sumiuMed = taxa(time.s, time.c), s24Med = taxa(tot.s24, tot.e)
   return (
     <>
@@ -415,7 +415,7 @@ function TabelaVendedores({ rel }: { rel: RelatorioMkt }) {
                   <td className={`${td} text-right`}>{dec1(taxa(x.comOrcamento, x.rastreaveis))}</td>
                   <td className={`${td} text-right`}>
                     <Pct v={taxa(x.sumiu, x.contatos)} media={sumiuMed} base={x.contatos} />
-                    {poucaEtiqueta(x) && <span className="block text-micro text-ink-faint">quase não etiqueta</span>}
+                    {!rel.emAndamento && poucaEtiqueta(x) && <span className="block text-micro text-ink-faint">quase não etiqueta</span>}
                   </td>
                   {cego ? (
                     <td colSpan={3} className={`${td} text-right text-ink-faint`}>WhatsApp não chega ao CRM — sem medida</td>
@@ -441,8 +441,8 @@ function TabelaVendedores({ rel }: { rel: RelatorioMkt }) {
         </table>
       </div>
       <p className="mt-3 text-micro text-ink-faint">
-        Média do “sumiu” só com quem etiqueta. Sumiu = etiqueta NUNCA RESPONDEU ou NÃO RESPONDEU MAIS em qualquer WhatsApp da casa, sobre os contatos repassados ao vendedor — por isso é maior que o “sumiu” da conta inteira, que inclui quem ficou só com a Ana. Orçamentos vêm do sistema de orçamentos, não do WhatsApp.
-        Resposta mede só os clientes que escreveram depois do repasse ({n(tot.e)} de {n(tot.c)}).
+        {rel.emAndamento ? 'Período ainda aberto: parte dos contatos ainda não foi encerrada, então o “sumiu” vai subir. ' : 'Média do “sumiu” só com quem etiqueta. '}Sumiu = etiqueta NUNCA RESPONDEU ou NÃO RESPONDEU MAIS em qualquer WhatsApp da casa, sobre os contatos repassados ao vendedor — por isso é maior que o “sumiu” da conta inteira, que inclui quem ficou só com a Ana. Orçamentos vêm do sistema de orçamentos, não do WhatsApp.
+        “Sem resposta em 24 h” conta só quem escreveu há mais de 24 h ({n(tot.e)} de {n(tot.c)} contatos).
       </p>
     </>
   )
@@ -656,7 +656,7 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
                 return (
                   <tr key={x.vendedor}>
                     <td style={rowH}>{nomeVendedor(x.vendedor)}</td><td style={tdP}>{n(x.contatos)}</td>
-                    <td style={tdP}>{dec1(taxa(x.comOrcamento, x.rastreaveis))}</td><td style={tdP}>{pct(taxa(x.sumiu, x.contatos), 0)}{poucaEtiqueta(x) ? ' (quase não etiqueta)' : ''}</td>
+                    <td style={tdP}>{dec1(taxa(x.comOrcamento, x.rastreaveis))}</td><td style={tdP}>{pct(taxa(x.sumiu, x.contatos), 0)}{!rel.emAndamento && poucaEtiqueta(x) ? ' (quase não etiqueta)' : ''}</td>
                     {cego ? <td colSpan={3} style={{ ...tdP, color: P.faint }}>WhatsApp não chega ao CRM</td> : (
                       <>
                         <td style={{ ...tdP, color: (x.medianaRespostaMin ?? 0) > 120 ? P.ruim : P.muted, fontWeight: (x.medianaRespostaMin ?? 0) > 120 ? 700 : 400 }}>{minTxt(x.medianaRespostaMin)}</td>
