@@ -33,17 +33,22 @@ export const RISCO_MAX_HORAS = 14 * 24
 export const RISCO_TOP = 8
 
 /**
- * Horas desde a última atividade conhecida do lead: última mensagem no canal da IA
- * OU último orçamento montado para o telefone dele (o que for mais recente).
- * `null` quando não há nenhuma das duas datas válidas.
+ * Horas desde a última atividade conhecida do lead: última mensagem no canal da IA,
+ * último orçamento montado para o telefone dele OU última mensagem no WhatsApp de
+ * qualquer vendedor (o que for mais recente). `null` quando não há nenhuma data válida.
+ *
+ * O WhatsApp entrou em 19/10/2026: dos 47 leads do card, 28 tinham mensagem no
+ * WhatsApp do vendedor mais nova que a "última atividade" (ex.: cliente que escreveu
+ * pro Ramon em 15/10 aparecia "parado há 270h").
  */
 export function horasSemAtividade(
   lastMessageAt: string | null | undefined,
   ultimoOrcamentoMs: number | null | undefined,
   agoraMs: number,
+  ultimaMsgWhatsAppMs?: number | null,
 ): number | null {
   const msg = lastMessageAt ? new Date(lastMessageAt).getTime() : NaN
-  const datas = [msg, ultimoOrcamentoMs ?? NaN].filter(Number.isFinite)
+  const datas = [msg, ultimoOrcamentoMs ?? NaN, ultimaMsgWhatsAppMs ?? NaN].filter(Number.isFinite)
   if (datas.length === 0) return null
   return (agoraMs - Math.max(...datas)) / 3_600_000
 }
@@ -62,4 +67,17 @@ export function entraEmRisco(momento: string | null, valor: number, horas: numbe
  */
 export function responsavelDoRisco(leads: { vendedor: string | null }[]): string | undefined {
   return leads.find(l => l.vendedor && !foraDoRanking(l.vendedor))?.vendedor ?? undefined
+}
+
+/**
+ * Quem tem mais leads na lista INTEIRA (não só no top 8), sem o dono. O card dizia
+ * "responsável: Jardel" para 47 leads de 10 vendedores (19/10/2026).
+ */
+export function vendedoresDoRisco(leads: { vendedor: string | null }[]): { nome: string; qtd: number }[] {
+  const por = new Map<string, number>()
+  for (const l of leads) {
+    if (!l.vendedor || foraDoRanking(l.vendedor)) continue
+    por.set(l.vendedor, (por.get(l.vendedor) ?? 0) + 1)
+  }
+  return [...por.entries()].map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd)
 }

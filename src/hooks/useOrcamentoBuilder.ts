@@ -382,7 +382,7 @@ export function useAtualizarOrcamento() {
 // 1.673 linhas = ~9 MB de JSON. Só as colunas que a tela mostra dão ~553 KB (16× menos),
 // e este hook só serve a tela Orçamentos Salvos.
 const ORC_LISTA_COLUNAS =
-  'id,numero,numero_base,versao_alt,data_emissao,sequencial,cliente_nome,vendedor_nome,total_proposta,status,modelo_basename,created_at'
+  'id,numero,numero_base,versao_alt,data_emissao,sequencial,cliente_nome,cliente_fone:cliente_dados->>fone,vendedor_nome,total_proposta,status,modelo_basename,created_at'
 
 export type OrcamentoGeradoLista = Pick<
   OrcamentoGerado,
@@ -398,7 +398,7 @@ export type OrcamentoGeradoLista = Pick<
   | 'status'
   | 'modelo_basename'
   | 'created_at'
->
+> & { cliente_fone: string | null }
 
 const ORC_PAGINA = 1000      // teto de linhas por request do PostgREST
 const ORC_MAX_PAGINAS = 50   // guarda contra loop infinito (50 mil), não teto de negócio

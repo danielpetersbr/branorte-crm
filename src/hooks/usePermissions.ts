@@ -122,6 +122,7 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
     //
     // REGRA: chave `true` pro papel `vendor` em role_permissions tem que estar
     // AQUI TAMBÉM. As duas listas são a mesma verdade em momentos diferentes.
+    'menu.vendidos': true,
     'menu.atendimentos': true,
     'menu.whatsapp': true,
     'menu.orcamentos': true,

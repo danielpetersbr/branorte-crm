@@ -5,7 +5,7 @@ import { supabase, supabaseAuditoria } from '@/lib/supabase'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { memoPorSnapshot } from '@/lib/memo-por-snapshot'
 import { decodeDashboardSnapshot } from '@/lib/dashboard-snapshot'
-import { RISCO_TOP, entraEmRisco, horasSemAtividade } from '@/lib/dashboard-risco'
+import { RISCO_TOP, entraEmRisco, horasSemAtividade, vendedoresDoRisco } from '@/lib/dashboard-risco'
 
 
 // A RPC lê o conjunto completo (teto de 50 mil) uma vez. Período continua client-side
@@ -150,9 +150,26 @@ function ufFrom(tel: string | null): string {
   return ufFromTelefone(tel)
 }
 
+// Dia de Brasília (YYYY-MM-DD). O banco serializa `data` em UTC: cortar a string ISO
+// jogava o lead das 21h–24h no dia seguinte (16/10: 59 no gráfico × 51 de verdade) e
+// o gráfico divergia do tile "Atendimentos hoje", que já conta no fuso daqui.
+const DIA_SP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' })
+
+function diaSP(d: Date): string {
+  return DIA_SP.format(d)
+}
+
+/** Soma dias a um 'YYYY-MM-DD' sem passar pelo fuso do navegador. */
+function somaDias(dia: string, n: number): string {
+  const d = new Date(`${dia}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
 function dayKey(iso: string | null | undefined): string | null {
   if (!iso) return null
-  return iso.slice(0, 10)
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? null : diaSP(d)
 }
 
 function hourOf(iso: string | null | undefined): number | null {
@@ -212,14 +229,20 @@ export function rangeForPreset(preset: DashboardPreset, now: Date): DateRange | 
   return null
 }
 
-// Janela "anterior" pro delta (mesma duracao, deslocada pra tras)
-function previousRange(r: DateRange | null): DateRange | null {
+// Janela "anterior" pro delta. Compara o MESMO pedaço já decorrido:
+// - "Este mês" volta pro 1º do mês anterior (antes eram os últimos N dias do mês
+//   anterior: em 19/10 o "+20%" comparava com 12–30/09; contra 01–19/09 era −17%);
+// - o período atual só tem dado até AGORA, então o anterior para na mesma hora
+//   (hoje parcial contra um dia inteiro derrubava o delta toda manhã).
+export function previousRange(r: DateRange | null, preset: DashboardPreset = '', now: Date = new Date()): DateRange | null {
   if (!r) return null
-  const ms = r.to.getTime() - r.from.getTime()
-  return {
-    from: new Date(r.from.getTime() - ms - 1),
-    to: new Date(r.from.getTime() - 1),
-  }
+  const decorrido = Math.min(now.getTime(), r.to.getTime()) - r.from.getTime()
+  const from = preset === 'mes'
+    ? new Date(r.from.getFullYear(), r.from.getMonth() - 1, 1)
+    : new Date(r.from.getTime() - (r.to.getTime() - r.from.getTime()) - 1)
+  // Mês anterior mais curto (31/03 → fevereiro): não deixa o anterior invadir o atual.
+  const to = new Date(Math.min(from.getTime() + decorrido, r.from.getTime() - 1))
+  return { from, to }
 }
 
 function inRange(iso: string | null | undefined, r: DateRange | null): boolean {
@@ -301,6 +324,13 @@ export interface DashboardData {
   leadAging: LeadAging[]
   slaPorVendedor: SlaVendedor[]
   leadsEmRisco: LeadEmRisco[]
+  /**
+   * A lista INTEIRA de risco, antes do corte em RISCO_TOP. O card somava o R$ só dos 8
+   * maiores (R$ 1,59 mi) quando eram 47 leads e R$ 3,79 mi (19/10/2026).
+   * `indisponivel`: a busca de orçamento/situação/WhatsApp falhou — sem ela o valor
+   * vira 0 e vendido/perdido não sai da lista, então o número não é confiável.
+   */
+  riscoResumo: { qtd: number; valor: number; vendedores: { nome: string; qtd: number }[]; indisponivel: boolean }
   forecast: {
     vendidoMes: number
     pedidosMes: number
@@ -347,6 +377,10 @@ interface DashboardRaw {
   /** fone_canon → epoch ms do ÚLTIMO orçamento montado (entra na "última atividade" do risco). */
   orcEmByCanon: Map<string, number>
   fechados: Set<string>
+  /** fone_canon → epoch ms da última mensagem no WhatsApp de qualquer vendedor (últimos 15 dias). */
+  msgWaByCanon: Map<string, number>
+  /** true quando alguma das RPCs de enriquecimento falhou (os mapas acima estão incompletos). */
+  enriquecimentoFalhou: boolean
   criativoNomes: Map<string, string>
 }
 
@@ -390,12 +424,15 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
       const orcValorByCanon = new Map<string, number>()
       const orcEmByCanon = new Map<string, number>()
       const fechados = new Set<string>()   // fone_canon com etiqueta VENDIDO ou MORTO → fora do "dinheiro parado"
+      const msgWaByCanon = new Map<string, number>()
+      let enriquecimentoFalhou = false
       const enriquecerTelefones = async () => {
         try {
           const [orcRes, sitRes] = await Promise.all([
             (supabase as any).rpc('orcamentos_por_telefone_canon', { p_canons: canons }).abortSignal(signal),
             (supabase as any).rpc('dashboard_fone_situacao').abortSignal(signal),
           ])
+          if (orcRes?.error || sitRes?.error) enriquecimentoFalhou = true
           if (!orcRes?.error) {
             for (const o of (orcRes?.data ?? []) as { fone_canon?: string; ultimo_valor?: number; ultimo_em?: string | null }[]) {
               if (!o?.fone_canon) continue
@@ -407,11 +444,18 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
             }
           }
           if (!sitRes?.error) {
-            for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string }[]) {
-              if (s?.fone_canon && (s.situacao === 'vendido' || s.situacao === 'morto')) fechados.add(String(s.fone_canon))
+            for (const s of (sitRes?.data ?? []) as { fone_canon?: string; situacao?: string; ultima_msg_wa?: string | null }[]) {
+              if (!s?.fone_canon) continue
+              if (s.situacao === 'vendido' || s.situacao === 'morto') fechados.add(String(s.fone_canon))
+              const em = s.ultima_msg_wa ? new Date(s.ultima_msg_wa).getTime() : NaN
+              if (Number.isFinite(em)) msgWaByCanon.set(String(s.fone_canon), em)
             }
           }
-        } catch { /* maps vazios -> fallback; dashboard não quebra */ }
+        } catch {
+          // Mapas vazios: o dashboard não quebra, mas o card de risco passa a dizer
+          // "indisponível" em vez de mostrar uma lista sem valor e sem vendido/perdido.
+          enriquecimentoFalhou = true
+        }
       }
       // Catálogo e enriquecimento são independentes: uma só etapa de espera.
       // Mantém a deduplicação e o cache de 30 min dos nomes, sem bloquear as RPCs.
@@ -424,7 +468,7 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
         enriquecerTelefones(),
       ])
       signal.throwIfAborted()
-      return { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes }
+      return { rows, orcValorByCanon, orcEmByCanon, fechados, msgWaByCanon, enriquecimentoFalhou, criativoNomes }
     },
     staleTime: 120_000,
     refetchInterval: 180_000,
@@ -442,14 +486,15 @@ export function useDashboard(filters: DashboardFilters = { preset: '' }) {
 // ============================================================================
 
 function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
-  const { rows, orcValorByCanon, orcEmByCanon, fechados, criativoNomes } = raw
+  const { rows, orcValorByCanon, orcEmByCanon, fechados, msgWaByCanon, enriquecimentoFalhou, criativoNomes } = raw
   const now = new Date()
   const range = rangeForPreset(preset, now)
-  const prev = previousRange(range)
-  const todayIso = now.toISOString().slice(0, 10)
+  const prev = previousRange(range, preset, now)
+  const todayIso = diaSP(now)
 
-  // Filtra rows por DATA DE CHEGADA (data/created_at), igual /atendimentos.
-  // Garante que Dashboard e Atendimentos mostram os mesmos números.
+  // Filtra rows por DATA DE CHEGADA (data/created_at). ⚠️ NÃO é o filtro do
+  // /atendimentos: lá o período é pela ÚLTIMA mensagem e lead sem telefone some, então
+  // o mesmo "Este mês" dá outro número (19/10/2026: 1.017 aqui × 1.173 lá).
   const filtered = range ? rows.filter(r => inRange(r.data, range)) : rows
   const filteredPrev = prev ? rows.filter(r => inRange(r.data, prev)) : []
 
@@ -564,8 +609,8 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
   const projecao = ritmoDia * diasNoMes
 
   // Janela do gráfico "leads por dia" — SEMPRE últimos 30 dias (independente do filtro)
-  const chart30start = new Date(now); chart30start.setDate(chart30start.getDate() - 29); chart30start.setHours(0, 0, 0, 0)
-  const chartStartIso = chart30start.toISOString().slice(0, 10)
+  // Dias de Brasília, como as séries de propostas e ligações do mesmo gráfico.
+  const chartStartIso = somaDias(todayIso, -29)
 
   let completos = 0, parciais = 0, vazios = 0
 
@@ -707,13 +752,21 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     const status = (r.status_real || '').toLowerCase()
     const fc = foneCanon(r.telefone)
     // Exclui quem já VENDEU ou foi PERDIDO pela etiqueta do funil (status_real não captura isso).
-    if (status.includes('vendid') || status.includes('perdid') || !r.last_message_at || (fc != null && fechados.has(fc))) continue
-    const ageH = (now.getTime() - new Date(r.last_message_at).getTime()) / 3600000
+    if (status.includes('vendid') || status.includes('perdid') || (fc != null && fechados.has(fc))) continue
     const valor = orcValorByCanon.get(fc ?? '') ?? 0
-    if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
-    else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
-    else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
-    else if (ageH >= 720) { agingMais++; agingValorMais += valor }
+    // "Sem resposta há": a última mensagem no canal da IA OU no WhatsApp do vendedor
+    // (19/10/2026 — 77 leads na faixa +30d, R$ 3,4 mi, tinham conversado com o vendedor
+    // na última semana). A WhatsApp vem dos últimos 31 dias, o que cobre as faixas até 30d.
+    const ultIa = r.last_message_at ? new Date(r.last_message_at).getTime() : NaN
+    const ultWa = msgWaByCanon.get(fc ?? '') ?? NaN
+    const ultAtiv = Math.max(...[ultIa, ultWa].filter(Number.isFinite))
+    if (Number.isFinite(ultAtiv)) {
+      const ageH = (now.getTime() - ultAtiv) / 3600000
+      if (ageH >= 24 && ageH < 48) { aging24++; agingValor24 += valor }
+      else if (ageH >= 48 && ageH < 168) { aging48++; agingValor48 += valor }
+      else if (ageH >= 168 && ageH < 720) { aging7d++; agingValor7d += valor }
+      else if (ageH >= 720) { agingMais++; agingValorMais += valor }
+    }
 
     // Lead em risco = quente OU com orçamento, parado entre 24h e 14 dias (29/09/2026).
     // Sem o teto de 14 dias o card Crítico ficava preso em orçamentos grandes de 2-4
@@ -721,7 +774,9 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     // não só a última mensagem do canal da IA. Regra e números: src/lib/dashboard-risco.ts.
     // O aging acima segue em `ageH` (última mensagem) de propósito — é outra pergunta.
     const momentoR = normQuando(r.quando_investir)
-    const horasRisco = horasSemAtividade(r.last_message_at, orcEmByCanon.get(fc ?? ''), now.getTime())
+    // O risco não depende de mensagem no canal da IA: lead com orçamento ou conversa no
+    // WhatsApp do vendedor e nada na IA também entra (antes o `continue` acima o pulava).
+    const horasRisco = horasSemAtividade(r.last_message_at, orcEmByCanon.get(fc ?? ''), now.getTime(), msgWaByCanon.get(fc ?? ''))
     if (entraEmRisco(momentoR, valor, horasRisco)) {
       candidatosRisco.push({
         id: r.id,
@@ -788,13 +843,9 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     }
   }
   const allDays: { dia: string; total: number; qualificados: number }[] = []
-  const cursor = new Date(chart30start)
-  const endDate = now
-  while (cursor <= endDate) {
-    const k = cursor.toISOString().slice(0, 10)
+  for (let k = chartStartIso; k <= todayIso; k = somaDias(k, 1)) {
     const d = byDay.get(k) ?? { total: 0, qualificados: 0 }
     allDays.push({ dia: k, total: d.total, qualificados: d.qualificados })
-    cursor.setDate(cursor.getDate() + 1)
   }
   const firstActive = allDays.findIndex(d => d.total > 0)
   const leadsPorDia = firstActive >= 0 ? allDays.slice(firstActive) : allDays
@@ -834,8 +885,9 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
       pct: totalGeo > 0 ? (total / totalGeo) * 100 : 0,
       isBrasil: UF_NOMES[uf] !== undefined && uf !== 'INTL' && !PAIS_SIGLAS.has(uf),
     }))
+    // Sem corte (19/10/2026): o slice(0, 20) tirava SE, AM, RN, AC, AL, RR e os países —
+    // 29 leads do mês sumiam e a tabela mostrava "· · ·" com o dado no cliente.
     .sort((a, b) => b.total - a.total)
-    .slice(0, 20)
 
   const diaXHora: { weekday: number; hour: number; valor: number }[] = []
   for (let wd = 0; wd < 7; wd++) {
@@ -870,6 +922,12 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
   }).sort((a, b) => b.totalLeads - a.totalLeads)
 
   // ============================ Leads em risco (top RISCO_TOP) ============================
+  const riscoResumo = {
+    qtd: candidatosRisco.length,
+    valor: candidatosRisco.reduce((s, l) => s + (l.valor ?? 0), 0),
+    vendedores: vendedoresDoRisco(candidatosRisco),
+    indisponivel: enriquecimentoFalhou,
+  }
   const leadsEmRisco = candidatosRisco
     .sort((a, b) => {
       // Prioriza valor; em caso de empate, idade
@@ -899,6 +957,7 @@ function aggregate(raw: DashboardRaw, preset: DashboardPreset): DashboardData {
     leadAging,
     slaPorVendedor,
     leadsEmRisco,
+    riscoResumo,
     forecast: {
       vendidoMes,
       pedidosMes,
@@ -932,7 +991,7 @@ function buildSparkSeries(
   const botao = new Array(buckets).fill(0)
   const ms = range.to.getTime() - range.from.getTime()
   const bucketMs = ms / buckets || 1
-  const today = new Date().toISOString().slice(0, 10)
+  const today = diaSP(new Date())
 
   for (const r of rows) {
     // Bucketiza por r.data (chegada) — MESMO campo do KPI; senão a curva não bate com o número.
@@ -942,7 +1001,7 @@ function buildSparkSeries(
     if (t < range.from.getTime() || t > range.to.getTime()) continue
     const idx = Math.min(buckets - 1, Math.max(0, Math.floor((t - range.from.getTime()) / bucketMs)))
     total[idx]++
-    if (refIso.slice(0, 10) === today) hoje[idx]++
+    if (dayKey(refIso) === today) hoje[idx]++
     if (normQuando(r.quando_investir) === 'Agora') quentes[idx]++
     if (isQualificadoBranorte(r)) qualificados[idx]++   // mesma def do KPI Qualificados
     if (r.tocou_botao_em) botao[idx]++

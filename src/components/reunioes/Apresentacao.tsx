@@ -17,6 +17,7 @@ const chapters = {
   sales: { label: 'Vendas', Icon: TrendingUp },
   teams: { label: 'Times', Icon: Users },
   agenda: { label: 'Pauta', Icon: ListChecks },
+  review: { label: 'Melhorias comerciais', Icon: ListChecks },
   video: { label: 'Vídeo', Icon: Play },
   funnel: { label: 'Funil', Icon: Filter },
 }
@@ -30,6 +31,7 @@ function chapterSummary(slide: ApresentacaoSlide): string {
     case 'sales': return `${slide.effectiveSales} vendas na semana · ${slide.aboveTenK} acima de R$ 10 mil`
     case 'teams': return `${slide.teams.length} times · clique para explorar cada resultado`
     case 'agenda': return `${slide.totalMinutes} minutos · vá direto ao assunto`
+    case 'review': return slide.scope
     case 'video': return 'Assistir ao vídeo dentro da apresentação'
     case 'funnel': return 'Explore as etapas e abra os clientes no Kanban'
   }
@@ -66,8 +68,8 @@ function ApresentacaoViewer({ titulo, manifesto, onClose }: { titulo: string; ma
     setIndex(bounded)
     setShowOverview(false)
   }, [index, manifesto.slides.length])
-  const navigateToType = (type: ApresentacaoSlide['type']) => {
-    const next = manifesto.slides.findIndex(s => s.type === type)
+  const navigateToType = (type: ApresentacaoSlide['type'], slideId?: string) => {
+    const next = manifesto.slides.findIndex(s => slideId ? s.id === slideId : s.type === type)
     if (next >= 0) navigateTo(next)
   }
   // A query normaliza um objeto novo a cada refetch. Só renovar as URLs quando

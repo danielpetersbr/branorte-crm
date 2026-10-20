@@ -1,5 +1,6 @@
 import { ArrowRight, AlertTriangle } from 'lucide-react'
 import type { CorridaVendedor } from '@/hooks/useVendasReais'
+import { soVendedores } from '@/lib/vendedores-fora-do-ranking'
 import { Card, CardHeader } from '../ui/Card'
 import { JanelaBadge } from '../ui/JanelaBadge'
 import { brl, n, pct, primeiroNome } from '../ui/format'
@@ -17,16 +18,31 @@ const MEDALHA = ['🥇', '🥈', '🥉']
 export function TopEquipe({
   corrida,
   metaVendedor,
+  totalMes,
   degradado,
   onVerTodos,
 }: {
   corrida: CorridaVendedor[] | undefined
   metaVendedor: number
+  /** Vendido do mês (o mesmo da Meta) — para o rodapé dizer quanto o top 5 cobre. */
+  totalMes: number | undefined
   degradado: boolean
   onVerTodos: () => void
 }) {
-  const linhas = [...(corrida ?? [])].sort((a, b) => b.valor - a.valor)
+  // O dono fecha venda de verdade, mas não entra em ranking de vendedor
+  // (em 19/10 ele aparecia em 4º, com a meta individual de vendedor).
+  const linhas = (corrida ?? []).filter(soVendedores(c => c.vendedor)).sort((a, b) => b.valor - a.valor)
   const top = linhas.slice(0, 5)
+  // Primeiro nome repetido ("Edilson" JR e "Edilson" BEGER, 19/10/2026) aparecia como
+  // duas linhas iguais: nesse caso mostra o nome inteiro.
+  const contaPrimeiro = new Map<string, number>()
+  for (const l of linhas) {
+    const k = primeiroNome(l.vendedor).toUpperCase()
+    contaPrimeiro.set(k, (contaPrimeiro.get(k) ?? 0) + 1)
+  }
+  const nomeExibido = (v: string) => ((contaPrimeiro.get(primeiroNome(v).toUpperCase()) ?? 0) > 1 ? v : primeiroNome(v) || v)
+  const somaTop = top.reduce((s, v) => s + v.valor, 0)
+  const foraTop = totalMes != null ? totalMes - somaTop : null
   const mesLabel = new Date().toLocaleDateString('pt-BR', { month: 'long' })
 
   return (
@@ -70,7 +86,7 @@ export function TopEquipe({
 
               {/* break-words e sem truncate: nome de vendedor não pode ser cortado */}
               <span className="min-w-0 flex-1 break-words text-body text-ink">
-                {primeiroNome(v.vendedor) || v.vendedor}
+                {nomeExibido(v.vendedor)}
               </span>
 
               <span className="hidden w-28 shrink-0 text-right text-label tabular-nums text-ink-muted sm:block">
@@ -93,6 +109,13 @@ export function TopEquipe({
             </li>
           ))}
         </ol>
+      )}
+      {top.length > 0 && foraTop != null && Math.abs(foraTop) >= 1 && (
+        // Sem isto o top 5 somava R$ 552 mil de R$ 734 mil e ninguém via onde estava o resto.
+        <p className="mt-3 border-t border-border pt-3 text-micro tabular-nums text-ink-faint">
+          Top {top.length} soma {brl(somaTop)} de {brl(totalMes!)} vendidos no mês; {brl(foraTop)} com os demais
+          vendedores e o dono (que não entra no ranking).
+        </p>
       )}
     </Card>
   )

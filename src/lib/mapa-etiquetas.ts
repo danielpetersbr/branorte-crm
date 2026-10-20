@@ -118,7 +118,7 @@ export function passaEtiqueta(sel: ReadonlySet<string>, c: ConversaDoCliente): b
 // Estágio "mais adiantado" do funil vence: numa conversa com ORCAMENTO ENVIADO +
 // NAO RESPONDEU MAIS, o desfecho diz mais que a etapa. Etiqueta fora do funil
 // (ordem 900) só vale se não houver nenhuma do funil.
-function maisAdiantada(nomes: string[]): string {
+export function maisAdiantada(nomes: string[]): string {
   const peso = (n: string) => { const o = ordemDe(n); return o === 900 ? -1 : o }
   return nomes.slice().sort((a, b) => peso(b) - peso(a) || a.localeCompare(b))[0]
 }

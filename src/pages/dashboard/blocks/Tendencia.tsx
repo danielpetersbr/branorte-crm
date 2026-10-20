@@ -10,11 +10,14 @@ import { n } from '../ui/format'
 
 type SerieId = 'leads' | 'qualificados' | 'propostas' | 'ligacoes'
 
+// Os nomes dizem a régua de cada série (19/10/2026): "Qualificados" somava 255 no mês
+// contra 266 do card de mesmo nome, e "Propostas" somava 154 contra 131 clientes e
+// 235 propostas — três números diferentes com o mesmo nome na mesma tela.
 const SERIES: { id: SerieId; label: string; cor: string; ajuda: string }[] = [
-  { id: 'leads',        label: 'Leads',        cor: CHART.s2, ajuda: 'Contatos que chegaram, por dia.' },
-  { id: 'qualificados', label: 'Qualificados', cor: CHART.s1, ajuda: 'Leads que disseram o que precisam e é algo que a Branorte fabrica.' },
-  { id: 'propostas',    label: 'Propostas',    cor: CHART.s3, ajuda: 'Clientes distintos com orçamento montado no dia.' },
-  { id: 'ligacoes',     label: 'Ligações',     cor: CHART.s5, ajuda: 'Chamadas feitas pelos vendedores no dia. É piso: só conta o que ficou registrado no histórico do WhatsApp.' },
+  { id: 'leads',        label: 'Leads',        cor: CHART.s2, ajuda: 'Contatos que chegaram, por dia. A soma do período bate com o card Leads.' },
+  { id: 'qualificados', label: 'Qualificados pela IA', cor: CHART.s1, ajuda: 'Leads que disseram à IA o que precisam e é algo que a Branorte fabrica — a mesma régua da etapa Qualificou do funil. O card Qualificados soma também quem tem etiqueta de avanço do vendedor, por isso dá mais.' },
+  { id: 'propostas',    label: 'Clientes c/ proposta no dia', cor: CHART.s3, ajuda: 'Clientes distintos com orçamento montado NAQUELE dia. Cliente cotado em dois dias conta nos dois, por isso a soma do mês passa do card Clientes com proposta.' },
+  { id: 'ligacoes',     label: 'Ligações',     cor: CHART.s5, ajuda: 'Chamadas feitas pela equipe no dia (inclui o dono). É piso: só conta o que ficou registrado no histórico do WhatsApp.' },
 ]
 
 /** Janela fixa de 30 dias, no fuso de Brasília — casa com as outras séries. */
@@ -50,8 +53,18 @@ export function Tendencia({
   orcamentosPorDia: { dia: string; total: number }[] | undefined
 }) {
   const [ativas, setAtivas] = useState<SerieId[]>(['leads', 'qualificados'])
-  const [j] = useState(janela30d)
+  // Recalcula a cada render (as strings só mudam à meia-noite): com useState a janela
+  // ficava presa no dia em que a tela abriu e, depois da meia-noite, aparecia um 31º
+  // dia com zeros que não eram reais.
+  const j = janela30d()
   const { data: ligacoes } = useLigacoesSerie(j, null)
+  // Série sem dado (carregando ou falhou) NÃO pode virar linha de zeros.
+  const disponivel: Record<SerieId, boolean> = {
+    leads: leadsPorDia !== undefined,
+    qualificados: leadsPorDia !== undefined,
+    propostas: orcamentosPorDia !== undefined,
+    ligacoes: ligacoes !== undefined,
+  }
 
   const dados = useMemo(() => {
     type Linha = { dia: string; leads: number; qualificados: number; propostas: number; ligacoes: number }
@@ -93,14 +106,16 @@ export function Tendencia({
 
       <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Séries do gráfico">
         {SERIES.map(s => {
-          const on = ativas.includes(s.id)
+          const ok = disponivel[s.id]
+          const on = ok && ativas.includes(s.id)
           return (
             <button
               key={s.id}
               type="button"
               onClick={() => alternar(s.id)}
+              disabled={!ok}
               aria-pressed={on}
-              title={s.ajuda}
+              title={ok ? s.ajuda : `${s.ajuda} Indisponível agora: não carregou.`}
               className={[
                 'inline-flex min-h-[44px] md:min-h-0 items-center gap-2 rounded-full border px-3 py-2 text-micro transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
@@ -113,7 +128,7 @@ export function Tendencia({
                 className={`h-2 w-2 rounded-full ${on ? '' : 'bg-ink-faint'}`}
                 style={on ? { background: s.cor } : undefined}
               />
-              {s.label}
+              {s.label}{ok ? '' : ' · indisponível'}
             </button>
           )
         })}
@@ -160,7 +175,7 @@ export function Tendencia({
                 wrapperStyle={{ fontSize: 12, color: CHART.ink, paddingTop: 8 }}
                 formatter={(value: string) => SERIES.find(s => s.id === value)?.label ?? value}
               />
-              {SERIES.filter(s => ativas.includes(s.id)).map(s => (
+              {SERIES.filter(s => ativas.includes(s.id) && disponivel[s.id]).map(s => (
                 <Area
                   key={s.id}
                   type="monotone"

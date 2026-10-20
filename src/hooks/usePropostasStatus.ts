@@ -19,7 +19,11 @@ export interface PropostasStatus {
   porCategoria: { categoria: PropCategoria; n: number; brl: number }[]
   porCatVendedor: { categoria: PropCategoria; vendedor: string; n: number; brl: number }[]
   aberto: { n: number; brl: number }   // não vendido/perdido = orcamento+lead_quente+quente+novo+sem_etiqueta
-  abertoQuente: { n: number; brl: number } // orcamento+quente+lead_quente = pipeline QUENTE real (sem 'novo'/sem-etiqueta)
+  // orcamento+quente+lead_quente = pipeline QUENTE real. Desde 19/10/2026 a RPC põe
+  // PROSPECÇÃO, 2ª TENTATIVA, INTERESSE FUTURO e AGUARDANDO em 'novo' (antes caíam em
+  // 'quente' e somavam R$ 284 mil de "negociação"), conta a conversa com etiqueta de
+  // perda como perdida, e `porCategoria` deduplica por CLIENTE (era por vendedor: 134 × 131).
+  abertoQuente: { n: number; brl: number }
   vendido: { n: number; brl: number }
 }
 

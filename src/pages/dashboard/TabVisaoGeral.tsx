@@ -19,7 +19,7 @@ import { Tendencia } from './blocks/Tendencia'
 import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
 import { TopEquipe } from './blocks/TopEquipe'
 import { DrillModal } from './blocks/DrillModal'
-import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
+import { naoEhVendedor } from '@/lib/vendedores-fora-do-ranking'
 
 
 function Esqueleto() {
@@ -81,7 +81,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   const [drill, setDrill] = useState<null | 'orcamentos' | 'vendidos' | 'valor'>(null)
 
   const { data: etq, isPending: etqPendente, isPlaceholderData: etqVelho } = useDashboardEtiquetas(preset)
-  const { data: extra } = useDashboardExtra()
+  const { data: extra, isPending: extraPendente } = useDashboardExtra()
   const { data: vendFunil, isPending: vendFunilPendente, isPlaceholderData: vendFunilVelho } = useDashboardVendedorFunil(preset)
   const { data: funilUnion, isPending: funilUnionPendente, isPlaceholderData: funilUnionVelho } = useFunilUnion(preset)
   const { data: orcamentosReais, isPending: orcamentosReaisPendente } = useDashboardOrcamentos(preset)
@@ -127,7 +127,9 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
     // ficava com a ÚLTIMA — a menor — e o vendedor aparecia com 3 de 392.
     const porNome = new Map<string, VendedorCobertura>()
     for (const r of cobertura ?? []) {
-      if (foraDoRanking(r.vendedor)) continue
+      // Fora: o dono, a ANA (é a IA de atendimento, não vendedor) e quem não tem o
+      // WhatsApp lido — a % dele não mede etiquetagem, mede falta de dado.
+      if (naoEhVendedor(r.vendedor) || r.wa_capturado === false) continue
       const k = primeiroNome(r.vendedor)
       const cur = porNome.get(k)
       if (!cur || (r.total_passado ?? 0) > (cur.total_passado ?? 0)) porNome.set(k, r)
@@ -150,11 +152,26 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
       rNegoc: propStatus?.abertoQuente.brl ?? 0,
       rMontado: orc?.valorTotalBRL ?? 0,
       qualificou: funilUnion?.qualificou ?? data?.kpiQualificados.valor ?? 0,
-      clientesComProposta: orc?.geradas ?? 0,
+      // Mesmo número do card "Clientes com proposta". `orc.geradas` deduplica por
+      // vendedor+cliente: cliente cotado por 2 vendedores contava 2× (134 × 131 em 19/10).
+      clientesComProposta: orcamentosReais ?? orc?.geradas ?? 0,
     }
-  }, [orc, cobertura, propStatus, funilUnion, data?.kpiQualificados.valor])
+  }, [orc, cobertura, propStatus, funilUnion, data?.kpiQualificados.valor, orcamentosReais])
+
+  const vendedoresComProposta = useMemo(
+    () => new Set((orc?.porVendedor ?? [])
+      .filter(v => v.propostasN > 0)
+      .map(v => (v.vendedor || '').trim().split(/\s+/)[0].toUpperCase())),
+    [orc],
+  )
 
   const qualificados = funilUnion?.qualificou ?? data.kpiQualificados.valor
+  // Divide pelo universo da MESMA RPC: dividir pelo kpiTotal misturava a contagem
+  // da RPC com a da view lida aqui no cliente.
+  const baseQualificados = funilUnion?.entrou ?? data.kpiTotal.valor
+  // Quantos entram só pela etiqueta do vendedor: é a diferença para a etapa
+  // "Qualificou" do funil abaixo, que conta só a IA.
+  const qualificadosSoEtiqueta = funilUnion ? Math.max(0, funilUnion.qualificou - funilUnion.qualif_ia) : 0
   const propostasClientes = orcamentosReais ?? 0
   const propostasBrutas = orc?.propostasBrutas ?? 0
   const vendasQtd = vendas?.qtd ?? 0
@@ -182,18 +199,21 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
         <Metric
           label="Leads"
           valor={n(data.kpiTotal.valor)}
-          delta={temPeriodo ? data.kpiTotal.deltaPct : null}
+          // Período anterior sem lead: o hook devolve +100%, que não é uma variação de verdade.
+          delta={temPeriodo && data.kpiTotal.anterior > 0 ? data.kpiTotal.deltaPct : null}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Contatos que chegaram no período, da view de atendimentos. Um telefone conta uma vez."
+          ajuda="Contatos que CHEGARAM no período (data do 1º contato). Um telefone conta uma vez. O /atendimentos filtra pela data da ÚLTIMA mensagem e esconde quem não tem telefone, por isso lá o número do mesmo período é outro."
         />
         <Metric
           label="Qualificados"
           valor={funilUnionPendente ? 'Carregando…' : funilUnion === undefined ? 'Indisponível' : n(qualificados)}
-          secundario={funilUnion !== undefined && data.kpiTotal.valor > 0 ? `${pct((qualificados / data.kpiTotal.valor) * 100, 0)} dos leads` : undefined}
+          secundario={funilUnion !== undefined && baseQualificados > 0
+            ? `${pct((qualificados / baseQualificados) * 100, 0)} dos leads${qualificadosSoEtiqueta > 0 ? ` · ${n(qualificadosSoEtiqueta)} pela etiqueta` : ''}`
+            : undefined}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Qualificado pela IA OU já com etiqueta de avanço do vendedor (novo lead, follow-up, quente…)."
+          ajuda="Qualificado pela IA OU com etiqueta que só existe depois de conversa com o vendedor: LEAD QUENTE, FOLLOW UP, AGENDAMENTO, ORÇAMENTO ou VENDIDO. NOVO LEAD, PROSPECÇÃO, 2ª TENTATIVA e INTERESSE FUTURO não contam: são etapa da cadência, não qualificação. A etapa Qualificou do funil abaixo conta só a IA; a diferença entre os dois é o 'pela etiqueta'."
         />
         <Metric
           label="Clientes com proposta"
@@ -210,7 +230,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           secundario={vendas === undefined ? undefined : `${n(vendasComOrigem)} com origem comprovada`}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Pedidos não-cancelados com data de venda no período. 'Origem comprovada' é o subconjunto que dá para rastrear até um lead — é piso de rastreio, não fatia de mercado."
+          ajuda="Pedidos não-cancelados com data de venda no período. 'Origem comprovada' é o subconjunto que dá para rastrear até um lead — é piso de rastreio, não fatia de mercado. Lê a cópia do Controle, que atualiza de hora em hora (aos :37); a Meta do mês lê o Controle ao vivo, então por até 1 h um pedido novo aparece lá antes daqui."
           onClick={() => setDrill('vendidos')}
         />
         <Metric
@@ -219,7 +239,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           secundario={vendas === undefined ? undefined : `${brl(valorComOrigem)} com origem comprovada`}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Soma dos pedidos do período. Atenção: este recorte segue o filtro do topo; o card Meta do mês usa o mês calendário, por isso os dois podem divergir."
+          ajuda="Soma dos pedidos do período. Atenção: este recorte segue o filtro do topo; o card Meta do mês usa o mês calendário, por isso os dois podem divergir. Lê a cópia do Controle, que atualiza de hora em hora (aos :37); a Meta lê o Controle ao vivo, então por até 1 h os dois diferem."
           onClick={() => setDrill('valor')}
         />
         {/*
@@ -232,23 +252,40 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           dia com um dia inteiro e conclui que o movimento caiu 60% às 10h da
           manhã — o que é só o relógio, não o mercado.
         */}
-        {extra && (() => {
-          const { hoje, ontem } = extra.atendimentos
-          const dif = hoje - ontem
-          const deltaPct = ontem > 0 ? (dif / ontem) * 100 : null
+        {(() => {
+          // Dia parcial contra ONTEM ATÉ A MESMA HORA (19/10/2026). Antes era contra o
+          // dia inteiro de ontem: às 16h dizia −44% enquanto o tile Leads, no filtro
+          // Hoje, dizia −18% para o mesmo número. E se a RPC caía, o tile sumia calado.
+          const at = extra?.atendimentos
+          if (!at) {
+            return (
+              <Metric
+                label="Atendimentos hoje"
+                valor={extraPendente ? 'Carregando…' : 'Indisponível'}
+                janela="fixo"
+                janelaLabel="hoje · parcial"
+                ajuda="Leads novos que chegaram HOJE. Não deu para carregar agora; use Atualizar dados."
+              />
+            )
+          }
+          const base = at.ontem_ate_agora
+          const dif = base != null ? at.hoje - base : null
+          const deltaPct = base != null && base > 0 && dif != null ? (dif / base) * 100 : null
           return (
             <Metric
               label="Atendimentos hoje"
-              valor={n(hoje)}
+              valor={n(at.hoje)}
               delta={deltaPct}
               janela="fixo"
               janelaLabel="hoje · parcial"
               secundario={
-                ontem > 0
-                  ? `${dif > 0 ? '+' : ''}${n(dif)} vs. ontem (${n(ontem)}) · dia parcial`
-                  : 'ontem não teve lead · dia parcial'
+                base == null
+                  ? `ontem inteiro: ${n(at.ontem)} · dia parcial`
+                  : base > 0
+                    ? `${dif! > 0 ? '+' : ''}${n(dif!)} vs. ontem até esta hora (${n(base)}) · ontem inteiro: ${n(at.ontem)}`
+                    : `ontem até esta hora: 0 · ontem inteiro: ${n(at.ontem)}`
               }
-              ajuda="Leads novos que chegaram HOJE, contra o dia de ONTEM inteiro. Ignora o filtro de período do topo. Hoje ainda está correndo: é um dia PARCIAL comparado com um dia fechado, então uma queda aparente de manhã é o relógio, não o mercado."
+              ajuda="Leads novos que chegaram HOJE, comparados com ONTEM ATÉ A MESMA HORA (parcial contra parcial). Ignora o filtro de período do topo. O total de ontem inteiro aparece só como referência."
             />
           )
         })()}
@@ -261,6 +298,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
             funil={data.funil}
             clientesComProposta={propostasClientes}
             vendasComOrigem={vendasComOrigem}
+            vendasTotal={vendasQtd}
             periodoLabel={periodoLabel}
             onVerDetalhes={() => ir('funil')}
           />}
@@ -275,13 +313,14 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
 
       {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
       <div className={esmaece(decisoesPendentes)} aria-busy={decisoesPendentes}>
-        {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} onIr={ir} />}
+        {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} vendedoresComProposta={vendedoresComProposta} onIr={ir} />}
       </div>
 
       {/* ── 5. Quem está entregando? ────────────────────────────────── */}
       {vendasReaisPendente ? <div className="h-[220px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando ranking da equipe" /> : vendasReais === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O ranking está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <TopEquipe
         corrida={vendasReais?.corrida}
         metaVendedor={vendasReais?.metaVendedor ?? 0}
+        totalMes={vendasReais?.vendidoMes}
         degradado={vendasReais?.fonte === 'mirror-fallback'}
         onVerTodos={() => ir('equipe')}
       />}

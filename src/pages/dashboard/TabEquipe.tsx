@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 
 import { useDashboard, type SlaVendedor } from '@/hooks/useDashboard'
+import { useDashboardTimes } from '@/hooks/useDashboardTimes'
+import { TIMES_DEF, META_TIME } from '@/lib/dashboard-times'
 import { useVendasReais, type CorridaVendedor, type VendasReais } from '@/hooks/useVendasReais'
 import { useVendedoresPainel, type VendedorPainel } from '@/hooks/useVendedoresPainel'
 import { useVendedorCobertura, type VendedorCobertura } from '@/hooks/useVendedorCobertura'
@@ -19,7 +21,9 @@ import { JanelaBadge } from './ui/JanelaBadge'
 import { useJanela } from './DashboardFilterContext'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import { brl, brlFull, n, pct, primeiroNome } from './ui/format'
-import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
+import { naoEhVendedor } from '@/lib/vendedores-fora-do-ranking'
+import { useLigacoesResumo } from '@/hooks/useLigacoes'
+import { rangeForPreset } from '@/hooks/useDashboard'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ABA EQUIPE — "quem entrega e quem cobrar?"
@@ -38,21 +42,6 @@ import { foraDoRanking } from '@/lib/vendedores-fora-do-ranking'
    · 9 painéis completos de vendedor empilhados → 1 tabela + 1 drawer sob demanda.
    · nome de time cortado ("Esquadr…", "Los Melh…") → quebra em 2 linhas, nunca corta.
    ═══════════════════════════════════════════════════════════════════════════ */
-
-/**
- * ATENÇÃO — composição dos times e meta por time são HARDCODED aqui, herdadas do
- * Dashboard antigo. Deveriam vir de `system_settings` (o Controle já guarda
- * `meta_mensal` e `corrida_vendas_meta` lá; falta `times_vendas` e `meta_time`).
- * Enquanto não vierem, trocar de time exige deploy. Mantido por ora.
- */
-export const TIMES_DEF: { nome: string; membros: string[] }[] = [
-  { nome: 'Esquadrão Classe A', membros: ['ALVARO', 'IGOR', 'EDER'] },
-  { nome: 'Los Melhores', membros: ['JARDEL', 'LUCAS', 'RAMON'] },
-  { nome: 'Os Caça Lead', membros: ['PEDRO', 'GUSTAVO', 'EDILSON'] },
-]
-
-/** Meta por time = R$ 2,5M / 3. Também deveria vir de `system_settings`. */
-export const META_TIME = 833_000
 
 /* ─── helpers locais ─────────────────────────────────────────────────────── */
 
@@ -85,7 +74,9 @@ function LegendaMeta() {
   )
 }
 
-function RankingIndividuo({ corrida, metaVendedor }: { corrida: CorridaVendedor[]; metaVendedor: number }) {
+function RankingIndividuo({ corrida: corridaBruta, metaVendedor }: { corrida: CorridaVendedor[]; metaVendedor: number }) {
+  // O dono vende de verdade, mas não entra em ranking de vendedor (19/10/2026).
+  const corrida = corridaBruta.filter(c => !naoEhVendedor(c.vendedor))
   if (!corrida.length) {
     return <p className="text-body text-ink-faint">Sem venda registrada no mês corrente.</p>
   }
@@ -133,17 +124,24 @@ function RankingIndividuo({ corrida, metaVendedor }: { corrida: CorridaVendedor[
 }
 
 function RankingTime({ corrida }: { corrida: CorridaVendedor[] }) {
+  const { preset, periodoLabel } = useJanela()
+  const atividade = useDashboardTimes(preset)
+  const porTime = new Map(atividade.data?.map(t => [t.time_nome, t]))
   const porVend = new Map(corrida.map(c => [chaveNome(c.vendedor), c]))
   const times = TIMES_DEF.map(t => {
     const membros = t.membros
       .map(m => ({ nome: m, valor: porVend.get(m)?.valor ?? 0, vendas: porVend.get(m)?.numVendas ?? 0 }))
       .sort((a, b) => b.valor - a.valor)
     const valor = membros.reduce((s, m) => s + m.valor, 0)
-    return { nome: t.nome, membros, valor, pct: META_TIME > 0 ? (valor / META_TIME) * 100 : 0 }
+    return { nome: t.nome, membros, valor, atividade: porTime.get(t.nome), pct: META_TIME > 0 ? (valor / META_TIME) * 100 : 0 }
   }).sort((a, b) => b.valor - a.valor)
+
+  const numeroAtividade = (valor: number | undefined) => atividade.isError
+    ? 'Indisponível' : valor === undefined ? 'Carregando…' : n(valor)
 
   return (
     <>
+      <QueryNotice error={atividade.error} loading={atividade.isFetching} message="Não foi possível carregar a atividade dos times." onRetry={() => { void atividade.refetch() }} />
       <ol className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {times.map((t, i) => (
           <li key={t.nome}>
@@ -176,6 +174,35 @@ function RankingTime({ corrida }: { corrida: CorridaVendedor[] }) {
                 />
               </div>
 
+              <div className="mt-4 border-t border-border/60 pt-3" aria-busy={atividade.isFetching}>
+                <p className="mb-2 text-micro text-ink-muted">Atividade · {periodoLabel}</p>
+                <dl className="grid grid-cols-2 gap-2">
+                  <div>
+                    <dt className="text-micro text-ink-faint">Ligações</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.ligacoes)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-micro text-ink-faint">Clientes conversados por ligação</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.clientes_conversados)}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-micro text-ink-faint">Orçamentos feitos</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.orcamentos)}</dd>
+                  </div>
+                </dl>
+                <p className="mb-2 mt-3 text-micro text-ink-muted">Carteira atual · etiquetas do WhatsApp</p>
+                <dl className="grid grid-cols-2 gap-2">
+                  <div>
+                    <dt className="text-micro text-ink-faint">Clientes em follow-up</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.follow_up)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-micro text-ink-faint">Clientes em lead quente</dt>
+                    <dd className="text-title text-ink tabular-nums">{numeroAtividade(t.atividade?.lead_quente)}</dd>
+                  </div>
+                </dl>
+              </div>
+
               <ul className="mt-3 space-y-2 border-t border-border/60 pt-3">
                 {t.membros.map(m => (
                   <li key={m.nome} className="flex items-baseline justify-between gap-2 text-micro">
@@ -191,7 +218,9 @@ function RankingTime({ corrida }: { corrida: CorridaVendedor[] }) {
         ))}
       </ol>
       <p className="mt-3 text-micro text-ink-faint tabular-nums">
-        Meta de {brl(META_TIME)} por time · composição fixa no código (deveria vir de system_settings).
+        Meta de {brl(META_TIME)} por time. Ligações = feitas + recebidas atendidas.
+        Clientes conversados contam uma vez por time no período, seja ligação feita ou recebida atendida.
+        Orçamentos incluem novas versões. Follow-up e lead quente mostram as etiquetas atuais, excluindo encerrados.
       </p>
       <LegendaMeta />
     </>
@@ -222,8 +251,8 @@ function RankingVendas({ vendas }: { vendas: VendasReais | undefined }) {
   return (
     <Card id="ranking-vendas">
       <CardHeader
-        title="Ranking de vendas"
-        subtitle="Pedidos não cancelados, ao vivo do Controle. É a mesma fonte nas duas visões — por isso viraram um bloco só."
+        title={modo === 'time' ? 'Desempenho dos times' : 'Ranking de vendas'}
+        subtitle={modo === 'time' ? 'Vendas do mês corrente e atividade conjunta dos integrantes de cada time.' : 'Pedidos não cancelados, ao vivo do Controle.'}
         janela={<JanelaBadge tipo="mes" label="mês corrente" />}
         right={
           <div className="inline-flex gap-1 rounded-lg bg-surface-2 p-1" role="group" aria-label="Ver ranking por">
@@ -278,6 +307,15 @@ function RankingVendas({ vendas }: { vendas: VendasReais | undefined }) {
 
 export interface CardVend {
   v: VendedorPainel
+  /**
+   * O vendedor não tem linha no painel de etiquetas — o WhatsApp dele não está sendo
+   * lido (JARDEL, 19/10/2026: 2 conversas contra 500+). As colunas de etiqueta ficam
+   * "· · ·" (sem fonte), não 0. Antes a linha inteira sumia, e com ela as propostas e
+   * vendas dele.
+   */
+  semPainel: boolean
+  /** Ligações FEITAS no período (wa_ligacoes). null = a consulta não respondeu. */
+  ligacoesFeitas: number | null
   nome: string
   contatos: number        // atendimentos no período (SLA)
   qualifIa: number | null
@@ -322,6 +360,8 @@ export function montarCardsVendedor(
   sla: SlaVendedor[],
   orc: OrcamentosResumo | undefined,
   cobertura: VendedorCobertura[],
+  corrida: CorridaVendedor[] = [],
+  ligacoesFeitasPorNome: Map<string, number> | null = null,
 ): CardVend[] {
   const maiorPorNome = <T,>(rows: T[], nome: (t: T) => string, tam: (t: T) => number): Map<string, T> => {
     const m = new Map<string, T>()
@@ -335,17 +375,39 @@ export function montarCardsVendedor(
   const slaByNome = maiorPorNome(sla, s => s.vendedor, s => s.totalLeads ?? 0)
   const orcByNome = maiorPorNome(orc?.porVendedor ?? [], o => o.vendedor, o => o.n ?? 0)
   const cobByNome = maiorPorNome(cobertura, c => c.vendedor, c => c.total_passado ?? 0)
+  const painelByNome = maiorPorNome(painel, p => p.vendedor, p => p.contatos ?? 0)
 
-  return painel
-    .filter(v => !foraDoRanking(v.vendedor))
-    .map(v => {
-      const k = chaveNome(v.vendedor)
+  // Linhas = TODO vendedor que aparece em alguma fonte (19/10/2026). Antes vinham só do
+  // painel de etiquetas: quem não tem o WhatsApp lido (JARDEL) sumia com 47 leads, 8
+  // clientes com proposta e 2 vendas; quem só vendeu (PATRICK) também. A ANA (IA) e o
+  // dono saem.
+  const nomes = new Map<string, string>()
+  const junta = (nome: string | null | undefined) => {
+    const k = chaveNome(nome ?? '')
+    if (k && !naoEhVendedor(nome) && !nomes.has(k)) nomes.set(k, nome ?? k)
+  }
+  painel.forEach(p => junta(p.vendedor))
+  ;(orc?.porVendedor ?? []).forEach(o => junta(o.vendedor))
+  cobertura.forEach(c => junta(c.vendedor))
+  corrida.forEach(c => junta(c.vendedor))
+  const zerado = (vendedor: string): VendedorPainel => ({
+    vendedor, contatos: 0, prospeccao: 0, novo: 0, follow_up: 0, quente: 0, orcamento: 0, vendido: 0, perdido: 0,
+    m_nunca_respondeu: 0, m_nao_respondeu_mais: 0, m_sem_interesse: 0, m_so_preco: 0, m_fora_orcamento: 0,
+    m_nao_fabricamos: 0, m_concorrente: 0, m_transportadora: 0, m_suporte: 0, m_outros: 0,
+  })
+
+  return [...nomes.entries()]
+    .map(([k, nomeFonte]) => {
+      const p = painelByNome.get(k)
+      const v = p ?? zerado(nomeFonte)
       const s = slaByNome.get(k); const o = orcByNome.get(k); const cob = cobByNome.get(k)
       // total passado = base de cobrança (responsável no atendimento). Cai pro SLA/painel se faltar cobertura.
       const totalPassado = cob?.total_passado ?? s?.totalLeads ?? v.contatos
       const base = {
         v,
-        nome: s?.vendedor || capitalizar(v.vendedor),
+        semPainel: !p,
+        ligacoesFeitas: ligacoesFeitasPorNome ? (ligacoesFeitasPorNome.get(k) ?? 0) : null,
+        nome: s?.vendedor || cob?.vendedor || capitalizar(v.vendedor),
         contatos: s?.totalLeads ?? v.contatos,
         qualifIa: s?.qualificados ?? null,
         orcN: o?.n ?? 0, orcBRL: o?.brl ?? 0,
@@ -385,10 +447,12 @@ function Num({ v, forte = false }: { v: number | null; forte?: boolean }) {
   )
 }
 
-function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
+function TabelaEquipe({ cards, corridaPorNome, onAbrir, totais }: {
   cards: CardVend[]
   corridaPorNome: Map<string, CorridaVendedor>
   onAbrir: (nome: string, gatilho: HTMLElement | null) => void
+  /** Totais da EMPRESA, para o rodapé não passar a soma por vendedor como total. */
+  totais: { clientesComProposta: number | null; vendas: number | null; vendido: number | null }
 }) {
   const { periodoLabel } = useJanela()
 
@@ -396,14 +460,15 @@ function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
     const cor = corridaPorNome.get(chaveNome(c.nome))
     return {
       atribuidos: a.atribuidos + c.totalPassado,
-      atendimentos: a.atendimentos + c.contatos,
+      ligacoes: c.ligacoesFeitas == null || a.ligacoes == null ? null : a.ligacoes + c.ligacoesFeitas,
       proposta: a.proposta + c.orcN,
       negociando: a.negociando + c.v.follow_up,
       quentes: a.quentes + c.v.quente,
       vendas: a.vendas + (cor?.numVendas ?? 0),
       brl: a.brl + (cor?.valor ?? 0),
     }
-  }, { atribuidos: 0, atendimentos: 0, proposta: 0, negociando: 0, quentes: 0, vendas: 0, brl: 0 }), [cards, corridaPorNome])
+  }, { atribuidos: 0, ligacoes: 0 as number | null, proposta: 0, negociando: 0, quentes: 0, vendas: 0, brl: 0 }), [cards, corridaPorNome])
+  const algumSemPainel = cards.some(c => c.semPainel)
 
   if (!cards.length) {
     return (
@@ -430,7 +495,7 @@ function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] border-collapse">
           <caption className="sr-only">
-            Comparativo por vendedor: leads atribuídos, atendimentos, ligações, propostas,
+            Comparativo por vendedor: leads atribuídos, ligações feitas, propostas,
             negociação, quentes e vendas fechadas.
           </caption>
           <thead>
@@ -438,7 +503,7 @@ function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
               <th rowSpan={2} scope="col" className="px-3 py-2 text-left text-micro font-medium uppercase tracking-wide text-ink-faint align-bottom">
                 Vendedor
               </th>
-              <th colSpan={6} scope="colgroup" className="px-3 py-2 text-left text-micro font-medium text-ink-muted">
+              <th colSpan={5} scope="colgroup" className="px-3 py-2 text-left text-micro font-medium text-ink-muted">
                 <span className="inline-flex items-center gap-2">
                   Atividade <JanelaBadge tipo="periodo" label={periodoLabel} />
                 </span>
@@ -450,14 +515,13 @@ function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
               </th>
             </tr>
             <tr className="border-b border-border">
-              <th scope="col" className={th} title="Clientes passados para ele no período (RPC de cobertura). A SOMA desta coluna conta atribuições, não pessoas distintas.">
+              <th scope="col" className={th} title="Leads que chegaram no período com ele como responsável (1 telefone = 1 lead, sem repetição).">
                 Leads atribuídos
               </th>
-              <th scope="col" className={th} title="Linhas de atendimento no período (SLA por vendedor).">Atendimentos</th>
-              <th scope="col" className={th} title="Sem fonte no CRM: a captura de ligação vive na extensão do WhatsApp e ainda não chega ao dashboard.">Ligações</th>
+              <th scope="col" className={th} title="Ligações FEITAS por ele no período, do histórico de ligações do WhatsApp (wa_ligacoes). É piso: só conta o que ficou registrado.">Ligações feitas</th>
               <th scope="col" className={th} title="Clientes distintos com proposta montada no builder (orcamentos_gerados).">Com proposta</th>
-              <th scope="col" className={th} title="Etiqueta FOLLOW-UP no WhatsApp — onde a negociação começa.">Negociando</th>
-              <th scope="col" className={th} title="Etiqueta LEAD QUENTE no WhatsApp.">Quentes</th>
+              <th scope="col" className={th} title="Leads do período com etiqueta FOLLOW-UP no WhatsApp — onde a negociação começa. · · · = WhatsApp do vendedor não está sendo lido.">Negociando</th>
+              <th scope="col" className={th} title="Leads do período com etiqueta LEAD QUENTE no WhatsApp (INTERESSE FUTURO não conta). · · · = WhatsApp do vendedor não está sendo lido.">Quentes</th>
               <th scope="col" className={th} title="Pedidos não cancelados no mês corrente (fonte: Controle).">Vendas</th>
               <th scope="col" className={th} title="Valor líquido de ajustes no mês corrente (fonte: Controle).">R$</th>
               <th scope="col" className={th} title="Valor do mês ÷ meta individual da corrida.">% meta</th>
@@ -494,11 +558,10 @@ function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
                     </button>
                   </td>
                   <Num v={c.totalPassado} forte />
-                  <Num v={c.contatos} />
-                  <Num v={null} />
+                  <Num v={c.ligacoesFeitas} />
                   <Num v={c.orcN} forte />
-                  <Num v={c.v.follow_up} />
-                  <Num v={c.v.quente} />
+                  <Num v={c.semPainel ? null : c.v.follow_up} />
+                  <Num v={c.semPainel ? null : c.v.quente} />
                   <Num v={cor?.numVendas ?? 0} forte />
                   <td className="px-3 py-3 text-right text-label tabular-nums text-ink" title={brlFull(cor?.valor ?? 0)}>
                     {cor ? brl(cor.valor) : '—'}
@@ -521,14 +584,10 @@ function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
           <tfoot>
             <tr className="border-t border-border-strong">
               <td className="px-3 py-3 text-label text-ink-muted">
-                Total <span className="text-micro text-ink-faint">({cards.length} vendedores)</span>
+                Soma dos listados <span className="text-micro text-ink-faint">({cards.length} vendedores)</span>
               </td>
-              <td className="px-3 py-3 text-right text-label tabular-nums text-ink" title="Soma de atribuições, não de pessoas distintas.">
-                {n(tot.atribuidos)}
-                <span className="block text-micro font-normal text-ink-faint">atribuições</span>
-              </td>
-              <Num v={tot.atendimentos} />
-              <Num v={null} />
+              <Num v={tot.atribuidos} forte />
+              <Num v={tot.ligacoes} />
               <Num v={tot.proposta} forte />
               <Num v={tot.negociando} />
               <Num v={tot.quentes} />
@@ -543,13 +602,22 @@ function TabelaEquipe({ cards, corridaPorNome, onAbrir }: {
       <div className="mt-3 flex items-start gap-2 rounded-lg border border-border/60 bg-surface-2 p-3">
         <Info className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden="true" />
         <p className="text-micro text-ink-muted">
-          <strong className="text-ink">A coluna soma atribuições, não pessoas.</strong> Um cliente que está no
-          WhatsApp de dois vendedores aparece nas duas linhas — por isso o total do rodapé diz
-          &ldquo;atribuições&rdquo;. Para contar clientes distintos, use a tela de Contatos.
-          <span className="block mt-1">
-            &ldquo;Ligações&rdquo; aparece como <span className="tabular-nums">· · ·</span>: o dado é capturado
-            na extensão do WhatsApp e ainda não chega ao CRM. Zero medido seria <span className="tabular-nums">0</span>.
-          </span>
+          <strong className="text-ink">O rodapé é a soma dos vendedores, não o total da empresa.</strong> Cliente cotado
+          por dois vendedores conta nos dois, venda dividida conta para os dois e o dono não entra na tabela.
+          {(totais.clientesComProposta != null || totais.vendas != null) && (
+            <span className="block mt-1">
+              Total da empresa:{' '}
+              {totais.clientesComProposta != null && <>{n(totais.clientesComProposta)} clientes com proposta no período</>}
+              {totais.clientesComProposta != null && totais.vendas != null && ' · '}
+              {totais.vendas != null && <>{n(totais.vendas)} vendas no mês ({brl(totais.vendido ?? 0)})</>}.
+            </span>
+          )}
+          {algumSemPainel && (
+            <span className="block mt-1">
+              <span className="tabular-nums">· · ·</span> em Negociando/Quentes = o WhatsApp daquele vendedor não está sendo lido pelo CRM.
+              Não é zero: é falta de dado.
+            </span>
+          )}
         </p>
       </div>
     </Card>
@@ -806,9 +874,12 @@ function DrawerVendedor({ card, corrida, orfao, onFechar }: {
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-border/60 bg-surface-2 p-3">
               <Phone className="h-4 w-4 shrink-0 text-ink-faint" aria-hidden="true" />
               <p className="text-micro text-ink-muted">
-                <strong className="text-ink">Ligações: <span className="tabular-nums">· · ·</span></strong> — o
-                registro de chamada é capturado na extensão do WhatsApp e ainda não chega ao CRM.
-                Não é zero: é ausência de fonte.
+                {card.ligacoesFeitas == null
+                  ? <><strong className="text-ink">Ligações feitas: <span className="tabular-nums">· · ·</span></strong> — o histórico de ligações não respondeu agora.</>
+                  : <><strong className="text-ink">Ligações feitas: <span className="tabular-nums">{n(card.ligacoesFeitas)}</span></strong> no período, do histórico de ligações do WhatsApp. É piso: só conta o que ficou registrado.</>}
+                {card.semPainel && (
+                  <span className="block mt-1">O WhatsApp deste vendedor não está sendo lido pelo CRM: as etapas por etiqueta acima ficam zeradas por falta de dado, não por falta de trabalho.</span>
+                )}
               </p>
             </div>
           </section>
@@ -899,14 +970,23 @@ export function TabEquipe() {
   const coberturaQuery = useVendedorCobertura(preset)
   // Órfãos usam janela por IDADE (>7d), não o filtro do topo — de propósito.
   const orfaosQuery = useOrfaosPorVendedor(7)
+  // Ligações feitas por vendedor no MESMO período do topo (antes a coluna dizia "sem
+  // fonte", e a fonte — wa_ligacoes — já alimentava o gráfico da Visão geral).
+  const intervalo = rangeForPreset(preset, new Date())
+  const janelaLig = { from: intervalo ? intervalo.from.toISOString() : null, to: intervalo ? new Date(intervalo.to.getTime() + 1).toISOString() : null }
+  const ligacoesQuery = useLigacoesResumo(janelaLig, null)
   const data = dashboardQuery.data, vendasReais = vendasQuery.data, orc = orcQuery.data, vendPainel = vendedoresQuery.data, cobertura = coberturaQuery.data, orfaos = orfaosQuery.data
   const consultas = [dashboardQuery, vendasQuery, orcQuery, vendedoresQuery, coberturaQuery, orfaosQuery]
   const erro = consultas.find(q => q.error)?.error
   const atualizar = () => { consultas.forEach(q => { void q.refetch() }) }
 
+  const ligacoesPorNome = useMemo(
+    () => (ligacoesQuery.data ? new Map(ligacoesQuery.data.map(l => [chaveNome(l.vendedor), l.fez])) : null),
+    [ligacoesQuery.data],
+  )
   const cards = useMemo(
-    () => montarCardsVendedor(vendPainel ?? [], data?.slaPorVendedor ?? [], orc, cobertura ?? []),
-    [vendPainel, data?.slaPorVendedor, orc, cobertura],
+    () => montarCardsVendedor(vendPainel ?? [], data?.slaPorVendedor ?? [], orc, cobertura ?? [], vendasReais?.corrida ?? [], ligacoesPorNome),
+    [vendPainel, data?.slaPorVendedor, orc, cobertura, vendasReais?.corrida, ligacoesPorNome],
   )
 
   const corridaPorNome = useMemo(
@@ -948,7 +1028,12 @@ export function TabEquipe() {
         <RankingVendas vendas={vendasReais} />
 
         {/* 2 · Comparativo da equipe — clique abre o detalhe */}
-        <TabelaEquipe cards={cards} corridaPorNome={corridaPorNome} onAbrir={abrir} />
+        <TabelaEquipe
+          cards={cards}
+          corridaPorNome={corridaPorNome}
+          onAbrir={abrir}
+          totais={{ clientesComProposta: orc?.geradas ?? null, vendas: vendasReais?.pedidosMes ?? null, vendido: vendasReais?.vendidoMes ?? null }}
+        />
 
         {/* 3 · Resumo do dia por vendedor (componente de outro dono) */}
         <ResumoDiaVendedores preset={preset} periodoLabel={periodoLabel} />

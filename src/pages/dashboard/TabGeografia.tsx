@@ -74,7 +74,7 @@ const CAMADAS: Camada[] = [
     id: 'negociacao', label: 'Em negociação', Icon: Flame,
     hue: 270, barra: 'bg-chart-5', faixa: ['bg-chart-5/30', 'bg-chart-5/60', 'bg-chart-5'],
     unidade: 'leads em negociação', janela: 'snapshot',
-    explica: 'Estado ATUAL da etiqueta (follow-up + quente + orçamento). Não olha o filtro de período.',
+    explica: 'Estado ATUAL da etiqueta (follow-up + lead quente) — a mesma conta do “Em negociação” da aba Funil. Só entra quem tem DDD brasileiro. Não olha o filtro de período.',
   },
 ]
 
@@ -457,9 +457,9 @@ const COLUNAS: ColDef[] = [
   { c: 'orcamentos', rotulo: 'Orçamentos', janela: 'periodo',
     ajuda: 'Clientes com orçamento montado no período (um por telefone)' },
   { c: 'taxa', rotulo: '% orç.', janela: 'periodo',
-    ajuda: 'Orçamentos ÷ leads do MESMO período. Indisponível quando o estado não vem na lista de leads.' },
+    ajuda: 'Orçamentos do período ÷ leads que chegaram no período. São grupos diferentes (o orçamento pode ser de cliente antigo), então pode passar de 100%. Indisponível quando o estado não vem na lista de leads.' },
   { c: 'negociacao', rotulo: 'Em negociação', janela: 'snapshot',
-    ajuda: 'Etiqueta ATUAL do WhatsApp (follow-up + quente + orçamento). Ignora o filtro de período.' },
+    ajuda: 'Etiqueta ATUAL do WhatsApp (follow-up + lead quente), mesma conta da aba Funil, só com DDD brasileiro. Ignora o filtro de período.' },
   { c: 'valor', rotulo: 'R$ orçado', janela: 'periodo',
     ajuda: 'Soma do valor dos orçamentos montados no período' },
 ]

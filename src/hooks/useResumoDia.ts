@@ -73,7 +73,9 @@ export function useResumoDia(preset: DashboardPreset = '') {
   const range = rangeForPreset(preset, new Date())
   const pFrom = range ? range.from.toISOString() : null
   const pTo = range ? range.to.toISOString() : null
-  const liveHoje = preset === '' || preset === 'hoje'
+  // Só "Hoje" é ao vivo (19/10/2026). Com "Tudo" o subtítulo dizia "atividade de hoje"
+  // enquanto leads e orçamentos vinham do histórico inteiro.
+  const liveHoje = preset === 'hoje'
 
   const vendedoresQ = useQuery<Array<{ vendedor_nome: string; online: boolean }>>({
     queryKey: ['vendor-dispatch-status', 'resumo-dia'],

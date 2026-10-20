@@ -1,7 +1,8 @@
-// Contagem REAL de orçamentos do Dashboard: leads (atendimentos que chegaram no
-// período) cujo telefone tem orçamento montado em orcamentos_gerados (match por
-// fone_canon). Substitui a contagem por etiqueta do WhatsApp, que subconta quando
-// o vendedor esquece de marcar a etiqueta de "orçamento".
+// Contagem REAL de orçamentos do Dashboard: clientes distintos (fone_canon, senão
+// nome) com proposta montada em orcamentos_gerados no período — venha o cliente de
+// onde vier, não só os leads que chegaram no período (o comentário antigo dizia isso
+// e não é mais o que a RPC faz). Substitui a contagem por etiqueta do WhatsApp, que
+// subconta quando o vendedor esquece de marcar a etiqueta de "orçamento".
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { parseCustomRange, type DashboardPreset } from './useDashboard'
@@ -32,6 +33,7 @@ export function useDashboardOrcamentos(preset: DashboardPreset) {
       return Number(data ?? 0)
     },
     staleTime: 60_000,
+    refetchInterval: 3 * 60_000,
   })
 }
 
@@ -56,6 +58,7 @@ export function useDashboardVendas(preset: DashboardPreset) {
       }
     },
     staleTime: 60_000,
+    refetchInterval: 3 * 60_000,
   })
 }
 
