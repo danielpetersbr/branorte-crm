@@ -327,3 +327,21 @@
     page-break-inside: avoid;
   }
 }
+
+/* =========================================================================
+   RELATÓRIO DE MARKETING — "Exportar PDF" da aba Marketing (20/10/2026).
+   O botão monta a folha em body > #mk-print-root e liga html.mk-printing só
+   durante o window.print(): o resto do app some, a folha sai clara em A4.
+   ========================================================================= */
+@media screen {
+  #mk-print-root { display: none; }
+}
+@media print {
+  html.mk-printing body > *:not(#mk-print-root) { display: none !important; }
+  html.mk-printing, html.mk-printing body { background: #fff !important; }
+  html.mk-printing #mk-print-root {
+    display: block !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
