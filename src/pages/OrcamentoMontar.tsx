@@ -39,6 +39,11 @@ import { calcularMontagem, normalizarMontagem, MONTAGEM_PADRAO, type MontagemCfg
 import { fatorExportacao, inflarItemExportacao, desinflarItemExportacao } from '@/lib/orcamento-exportacao'
 import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 import { decidirDestinoPasta, saveFalhou } from '@/lib/orcamento-folder-scan'
+import { parseProjeto3DOrcamentoPayload, readProjeto3DOrcamentoTransfer, saveProjeto3DOrcamentoTransfer, materializeProjeto3DOrcamento, type OrigemProjeto3D, type Projeto3DOrcamentoPayload } from '@/lib/projeto-3d-orcamento'
+import { mensagemPopupProjeto3DValida, readProjeto3DDraft, resolverManualProjeto3D, resolverVinculoProjeto3D, temPendenciasProjeto3D } from '@/lib/projeto-3d-orcamento-integracao'
+import { CONFIGURADOR_ORIGIN } from '@/lib/catalogo3d-session'
+import { fetchConfiguradorProjetoMetaAtual } from '@/hooks/useConfiguradorProjetos'
+import { Projeto3DOrcamentoResolver } from '@/components/orcamento/Projeto3DOrcamentoResolver'
 
 type Voltagem = 'monofasico' | 'trifasico'
 type ModoVisao = 'preview' | 'edicao'
@@ -52,6 +57,7 @@ export interface RedutorAplicado {
 }
 
 interface CarrinhoItem {
+  origem_projeto3d?: OrigemProjeto3D
   uid: string
   catalogo_id: number
   categoria: string
@@ -581,6 +587,14 @@ function chaveAcessorios(a: AcessoriosCfg): string {
 }
 
 export function OrcamentoMontar() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const import3dToken = searchParams.get('id') ? null : searchParams.get('import3d')
+  const receber3d = searchParams.get('receber3d') === '1'
+  const [transfer3D, setTransfer3D] = useState<Projeto3DOrcamentoPayload | null>(null)
+  const [hydrated3DToken, setHydrated3DToken] = useState<string | null>(null)
+  const import3DReady = !import3dToken || hydrated3DToken === import3dToken
+  const [import3DError, setImport3DError] = useState('')
+  const importedTokenRef = useRef<string | null>(null)
   const { data: items, isLoading: loadingItems } = useCatalogoItems()
   const { data: motores, isLoading: loadingMotores } = useCatalogoMotores()
   // Redutores Q50…Q130 (catalogo_motorredutor) — picker "Aplicar redutor" na tabela de motores.
@@ -639,6 +653,8 @@ export function OrcamentoMontar() {
   // #32: Marca dos motores (global). Texto livre. null = "marca a confirmar".
   const [marcaMotores, setMarcaMotores] = useState<string | null>(null)
   const [carrinho, setCarrinho] = useState<CarrinhoItem[]>([])
+  const [clienteDados, setClienteDados] = useState<PreviewClienteDados>({})
+  const projeto3DPendente = temPendenciasProjeto3D(carrinho)
   // Acessórios: bloco opcional com valor calculado como % do total de equipamentos
   // valorFixo: opcional. Quando setado (vem de modelo carregado), tem prioridade
   // sobre o calculo pct*itens — evita perder centavos no arredondamento.
@@ -732,6 +748,8 @@ export function OrcamentoMontar() {
   // Snapshot do estado p/ autosave. Inclui tudo que o vendedor pode ter mudado
   // (carrinho, acessorios, voltagem, termos, etc). Excluido: filtros de busca, modais.
   const draftSnapshot = useMemo(() => ({
+    projeto3DExportId: import3dToken,
+    clienteDados,
     carrinho,
     acessorios,
     voltagem,
@@ -757,7 +775,7 @@ export function OrcamentoMontar() {
     motorPrecoOverride,
     exportPct,
   }), [
-    carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
+    import3dToken, clienteDados, carrinho, acessorios, voltagem, tensaoMotores, marcaMotores, descontoCfg,
     dataEmissaoTxt, dataVendaTxt, prazoEntregaTxt, formaPagamentoTxt, freteTipo, freteTxt, validadeDias,
     parcelasPagamento, fotoPrincipal, observacoesTxt, observacoesFoto,
     componentesExtras, montagem, motoresAvulsos, balancaDispensada, obsPorConta,
@@ -767,17 +785,16 @@ export function OrcamentoMontar() {
   // Autosave so liga depois que catalogo carregar (evita salvar snapshot vazio
   // antes do usuario interagir). Banner de recuperacao aparece se draft existir.
   // Se URL tem ?id=N, o builder está EDITANDO um orçamento salvo (save vira UPDATE).
-  const [searchParams, setSearchParams] = useSearchParams()
   const editingIdParam = searchParams.get('id')
   const editingId = editingIdParam ? Number(editingIdParam) : null
   // Escopo do rascunho: um por orçamento em edição. Antes era uma chave só pro
   // builder inteiro — o rascunho de um orçamento novo aparecia dentro de outro
   // salvo aberto pra editar, e "Recuperar" trocava foto/pagamento/itens pelos dele.
-  const draftScope = editingId ? `edit-${editingId}` : ''
+  const draftScope = editingId ? `edit-${editingId}` : import3dToken ? `import3d-${import3dToken}` : ''
   // ?ver=1 (botão "Ver" dos Orçamentos Salvos): só leitura. Sem rascunho local —
   // abrir pra conferir não pode deixar rascunho nem banner de "Recuperar" pra trás.
   const somenteLeitura = editingId != null && searchParams.get('ver') === '1'
-  const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores && !somenteLeitura, draftScope)
+  const draft = useOrcamentoDraft(draftSnapshot, !loadingItems && !loadingMotores && !somenteLeitura && (!import3dToken || import3DReady), draftScope)
 
   // ─── HISTÓRICO PRA UNDO (Ctrl+Z) ──────────────────────────────────────────
   // Guarda snapshots anteriores do estado pra vendedor desfazer mudanças
@@ -822,6 +839,7 @@ export function OrcamentoMontar() {
     const prev = historyStack[historyStack.length - 1]
     isApplyingUndoRef.current = true
     setCarrinho(prev.carrinho ?? [])
+    setClienteDados(prev.clienteDados ?? {})
     setAcessorios(prev.acessorios ?? null)
     setVoltagem(prev.voltagem ?? 'trifasico')
     setTensaoMotores(prev.tensaoMotores ?? null)
@@ -866,8 +884,13 @@ export function OrcamentoMontar() {
 
   function restaurarRascunho() {
     if (!draft.recovered) return
-    const d = draft.recovered.data
+    aplicarRascunho(draft.recovered.data)
+    draft.dismissRecovered()
+  }
+
+  function aplicarRascunho(d: DraftSnap) {
     setCarrinho(d.carrinho ?? [])
+    setClienteDados(d.clienteDados ?? {})
     setAcessorios(d.acessorios ?? null)
     setVoltagem(d.voltagem ?? 'trifasico')
     setTensaoMotores(d.tensaoMotores ?? null)
@@ -891,7 +914,6 @@ export function OrcamentoMontar() {
     setObsPorConta((d as any).obsPorConta ?? null)
     setMotorPrecoOverride((d as any).motorPrecoOverride ?? {})
     setExportPct((d as any).exportPct ?? 0)
-    draft.dismissRecovered()
   }
 
   function descartarRascunho() {
@@ -915,7 +937,6 @@ export function OrcamentoMontar() {
   } | null>(null)
 
   // Estado do cliente (preenchido via modal de edição ou IA)
-  const [clienteDados, setClienteDados] = useState<PreviewClienteDados>({})
   const [aiModeloAtual, setAiModeloAtual] = useState<OrcamentoAISnapshot['modelo']>(null)
   const [clienteModalOpen, setClienteModalOpen] = useState(false)
 
@@ -1050,6 +1071,10 @@ export function OrcamentoMontar() {
   // campos que têm rede própria, mas em todos: observações, componentes extras,
   // frete, desconto, motores avulsos. Melhor recusar o save.
   const salvarBloqueadoPorCarregamento = () => {
+    if (projeto3DPendente) {
+      alert('Confira os preços de todos os itens da lista 3D antes de emitir o orçamento. Vincule ao catálogo ou confirme um valor manual.')
+      return true
+    }
     if (!editingId || orcamentoHidratado) return false
     alert(
       'O orçamento salvo ainda está carregando. Espere ele aparecer completo na tela antes de salvar — '
@@ -1077,6 +1102,7 @@ export function OrcamentoMontar() {
   // Clique no "Finalizar e gerar": se não há acessórios, exige decidir
   // (adicionar ou confirmar que não tem) antes de prosseguir.
   const handleFinalizarClick = () => {
+    if (salvarBloqueadoPorCarregamento()) return
     // Modo FINAME: acessórios já estão embutidos — pula o aviso de "sem acessórios".
     // (Itens sem código FINAME já desabilitam o botão antes de chegar aqui.)
     if (finameMode) { abrirFinalizar(); return }
@@ -1181,6 +1207,9 @@ export function OrcamentoMontar() {
   }, [editingId, clienteDados, initialModal, aiModeloAtual, orcamentoEditando?.modelo_id, modelos, carrinho, motoresAgrupados, acessorios, valorAcessorios, componentesExtras, voltagem, fotoPrincipal, formaPagamentoTxt, prazoEntregaTxt, freteTipo, freteTxt, validadeDias, observacoesTxt])
 
   function handleApplyAIProposal(proposal: PropostaOrcamento) {
+    if (carrinho.some(item => item.origem_projeto3d)) {
+      throw new Error('Este orçamento contém a lista 3D do projeto. Confira cada linha pelo catálogo ou pelo valor manual no painel Lista do projeto 3D.')
+    }
     const next = applyProposal(aiSnapshot, proposal)
     const localModel = proposal.modelo ? (modelos ?? []).find((modelo) => modelo.id === proposal.modelo!.id) : null
     if (proposal.modelo && !localModel) throw new Error('O modelo escolhido não está mais disponível. Atualize a página e tente novamente.')
@@ -1632,6 +1661,79 @@ export function OrcamentoMontar() {
   }, [carrinho.length, algumPickerAberto, substituirUid])
 
   const { data: precos } = usePrecosBranorte()
+
+  useEffect(() => {
+    if (!import3dToken || editingId) return
+    const stored = readProjeto3DOrcamentoTransfer(import3dToken, window.sessionStorage)
+    if (stored) { setTransfer3D(stored); return }
+    if (readProjeto3DDraft(import3dToken, window.localStorage)) return
+    if (!receber3d || !window.opener) {
+      setImport3DError('A transferência 3D não está disponível nesta aba. Volte ao projeto e clique em Gerar orçamento novamente.')
+      return
+    }
+    if (!profile?.id) return
+    const opener = window.opener
+    let disposed = false
+    let received = false
+    let processing = false
+    const ready = () => { if (!received) opener.postMessage({ type: 'branorte:budget:ready', exportId: import3dToken }, CONFIGURADOR_ORIGIN) }
+    const onMessage = (event: MessageEvent) => {
+      if (processing || received || !mensagemPopupProjeto3DValida(event, opener, import3dToken)) return
+      processing = true
+      void (async () => {
+        try {
+          const payload = parseProjeto3DOrcamentoPayload(event.data.payload)
+          const meta = await fetchConfiguradorProjetoMetaAtual({ id: payload.projectId })
+          const verified = { ...payload, clientName: meta?.cliente_nome || payload.clientName, contactId: meta?.contact_id ?? null }
+          if (disposed) return
+          saveProjeto3DOrcamentoTransfer(verified, window.sessionStorage)
+          received = true
+          setTransfer3D(verified)
+          setImport3DError('')
+          opener.postMessage({ type: 'branorte:budget:received', exportId: import3dToken }, CONFIGURADOR_ORIGIN)
+          window.clearInterval(interval)
+          window.clearTimeout(timeout)
+        } catch (error) {
+          if (!disposed) {
+            const message = (error as Error).message || 'Não foi possível receber a lista do projeto.'
+            setImport3DError(message)
+            opener.postMessage({ type: 'branorte:budget:error', exportId: import3dToken, error: message }, CONFIGURADOR_ORIGIN)
+          }
+        } finally { processing = false }
+      })()
+    }
+    window.addEventListener('message', onMessage)
+    const interval = window.setInterval(ready, 500)
+    const timeout = window.setTimeout(() => {
+      window.clearInterval(interval)
+      if (!received) {
+        disposed = true
+        window.removeEventListener('message', onMessage)
+        setImport3DError('O editor 3D não confirmou a transferência. Mantenha a aba do projeto aberta e tente Gerar orçamento novamente.')
+      }
+    }, 20_000)
+    ready()
+    return () => { disposed = true; window.removeEventListener('message', onMessage); window.clearInterval(interval); window.clearTimeout(timeout) }
+  }, [import3dToken, receber3d, editingId, profile?.id])
+
+  useEffect(() => {
+    if (!import3dToken || editingId || loadingItems || loadingMotores || importedTokenRef.current === import3dToken) return
+    const recovered = readProjeto3DDraft(import3dToken, window.localStorage)
+    if (!recovered && !transfer3D) return
+    if (transfer3D && transfer3D.exportId !== import3dToken) return
+    if (recovered) aplicarRascunho(recovered as unknown as DraftSnap)
+    else if (transfer3D) {
+      setCarrinho(materializeProjeto3DOrcamento(transfer3D))
+      setClienteDados({ nome: transfer3D.clientName })
+      setInitialModal({ cliente_nome: transfer3D.clientName, cliente_dados: { nome: transfer3D.clientName }, observacoes: null, forma_pagamento: null, prazo_entrega: null })
+    }
+    importedTokenRef.current = import3dToken
+    isApplyingUndoRef.current = true
+    setHistoryStack([])
+    draft.dismissRecovered()
+    setHydrated3DToken(import3dToken)
+    setImport3DError('')
+  }, [import3dToken, transfer3D, editingId, loadingItems, loadingMotores])
   // Lista de modelos de pacote — usado pelo copiloto IA pra resolver onCarregarPacote.
   // (Outros componentes mais abaixo no arquivo carregam de novo; ok porque o hook
   // usa React Query e dedup automaticamente.)
@@ -1710,6 +1812,7 @@ export function OrcamentoMontar() {
   // como componente adicional. Compacta 02/03 sozinho NAO puxa mais (usuario
   // pediu pra so puxar quando tiver cacamba).
   function autoAdicionarBalancaSeCompacta(nomeItem: string, categoriaItem?: string) {
+    if (carrinho.some(item => item.origem_projeto3d)) return
     const nome = nomeItem.toUpperCase()
     const eCacamba = categoriaItem === 'CACAMBA_PESAGEM' || /CA[ÇC]AMBA.*PESAGEM/i.test(nome)
     if (!eCacamba) return
@@ -1752,6 +1855,8 @@ export function OrcamentoMontar() {
   // ========================================================================
   useEffect(() => {
     if (!precos) return
+    // A lista importada é integral: nenhum item pode mudar de seção ou surgir sozinho.
+    if (carrinho.some(item => item.origem_projeto3d)) return
     const BALANCA_RE = /balan.a.*el.tr.nica/i
 
     // 1) Remove qualquer item-balança do carrinho e renumera letras
@@ -1995,6 +2100,11 @@ export function OrcamentoMontar() {
       return
     }
 
+    setCarrinho(c => [...c, criarItemCatalogo(item, funcaoEscolhida)])
+    autoAdicionarBalancaSeCompacta(item.nome_curto, item.categoria)
+  }
+
+  function criarItemCatalogo(item: CatalogoItem, funcaoEscolhida?: string): CarrinhoItem {
     const specs = item.specs || []
     const motorIncluso = motorJaInclusoNoItem(specs)
 
@@ -2023,7 +2133,7 @@ export function OrcamentoMontar() {
       ? `${item.nome_curto} (${funcao})`
       : null
 
-    setCarrinho(c => [...c, {
+    return {
       uid: gerarUid(),
       catalogo_id: item.id,
       categoria: item.categoria,
@@ -2046,8 +2156,29 @@ export function OrcamentoMontar() {
       motores_extras_snapshot: Array.isArray(item.motores_extras) && item.motores_extras.length > 0
         ? item.motores_extras
         : undefined,
-    }])
-    autoAdicionarBalancaSeCompacta(item.nome_curto, item.categoria)
+    }
+  }
+
+  function vincularLinhaProjeto3D(uid: string, item: CatalogoItem) {
+    if (!item.ativo || !precos) return
+    const original = carrinho.find(line => line.uid === uid && line.origem_projeto3d)
+    if (!original) return
+    const priced = criarItemCatalogo(item)
+    const priceRow = item.preco_branorte_id ? precos.find(row => row.id === item.preco_branorte_id) : null
+    const motorIncluso = motorJaInclusoNoItem(priced.specs) || !!(priceRow && valorPorVoltagem(priceRow, item.usa_inversor ? 'trifasico' : voltagem).motorIncluso)
+    // Valida antes do updater: o painel captura o erro e mantém a linha pendente.
+    const linked = resolverVinculoProjeto3D(original, priced, { motorIncluso })
+    const motorSemPreco = agruparMotores([linked], motores, voltagem, []).some(motor =>
+      !motor.removido && !motor.por_conta_cliente && !motor.incluso_real
+      && !(motorIncluso && (motor.motorIndex == null || motor.motorIndex < 100))
+      && (!Number.isFinite(motor.valor_unit) || motor.valor_unit <= 0),
+    )
+    if (motorSemPreco) throw new Error('Há motor sem preço válido nesta voltagem. Selecione Trifásico no orçamento ou confirme um valor manual completo.')
+    setCarrinho(current => current.map(line => line.uid === uid ? linked : line))
+  }
+
+  function confirmarLinhaManualProjeto3D(uid: string, valor: number) {
+    setCarrinho(current => current.map(line => line.uid === uid && line.origem_projeto3d ? resolverManualProjeto3D(line, valor) : line))
   }
 
   function removerItem(uid: string) {
@@ -2812,7 +2943,7 @@ export function OrcamentoMontar() {
     // nome eh APENAS descricao de motor (sem equipamento associado).
     const SO_MOTOR_RE = /^\s*motor\s+\d+(?:[.,]\d+)?\s*cv\s+\d+\s*polos?\s*$/i
     modelo.itens.forEach(it => {
-      if (SO_MOTOR_RE.test(it.nome || '')) return  // motor legado: pula, ja vai cair em MOTORES TRIFASICOS
+      if (!it.origem_projeto3d && SO_MOTOR_RE.test(it.nome || '')) return  // motor legado: pula, ja vai cair em MOTORES TRIFASICOS
 
       // ── Round-trip COMPLETO (2026-06-10) ──────────────────────────────────
       // Item salvo com __full=true (orçamento editado pós-fix): recarrega 1:1
@@ -2829,7 +2960,8 @@ export function OrcamentoMontar() {
           catalogo_id: typeof itAny.catalogo_id === 'number' ? itAny.catalogo_id : -1,
           preco_branorte_id: itAny.preco_branorte_id ?? null,
           categoria: itAny.categoria || 'MODELO',
-          nome: stripSufixoVoltagem(it.nome),  // #64: limpa " - Trifásico" legado
+          nome: itAny.origem_projeto3d ? it.nome : stripSufixoVoltagem(it.nome),
+          origem_projeto3d: itAny.origem_projeto3d,
           specs: it.specs || [],
           specs_original: itAny.specs_original ?? undefined,
           qtd: it.qtd || 1,
@@ -3285,7 +3417,7 @@ export function OrcamentoMontar() {
               // número) em vez de criar um novo. Com a gravação verificada na pasta,
               // o status vira 'enviado' e o banner some.
               onClick={() => pedirSalvar('update')}
-              disabled={carrinho.length === 0 || finameBloqueado}
+              disabled={carrinho.length === 0 || finameBloqueado || projeto3DPendente}
               className="text-[11px] px-2.5 py-1.5 rounded bg-danger hover:bg-danger/90 text-white font-bold flex items-center gap-1 shadow-sm disabled:opacity-50"
             >
               <RefreshCw className="h-3 w-3" />
@@ -3327,6 +3459,8 @@ export function OrcamentoMontar() {
         </div>
       ) : null}
 
+      {import3dToken && !import3DReady && <div role="status" className="shrink-0 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-sm text-ink">{import3DError || 'Recebendo a lista completa do projeto 3D…'}</div>}
+      {carrinho.some(item => item.origem_projeto3d) && <div className="shrink-0 max-h-[38vh] overflow-y-auto rounded-xl"><Projeto3DOrcamentoResolver items={carrinho} catalogo={precos ? items ?? [] : []} onVincular={vincularLinhaProjeto3D} onManual={confirmarLinhaManualProjeto3D} /></div>}
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
@@ -3672,7 +3806,7 @@ export function OrcamentoMontar() {
                 <div className="relative">
                   <div className="flex items-stretch">
                     <button
-                      disabled={carrinho.length === 0 || finameBloqueado}
+                      disabled={carrinho.length === 0 || finameBloqueado || projeto3DPendente}
                       onClick={() => pedirSalvar('update')}
                       className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 rounded-l-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
                       title={clienteTrocouNoUpdate
@@ -3683,7 +3817,7 @@ export function OrcamentoMontar() {
                       <span className="hidden sm:inline">Salvar</span>
                     </button>
                     <button
-                      disabled={carrinho.length === 0 || finameBloqueado}
+                      disabled={carrinho.length === 0 || finameBloqueado || projeto3DPendente}
                       onClick={() => setSaveDropdownOpen(v => !v)}
                       className="text-[13px] bg-green-600 hover:bg-green-700 text-white font-bold px-2 py-2 rounded-r-md border-l border-green-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center min-h-[40px] transition-all"
                       title="Mais opções de salvamento"
@@ -3722,7 +3856,7 @@ export function OrcamentoMontar() {
                 </div>
               ) : (
                 <button
-                  disabled={carrinho.length === 0 || finameBloqueado}
+                  disabled={carrinho.length === 0 || finameBloqueado || projeto3DPendente}
                   onClick={handleFinalizarClick}
                   className="text-[13px] bg-accent hover:bg-accent/90 text-white font-bold px-4 py-2 rounded-md disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm min-h-[40px] transition-all"
                   title={carrinho.length === 0 ? 'Adicione items primeiro' : 'Finalizar e gerar PDF + DOCX'}
@@ -4430,6 +4564,7 @@ export function OrcamentoMontar() {
             // Round-trip completo: campos extras pra recarregar a edição 1:1
             // (foto manual/custom, inox, função, motor, etc) sem reconstruir.
             catalogo_id: c.catalogo_id,
+            origem_projeto3d: c.origem_projeto3d,
             preco_branorte_id: c.preco_branorte_id ?? null,
             categoria: c.categoria,
             valor_original: c.valor_original,

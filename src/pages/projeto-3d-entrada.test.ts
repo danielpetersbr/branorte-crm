@@ -76,7 +76,7 @@ function page(props = {}, initial: Record<string, unknown> = {}, auth: { session
     useRef(value: unknown) { const index = refIndex++; refs[index] ??= { current: index === 0 ? { contentWindow } : value }; namedRefs[refNames[index]] = refs[index]; return refs[index] },
     useEffect(effect: () => unknown) { const cleanup = effect(); if (typeof cleanup === 'function') cleanups.push(cleanup as () => void) },
     useLayoutEffect(effect: () => void) { effect() }, useCallback: (fn: unknown) => fn,
-    useAuth: () => auth, useQueryClient: () => ({}),
+    useAuth: () => auth, useQueryClient: () => ({}), useNavigate: () => () => {},
     useConfiguradorProjetos: () => ({}), useDeletarConfiguradorProjeto: () => ({}), useBuscarContatos: () => ({}),
     useSalvarConfiguradorProjeto: () => ({ isPending: false, mutate(input: unknown, callbacks: unknown) { saves.push(input); saveCallbacks.push(callbacks) } }),
   })

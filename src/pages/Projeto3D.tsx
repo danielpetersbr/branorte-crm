@@ -8,6 +8,8 @@
 //   Novo    → manda o iframe abrir um editor vazio (branorte:new).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { parseProjeto3DOrcamentoPayload, saveProjeto3DOrcamentoTransfer } from '@/lib/projeto-3d-orcamento'
 import {
   Boxes, Maximize2, RefreshCw, Save, FolderOpen, Plus, Trash2,
   ChevronDown, X, Search, Check, Loader2,
@@ -38,6 +40,7 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' | 'blocos'
   // 'blocos' (só admin): abre o catálogo de equipamentos do configurador, sem salvar projeto
   const blocos = entry === 'blocos'
   const frameRef = useRef<HTMLIFrameElement>(null)
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [abrindo, setAbrindo] = useState(false)
   const abrindoRef = useRef(false)
@@ -111,7 +114,20 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' | 'blocos'
       }
       const m = e.data
       if (!m || typeof m !== 'object') return
-      if (m.type === 'branorte:project' && m.requestId) {
+      if (m.type === 'branorte:budget:create' && typeof m.requestId === 'string') {
+        void (async () => {
+          try {
+            const payload = parseProjeto3DOrcamentoPayload(m.payload)
+            const meta = await fetchConfiguradorProjetoMetaAtual({ id: payload.projectId })
+            const token = saveProjeto3DOrcamentoTransfer({ ...payload, clientName: meta?.cliente_nome || payload.clientName, contactId: meta?.contact_id ?? null }, window.sessionStorage)
+            frameRef.current?.contentWindow?.postMessage({ type: 'branorte:store:result', requestId: m.requestId, ok: true, token }, CONFIGURADOR_ORIGIN)
+            // O iframe confirma a transferência antes de ser desmontado pela navegação.
+            window.setTimeout(() => navigate(`/orcamentos/montar?import3d=${encodeURIComponent(token)}`), 100)
+          } catch (error) {
+            frameRef.current?.contentWindow?.postMessage({ type: 'branorte:store:result', requestId: m.requestId, ok: false, error: (error as Error).message || 'Não foi possível preparar o orçamento.' }, CONFIGURADOR_ORIGIN)
+          }
+        })()
+      } else if (m.type === 'branorte:project' && m.requestId) {
         const fn = pendings.current.get(m.requestId)
         if (fn) { pendings.current.delete(m.requestId); fn(m.project) }
       } else if (m.type === 'branorte:loaded' && m.requestId) {

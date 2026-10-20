@@ -345,7 +345,7 @@ function AppRoutes() {
     if (loc.pathname === '/login') {
       return <Login />
     }
-    return <Navigate to="/login" replace state={{ from: loc.pathname }} />
+    return <Navigate to="/login" replace state={{ from: loc.pathname + loc.search + loc.hash }} />
   }
 
   // Logado, mas a query do profile FALHOU (timeout/erro do Supabase sob carga).

@@ -6,6 +6,8 @@ import {
   type ClienteDados, type OrcamentoItem, type OrcamentoMotor,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
+import type { OrigemProjeto3D } from '@/lib/projeto-3d-orcamento'
+import { temPendenciasProjeto3D } from '@/lib/projeto-3d-orcamento-integracao'
 import { useVendors } from '@/hooks/useVendors'
 import { letraItem } from '@/lib/utils'
 import { DESCRICOES_POR_MODELO } from '@/lib/orcamento-descricoes'
@@ -52,6 +54,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 export interface CarrinhoSnapshot {
   voltagem: 'monofasico' | 'trifasico'
   itens: Array<{
+    origem_projeto3d?: OrigemProjeto3D
     uid?: string
     nome: string
     qtd: number
@@ -659,6 +662,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
   }
 
   async function handleGerar(opcoes: { salvarNaPasta: boolean; salvarNoServidor?: boolean; pdfQuality?: 'normal' | 'high' }) {
+    if (temPendenciasProjeto3D(snapshot.itens ?? [])) {
+      setErro('Há itens da lista 3D sem preço conferido. Vincule ao catálogo ou confirme um valor manual antes de emitir.')
+      return
+    }
     // Validações antes de gravar — evita orçamento órfão (sem cliente, vazio, R$ 0)
     if (!cliNome.trim()) {
       setErro('Nome do cliente é obrigatório')
@@ -847,6 +854,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         specs: it.specs,
         valor: it.valor,
         __full: true,
+        origem_projeto3d: it.origem_projeto3d,
         catalogo_id: it.catalogo_id,
         preco_branorte_id: it.preco_branorte_id ?? null,
         categoria: it.categoria,
@@ -2000,7 +2008,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
               nele por engano e o arquivo nao ia pra pasta. */}
           <button
             onClick={() => handleGerar({ salvarNaPasta: temPastaLocal, salvarNoServidor: !temPastaLocal, pdfQuality: pdfAltaQualidade ? 'high' : 'normal' })}
-            disabled={gerando || !cliNome.trim() || !snapshot.itens?.length}
+            disabled={gerando || !cliNome.trim() || !snapshot.itens?.length || temPendenciasProjeto3D(snapshot.itens ?? [])}
             className="text-[13px] px-5 py-2.5 rounded bg-accent hover:bg-accent/90 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-h-[44px] shadow-sm flex-1 sm:flex-initial"
             title={
               !cliNome.trim() ? 'Preencha o nome do cliente'

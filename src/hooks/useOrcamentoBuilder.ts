@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { MontagemCfg } from '@/lib/orcamento-montagem'
+import type { OrigemProjeto3D } from '@/lib/projeto-3d-orcamento'
 import { supabase } from '@/lib/supabase'
 
 export interface OrcamentoItem {
+  origem_projeto3d?: OrigemProjeto3D
   letra: string         // A, B, C...
   qtd: number
   nome: string
@@ -607,6 +609,7 @@ function suffixVoltagemNosItens(
   _motores: OrcamentoMotor[] | null | undefined
 ): OrcamentoItem[] {
   return itens.map(it => {
+    if (it.origem_projeto3d) return it
     const limpo = stripSufixoVoltagem(it.nome || '')
     return limpo === (it.nome || '') ? it : { ...it, nome: limpo }
   })
