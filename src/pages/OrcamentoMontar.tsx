@@ -39,7 +39,7 @@ import { calcularMontagem, normalizarMontagem, MONTAGEM_PADRAO, type MontagemCfg
 import { fatorExportacao, inflarItemExportacao, desinflarItemExportacao } from '@/lib/orcamento-exportacao'
 import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 import { decidirDestinoPasta, saveFalhou } from '@/lib/orcamento-folder-scan'
-import { parseProjeto3DOrcamentoPayload, readProjeto3DOrcamentoTransfer, saveProjeto3DOrcamentoTransfer, materializeProjeto3DOrcamento, type OrigemProjeto3D, type Projeto3DOrcamentoPayload } from '@/lib/projeto-3d-orcamento'
+import { parseProjeto3DOrcamentoPayload, readProjeto3DOrcamentoTransfer, saveProjeto3DOrcamentoTransfer, materializeProjeto3DOrcamento, materializeProjeto3DAcessorios, type OrigemProjeto3D, type OrigemAcessoriosProjeto3D, type Projeto3DOrcamentoPayload } from '@/lib/projeto-3d-orcamento'
 import { mensagemPopupProjeto3DValida, readProjeto3DDraft, resolverManualProjeto3D, resolverVinculoProjeto3D, temPendenciasProjeto3D } from '@/lib/projeto-3d-orcamento-integracao'
 import { CONFIGURADOR_ORIGIN } from '@/lib/catalogo3d-session'
 import { fetchConfiguradorProjetoMetaAtual } from '@/hooks/useConfiguradorProjetos'
@@ -579,7 +579,7 @@ function mesmoCliente(a: string, b: string): boolean {
   return x.length >= 4 && y.length >= 4 && (x.startsWith(y) || y.startsWith(x))
 }
 
-type AcessoriosCfg = { pct: number; items: string[]; valorFixo?: number | null; excludedItemUids?: string[] } | null
+type AcessoriosCfg = { pct: number; items: string[]; valorFixo?: number | null; excludedItemUids?: string[]; origem_projeto3d?: OrigemAcessoriosProjeto3D } | null
 
 function chaveAcessorios(a: AcessoriosCfg): string {
   if (!a) return ''
@@ -659,7 +659,7 @@ export function OrcamentoMontar() {
   // valorFixo: opcional. Quando setado (vem de modelo carregado), tem prioridade
   // sobre o calculo pct*itens — evita perder centavos no arredondamento.
   // Limpo pra null quando vendedor edita o pct manualmente.
-  const [acessorios, setAcessorios] = useState<{ pct: number; items: string[]; valorFixo?: number | null; excludedItemUids?: string[] } | null>(null)
+  const [acessorios, setAcessorios] = useState<AcessoriosCfg>(null)
   const [acessoriosOpen, setAcessoriosOpen] = useState(false)
   // Popup de confirmação quando finaliza sem acessórios (obrigatório decidir)
   const [confirmSemAcessorios, setConfirmSemAcessorios] = useState(false)
@@ -1207,7 +1207,7 @@ export function OrcamentoMontar() {
   }, [editingId, clienteDados, initialModal, aiModeloAtual, orcamentoEditando?.modelo_id, modelos, carrinho, motoresAgrupados, acessorios, valorAcessorios, componentesExtras, voltagem, fotoPrincipal, formaPagamentoTxt, prazoEntregaTxt, freteTipo, freteTxt, validadeDias, observacoesTxt])
 
   function handleApplyAIProposal(proposal: PropostaOrcamento) {
-    if (carrinho.some(item => item.origem_projeto3d)) {
+    if (carrinho.some(item => item.origem_projeto3d) || acessorios?.origem_projeto3d) {
       throw new Error('Este orçamento contém a lista 3D do projeto. Confira cada linha pelo catálogo ou pelo valor manual no painel Lista do projeto 3D.')
     }
     const next = applyProposal(aiSnapshot, proposal)
@@ -1724,6 +1724,7 @@ export function OrcamentoMontar() {
     if (recovered) aplicarRascunho(recovered as unknown as DraftSnap)
     else if (transfer3D) {
       setCarrinho(materializeProjeto3DOrcamento(transfer3D))
+      setAcessorios(materializeProjeto3DAcessorios(transfer3D))
       setClienteDados({ nome: transfer3D.clientName })
       setInitialModal({ cliente_nome: transfer3D.clientName, cliente_dados: { nome: transfer3D.clientName }, observacoes: null, forma_pagamento: null, prazo_entrega: null })
     }
@@ -3098,9 +3099,10 @@ export function OrcamentoMontar() {
       const totalNovo = novos.reduce((s, it) => s + it.valor * it.qtd, 0)
       const pct = totalNovo > 0 ? Math.round((modelo.acessorios.valor / totalNovo) * 100) : 5
       setAcessorios({
-        pct: Math.max(1, Math.min(50, pct)),
+        pct: modelo.acessorios.origem_projeto3d && modelo.acessorios.valor === 0 ? 0 : Math.max(1, Math.min(50, pct)),
         items: modelo.acessorios.items,
         valorFixo: modelo.acessorios.valor, // ← preserva o valor exato do banco
+        origem_projeto3d: modelo.acessorios.origem_projeto3d,
       })
     } else {
       setAcessorios(null)
@@ -3461,6 +3463,7 @@ export function OrcamentoMontar() {
 
       {import3dToken && !import3DReady && <div role="status" className="shrink-0 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-sm text-ink">{import3DError || 'Recebendo a lista completa do projeto 3D…'}</div>}
       {carrinho.some(item => item.origem_projeto3d) && <div className="shrink-0 max-h-[38vh] overflow-y-auto rounded-xl"><Projeto3DOrcamentoResolver items={carrinho} catalogo={precos ? items ?? [] : []} onVincular={vincularLinhaProjeto3D} onManual={confirmarLinhaManualProjeto3D} /></div>}
+      {acessorios?.origem_projeto3d && valorAcessorios === 0 && <div role="status" className="shrink-0 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-xs text-amber-950"><span className="flex-1"><strong>Peças auxiliares no bloco Acessórios.</strong> {acessorios.items.length} descrições do projeto 3D preservadas, sem cobrança automática. Confira o valor ou percentual antes de emitir.</span><button type="button" onClick={() => setAcessoriosOpen(true)} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold hover:bg-amber-100">Conferir acessórios</button></div>}
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
@@ -4591,7 +4594,9 @@ export function OrcamentoMontar() {
           // Decisões do vendedor que precisam voltar iguais na próxima edição.
           motorPrecoOverride,
           exportPct,
-          acessorios: acessoriosFinal ? { pct: acessoriosFinal.pct, items: acessoriosFinal.items, valor: valorAcessoriosFinal } : null,
+          acessorios: acessoriosFinal ? { pct: acessoriosFinal.pct, items: acessoriosFinal.items, valor: valorAcessoriosFinal, origem_projeto3d: acessoriosFinal.origem_projeto3d } : null,
+          // FINAME mantém o bloco oculto; esta cópia conserva somente sua origem no banco.
+          acessoriosProjeto3D: acessorios?.origem_projeto3d ? { items: acessorios.items, origem_projeto3d: acessorios.origem_projeto3d } : undefined,
           totalItems: totalItemsFinal,
           totalMotores: totalMotoresFinal,
           totalEquip: totalEquipFinal,
@@ -4655,6 +4660,7 @@ export function OrcamentoMontar() {
             items: cfg.items,
             valorFixo: cfg.valorFixo,
             excludedItemUids: cfg.excludedItemUids,
+            origem_projeto3d: acessorios?.origem_projeto3d,
           }
           setAcessorios(nova)
           // Passou pelo modal = conferiu. Carimba mesmo que nada tenha mudado.
@@ -5833,8 +5839,8 @@ function AcessoriosModal({
     )
   }
 
-  function removerSel(nome: string) {
-    setSelecionados(prev => prev.filter(x => x !== nome))
+  function removerSel(index: number) {
+    setSelecionados(prev => prev.filter((_, currentIndex) => currentIndex !== index))
   }
 
   function adicionarLivre() {
@@ -5996,14 +6002,14 @@ function AcessoriosModal({
                 Selecionados ({selecionados.length})
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {selecionados.map(nome => (
+                {selecionados.map((nome, index) => (
                   <span
-                    key={nome}
+                    key={`${index}:${nome}`}
                     className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-success/15 border border-success/30 text-[11px] text-ink"
                   >
                     {nome}
                     <button
-                      onClick={() => removerSel(nome)}
+                      onClick={() => removerSel(index)}
                       className="text-ink-faint hover:text-danger"
                       title="Remover"
                     >

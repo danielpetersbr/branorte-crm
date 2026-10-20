@@ -40,6 +40,88 @@ const page = source('../pages/OrcamentoMontar.tsx')
 const modal = source('../components/FinalizarMontarModal.tsx')
 const hook = source('../hooks/useOrcamentoBuilder.ts')
 
+test('nova transferência hidrata acessórios descritivos, mas reload prioriza o bloco editado no rascunho', () => {
+  const withAccessories = { ...payload, accessories: [{ sourceId: 'mouth-1', floorId: 'floor-1', floorName: 'Térreo', kind: 'equipment' as const, catalogId: 'mouth-cad', sequence: 1, name: 'Boca de entrada', quantity: 2, specifications: ['160 × 600 × 600 × 30°'] }] }
+  const callback = effect(page, 'materializeProjeto3DOrcamento(transfer3D)')
+  function hydrate(recovered: unknown) {
+    let accessoryState: unknown = null
+    let restored: unknown = null
+    let accessoryWrites = 0
+    const context = run(`var hydrate = ${callback}`, {
+      ...transfer, import3dToken: withAccessories.exportId, editingId: null, loadingItems: false, loadingMotores: false, importedTokenRef: { current: null }, transfer3D: withAccessories,
+      window: { localStorage: {} }, readProjeto3DDraft: () => recovered,
+      setCarrinho() {}, setClienteDados() {}, setInitialModal() {}, setAcessorios(value: unknown) { accessoryState = value; accessoryWrites++ },
+      aplicarRascunho(value: unknown) { restored = value }, isApplyingUndoRef: { current: false }, setHistoryStack() {}, draft: { dismissRecovered() {} }, setHydrated3DToken() {}, setImport3DError() {},
+    })
+    context.hydrate()
+    return { accessoryState, restored, accessoryWrites }
+  }
+  const created = hydrate(null)
+  assert.deepEqual(created.accessoryState, transfer.materializeProjeto3DAcessorios(withAccessories))
+  const edited = { carrinho: transfer.materializeProjeto3DOrcamento(withAccessories), acessorios: { pct: 9, items: ['Descrição conferida'], valorFixo: 900 }, clienteDados: { nome: 'Cliente editado' } }
+  const recovered = hydrate(edited)
+  assert.equal(recovered.restored, edited)
+  assert.equal(recovered.accessoryWrites, 0, 'a transferência original não sobrescreve edição de acessórios recuperada')
+})
+
+test('reabrir bloco descritivo zero de origem 3D mantém zero sem clamp de 1% nem default de 5%', () => {
+  const cfg = transfer.materializeProjeto3DAcessorios({ ...payload, accessories: [{ sourceId: 'mouth-1', floorId: 'floor-1', floorName: 'Térreo', kind: 'equipment', catalogId: 'mouth-cad', sequence: 1, name: 'Boca de entrada', quantity: 2, specifications: [] }] })!
+  let accessories: any = null
+  const context = run(fn(page, 'carregarDoModelo'), { carrinho: [], items: [], precos: [], motores: [], montarMapaFotosTransportador: () => new Map(), console: { log() {} }, setCarrinho() {}, setAcessorios(value: unknown) { accessories = value }, setVoltagem() {}, stripSufixoVoltagem: (name: string) => name })
+  context.carregarDoModelo({ itens: [{ __full: true, uid: 'one', nome: 'Moinho', qtd: 1, valor: 100_000, specs: [] }], motores: [], acessorios: { items: cfg.items, valor: 0, origem_projeto3d: cfg.origem_projeto3d }, voltagem: 'trifasico' })
+  assert.equal(accessories.pct, 0)
+  assert.equal(accessories.valorFixo, 0)
+  assert.deepEqual(accessories.origem_projeto3d, cfg.origem_projeto3d)
+  const memo = variable(page, 'valorAcessorios').initializer as ts.CallExpression
+  const calculated = run(`var result = (${memo.arguments[0].getText(page)})()`, { acessorios: accessories, carrinho: [{ uid: 'one', valor: 100_000, qtd: 1 }] }).result
+  assert.equal(calculated, 0)
+})
+
+test('snapshot e payload persistido retêm origem e descrições de acessórios sem cobrança', () => {
+  const cfg = transfer.materializeProjeto3DAcessorios({ ...payload, accessories: [{ sourceId: 'mouth-1', floorId: 'floor-1', floorName: 'Térreo', kind: 'equipment', catalogId: 'mouth-cad', sequence: 1, name: 'Boca de descarga', quantity: 3, specifications: ['Ø160 mm'] }] })!
+  const component = find(page, node => ts.isJsxSelfClosingElement(node) && node.tagName.getText(page) === 'FinalizarMontarModal') as ts.JsxSelfClosingElement
+  const attr = component.attributes.properties.find(node => ts.isJsxAttribute(node) && node.name.getText(page) === 'snapshot') as ts.JsxAttribute
+  const expression = (attr.initializer as ts.JsxExpression).expression!
+  const object = (ts.isAsExpression(expression) ? expression.expression : expression) as ts.ObjectLiteralExpression
+  const property = object.properties.find(node => ts.isPropertyAssignment(node) && node.name.getText(page) === 'acessorios') as ts.PropertyAssignment
+  const snapshotAccessories = run(`var result = ${property.initializer.getText(page)}`, { acessoriosFinal: cfg, valorAcessoriosFinal: 0 }).result
+  const savedProperty = find(modal, node => ts.isPropertyAssignment(node) && node.name.getText(modal) === 'acessorios' && node.initializer.getText(modal).includes('snapshot.acessorios') && node.initializer.getText(modal).includes('valor: snapshot.acessorios.valor')) as ts.PropertyAssignment
+  const saved = run(`var result = ${savedProperty.initializer.getText(modal)}`, { snapshot: { acessorios: snapshotAccessories } }).result
+  assert.equal(saved.valor, 0)
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.items)), cfg.items)
+  assert.deepEqual(saved.origem_projeto3d, cfg.origem_projeto3d)
+  const draft = { version: 1, saved_at: new Date().toISOString(), data: { projeto3DExportId: payload.exportId, carrinho: [], acessorios: cfg } }
+  const recovered = integration.readProjeto3DDraft(payload.exportId, { getItem: () => JSON.stringify(draft) })
+  assert.deepEqual(recovered?.acessorios, cfg)
+})
+
+test('FINAME conserva acessórios 3D somente no banco, mantendo preview null e totais intactos', () => {
+  const cfg = transfer.materializeProjeto3DAcessorios({ ...payload, accessories: [{ sourceId: 'mouth-1', floorId: 'floor-1', floorName: 'Térreo', kind: 'equipment', catalogId: 'mouth-cad', sequence: 1, name: 'Boca de entrada', quantity: 2, specifications: ['160 × 600 × 600 × 30°'] }] })!
+  const component = find(page, node => ts.isJsxSelfClosingElement(node) && node.tagName.getText(page) === 'FinalizarMontarModal') as ts.JsxSelfClosingElement
+  const attr = component.attributes.properties.find(node => ts.isJsxAttribute(node) && node.name.getText(page) === 'snapshot') as ts.JsxAttribute
+  const expression = (attr.initializer as ts.JsxExpression).expression!
+  const object = (ts.isAsExpression(expression) ? expression.expression : expression) as ts.ObjectLiteralExpression
+  const auxiliary = object.properties.find(node => ts.isPropertyAssignment(node) && node.name.getText(page) === 'acessoriosProjeto3D') as ts.PropertyAssignment | undefined
+  assert.ok(auxiliary, 'snapshot precisa conservar a origem bruta mesmo quando FINAME oculta o bloco')
+  const raw = run(`var result = ${auxiliary.initializer.getText(page)}`, { acessorios: cfg }).result
+  const savedProperty = find(modal, node => ts.isPropertyAssignment(node) && node.name.getText(modal) === 'acessorios' && node.initializer.getText(modal).includes('snapshot.acessorios') && node.initializer.getText(modal).includes('valor: snapshot.acessorios.valor')) as ts.PropertyAssignment
+  const snapshot = { acessorios: null, acessoriosProjeto3D: raw, totalEquip: 90_000, totalMotores: 5_000, totalGeral: 95_000 }
+  const saved = run(`var result = ${savedProperty.initializer.getText(modal)}`, { snapshot }).result
+  assert.equal(saved.valor, 0, 'valor FINAME já está nos equipamentos e não pode ser cobrado novamente')
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.items)), cfg.items)
+  assert.deepEqual(saved.origem_projeto3d, cfg.origem_projeto3d)
+  const previewProperty = find(modal, node => ts.isPropertyAssignment(node) && node.name.getText(modal) === 'acessorios' && node.initializer.getText(modal).includes('pct: snapshot.acessorios.pct')) as ts.PropertyAssignment
+  assert.equal(run(`var result = ${previewProperty.initializer.getText(modal)}`, { snapshot }).result, null)
+  assert.deepEqual([snapshot.totalEquip, snapshot.totalMotores, snapshot.totalGeral], [90_000, 5_000, 95_000])
+})
+
+test('remover uma descrição duplicada no modal preserva a outra peça acessória', () => {
+  let selected = ['Boca de descarga · Qtde: 1', 'Boca de descarga · Qtde: 1', 'Cano · Qtde: 2']
+  const context = run(fn(page, 'removerSel'), { setSelecionados(callback: (rows: string[]) => string[]) { selected = callback(selected) } })
+  context.removerSel(0)
+  assert.deepEqual(selected, ['Boca de descarga · Qtde: 1', 'Cano · Qtde: 2'])
+})
+
 test('cálculo do vínculo usa preço oficial por voltagem e mesmo motor do catálogo', () => {
   const catalogItem = { id: 21, categoria: 'MOINHO', nome_curto: 'Moinho oficial', specs: ['Acionamento: 3 CV'], motor_padrao_cv: 3, motor_padrao_polos: 4, motor_padrao_qtd: 1, valor: 10, usa_inversor: false, preco_branorte_id: 55, funcao_opcoes: [], motores_extras: [] }
   const official = { id: 55, valor_equipamento: 2000, valor_com_motor_trif: 2600, valor_com_motor_mono: 3100 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as budgetContract from './projeto-3d-orcamento'
 import {
   materializeProjeto3DOrcamento,
   parseProjeto3DOrcamentoPayload,
@@ -31,6 +32,47 @@ function memoryStorage() {
     setItem: (key: string, value: string) => { values.set(key, value) },
   }
 }
+
+function accessoryFixture() {
+  return { sourceId: 'mouth-1', floorId: 'floor-b', floorName: 'Mezanino', kind: 'equipment' as const, catalogId: 'boca-entrada-160', sequence: 1, name: 'Boca de entrada 160 × 600 × 600 × 30°', quantity: 2, specifications: ['Chapa galvanizada', 'Encaixe Ø160 mm'] }
+}
+
+test('acessórios são coleção opcional distinta, sem entrar nas linhas de equipamentos', () => {
+  const original = fixture()
+  assert.equal('accessories' in parseProjeto3DOrcamentoPayload(original), false)
+  const input = { ...original, accessories: [accessoryFixture()] }
+  const parsed = parseProjeto3DOrcamentoPayload(input)
+  assert.deepEqual(parsed, input)
+  assert.equal(materializeProjeto3DOrcamento(parsed).length, original.items.length)
+  assert.notEqual(parsed.accessories?.[0].specifications, input.accessories[0].specifications)
+  const storage = memoryStorage()
+  saveProjeto3DOrcamentoTransfer(parsed, storage)
+  assert.deepEqual(readProjeto3DOrcamentoTransfer(parsed.exportId, storage), parsed)
+})
+
+test('descrições de acessórios mantêm quantidade, especificações e piso sem preço automático', () => {
+  assert.equal(typeof budgetContract.materializeProjeto3DAcessorios, 'function')
+  const input = { ...fixture(), accessories: [accessoryFixture(), { ...accessoryFixture(), sourceId: 'mouth-2', sequence: 2 }] }
+  const result = budgetContract.materializeProjeto3DAcessorios(input)
+  assert.ok(result)
+  assert.equal(result.pct, 0)
+  assert.equal(result.valorFixo, 0)
+  assert.equal(result.items.length, 2, 'peças repetidas continuam descritas separadamente')
+  assert.match(result.items[0], /Boca de entrada 160 × 600 × 600 × 30°.*Qtde: 2.*Chapa galvanizada.*Ø160 mm.*Mezanino/)
+  assert.deepEqual(result.origem_projeto3d.items, input.accessories)
+  assert.equal(budgetContract.materializeProjeto3DAcessorios(fixture()), null)
+})
+
+test('acessórios validam sequência própria e identidade comum às duas coleções, com limite combinado', () => {
+  const input = { ...fixture(), accessories: [accessoryFixture()] }
+  for (const accessories of [null, {}, [{ ...accessoryFixture(), sequence: 2 }], [{ ...accessoryFixture(), kind: 'manual' }], [{ ...accessoryFixture(), quantity: 0 }]]) assert.throws(() => parseProjeto3DOrcamentoPayload({ ...input, accessories }))
+  assert.throws(() => parseProjeto3DOrcamentoPayload({ ...input, accessories: [{ ...input.items[0], sequence: 1 }] }), /duplicada/)
+  const many = Array.from({ length: 1998 }, (_, index) => ({ ...accessoryFixture(), sourceId: `accessory-${index}`, sequence: index + 1 }))
+  assert.throws(() => parseProjeto3DOrcamentoPayload({ ...input, accessories: many }), /2000/)
+  assert.equal(parseProjeto3DOrcamentoPayload({ ...input, accessories: many.slice(0, 1997) }).accessories?.length, 1997)
+  assert.equal(parseProjeto3DOrcamentoPayload({ ...input, items: [] }).items.length, 0, 'transferência só de acessórios preserva a coleção, sujeita às regras existentes de emissão')
+  assert.throws(() => parseProjeto3DOrcamentoPayload({ ...input, items: [], accessories: [] }))
+})
 
 test('preserva literalmente nomes, especificações, quantidade e sequência de todos os pisos', () => {
   const source = fixture()

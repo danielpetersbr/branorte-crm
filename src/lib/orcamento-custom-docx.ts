@@ -1323,14 +1323,14 @@ export async function gerarOrcamentoCustomDocx(opts: GerarCustomDocxOpts): Promi
   }
 
   // Acessórios — letra auto-incrementada após o último item (espelha preview)
-  if (opts.acessorios && opts.acessorios.valor > 0) {
+  if (opts.acessorios && (opts.acessorios.items.length > 0 || opts.acessorios.valor > 0)) {
     const letraAcc = letraItem(opts.itens.length)
     blocos.push(buildAcessorios(opts.acessorios, letraAcc))
     blocos.push(paragrafoVazio(80))
   }
 
   // Valor total de equipamentos (se 2+ itens ou se tem acessórios)
-  if (opts.itens.length > 1 || (opts.acessorios && opts.acessorios.valor > 0)) {
+  if (opts.itens.length > 1 || (opts.acessorios && (opts.acessorios.items.length > 0 || opts.acessorios.valor > 0))) {
     blocos.push(buildValorTotalEquip(opts.totalEquip))
   }
 

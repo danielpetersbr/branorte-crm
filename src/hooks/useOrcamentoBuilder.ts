@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { MontagemCfg } from '@/lib/orcamento-montagem'
-import type { OrigemProjeto3D } from '@/lib/projeto-3d-orcamento'
+import type { OrigemProjeto3D, OrigemAcessoriosProjeto3D } from '@/lib/projeto-3d-orcamento'
 import { supabase } from '@/lib/supabase'
 
 export interface OrcamentoItem {
@@ -50,6 +50,7 @@ export interface OrcamentoItem {
 export interface OrcamentoAcessorios {
   items: string[]
   valor: number
+  origem_projeto3d?: OrigemAcessoriosProjeto3D
 }
 
 export interface OrcamentoMotor {

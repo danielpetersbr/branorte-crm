@@ -47,6 +47,14 @@ async function paragrafos(o: GerarCustomDocxOpts): Promise<string[]> {
 const TITULO_FABRICANTE = 'MONTAGEM DOS ITENS ORÇADOS ACIMA: (Valores para os montadores do fabricante)'
 const TITULO_CLIENTE = 'MONTAGEM DOS ITENS ORÇADOS ACIMA: (POR CONTA DO CLIENTE)'
 
+test('DOCX mantém descrições de acessórios sem preço separado, mesmo com valor zero', async () => {
+  const document = opts(null)
+  document.acessorios = { items: ['Boca de entrada · Qtde: 2 · 160 × 600 × 600 × 30°'], valor: 0 }
+  const paragraphs = await paragrafos(document)
+  assert.ok(paragraphs.some(line => line.includes('ACESSÓRIOS')))
+  assert.ok(paragraphs.some(line => line.includes('Boca de entrada') && line.includes('Qtde: 2')))
+})
+
 test('DOCX: caso do print — 2 quadros, total só no do fabricante, nada duplicado no rodapé', async () => {
   const cfg: MontagemCfg = {
     ...MONTAGEM_PADRAO, pessoas: 2, dias: 5, carros: 1,

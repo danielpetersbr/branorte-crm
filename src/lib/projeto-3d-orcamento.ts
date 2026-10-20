@@ -20,6 +20,22 @@ export interface Projeto3DOrcamentoPayload {
   /** CRM metadata only; the receiving CRM must verify the contact through its session. */
   contactId?: string | null
   items: Projeto3DOrcamentoItem[]
+  /** Peças auxiliares ficam no bloco Acessórios, fora das linhas de equipamentos. */
+  accessories?: Projeto3DOrcamentoItem[]
+}
+
+export interface OrigemAcessoriosProjeto3D {
+  exportId: string
+  projectId: string
+  projectName: string
+  items: Projeto3DOrcamentoItem[]
+}
+
+export interface AcessoriosProjeto3D {
+  pct: number
+  items: string[]
+  valorFixo: number
+  origem_projeto3d: OrigemAcessoriosProjeto3D
 }
 
 export interface OrigemProjeto3D {
@@ -89,14 +105,17 @@ export function parseProjeto3DOrcamentoPayload(value: unknown): Projeto3DOrcamen
   const projectName = text(input.projectName, 'nome do projeto', 2000, true)
   const clientName = text(input.clientName, 'nome do cliente', 500, true)
   if (input.contactId !== undefined && input.contactId !== null && (typeof input.contactId !== 'string' || !UUID.test(input.contactId))) invalid('identificador do cliente inválido')
-  if (!Array.isArray(input.items) || !input.items.length || input.items.length > 2000) invalid('lista de itens obrigatória, com limite de 2000 linhas')
+  if (!Array.isArray(input.items) || (input.accessories !== undefined && !Array.isArray(input.accessories))) invalid('listas de itens e acessórios inválidas')
+  const accessoryValues = (input.accessories ?? []) as unknown[]
+  if ((!input.items.length && !accessoryValues.length) || input.items.length + accessoryValues.length > 2000) invalid('lista obrigatória, com limite combinado de 2000 linhas')
   const seen = new Set<string>()
-  const items = Array.from(input.items, (value, index): Projeto3DOrcamentoItem => {
+  const parseItems = (values: unknown[], accessory = false) => Array.from(values, (value, index): Projeto3DOrcamentoItem => {
     const item = record(value)
     const sourceId = identifier(item.sourceId, 'identificador da peça')
     const floorId = identifier(item.floorId, 'identificador do piso')
     const floorName = text(item.floorName, 'nome do piso')
     if (item.kind !== 'equipment' && item.kind !== 'manual') invalid('tipo de item inválido')
+    if (accessory && item.kind !== 'equipment') invalid('acessório deve ser uma peça de equipamento')
     const catalogId = item.catalogId === null ? null : identifier(item.catalogId, 'referência do catálogo')
     if (item.sequence !== index + 1) invalid('sequência global incoerente')
     if (typeof item.quantity !== 'number' || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10000) invalid('quantidade inválida')
@@ -108,9 +127,12 @@ export function parseProjeto3DOrcamentoPayload(value: unknown): Projeto3DOrcamen
     seen.add(key)
     return { sourceId, floorId, floorName, kind: item.kind, catalogId, sequence: index + 1, name, quantity: item.quantity, specifications }
   })
+  const items = parseItems(input.items)
+  const accessories = input.accessories === undefined ? undefined : parseItems(accessoryValues, true)
   return {
     version: 1, exportId: input.exportId, projectId, projectName: projectName.trim() ? projectName : 'Projeto 3D', clientName,
     ...(input.contactId !== undefined ? { contactId: input.contactId as string | null } : {}), items,
+    ...(accessories !== undefined ? { accessories } : {}),
   }
 }
 
@@ -166,4 +188,16 @@ export function materializeProjeto3DOrcamento(payload: Projeto3DOrcamentoPayload
       sourceSpecifications: [...item.specifications], resolution: 'pendente',
     },
   }))
+}
+
+/** Descriptive import only: the seller may later price the existing accessories block. */
+export function materializeProjeto3DAcessorios(payload: Projeto3DOrcamentoPayload): AcessoriosProjeto3D | null {
+  const validated = parseProjeto3DOrcamentoPayload(payload)
+  if (!validated.accessories?.length) return null
+  const floors = new Set([...validated.items, ...validated.accessories].map(item => item.floorId))
+  return {
+    pct: 0, valorFixo: 0,
+    items: validated.accessories.map(item => [item.name, `Qtde: ${item.quantity}`, ...item.specifications, ...(floors.size > 1 ? [`Piso: ${item.floorName}`] : [])].join(' · ')),
+    origem_projeto3d: { exportId: validated.exportId, projectId: validated.projectId, projectName: validated.projectName, items: validated.accessories },
+  }
 }

@@ -6,7 +6,7 @@ import {
   type ClienteDados, type OrcamentoItem, type OrcamentoMotor,
 } from '@/hooks/useOrcamentoBuilder'
 import { useAuth } from '@/hooks/useAuth'
-import type { OrigemProjeto3D } from '@/lib/projeto-3d-orcamento'
+import type { OrigemProjeto3D, OrigemAcessoriosProjeto3D } from '@/lib/projeto-3d-orcamento'
 import { temPendenciasProjeto3D } from '@/lib/projeto-3d-orcamento-integracao'
 import { useVendors } from '@/hooks/useVendors'
 import { letraItem } from '@/lib/utils'
@@ -102,7 +102,9 @@ export interface CarrinhoSnapshot {
     /** Redutor aplicado ao motor — valor já somado em valor_unit/valor_total. */
     redutor?: { modelo: string; valor: number }
   }>
-  acessorios: { pct: number; items: string[]; valor: number } | null
+  acessorios: { pct: number; items: string[]; valor: number; origem_projeto3d?: OrigemAcessoriosProjeto3D } | null
+  /** Descrições preservadas no banco mesmo quando FINAME embute o valor e oculta o bloco. */
+  acessoriosProjeto3D?: { items: string[]; origem_projeto3d: OrigemAcessoriosProjeto3D }
   totalItems: number          // só os itens, sem acessórios
   totalMotores: number
   totalEquip: number          // itens + acessórios (= "VALOR TOTAL DE EQUIPAMENTOS")
@@ -988,8 +990,10 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         voltagem: snapshot.voltagem,
         itens: itensDb,
         acessorios: snapshot.acessorios
-          ? { items: snapshot.acessorios.items, valor: snapshot.acessorios.valor }
-          : null,
+          ? { items: snapshot.acessorios.items, valor: snapshot.acessorios.valor, origem_projeto3d: snapshot.acessorios.origem_projeto3d }
+          : snapshot.acessoriosProjeto3D
+            ? { items: snapshot.acessoriosProjeto3D.items, valor: 0, origem_projeto3d: snapshot.acessoriosProjeto3D.origem_projeto3d }
+            : null,
         motores: motoresDb,
         total_equipamentos: snapshot.totalEquip,
         total_motores: snapshot.totalMotores,
@@ -1074,7 +1078,7 @@ export function FinalizarMontarModal({ open, snapshot, onClose, onSuccess, editi
         totalEquip: snapshot.totalEquip,
         totalGeral: snapshot.totalGeral,
         acessorios: snapshot.acessorios
-          ? { pct: snapshot.acessorios.pct, items: snapshot.acessorios.items }
+          ? { pct: snapshot.acessorios.pct, items: snapshot.acessorios.items, origem_projeto3d: snapshot.acessorios.origem_projeto3d }
           : null,
         valorAcessorios: snapshot.acessorios?.valor ?? 0,
         numero: orc.numero,
