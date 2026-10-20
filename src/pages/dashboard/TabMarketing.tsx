@@ -1289,7 +1289,7 @@ export function TabMarketing() {
           ))}
         </div>
       ) : (
-        <RelatorioMarketingTela rel={q.data} label={q.data.label} velho={q.isPlaceholderData} />
+        <RelatorioMarketingTela rel={q.data} label={q.data.label} velho={q.isPlaceholderData} faltou={q.data.faltou} />
       )}
 
       <div className="flex justify-center">
