@@ -695,6 +695,8 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
 // ---------------------------------------------------------------------------
 
 const dataBr = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—')
+/** custo unitário: abaixo de R$ 10 mostra centavos (R$ 0,27 por clique não pode virar "R$ 0") */
+const custoUn = (v: number) => (v < 10 ? `R$ ${v.toFixed(2).replace('.', ',')}` : brl(v))
 
 function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
   const tot = (p: 'Meta' | 'Google') => rel.plataformas.find(x => x.tipo === 'plataforma' && x.plataforma === p)
@@ -734,7 +736,7 @@ function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
                   <td className={`${td} text-right`}>{brl(c.gasto)}</td>
                   <td className={`${td} text-right`}>{n(c.cliques)}</td>
                   <td className={`${td} text-right`}>{n(c.resultado)} <span className="text-micro text-ink-faint">{c.resultadoTipo}</span></td>
-                  <td className={`${td} text-right`}>{c.resultado > 0 ? brl(c.gasto / c.resultado) : '—'}</td>
+                  <td className={`${td} text-right`}>{c.resultado > 0 ? custoUn(c.gasto / c.resultado) : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -786,7 +788,7 @@ function VerbaPlataformasP({ rel }: { rel: RelatorioMkt }) {
                 <td style={tdP}>{c.orcamentoDia != null ? brl(c.orcamentoDia) : '—'}</td>
                 <td style={tdP}>{brl(c.gasto)}</td><td style={tdP}>{n(c.cliques)}</td>
                 <td style={tdP}>{n(c.resultado)} {c.resultadoTipo}</td>
-                <td style={tdP}>{c.resultado > 0 ? brl(c.gasto / c.resultado) : '—'}</td>
+                <td style={tdP}>{c.resultado > 0 ? custoUn(c.gasto / c.resultado) : '—'}</td>
               </tr>
             ))}
           </tbody>
