@@ -367,3 +367,26 @@ test('caixa dimensional genérica permanece pendente sem converter volume em kg 
   const abbreviated = line('CX. 3 X 1,5 X 6 M³', { catalogId: 'branorte_caixa' })
   assert.equal(match(abbreviated, [product(abbreviated.nome, { categoria: 'OUTROS' })]), null)
 })
+
+const liveWeighingSpecs = ['Estrutura em aço galvanizado chapa 3mm', 'Corpo em chapa 1,5mm', 'Rosca de descarga 130 mm', 'Descarga para 1 misturador', 'Acionamento 2,0 CV por motorredutor (incluso)', 'Balança não incluso']
+
+test('caçamba 1000 kg do catálogo real mantém sua rosca de descarga padrão como descrição técnica', () => {
+  const wanted = product('CAÇAMBA DE PESAGEM 1000 KG', { categoria: 'CACAMBA_PESAGEM', capacidade_kg: 1000, specs: liveWeighingSpecs })
+  const source = line('CAÇAMBA DE PESAGEM 1000 KG', { catalogId: 'branorte_cacamba_pesagem', sourceSpecifications: ['Corpo nominal: 1900 L'] })
+  assert.equal(match(source, [wanted]), wanted)
+  assert.deepEqual(wanted.specs, liveWeighingSpecs, 'a ficha técnica original permanece intacta')
+})
+
+test('modelo de caçamba com rosca de descarga explicitamente nomeada continua sendo variante', () => {
+  const standard = product('CAÇAMBA DE PESAGEM 1000 KG', { categoria: 'CACAMBA_PESAGEM', specs: liveWeighingSpecs })
+  const named = product('CAÇAMBA DE PESAGEM 1000 KG ROSCA DE DESCARGA', { categoria: 'CACAMBA_PESAGEM', specs: liveWeighingSpecs })
+  assert.equal(match(line(named.nome_curto), [standard]), null)
+  assert.equal(match(line(standard.nome_curto), [named]), null)
+  assert.equal(match(line(named.nome_curto), [named]), named)
+})
+
+test('a descrição padrão da caçamba não muda variantes de transportadores ou de descarga especial', () => {
+  assert.equal(match(line(), [product(origin.sourceName, { specs: ['Rosca de descarga 130 mm'] })]), null)
+  const special = product('CAÇAMBA DE PESAGEM 1000 KG', { categoria: 'CACAMBA_PESAGEM', specs: ['Rosca de descarga lateral especial'] })
+  assert.equal(match(line(special.nome_curto), [special]), null)
+})

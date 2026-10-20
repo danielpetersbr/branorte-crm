@@ -19,11 +19,17 @@ const conjunto = (text: string) => /\+|\bFABRICA\b|\bCOMPACTA\b|MOINHO.*MISTURAD
 
 const especificacoesComerciais = (values: readonly string[]) => values.filter(value => !/REFER[EÊ]NCIA\s*3D|PROJETO\s+L|EXTERNAS\s+L|L\s*[X×]\s*P\s*[X×]\s*A/i.test(value))
 
-function detalhesParaVariantes(values: readonly string[]): string {
+function detalhesParaVariantes(values: readonly string[], familia?: Identidade['familia']): string {
   return especificacoesComerciais(values).map(value => {
     // A standard motor description is not the specially named motorredutor model.
-    const text = normalizar(value)
-    return /^(?:MOTOR|ACIONAMENTO)\b/.test(text) && /\d+(?:[.,]\d+)?\s*CV\b/.test(text) ? text.replace(/MOTORREDUTOR|MOTOREDUTOR/g, '') : text
+    let text = normalizar(value)
+    if (/^(?:MOTOR|ACIONAMENTO)\b/.test(text) && /\d+(?:[.,]\d+)?\s*CV\b/.test(text)) text = text.replace(/MOTORREDUTOR|MOTOREDUTOR/g, '')
+    // The weighing hopper's measured discharge screw is a standard technical
+    // description; an explicitly named screw variant remains in the title.
+    if (familia === 'cacamba' && /^ROSCA\s+(?:DE\s+)?DESCARGA\s*(?:Ø|DIAMETRO\s*:?)?\s*\d+(?:[.,]\d+)?\s*MM\b/.test(text)) {
+      text = text.replace(/^ROSCA\s+(?:DE\s+)?DESCARGA/, '')
+    }
+    return text
   }).join(' ')
 }
 
@@ -198,7 +204,7 @@ export function encontrarCatalogoProjeto3D(line: LinhaProjeto3D, catalogo: reado
   })) return null
   // A family name without an explicit size/capacity is not a commercial identity.
   if (!source && /^(?:TRANSPORTADOR|CHUPIM|CALHA|TH\b|MOINHO|TRITURADOR|MISTURADOR|SILO MISTURADOR|ELEVADOR|CACAMBA)/.test(sourceName)) return null
-  const sourceVariants = variantes(normalizar(`${name} ${detalhesParaVariantes(origin.sourceSpecifications)}`))
+  const sourceVariants = variantes(normalizar(`${name} ${detalhesParaVariantes(origin.sourceSpecifications, source?.familia)}`))
   if (sourceVariants === null) return null
   // This exact CAD was identified by Daniel as the 3 x 1 m graded unloading
   // hopper. Its live quotation record retains the old "caixa entrada" title.
@@ -214,7 +220,7 @@ export function encontrarCatalogoProjeto3D(line: LinhaProjeto3D, catalogo: reado
   const matches = catalogo.filter(item => {
     if (item.ativo !== true || item.is_oficial !== true) return false
     const candidateName = normalizar([item.nome_curto, item.nome_completo].filter(Boolean).join(' '))
-    if (conjunto(candidateName) || variantes(normalizar(`${candidateName} ${detalhesParaVariantes(item.specs ?? [])}`)) !== sourceVariants) return false
+    if (conjunto(candidateName) || variantes(normalizar(`${candidateName} ${detalhesParaVariantes(item.specs ?? [], source?.familia)}`)) !== sourceVariants) return false
     if (source) {
       const candidate = candidatoIdentidade(item)
       return candidate !== null && categoriaCompativel(source, item) && compativel(source, candidate)
