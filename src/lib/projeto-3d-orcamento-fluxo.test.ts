@@ -69,6 +69,7 @@ test('nova transferência hidrata acessórios descritivos, mas reload prioriza o
 
 test('reabrir bloco descritivo zero de origem 3D mantém zero sem clamp de 1% nem default de 5%', () => {
   const cfg = transfer.materializeProjeto3DAcessorios({ ...payload, accessories: [{ sourceId: 'mouth-1', floorId: 'floor-1', floorName: 'Térreo', kind: 'equipment', catalogId: 'mouth-cad', sequence: 1, name: 'Boca de entrada', quantity: 2, specifications: [] }] })!
+  Object.assign(cfg, { pct: 0, valorFixo: 0 }) // orçamento legado, anterior ao padrão de 15%
   let accessories: any = null
   const context = run(fn(page, 'carregarDoModelo'), { carrinho: [], items: [], precos: [], motores: [], montarMapaFotosTransportador: () => new Map(), console: { log() {} }, setCarrinho() {}, setAcessorios(value: unknown) { accessories = value }, setVoltagem() {}, stripSufixoVoltagem: (name: string) => name })
   context.carregarDoModelo({ itens: [{ __full: true, uid: 'one', nome: 'Moinho', qtd: 1, valor: 100_000, specs: [] }], motores: [], acessorios: { items: cfg.items, valor: 0, origem_projeto3d: cfg.origem_projeto3d }, voltagem: 'trifasico' })

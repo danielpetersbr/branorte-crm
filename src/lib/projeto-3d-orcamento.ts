@@ -34,7 +34,7 @@ export interface OrigemAcessoriosProjeto3D {
 export interface AcessoriosProjeto3D {
   pct: number
   items: string[]
-  valorFixo: number
+  valorFixo: number | null
   origem_projeto3d: OrigemAcessoriosProjeto3D
 }
 
@@ -190,13 +190,13 @@ export function materializeProjeto3DOrcamento(payload: Projeto3DOrcamentoPayload
   }))
 }
 
-/** Descriptive import only: the seller may later price the existing accessories block. */
+/** New project quotations use the standard adjustable percentage on equipment. */
 export function materializeProjeto3DAcessorios(payload: Projeto3DOrcamentoPayload): AcessoriosProjeto3D | null {
   const validated = parseProjeto3DOrcamentoPayload(payload)
   if (!validated.accessories?.length) return null
   const floors = new Set([...validated.items, ...validated.accessories].map(item => item.floorId))
   return {
-    pct: 0, valorFixo: 0,
+    pct: 15, valorFixo: null,
     items: validated.accessories.map(item => [item.name, `Qtde: ${item.quantity}`, ...item.specifications, ...(floors.size > 1 ? [`Piso: ${item.floorName}`] : [])].join(' · ')),
     origem_projeto3d: { exportId: validated.exportId, projectId: validated.projectId, projectName: validated.projectName, items: validated.accessories },
   }

@@ -1348,7 +1348,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                   <span className="text-gray-900">R$ {formatBRLBare(valorAcessorios)}</span>
                 ) : (
                   <span className="text-amber-600 italic text-[13px] print:text-gray-900 print:not-italic">
-                    <span className="print:hidden">{acessorios.origem_projeto3d ? (renderMode ? 'R$ 0,00' : 'Sem cobrança automática — confira o valor dos acessórios') : <>⚠ {acessorios.pct}% × R$ 0,00 = R$ 0,00 (precifique os itens acima)</>}</span>
+                    <span className="print:hidden">{acessorios.origem_projeto3d && acessorios.pct === 0 ? (renderMode ? 'R$ 0,00' : 'Sem cobrança automática — confira o valor dos acessórios') : <>⚠ {acessorios.pct}% × R$ 0,00 = R$ 0,00 (precifique os itens acima)</>}</span>
                     <span className="hidden print:inline">R$ 0,00</span>
                   </span>
                 )}

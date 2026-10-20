@@ -50,13 +50,13 @@ test('acessórios são coleção opcional distinta, sem entrar nas linhas de equ
   assert.deepEqual(readProjeto3DOrcamentoTransfer(parsed.exportId, storage), parsed)
 })
 
-test('descrições de acessórios mantêm quantidade, especificações e piso sem preço automático', () => {
+test('acessórios do projeto usam padrão de 15% preservando quantidade, especificações e piso', () => {
   assert.equal(typeof budgetContract.materializeProjeto3DAcessorios, 'function')
   const input = { ...fixture(), accessories: [accessoryFixture(), { ...accessoryFixture(), sourceId: 'mouth-2', sequence: 2 }] }
   const result = budgetContract.materializeProjeto3DAcessorios(input)
   assert.ok(result)
-  assert.equal(result.pct, 0)
-  assert.equal(result.valorFixo, 0)
+  assert.equal(result.pct, 15)
+  assert.equal(result.valorFixo, null, 'percentual acompanha os equipamentos, sem congelar valor fixo')
   assert.equal(result.items.length, 2, 'peças repetidas continuam descritas separadamente')
   assert.match(result.items[0], /Boca de entrada 160 × 600 × 600 × 30°.*Qtde: 2.*Chapa galvanizada.*Ø160 mm.*Mezanino/)
   assert.deepEqual(result.origem_projeto3d.items, input.accessories)
