@@ -104,14 +104,19 @@ test('menu Layout 3D seleciona apenas Meus Layouts na sua rota e mantém a mesma
   walk(initializer)
   const groups = run(`const result = ${initializer.getText(ast)}`, Object.fromEntries([...iconNames].map(name => [name, 'icon']))).result
   const items = groups.find((group: any) => group.id === 'layout-3d').items
-  assert.deepEqual(Array.from(items, (item: any) => item.label), ['Fazer Layout', 'Meus Layouts'])
+  assert.deepEqual(Array.from(items, (item: any) => item.label), ['Fazer Layout', 'Meus Layouts', 'Blocos dos equipamentos'])
   assert.deepEqual(Array.from(items.filter((item: any) => isNavigationItemActive(item.to, '/projeto-3d/meus', '', item.end)), (item: any) => item.label), ['Meus Layouts'])
-  assert.equal(items.every((item: any) => item.permKey === 'menu.projeto_3d'), true)
+  assert.deepEqual(Array.from(items.filter((item: any) => isNavigationItemActive(item.to, '/projeto-3d/blocos', '', item.end)), (item: any) => item.label), ['Blocos dos equipamentos'])
+  const [fazer, meus, blocos] = items
+  assert.equal(fazer.permKey === 'menu.projeto_3d' && meus.permKey === 'menu.projeto_3d', true)
+  // blocos dos equipamentos: só admin (o vendedor com menu.projeto_3d não vê)
+  assert.equal(blocos.adminOnly, true)
+  assert.equal(blocos.catalogo3d, true)
 })
 
 test('rotas abrem iframe diretamente em criar ou meus e remontam a página ao trocar', () => {
   const definitions = routes()
-  assert.equal(definitions.length, 2)
+  assert.equal(definitions.length, 3)
   const iframeUrls = definitions.map(route => {
     const view = page(route.props.element.props)
     return new URL(find(view.render(), element => element.type === 'iframe').props.src)
@@ -119,6 +124,12 @@ test('rotas abrem iframe diretamente em criar ou meus e remontam a página ao tr
   assert.equal(iframeUrls[0].searchParams.get('entry'), 'new')
   assert.equal(iframeUrls[1].searchParams.get('entry'), 'mine')
   assert.notEqual(definitions[0].props.element.key, definitions[1].props.element.key)
+  // blocos: abre o catálogo do configurador e esconde salvar/projetos
+  assert.equal(iframeUrls[2].pathname, '/catalogo')
+  assert.equal(iframeUrls[2].searchParams.get('entry'), 'blocos')
+  assert.equal(new Set(definitions.map(route => route.props.element.key)).size, 3)
+  const tree = page(definitions[2].props.element.props).render()
+  assert.match(find(tree, element => element.props?.['aria-label'] === 'Salvar projeto').props.className, /(^| )hidden( |$)/)
 })
 
 test('formulário parent rejeita cliente vazio antes de pedir criação', async () => {
@@ -204,4 +215,13 @@ test('ponte usa a sessão atualizada, recusa outra conta e limpa o acesso ao sai
   view.unmount()
   assert.equal(view.messages.at(-1).type, 'branorte:catalog:clear')
   assert.equal('accessToken' in view.messages.at(-1), false)
+})
+
+test('blocos dos equipamentos: só a conta dona do catálogo 3D vê o menu', () => {
+  const dono = { id: '9cf979c3-17cc-4aee-b692-ff9d1eea5540', role: 'admin', approved_at: '2026-01-01' }
+  assert.equal(catalogSession.podeVerCatalogo3d(dono), true)
+  assert.equal(catalogSession.podeVerCatalogo3d({ ...dono, id: 'outro-admin' }), false)
+  assert.equal(catalogSession.podeVerCatalogo3d({ ...dono, role: 'vendor' }), false)
+  assert.equal(catalogSession.podeVerCatalogo3d({ ...dono, approved_at: null }), false)
+  assert.equal(catalogSession.podeVerCatalogo3d(null), false)
 })

@@ -34,7 +34,9 @@ const rid = () => Math.random().toString(36).slice(2)
 const fmtData = (s: string) =>
   new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 
-export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
+export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' | 'blocos' } = {}) {
+  // 'blocos' (só admin): abre o catálogo de equipamentos do configurador, sem salvar projeto
+  const blocos = entry === 'blocos'
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [loading, setLoading] = useState(true)
   const [abrindo, setAbrindo] = useState(false)
@@ -79,7 +81,7 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
   }, [])
   const qc = useQueryClient()
   // Indicador visual apenas: o catálogo confirma a autorização no servidor.
-  const iframeSrc = `${CONFIGURADOR_URL}?adm=${catalogo3dAccessToken(session, profile) ? '1' : '0'}&entry=${entry}`
+  const iframeSrc = `${CONFIGURADOR_URL}${blocos ? '/catalogo' : ''}?adm=${catalogo3dAccessToken(session, profile) ? '1' : '0'}&entry=${entry}`
   const { data: projetos, isLoading: loadingLista, error: projetosError, refetch: retryProjetos, isFetching: fetchingProjetos } = useConfiguradorProjetos(showLista)
   const termoLista = semAcento(buscaLista.trim())
   const projetosFiltrados = termoLista
@@ -381,13 +383,13 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
           </div>
           <div className="min-w-0 hidden sm:block">
             <h1 className="text-sm font-bold text-ink truncate leading-tight">
-              Projeto 3D{projetoNome ? <span className="text-ink-muted font-medium"> · {projetoNome}</span> : ''}
+              {blocos ? 'Blocos dos equipamentos' : 'Projeto 3D'}{!blocos && projetoNome ? <span className="text-ink-muted font-medium"> · {projetoNome}</span> : ''}
             </h1>
-            <p className="text-[11px] text-ink-faint truncate">Desenhe o galpão, monte os equipamentos e salve pro cliente</p>
+            <p className="text-[11px] text-ink-faint truncate">{blocos ? 'Catálogo 3D de todos os equipamentos (só admin)' : 'Desenhe o galpão, monte os equipamentos e salve pro cliente'}</p>
           </div>
 
           {/* Projetos salvos */}
-          <div className="relative">
+          <div className={blocos ? 'hidden' : 'relative'}>
             <button
               onClick={() => setShowLista(v => !v)}
               disabled={abrindo || salvar.isPending}
@@ -518,7 +520,7 @@ export function Projeto3D({ entry = 'new' }: { entry?: 'new' | 'mine' } = {}) {
             onClick={iniciarSalvar}
             disabled={abrindo || salvar.isPending}
             aria-label="Salvar projeto"
-            className="h-9 px-3 rounded-lg bg-accent text-white hover:opacity-90 flex items-center gap-1.5 text-sm font-semibold"
+            className={`h-9 px-3 rounded-lg bg-accent text-white hover:opacity-90 items-center gap-1.5 text-sm font-semibold ${blocos ? 'hidden' : 'flex'}`}
           >
             <Save className="h-4 w-4" /> <span className="hidden sm:inline">Salvar</span>
           </button>

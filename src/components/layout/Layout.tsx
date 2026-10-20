@@ -5,6 +5,7 @@ import {
 import { useEffect, useRef, useState, Suspense, type CSSProperties, type MouseEvent } from 'react'
 import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { cn } from '@/lib/utils'
+import { podeVerCatalogo3d } from '@/lib/catalogo3d-session'
 import { readBrowserPreference, writeBrowserPreference } from '@/lib/browser-preferences'
 import { useAtendimentosTotalMenu } from '@/hooks/useAtendimentos'
 import { useAuth } from '@/hooks/useAuth'
@@ -82,6 +83,7 @@ interface NavItem {
   end?: boolean      // ativa SO na rota exata (pra paths que sao prefixo de irmaos)
   permKey?: string   // so mostra quando can(permKey) === true
   adminOnly?: boolean // so mostra pro role 'admin' (o guard de rota em App.tsx trava o resto)
+  catalogo3d?: boolean // so a conta dona do catalogo 3D (podeVerCatalogo3d)
   // so mostra pros papeis listados. Existe porque nem toda rota tem permKey:
   // /mapa-visitas, /minhas-visitas e /organizacao-viagem nao tem chave em
   // role_permissions, entao apareciam pro 'visualizador' — que o guard de rota
@@ -139,6 +141,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/projeto-3d', label: 'Fazer Layout', icon: Boxes, end: true, permKey: 'menu.projeto_3d' },
       { to: '/projeto-3d/meus', label: 'Meus Layouts', icon: FolderOpen, permKey: 'menu.projeto_3d' },
+      { to: '/projeto-3d/blocos', label: 'Blocos dos equipamentos', icon: Package, adminOnly: true, catalogo3d: true },
     ],
   },
   {
@@ -401,6 +404,7 @@ export function Layout() {
 
   const visible = (item: NavItem) =>
     (!item.adminOnly || profile?.role === 'admin')
+    && (!item.catalogo3d || podeVerCatalogo3d(profile))
     && (!item.permKey || can(item.permKey))
     && (!item.roles || (!!profile?.role && item.roles.includes(profile.role)))
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
