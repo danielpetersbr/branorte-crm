@@ -7,6 +7,7 @@ import { createElement, Fragment, type ReactElement } from 'react'
 import { exigirAprovado, perfilAprovado } from '../../api/_lib/exigir-aprovado.js'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { rotaCatalogo } from './catalogo-acesso'
+import { podeVerCatalogo3d } from './catalogo3d-session'
 
 type Element = ReactElement<Record<string, any>>
 function extract(file: string, names: string[]) {
@@ -34,7 +35,7 @@ function routesFixture(pathname: string, options: { role?: string; approved?: bo
     useLocalizacaoObrigatoria: () => ({ exigida: !!options.geoDenied, estado: options.geoDenied ? 'denied' : 'ok', coords: null }),
     useTrilhaAcesso: () => ({ bloqueado: !!options.blocked }),
     decidirRotaProducaoFabrica: (path: string) => { calls.push('fabrica'); return path === '/controle/producao/fabrica' ? 'allow' : 'unrelated' },
-    rotaCatalogo, rotaPedidosVendedorPermitida: () => false,
+    rotaCatalogo, rotaPedidosVendedorPermitida: () => false, podeVerCatalogo3d,
   }
   // Componentes JSX são placeholders; executamos os branches reais de AppRoutes.
   function tags(node: ts.Node) {
@@ -136,7 +137,7 @@ test('menu do estúdio fica disponível apenas ao administrador', () => {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText
   for (const role of ['admin', 'financeiro', 'marketing', 'vendor', 'visualizador', 'mapa', 'representante', 'consultor', 'mapa_visual']) {
-    const context = { profile: { role }, can: () => true, ...Object.fromEntries([...icons].map(icon => [icon, icon])) }
+    const context = { profile: { role }, can: () => true, podeVerCatalogo3d, ...Object.fromEntries([...icons].map(icon => [icon, icon])) }
     const destinations = vm.runInNewContext(code, context) as string[]
     assert.equal(destinations.includes('/estudio-video'), role === 'admin', role)
   }

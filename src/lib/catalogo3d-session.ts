@@ -6,6 +6,11 @@ type CatalogReply = { type: 'branorte:catalog:session:result'; requestId: string
 export const CONFIGURADOR_ORIGIN = 'https://branorte-configurador-3d.vercel.app'
 const CATALOGO_OWNER_ID = '9cf979c3-17cc-4aee-b692-ff9d1eea5540'
 
+/** Menu "Blocos dos equipamentos": só a conta dona do catálogo (as outras cairiam no "Acesso restrito"). */
+export function podeVerCatalogo3d(profile: CatalogProfile | null | undefined): boolean {
+  return profile?.id === CATALOGO_OWNER_ID && profile.role === 'admin' && !!profile.approved_at
+}
+
 // Esta seleção evita compartilhar sessões da equipe. A autorização definitiva
 // continua no servidor do configurador, que valida o JWT e a identidade.
 export function catalogo3dAccessToken(session: CatalogSession | null, profile: CatalogProfile | null, now = Date.now()): string | null {
