@@ -49,7 +49,7 @@ test('nova transferência hidrata acessórios descritivos, mas reload prioriza o
     let restored: unknown = null
     let accessoryWrites = 0
     const context = run(`var hydrate = ${callback}`, {
-      ...transfer, import3dToken: withAccessories.exportId, editingId: null, loadingItems: false, loadingMotores: false, loadingPrecos: false, items: [], motores: [], precos: [], importedTokenRef: { current: null }, transfer3D: withAccessories,
+      ...transfer, import3dToken: withAccessories.exportId, editingId: null, loadingItems: false, loadingMotores: false, loadingPrecos: false, items: [], catalogo3D: [], motores: [], precos: [], importedTokenRef: { current: null }, transfer3D: withAccessories,
       autoVincularProjeto3D: (rows: unknown[]) => rows,
       window: { localStorage: {} }, readProjeto3DDraft: () => recovered,
       setCarrinho() {}, setClienteDados() {}, setInitialModal() {}, setAcessorios(value: unknown) { accessoryState = value; accessoryWrites++ },

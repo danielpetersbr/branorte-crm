@@ -138,3 +138,70 @@ test('valor editado diretamente em linha pendente não é sobrescrito mesmo sem 
     assert.equal(result[0].origem_projeto3d.resolution, 'pendente')
   }
 })
+
+test('diagnóstico distingue cadastro ausente, ambiguidade, preço e motor sem perder uma linha', () => {
+  assert.ok(integration)
+  assert.equal(typeof integration.autoVincularProjeto3DComDiagnostico, 'function')
+  const original = [linha('missing', 'MOINHO MARTELO 100 CV', 1), linha('ambiguous', 'MOINHO MARTELO 20 CV', 2), linha('price', 'MOINHO MARTELO 10 CV', 3), linha('motor', 'MOINHO MARTELO 30 CV', 4), linha('ready', 'MOINHO MARTELO 40 CV', 5)]
+  const products = [catalogo(17, 'MOINHO MARTELO 20 CV'), catalogo(18, 'MOINHO MARTELO 20 CV'), catalogo(10, 'MOINHO MARTELO 10 CV', { valor: 0 }), catalogo(30, 'MOINHO MARTELO 30 CV'), catalogo(40, 'MOINHO MARTELO 40 CV')]
+  const result = integration.autoVincularProjeto3DComDiagnostico(original, products, (line, entry) => {
+    if (entry.id === 30) throw new Error('Há motor sem preço válido nesta voltagem. Selecione Trifásico no orçamento ou confirme um valor manual completo.')
+    return vincular(line, entry)
+  })
+  assert.equal(result.linhas.length, original.length)
+  assert.deepEqual(result.diagnosticos.map(entry => [entry.uid, entry.motivo]), [['missing', 'sem_cadastro'], ['ambiguous', 'ambiguo'], ['price', 'sem_preco'], ['motor', 'motor_incompleto'], ['ready', 'vinculado']])
+  assert.deepEqual(result.diagnosticos[1].candidatos?.map(item => item.id), [17, 18])
+  assert.equal(result.diagnosticos[2].catalogo?.id, 10)
+  assert.equal(result.diagnosticos[2].catalogo?.foto_url, products[2].foto_url)
+  assert.match(result.diagnosticos[3].mensagem, /motor.*voltagem.*Trifásico/)
+  for (let index = 0; index < 4; index++) assert.equal(result.linhas[index], original[index])
+  assert.equal(result.linhas[4].catalogo_id, 40)
+})
+
+test('metadata do cadastro com preço inválido fica fora da linha para permitir nova tentativa segura', () => {
+  assert.ok(integration)
+  assert.equal(typeof integration.autoVincularProjeto3DComDiagnostico, 'function')
+  const original = linha('retry', 'MOINHO MARTELO 20 CV', 1)
+  const before = JSON.stringify(original)
+  const noPrice = catalogo(17, 'MOINHO MARTELO 20 CV', { valor: 0, descricao: 'Descrição oficial disponível', specs: ['Descrição oficial'], foto_url: 'https://example.com/foto-oficial.jpg' })
+  const failed = integration.autoVincularProjeto3DComDiagnostico([original], [noPrice], vincular)
+  assert.equal(failed.linhas[0], original)
+  assert.equal(JSON.stringify(original), before)
+  assert.equal(failed.diagnosticos[0].catalogo?.descricao, noPrice.descricao)
+  assert.equal(failed.diagnosticos[0].catalogo?.foto_url, noPrice.foto_url)
+  assert.deepEqual(failed.diagnosticos[0].catalogo?.specs, noPrice.specs)
+  const retried = integration.autoVincularProjeto3DComDiagnostico(failed.linhas, [{ ...noPrice, valor: 15000 }], vincular)
+  assert.equal(retried.linhas[0].valor, 15000)
+  assert.equal(retried.diagnosticos[0].motivo, 'vinculado')
+})
+
+test('diagnóstico identifica edição protegida e falha inesperada sem sobrescrever o rascunho', () => {
+  assert.ok(integration)
+  assert.equal(typeof integration.autoVincularProjeto3DComDiagnostico, 'function')
+  const edited = { ...linha('edited', 'MOINHO MARTELO 20 CV', 1), foto_url: 'https://example.com/minha-foto.jpg' }
+  const failing = linha('unexpected', 'MOINHO MARTELO 40 CV', 2)
+  const result = integration.autoVincularProjeto3DComDiagnostico([edited, failing], [catalogo(20, 'MOINHO MARTELO 20 CV'), catalogo(40, 'MOINHO MARTELO 40 CV')], () => { throw new Error('Não foi possível consultar a configuração comercial.') })
+  assert.equal(result.linhas[0], edited)
+  assert.equal(result.linhas[1], failing)
+  assert.deepEqual(result.diagnosticos.map(entry => entry.motivo), ['edicao_preservada', 'falha_precificacao'])
+  assert.match(result.diagnosticos[0].mensagem, /editad|preservad/i)
+})
+
+test('diagnósticos conservam o índice original e ignoram linhas já resolvidas ou manuais', () => {
+  assert.ok(integration)
+  const linked = linha('linked', 'MOINHO MARTELO 20 CV', 1, { resolution: 'vinculado' })
+  const manual = linha('manual', 'MOINHO MARTELO 20 CV', 2, { kind: 'manual' })
+  const pending = linha('pending', 'MOINHO MARTELO 40 CV', 3)
+  const result = integration.autoVincularProjeto3DComDiagnostico([linked, manual, pending], [], vincular)
+  assert.deepEqual(result.linhas, [linked, manual, pending])
+  assert.deepEqual(result.diagnosticos.map(entry => [entry.index, entry.uid, entry.motivo]), [[2, 'pending', 'sem_cadastro']])
+})
+
+test('falha sem Error não é apresentada como falta comprovada de preço', () => {
+  assert.ok(integration)
+  const original = linha('unknown', 'MOINHO MARTELO 20 CV', 1)
+  const result = integration.autoVincularProjeto3DComDiagnostico([original], [catalogo(20, 'MOINHO MARTELO 20 CV')], () => { throw null })
+  assert.equal(result.linhas[0], original)
+  assert.equal(result.diagnosticos[0].motivo, 'falha_precificacao')
+  assert.ok(result.diagnosticos[0].mensagem)
+})

@@ -283,3 +283,73 @@ test('nome completo contraditório da moega impede o título comercial e o vínc
     assert.equal(match(moegaDescarga(), [record]), null, nome_completo)
   }
 })
+
+test('nome legado de cópia com revisão CAD colada à unidade conserva diâmetro e comprimento comerciais', () => {
+  const wanted = product('TRANSPORTADOR HELICOIDAL 160 X 3,5 M')
+  const otherDiameter = product('TRANSPORTADOR HELICOIDAL 210 X 3,5 M', { id: 92 })
+  const source = line('CHUPIM Ø160 X 3,5MALT1 — CÓPIA 1')
+  assert.equal(match(source, [otherDiameter, wanted]), wanted)
+  assert.equal(match(source, [otherDiameter]), null)
+  const wanted210 = product('TRANSPORTADOR HELICOIDAL 210 X 5,5 M')
+  assert.equal(match(line('CHUPIM Ø210 X 5,5MALT12 — CÓPIA 2'), [wanted, wanted210]), wanted210)
+})
+
+test('especificação nominal conflitante da cópia impede vínculo ao comprimento ou diâmetro herdados', () => {
+  const old = product('TRANSPORTADOR HELICOIDAL 160 X 3,5 M')
+  const resized = product('TRANSPORTADOR HELICOIDAL 160 X 5,5 M', { id: 92 })
+  const wider = product('TRANSPORTADOR HELICOIDAL 210 X 3,5 M', { id: 93 })
+  for (const sourceSpecifications of [['Comprimento nominal: 5,5 metros'], ['Diâmetro: 210 mm']]) {
+    assert.equal(match(line('CHUPIM Ø160 X 3,5MALT1 — CÓPIA 1', { sourceSpecifications }), [old, resized, wider]), null)
+  }
+  assert.equal(match(line(origin.sourceName, { sourceSpecifications: ['Comprimento: 5,5 m'] }), [old]), null)
+})
+
+test('medidas nominais coerentes refinam transportador e contradições na ficha do catálogo o rejeitam', () => {
+  const wanted = product(origin.sourceName, { specs: ['Diâmetro: 160 mm', 'Comprimento: 3,5 metros'] })
+  assert.equal(match(line(origin.sourceName, { sourceSpecifications: ['Diâmetro nominal: 160 mm', 'Comprimento nominal: 3500 mm'] }), [wanted]), wanted)
+  assert.equal(match(line(), [{ ...wanted, specs: ['Diâmetro: 210 mm', 'Comprimento: 3,5 metros'] }]), null)
+  assert.equal(match(line(), [{ ...wanted, specs: ['Diâmetro: 160 mm', 'Comprimento: 5,5 metros'] }]), null)
+  assert.equal(match(line(), [{ ...wanted, specs: ['Comprimento: 3,5 metros', 'Comprimento: 5,5 metros'] }]), null)
+})
+
+test('caçamba reconhece litros literais e categorias comprovadas sem escolher volume vizinho', () => {
+  for (const categoria of ['CACAMBA', 'CACAMBA_PESAGEM', 'CAÇAMBA DE PESAGEM']) {
+    const wanted = product('CAÇAMBA DE PESAGEM 1900 LITROS', { categoria, capacidade_litros: 1900 })
+    const neighbor = product('CAÇAMBA DE PESAGEM 2000 LITROS', { id: 92, categoria, capacidade_litros: 2000 })
+    assert.equal(match(line('CAÇAMBA DE PESAGEM 1900L', { catalogId: 'branorte_cacamba_pesagem' }), [neighbor, wanted]), wanted)
+    assert.equal(match(line('CAÇAMBA DE PESAGEM 1900L'), [neighbor]), null)
+  }
+})
+
+test('caçamba em kg exige o mesmo peso e volume não vira peso sem evidência explícita no cadastro', () => {
+  const wanted = product('CAÇAMBA DE PESAGEM 1000 KG', { categoria: 'CACAMBA_PESAGEM', capacidade_kg: 1000 })
+  const source = line('CAÇAMBA DE PESAGEM 1000 KG', { catalogId: 'branorte_cacamba_pesagem', sourceSpecifications: ['Corpo nominal: 1900 L'] })
+  assert.equal(match(source, [wanted]), wanted)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS', { catalogId: 'branorte_cacamba_pesagem' }), [wanted]), null)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1000 LITROS'), [wanted]), null)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1500 KG'), [wanted]), null)
+  const explicitVolume = { ...wanted, capacidade_litros: 1900 }
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS'), [explicitVolume]), explicitVolume)
+})
+
+test('caçamba rejeita capacidade contraditória, família indevida e correspondência ambígua', () => {
+  const wanted = product('CAÇAMBA DE PESAGEM 1900 LITROS', { categoria: 'CACAMBA_PESAGEM', capacidade_litros: 1900 })
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS'), [{ ...wanted, capacidade_litros: 2000 }]), null)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS'), [{ ...wanted, specs: ['Capacidade: 2000 LITROS'] }]), null)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS', { sourceSpecifications: ['Capacidade: 2000 LITROS'] }), [wanted]), null)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS'), [{ ...wanted, categoria: 'MISTURADOR' }]), null)
+  const duplicate = { ...wanted, id: 92, valor: 1 }
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS'), [wanted, duplicate]), null)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM 1900 LITROS'), [duplicate, wanted]), null)
+  assert.equal(match(line('CAÇAMBA DE PESAGEM'), [wanted]), null)
+})
+
+test('caixa dimensional genérica permanece pendente sem converter volume em kg ou presumir finalidade', () => {
+  const source = line('CAIXA 3 X 1,5 X 6 M³', { catalogId: 'branorte_caixa' })
+  for (const name of ['CAIXA DE RAÇÃO PRONTA 4 TONELADAS', 'CAIXA DE PICADOS 4 TONELADAS', 'CAIXA 3900 KG', 'CAIXA DE RAÇÃO PRONTA 6000 LITROS']) {
+    assert.equal(match(source, [product(name, { categoria: 'CAIXA', capacidade_kg: 3900, capacidade_litros: 6000 })]), null)
+  }
+  assert.equal(match(source, [product(source.nome, { categoria: 'OUTROS' })]), null)
+  const abbreviated = line('CX. 3 X 1,5 X 6 M³', { catalogId: 'branorte_caixa' })
+  assert.equal(match(abbreviated, [product(abbreviated.nome, { categoria: 'OUTROS' })]), null)
+})
