@@ -24,6 +24,7 @@ import { useJanela } from './DashboardFilterContext'
 import { QueryNotice } from '@/components/ui/QueryNotice'
 import { useDashboardCanais } from '@/hooks/useDashboardCanais'
 import { QualidadePorCanal } from './blocks/QualidadePorCanal'
+import { PorteDoLeadPorAnuncio } from './blocks/PorteDoLeadPorAnuncio'
 
 // ============================================================================
 // ABA MARKETING — "pra onde vai ou corta a verba?"
@@ -1299,6 +1300,9 @@ export function TabMarketing() {
 
       {/* ═══ 0 · QUAL CANAL TRAZ OS MELHORES LEADS — a pergunta nº 1 do dono (19/10/2026) ═══ */}
       <QualidadePorCanal preset={preset} periodoLabel={periodoLabel} />
+
+      {/* ═══ 0b · QUAL ANÚNCIO TRAZ O PRODUTOR MAIOR — dados que a Ana coleta (20/10/2026) ═══ */}
+      <PorteDoLeadPorAnuncio preset={preset} periodoLabel={periodoLabel} />
 
       <Card id="marketing-resumo">
         <CardHeader
