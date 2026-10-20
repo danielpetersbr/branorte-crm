@@ -211,3 +211,75 @@ test('qualificadores contraditórios entre título e detalhes impedem vínculo',
   assert.equal(match(line(name, { sourceSpecifications: ['SEM PULMÃO'] }), [wanted]), null)
   assert.equal(match(line(name), [{ ...wanted, specs: ['SEM PULMÃO'] }]), null)
 })
+
+const nomeMoegaDescarga = 'MOEGA DE DESCARGA 3 X 1 M'
+const moegaDescarga = () => line(nomeMoegaDescarga, { catalogId: 'branorte_mg_moega_ext_3x1m_paraf', sourceSpecifications: ['COM GRADE'] })
+const cadastroMoegaDescarga = (patch: Partial<CatalogoItem> = {}) => product('CAIXA ENTRADA MOEGA COM HELICODE', {
+  categoria: 'MOEGA', valor: 32123,
+  specs: ['Comprimento: 3,0 metros.', 'Largura 1,0 m', 'Profundidade 1', 'Construção em chapa n°14 (2mm)', 'Rosca inferior diâmetro 130mm', 'Produção até: 30,0 ton./hora.', 'Produto: Peso específico 0,75 ton./m3', 'Acionamento 2,0 CV por motorredutor (incluso)'],
+  ...patch,
+})
+
+test('moega de descarga com grade 3 x 1 m reconhecida pelo usuário vincula o cadastro vivo pelos nomes e medidas explícitos', () => {
+  const wanted = cadastroMoegaDescarga()
+  assert.equal(match(moegaDescarga(), [wanted]), wanted)
+  const updated = { ...wanted, id: 99999, valor: 54321 }
+  assert.equal(match(moegaDescarga(), [updated]), updated, 'id e preço devem vir do registro atual')
+})
+
+test('título comercial da moega pode ser exibido sem alterar o cadastro nem normalizar nomes parecidos', () => {
+  assert.ok(matcher)
+  assert.equal(typeof matcher.nomeComercialMoegaDescarga, 'function')
+  const record = cadastroMoegaDescarga()
+  const before = JSON.stringify(record)
+  assert.equal(matcher.nomeComercialMoegaDescarga(record), nomeMoegaDescarga)
+  assert.equal(JSON.stringify(record), before)
+  assert.equal(matcher.nomeComercialMoegaDescarga(cadastroMoegaDescarga({ nome_curto: 'CAIXA DE ENTRADA' })), null)
+  assert.equal(matcher.nomeComercialMoegaDescarga(cadastroMoegaDescarga({ specs: ['Comprimento: 3 m', 'Largura: 1,5 m'] })), null)
+})
+
+test('alias de moega exige as duas medidas nominais coerentes e não usa profundidade ou envelope', () => {
+  for (const specs of [
+    ['Comprimento: 3 metros', 'Largura: 1,5 m'],
+    ['Comprimento: 4 metros', 'Largura: 1 m'],
+    ['Comprimento: 3 metros'],
+    ['Largura: 1 m', 'Profundidade: 3 metros'],
+    ['Projeto L × P × A: 3 × 1 × 1 m'],
+    ['Comprimento: 3 metros', 'Largura: 1 m', 'Comprimento: 4 metros'],
+  ]) assert.equal(match(moegaDescarga(), [cadastroMoegaDescarga({ specs })]), null, specs.join('; '))
+})
+
+test('moega de descarga não vincula acessórios, variantes, nomes parecidos ou cadastros não oficiais', () => {
+  for (const patch of [
+    { categoria: 'OUTROS' }, { categoria: 'ACESSORIO' }, { ativo: false }, { is_oficial: false },
+    { nome_curto: 'CAIXA ENTRADA MOEGA COM HELICODE 1500' },
+    { nome_curto: 'CAIXA DE ENTRADA' },
+    { nome_curto: 'MOEGA DE DESCARGA 3 X 1,5 M' },
+    { specs: ['Comprimento: 3 m', 'Largura: 1 m', 'INOX 304'] },
+  ]) assert.equal(match(moegaDescarga(), [cadastroMoegaDescarga(patch)]), null)
+  const wanted = cadastroMoegaDescarga()
+  assert.equal(match(line(nomeMoegaDescarga, { catalogId: 'brn_300_00182_conj_moega_160x600x600x30', sourceSpecifications: ['COM GRADE'] }), [wanted]), null)
+  assert.equal(match(line(nomeMoegaDescarga, { catalogId: 'branorte_mg_moega_ext_3x1m_paraf_alt2_alongada', sourceSpecifications: ['COM GRADE'] }), [wanted]), null)
+})
+
+test('dois cadastros oficiais compatíveis da moega continuam pendentes sem escolher um preço', () => {
+  const first = cadastroMoegaDescarga()
+  const second = cadastroMoegaDescarga({ id: first.id + 1, valor: 1 })
+  assert.equal(match(moegaDescarga(), [first, second]), null)
+  assert.equal(match(moegaDescarga(), [second, first]), null)
+})
+
+test('nome completo contraditório da moega impede o título comercial e o vínculo mesmo com specs 3 x 1 m', () => {
+  assert.ok(matcher)
+  for (const nome_completo of [
+    'CAIXA ENTRADA MOEGA COM HELICODE + MOINHO 20 CV',
+    'MOEGA DE DESCARGA 3 X 1,5 M',
+    'MOEGA DE DESCARGA 4 X 1 M',
+    'MOEGA DE DESCARGA 3 X 1 M INOX 304',
+    'MOEGA DE DESCARGA 3 X 1 M SEM GRADE',
+  ]) {
+    const record = cadastroMoegaDescarga({ nome_completo })
+    assert.equal(matcher.nomeComercialMoegaDescarga(record), null, nome_completo)
+    assert.equal(match(moegaDescarga(), [record]), null, nome_completo)
+  }
+})

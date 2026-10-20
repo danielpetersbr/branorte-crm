@@ -134,6 +134,28 @@ function categoriaCompativel(identity: Identidade, item: CatalogoItem): boolean 
   return normalizar(item.categoria) === allowed[identity.familia]
 }
 
+function medidaMoega(specifications: readonly string[], field: 'COMPRIMENTO' | 'LARGURA', expected: number): boolean {
+  const expression = new RegExp(`^${field}\\s*:?\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:METROS?|M)\\b`)
+  const values = specifications.map(detail => normalizar(detail).match(expression)).filter(value => value !== null).map(value => numero(value![1]))
+  return values.length > 0 && values.every(value => value === expected)
+}
+
+/** Display alias for the exact live 3 x 1 m unloading-hopper record, without
+ * mutating the raw catalog or assigning a historical product id or price.
+ */
+export function nomeComercialMoegaDescarga(item: CatalogoItem): string | null {
+  const completeName = normalizar(item.nome_completo ?? '')
+  const completeMeasures = [...completeName.matchAll(/\b(\d+(?:[.,]\d+)?)\s*[X×]\s*(\d+(?:[.,]\d+)?)(?![\d.,])/g)]
+  if (item.ativo !== true || item.is_oficial !== true || normalizar(item.categoria) !== 'MOEGA'
+    || tituloExato(item.nome_curto) !== tituloExato('CAIXA ENTRADA MOEGA COM HELICODE')
+    || conjunto(completeName) || /\b(?:SEM\s+|S\s*\/\s*)GRADE\b/.test(completeName)
+    || completeMeasures.some(measure => numero(measure[1]) !== 3 || numero(measure[2]) !== 1)
+    || !medidaMoega(item.specs ?? [], 'COMPRIMENTO', 3)
+    || !medidaMoega(item.specs ?? [], 'LARGURA', 1)
+    || variantes(normalizar(`${item.nome_curto} ${item.nome_completo ?? ''} ${detalhesParaVariantes(item.specs ?? [])}`)) !== '') return null
+  return 'MOEGA DE DESCARGA 3 X 1 M'
+}
+
 /** Return the current catalog record only for one unambiguous commercial identity.
  * No prices, product ids, kg/litre conversions or CAD bounding boxes are inferred.
  */
@@ -150,6 +172,17 @@ export function encontrarCatalogoProjeto3D(line: LinhaProjeto3D, catalogo: reado
   if (!source && /^(?:TRANSPORTADOR|CHUPIM|CALHA|TH\b|MOINHO|TRITURADOR|MISTURADOR|SILO MISTURADOR|ELEVADOR)/.test(sourceName)) return null
   const sourceVariants = variantes(normalizar(`${name} ${detalhesParaVariantes(origin.sourceSpecifications)}`))
   if (sourceVariants === null) return null
+  // This exact CAD was identified by Daniel as the 3 x 1 m graded unloading
+  // hopper. Its live quotation record retains the old "caixa entrada" title.
+  // Match the current record by that verified title plus both nominal measures;
+  // neither its historical id/price nor the external CAD envelope is evidence.
+  const moegaDescargaPadrao = origin.catalogId === 'branorte_mg_moega_ext_3x1m_paraf'
+    && tituloExato(name) === 'MOEGA DE DESCARGA 3 X 1 M'
+    && origin.sourceSpecifications.some(detail => normalizar(detail) === 'COM GRADE')
+  if (moegaDescargaPadrao) {
+    const matches = sourceVariants === '' ? catalogo.filter(item => nomeComercialMoegaDescarga(item) !== null) : []
+    return matches.length === 1 ? matches[0] : null
+  }
   const matches = catalogo.filter(item => {
     if (item.ativo !== true || item.is_oficial !== true) return false
     const candidateName = normalizar([item.nome_curto, item.nome_completo].filter(Boolean).join(' '))

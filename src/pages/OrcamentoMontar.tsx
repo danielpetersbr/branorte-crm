@@ -42,6 +42,7 @@ import { decidirDestinoPasta, saveFalhou } from '@/lib/orcamento-folder-scan'
 import { parseProjeto3DOrcamentoPayload, readProjeto3DOrcamentoTransfer, saveProjeto3DOrcamentoTransfer, materializeProjeto3DOrcamento, materializeProjeto3DAcessorios, type OrigemProjeto3D, type OrigemAcessoriosProjeto3D, type Projeto3DOrcamentoPayload } from '@/lib/projeto-3d-orcamento'
 import { mensagemPopupProjeto3DValida, readProjeto3DDraft, resolverManualProjeto3D, resolverVinculoProjeto3D, temPendenciasProjeto3D } from '@/lib/projeto-3d-orcamento-integracao'
 import { autoVincularProjeto3D } from '@/lib/projeto-3d-auto-vinculo'
+import { nomeComercialMoegaDescarga } from '@/lib/projeto-3d-catalogo-match'
 import { CONFIGURADOR_ORIGIN } from '@/lib/catalogo3d-session'
 import { fetchConfiguradorProjetoMetaAtual } from '@/hooks/useConfiguradorProjetos'
 import { Projeto3DOrcamentoResolver } from '@/components/orcamento/Projeto3DOrcamentoResolver'
@@ -2114,6 +2115,7 @@ export function OrcamentoMontar() {
   function criarItemCatalogo(item: CatalogoItem, funcaoEscolhida?: string, voltagemOrcamento: Voltagem = voltagem): CarrinhoItem {
     const specs = item.specs || []
     const motorIncluso = motorJaInclusoNoItem(specs)
+    const nomeComercial = nomeComercialMoegaDescarga(item) ?? item.nome_curto
 
     // Item com inversor: motor sempre cotado como trifasico (cheaper),
     // mesmo se vendedor marcou monofasico no header.
@@ -2137,14 +2139,14 @@ export function OrcamentoMontar() {
     // preserva o nome generico (funcao fica so em funcao_selecionada, uso interno).
     const funcao = funcaoEscolhida ?? (item.funcao_opcoes?.[0] ?? null)
     const nomeCustom = funcao && !item.ocultar_funcao_no_pdf
-      ? `${item.nome_curto} (${funcao})`
+      ? `${nomeComercial} (${funcao})`
       : null
 
     return {
       uid: gerarUid(),
       catalogo_id: item.id,
       categoria: item.categoria,
-      nome: item.nome_curto,
+      nome: nomeComercial,
       nome_custom: nomeCustom,
       specs,
       qtd: 1,
@@ -3663,7 +3665,7 @@ export function OrcamentoMontar() {
                       <MetaCard categoria="DESCARGA" titulo="Descarga (acessório)" descricao="Duas vias 160 e 210 mm" qtd={descargasOficiais.length} onClick={() => setDescargaPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'MOEGA') && moegasOficiais.length > 0 && (
-                      <MetaCard categoria="MOEGA" titulo="Moega de Entrada" descricao="Caixa de entrada com helicoide" qtd={moegasOficiais.length} onClick={() => setMoegaPickerOpen(true)} />
+                      <MetaCard categoria="MOEGA" titulo="Moega de Descarga" descricao="Com grade · 3 × 1 m" qtd={moegasOficiais.length} onClick={() => setMoegaPickerOpen(true)} />
                     )}
                     {(categoria === null || categoria === 'PASSARELA') && passarelasOficiais.length > 0 && (
                       <MetaCard categoria="PASSARELA" titulo="Passarela" descricao="Com guarda-corpo 21 e 25 m" qtd={passarelasOficiais.length} onClick={() => setPassarelaPickerOpen(true)} />
@@ -4949,7 +4951,7 @@ export function OrcamentoMontar() {
 
       <CategoriaPickerModal
         open={moegaPickerOpen}
-        titulo="Moega de Entrada"
+        titulo="Moega de Descarga"
         items={moegasOficiais}
         precosBranorte={precos ?? []}
         labelSub={{}}
@@ -7271,6 +7273,8 @@ function CategoriaPickerModal(props: PickerProps) {
               {filtrados.map(p => {
                 // Lookup reverso pra colunas detalhadas (silo, compacta, caixa, etc.)
                 const pb = p.preco_branorte_id ? pbMap.get(p.preco_branorte_id) : null
+                const nomeMoega = nomeComercialMoegaDescarga(p)
+                const nomeExibido = nomeMoega ?? p.nome_curto
                 const capacidadeLabel = p.capacidade_litros
                   ? `${p.capacidade_litros.toLocaleString('pt-BR')} L`
                   : p.capacidade_kg
@@ -7284,7 +7288,7 @@ function CategoriaPickerModal(props: PickerProps) {
                   >
                     <td className="px-2 py-1">
                       {p.foto_url ? (
-                        <img src={p.foto_url} alt={p.nome_curto} className="w-10 h-10 object-cover rounded border border-border" loading="lazy" />
+                        <img src={p.foto_url} alt={nomeExibido} className="w-10 h-10 object-cover rounded border border-border" loading="lazy" />
                       ) : (
                         <div className="w-10 h-10 rounded border border-border bg-surface-2 flex items-center justify-center text-ink-faint">
                           <Package className="h-4 w-4" />
@@ -7292,7 +7296,8 @@ function CategoriaPickerModal(props: PickerProps) {
                       )}
                     </td>
                     <td className="px-3 py-1.5 text-ink">
-                      <span className="font-semibold">{p.nome_curto}</span>
+                      <span className="font-semibold">{nomeExibido}</span>
+                      {nomeMoega && <span className="block text-[11px] text-ink-muted mt-0.5">Com grade</span>}
                     </td>
                     {subsDisponiveis.length > 1 && (
                       <td className="px-3 py-1.5 text-[10px] text-ink-muted">

@@ -6,6 +6,7 @@ import ts from 'typescript'
 import * as transfer from './projeto-3d-orcamento'
 import * as integration from './projeto-3d-orcamento-integracao'
 import { valorPorVoltagem } from './motor-do-preco'
+import { nomeComercialMoegaDescarga } from './projeto-3d-catalogo-match'
 
 const source = readFileSync(new URL('../pages/OrcamentoMontar.tsx', import.meta.url), 'utf8')
 const page = ts.createSourceFile('OrcamentoMontar.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -65,7 +66,7 @@ test('rascunho antigo pendente usa voltagem recuperada sem perder acessórios ed
 })
 
 test('factory aceita voltagem explícita mesmo antes de aplicar estado do rascunho', () => {
-  const context = vm.createContext({ gerarUid: () => 'new', voltagem: 'trifasico', precos: [{ id: 55, valor_equipamento: 2000, valor_com_motor_trif: 2600, valor_com_motor_mono: 3100 }], motores: [], acharMotorCompativel: () => null, valorPorVoltagem })
+  const context = vm.createContext({ gerarUid: () => 'new', voltagem: 'trifasico', precos: [{ id: 55, valor_equipamento: 2000, valor_com_motor_trif: 2600, valor_com_motor_mono: 3100 }], motores: [], acharMotorCompativel: () => null, valorPorVoltagem, nomeComercialMoegaDescarga })
   vm.runInContext(ts.transpileModule(`${fn('motorJaInclusoNoItem')}\n${fn('criarItemCatalogo')}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
   const priced = context.criarItemCatalogo({ id: 5, categoria: 'MOINHO', nome_curto: 'TRITURADOR DE GRÃOS 20 CV', specs: [], preco_branorte_id: 55, funcao_opcoes: [], foto_url: '/catalog-photo.png' }, undefined, 'monofasico')
   assert.equal(priced.valor, 3100)

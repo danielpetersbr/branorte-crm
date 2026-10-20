@@ -6,6 +6,7 @@ import ts from 'typescript'
 import * as transfer from './projeto-3d-orcamento'
 import * as integration from './projeto-3d-orcamento-integracao'
 import { acharMotorCompativel, valorPorVoltagem } from './motor-do-preco'
+import { nomeComercialMoegaDescarga } from './projeto-3d-catalogo-match'
 
 const editorOrigin = 'https://branorte-configurador-3d.vercel.app'
 const payload = transfer.parseProjeto3DOrcamentoPayload({ version: 1, exportId: 'export_1234567890', projectId: 'project-b', projectName: 'Layout B', clientName: 'Cliente enviado', items: [
@@ -32,7 +33,7 @@ function effect(ast: ts.SourceFile, marker: string) {
   return call.arguments[0].getText(ast)
 }
 function run(code: string, values: Record<string, unknown>) {
-  const context = vm.createContext(values)
+  const context = vm.createContext({ nomeComercialMoegaDescarga, ...values })
   vm.runInContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
   return context
 }
@@ -140,6 +141,30 @@ test('cálculo do vínculo usa preço oficial por voltagem e mesmo motor do cat�
   assert.equal(resolved.uid, original.uid)
   assert.equal(resolved.qtd, original.qtd)
   assert.equal(resolved.valor, 2600)
+})
+
+test('nova moega adicionada manualmente mantém cadastro, preço, foto e motor com o título comercial de descarga', () => {
+  const catalogItem = {
+    id: 750, categoria: 'MOEGA', nome_curto: 'CAIXA ENTRADA MOEGA COM HELICODE', nome_completo: 'CAIXA ENTRADA MOEGA COM HELICODE',
+    ativo: true, is_oficial: true, specs: ['Comprimento: 3,0 metros.', 'Largura 1,0 m', 'Acionamento 2,0 CV por motorredutor (incluso)'],
+    motor_padrao_cv: 2, motor_padrao_polos: 4, motor_padrao_qtd: 1, valor: 31234, foto_url: '/moega-grade.png',
+    usa_inversor: false, preco_branorte_id: null, funcao_opcoes: [], motores_extras: [],
+  }
+  const before = JSON.stringify(catalogItem)
+  const context = run(`${fn(page, 'motorJaInclusoNoItem')}\n${fn(page, 'criarItemCatalogo')}`, { gerarUid: () => 'new', voltagem: 'trifasico', precos: [], motores: [{ cv: 2, polos: 4, valor: 600 }], acharMotorCompativel: (motors: any[]) => motors[0], valorPorVoltagem })
+  const created = context.criarItemCatalogo(catalogItem)
+  assert.equal(created.nome, 'MOEGA DE DESCARGA 3 X 1 M')
+  assert.equal(created.nome_custom, null)
+  assert.equal(created.catalogo_id, catalogItem.id)
+  assert.equal(created.valor, catalogItem.valor)
+  assert.equal(created.valor_original, catalogItem.valor)
+  assert.equal(created.foto_url, catalogItem.foto_url)
+  assert.equal(created.specs, catalogItem.specs)
+  assert.equal(created.motor_cv, 2)
+  assert.equal(created.motor_valor_unit, 0, 'motorredutor da ficha continua incluso')
+  const withFunction = context.criarItemCatalogo(catalogItem, 'Descarga da carreta')
+  assert.equal(withFunction.nome_custom, 'MOEGA DE DESCARGA 3 X 1 M (Descarga da carreta)')
+  assert.equal(JSON.stringify(catalogItem), before, 'o catálogo original não deve ser regravado ou renomeado')
 })
 
 test('moinho 30 CV monofásico sem motor compatível continua pendente e mostra erro local do painel', () => {
