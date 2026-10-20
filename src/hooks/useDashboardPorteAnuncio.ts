@@ -10,6 +10,8 @@ export interface PorteAnuncio {
   ad_id: string | null
   anuncio: string | null
   campanha: string | null
+  /** Conjunto (público) do anúncio: o mesmo anúncio roda em conjuntos diferentes e rende diferente. */
+  conjunto: string | null
   codigo: string | null
   texto: string | null
   app: string | null
@@ -44,6 +46,7 @@ export function useDashboardPorteAnuncio(janela: JanelaCanais, preset: Dashboard
         ad_id: (r.ad_id as string) ?? null,
         anuncio: (r.anuncio as string) ?? null,
         campanha: (r.campanha as string) ?? null,
+        conjunto: (r.conjunto as string) ?? null,
         codigo: (r.codigo as string) ?? null,
         texto: (r.texto as string) ?? null,
         app: (r.app as string) ?? null,
