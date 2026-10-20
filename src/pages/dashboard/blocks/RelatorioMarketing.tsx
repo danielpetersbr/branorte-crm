@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import {
   AMOSTRA_MIN_MKT, DECISAO_TEXTO, JULGAVEL_CONTATOS, JULGAVEL_GASTO, MOTIVOS_MKT, SELO_AJUDA, SELO_TEXTO,
-  minTxt, nomeVendedor, poucaEtiqueta, rotuloCriativo, semEspelho, sumiuDoTime, seloProposta, sumiuDe, taxa,
+  minTxt, nomeVendedor, poucaEtiqueta, rotuloCriativo, semEspelho, situacaoCampanha, sumiuDoTime, seloProposta, sumiuDe, taxa,
   type AnuncioMkt, type DecisaoMkt, type FonteMkt, type RelatorioMkt, type SeloMkt,
 } from '@/lib/marketing-relatorio'
 import { Card, CardHeader } from '../ui/Card'
@@ -708,7 +708,7 @@ function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
       />
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Kpi rotulo="Meta Ads" valor={meta ? brl(meta.gasto) : '—'}
-          apoio={meta?.carregadoAte ? `${n(meta.resultado)} conversas · ${n(meta.cliques)} cliques · dados até ${dataBr(meta.carregadoAte)}` : 'gasto não carregado'} />
+          apoio={meta?.carregadoAte ? `${meta.orcamentoDia ? `${brl(meta.orcamentoDia)}/dia nas campanhas ativas · ` : ''}${n(meta.resultado)} conversas · dados até ${dataBr(meta.carregadoAte)}` : 'gasto não carregado'} />
         <Kpi rotulo="Google Ads" valor={rel.googleLigado && google ? brl(google.gasto) : 'não ligado'}
           apoio={rel.googleLigado && google ? `${n(google.cliques)} cliques · ${n(google.resultado)} conversões do Google · dados até ${dataBr(google.carregadoAte)}` : 'falta ativar o script na conta do Google Ads'} />
       </div>
@@ -717,8 +717,8 @@ function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
           <table className="w-full min-w-[760px] border-separate border-spacing-0">
             <thead>
               <tr>
-                {['Plataforma', 'Campanha', 'Orçamento/dia', 'Gasto', 'Cliques', 'Resultado na plataforma', 'Custo por resultado'].map((h, i) => (
-                  <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'}`}>{h}</th>
+                {['Plataforma', 'Campanha', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'Resultado na plataforma', 'Custo por resultado'].map((h, i) => (
+                  <th key={h} scope="col" className={`${th} ${i < 3 ? 'text-left' : 'text-right'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -727,12 +727,13 @@ function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
                 <tr key={c.plataforma + c.campanha}>
                   <td className={`${td} text-left`}>{c.plataforma}</td>
                   <th scope="row" className="border-t border-border px-2 py-2 text-left text-body font-medium text-ink">
-                    {c.campanha}{c.status && c.status !== 'ENABLED' && <span className="ml-2 text-micro text-ink-faint">({c.status === 'PAUSED' ? 'pausada' : c.status.toLowerCase()})</span>}
+                    {c.campanha}
                   </th>
+                  <td className={`${td} text-left ${situacaoCampanha(c.status) === 'ativa' ? 'text-success' : ''}`}>{situacaoCampanha(c.status) ?? '—'}</td>
                   <td className={`${td} text-right`}>{c.orcamentoDia != null ? brl(c.orcamentoDia) : '—'}</td>
                   <td className={`${td} text-right`}>{brl(c.gasto)}</td>
                   <td className={`${td} text-right`}>{n(c.cliques)}</td>
-                  <td className={`${td} text-right`}>{n(c.resultado)} <span className="text-micro text-ink-faint">{c.plataforma === 'Meta' ? 'conversas' : 'conversões'}</span></td>
+                  <td className={`${td} text-right`}>{n(c.resultado)} <span className="text-micro text-ink-faint">{c.resultadoTipo}</span></td>
                   <td className={`${td} text-right`}>{c.resultado > 0 ? brl(c.gasto / c.resultado) : '—'}</td>
                 </tr>
               ))}
@@ -754,7 +755,8 @@ function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
         </div>
       )}
       <p className="mt-3 text-micro text-ink-faint">
-        O “resultado” é o que cada plataforma conta e não é igual a contato no CRM: no Meta é conversa iniciada; no Google é a conversão configurada na conta
+        O “resultado” segue o objetivo de cada campanha, como no Gerenciador: mensagem = conversa iniciada; tráfego = clique no link; cadastro = cadastro ou evento do pixel da página.
+        Não é igual a contato no CRM. No Google é a conversão configurada na conta
         (hoje, visualização de página — não mede quem chamou no WhatsApp). O que vira contato e orçamento está na seção 1 (canal Site e Meta) e na seção 3 (por anúncio do Meta).
       </p>
     </Card>
@@ -768,21 +770,22 @@ function VerbaPlataformasP({ rel }: { rel: RelatorioMkt }) {
   return (
     <Secao titulo="2. Onde a verba está indo — Google e Meta" subtitulo="Campanhas no ar no período. Resultado = o que a própria plataforma conta (conversas no Meta, conversões no Google), não contato no CRM.">
       <p style={{ margin: '0 0 6px' }}>
-        <strong>Meta Ads:</strong> {meta ? `${brl(meta.gasto)} · ${n(meta.resultado)} conversas` : '—'}{meta?.carregadoAte ? ` (dados até ${dataBr(meta.carregadoAte)})` : ''}
+        <strong>Meta Ads:</strong> {meta ? `${brl(meta.gasto)}${meta.orcamentoDia ? ` (${brl(meta.orcamentoDia)}/dia nas ativas)` : ''} · ${n(meta.resultado)} conversas` : '—'}{meta?.carregadoAte ? ` (dados até ${dataBr(meta.carregadoAte)})` : ''}
         {'   ·   '}
         <strong>Google Ads:</strong> {rel.googleLigado && google ? `${brl(google.gasto)} · ${n(google.cliques)} cliques (dados até ${dataBr(google.carregadoAte)})` : 'ainda não ligado ao CRM'}
       </p>
       {camp.length > 0 && (
         <table style={tabela}>
-          <thead><tr>{['Plataforma', 'Campanha', 'Orçamento/dia', 'Gasto', 'Cliques', 'Resultado', 'Custo por resultado'].map((h, i) => <th key={h} style={{ ...thP, textAlign: i < 2 ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
+          <thead><tr>{['Plataforma', 'Campanha', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'Resultado', 'Custo por resultado'].map((h, i) => <th key={h} style={{ ...thP, textAlign: i < 3 ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
           <tbody>
             {camp.map(c => (
               <tr key={c.plataforma + c.campanha}>
                 <td style={{ ...rowH, fontWeight: 400, color: P.muted }}>{c.plataforma}</td>
-                <td style={rowH}>{c.campanha}{c.status && c.status !== 'ENABLED' ? ` (${c.status === 'PAUSED' ? 'pausada' : c.status.toLowerCase()})` : ''}</td>
+                <td style={rowH}>{c.campanha}</td>
+                <td style={{ ...rowH, fontWeight: 400, color: situacaoCampanha(c.status) === 'ativa' ? P.bom : P.muted }}>{situacaoCampanha(c.status) ?? '—'}</td>
                 <td style={tdP}>{c.orcamentoDia != null ? brl(c.orcamentoDia) : '—'}</td>
                 <td style={tdP}>{brl(c.gasto)}</td><td style={tdP}>{n(c.cliques)}</td>
-                <td style={tdP}>{n(c.resultado)} {c.plataforma === 'Meta' ? 'conversas' : 'conversões'}</td>
+                <td style={tdP}>{n(c.resultado)} {c.resultadoTipo}</td>
                 <td style={tdP}>{c.resultado > 0 ? brl(c.gasto / c.resultado) : '—'}</td>
               </tr>
             ))}

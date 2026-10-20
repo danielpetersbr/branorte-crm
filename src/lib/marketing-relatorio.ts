@@ -118,6 +118,17 @@ export interface PlataformaMkt {
   resultado: number
   diasComGasto: number | null
   carregadoAte: string | null
+  /** o que conta como resultado nessa campanha: conversas / cliques no link / cadastros/conversões do pixel / conversões */
+  resultadoTipo: string
+}
+
+/** ACTIVE/ENABLED → ativa; PAUSED → pausada (Meta e Google usam nomes diferentes). */
+export function situacaoCampanha(status: string | null): string | null {
+  if (!status) return null
+  if (status === 'ACTIVE' || status === 'ENABLED') return 'ativa'
+  if (status === 'PAUSED' || status === 'CAMPAIGN_PAUSED' || status === 'ADSET_PAUSED') return 'pausada'
+  if (status === 'REMOVED' || status === 'DELETED' || status === 'ARCHIVED') return 'encerrada'
+  return status.toLowerCase().replace(/_/g, ' ')
 }
 
 export interface TermoMkt { termo: string; campanha: string; cliques: number; impressoes: number; gasto: number; conversoes: number; de: string | null; ate: string | null }
@@ -173,6 +184,7 @@ export function lerPlataforma(r: Record<string, unknown>): PlataformaMkt {
     campanha: txt(r.campanha), status: txt(r.status), orcamentoDia: numOuNulo(r.orcamento_dia), gasto: num(r.gasto),
     impressoes: num(r.impressoes), cliques: num(r.cliques), resultado: num(r.resultado),
     diasComGasto: numOuNulo(r.dias_com_gasto), carregadoAte: txt(r.carregado_ate),
+    resultadoTipo: txt(r.resultado_tipo) ?? (String(r.plataforma) === 'Google' ? 'conversões' : 'conversas'),
   }
 }
 
