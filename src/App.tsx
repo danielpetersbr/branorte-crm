@@ -31,6 +31,7 @@ const Signup = lazy(() => import('@/pages/Signup').then(m => ({ default: m.Signu
 const Pendente = lazy(() => import('@/pages/Pendente').then(m => ({ default: m.Pendente })))
 const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })))
 const Campanhas = lazy(() => import('@/pages/Campanhas').then(m => ({ default: m.Campanhas })))
+const Anuncios = lazy(() => import('@/pages/Anuncios').then(m => ({ default: m.Anuncios })))
 const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.Contacts })))
 const Consulta = lazy(() => import('@/pages/Consulta').then(m => ({ default: m.Consulta })))
 const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m => ({ default: m.ConsultaHistorico })))
@@ -591,6 +592,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/analytics" element={<Analytics />} />
         {can('menu.campanhas') && <Route path="/campanhas" element={<Campanhas />} />}
+        {can('menu.campanhas') && <Route path="/anuncios" element={<Anuncios />} />}
         <Route path="/contatos" element={<Contacts />} />
         {can('due_diligence.consultar') && (
           <>
