@@ -2,7 +2,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { montarItensFiname, classificarItemFiname, FINAME_TIPOS } from './finame'
 
-// Tabela que o banco mandou (cadastro do Portal BNDES, 28/09/2026): Código / Nome / Modelo.
+// Nomes padrão de exibição no FINAME; códigos/modelos do cadastro BNDES de 28/09/2026.
 const CADASTRO_BNDES: Array<[string, string, string]> = [
   ['04328489', 'CAÇAMBA DE PESAGEM', 'BNCP1900 - BNCP1900I'],
   ['03617124', 'CAIXA DE ARMAZENAGEM', 'BNCX200'],
@@ -10,15 +10,15 @@ const CADASTRO_BNDES: Array<[string, string, string]> = [
   ['03637657', 'ELEVADOR DE CANECAS', 'BNEC600'],
   ['03629482', 'PENEIRA VIBRATÓRIA', 'BNML550'],
   ['03625516', 'MOINHO MARTELO', 'BNMM650'],
-  ['03590150', 'MISTURADOR VERTICAL', 'BNMV-500'],
+  ['03590150', 'SILO MISTURADOR VERTICAL', 'BNMV-500'],
 ]
 
 const item = (uid: string, nome: string, categoria: string, specs: string[] = []) => ({
   uid, nome, categoria, qtd: 1, subtotal: 10000, motorValor: 0, specs,
 })
 
-describe('FINAME — títulos sem modelo e descrição com cadastro do BNDES', () => {
-  it('cada código sai com o nome do cadastro sem acrescentar o modelo ao título', () => {
+describe('FINAME — títulos padrão e descrição com código e modelo do BNDES', () => {
+  it('cada código sai com o nome padrão FINAME sem acrescentar o modelo ao título', () => {
     for (const [codigo, nome] of CADASTRO_BNDES) {
       const t = FINAME_TIPOS.find(x => x.codigo === codigo)
       assert.ok(t, codigo)
@@ -44,12 +44,12 @@ describe('FINAME — títulos sem modelo e descrição com cadastro do BNDES', (
     const salvo = r1.itens[0]
     const r2 = montarItensFiname([item('a', salvo.nomeFiname, 'MISTURADOR', salvo.specs)], 0)
     assert.deepEqual(r2.itens[0].specs, salvo.specs)
-    assert.equal(r2.itens[0].nomeFiname, 'Misturador Vertical')
+    assert.equal(r2.itens[0].nomeFiname, 'Silo Misturador Vertical')
   })
 
   it('misturador horizontal não tem cadastro: bloqueia, mas o vendedor pode forçar', () => {
     assert.equal(classificarItemFiname('Misturador Horizontal de 1000 kg', 'MISTURADOR').tipo, 'naoResolvido')
-    // o painel oferece o botão de um clique "Sair como Misturador Vertical"
+    // o painel oferece o botão de um clique "Sair como Silo Misturador Vertical"
     const travado = montarItensFiname([item('h', 'Misturador Horizontal de 500 kg', 'MISTURADOR')], 0)
     assert.equal(travado.classificacoes[0].sugeridoKey, 'MISTURADOR')
     assert.ok(travado.classificacoes[0].motivo)
@@ -59,7 +59,7 @@ describe('FINAME — títulos sem modelo e descrição com cadastro do BNDES', (
     assert.equal(forcado.bloqueios.length, 0)
   })
 
-  it('misturador vertical e silo misturador continuam como Misturador Vertical', () => {
+  it('misturador vertical e silo misturador preservam o código FINAME do misturador', () => {
     for (const nome of ['Misturador Vertical 1000 kg', 'Silo Misturador Y 50 kg — Inox']) {
       const c = classificarItemFiname(nome, 'MISTURADOR')
       assert.equal(c.tipo === 'principal' && c.fin.codigoFiname, '03590150')

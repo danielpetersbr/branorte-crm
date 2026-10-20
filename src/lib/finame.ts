@@ -42,7 +42,7 @@ export const FINAME_MAP: FinameTipo[] = [
   {
     key: 'MISTURADOR',
     aliases: ['misturador', 'silo misturador', 'master'],
-    nomeFiname: 'Misturador Vertical',
+    nomeFiname: 'Silo Misturador Vertical',
     codigoFiname: '03590150',
     modeloFiname: 'BNMV-500',
     descricaoPadrao: 'Equipamento destinado à mistura de ração.',
