@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useDashboard } from '@/hooks/useDashboard'
 import { DashboardFilterProvider, usePresetFilter } from './dashboard/DashboardFilterContext'
 import { DashboardHeader } from './dashboard/DashboardHeader'
 import { useDashboardTab } from './dashboard/tabs'
 import { TabVisaoGeral } from './dashboard/TabVisaoGeral'
+import { useMascararNumeros, useOcultarNumeros } from './dashboard/ocultarNumeros'
 
 // As 4 abas secundárias entram por lazy: quem abre o dashboard e fica na Visão
 // geral (a maioria) não baixa o Leaflet da Geografia nem as tabelas do
@@ -38,6 +39,9 @@ export function Dashboard() {
   const [tab, setTab] = useDashboardTab({ ownsNavigation: true })
   const qc = useQueryClient()
   const [atualizando, setAtualizando] = useState(false)
+  const [ocultarNumeros, alternarNumeros] = useOcultarNumeros()
+  const painelRef = useRef<HTMLDivElement>(null)
+  useMascararNumeros(painelRef, ocultarNumeros)
 
   // O header precisa da contagem e do horário; é o mesmo hook que as abas usam,
   // então vem do cache e não gera fetch extra.
@@ -79,9 +83,12 @@ export function Dashboard() {
           atualizadoEm={dataUpdatedAt}
           atualizando={atualizando}
           onAtualizar={atualizar}
+          ocultarNumeros={ocultarNumeros}
+          onAlternarNumeros={alternarNumeros}
         />
 
         <div
+          ref={painelRef}
           role="tabpanel"
           id={`painel-${tab}`}
           aria-labelledby={`aba-${tab}`}

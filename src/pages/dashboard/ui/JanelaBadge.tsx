@@ -48,6 +48,7 @@ export function JanelaBadge({
   return (
     <span
       title={hint}
+      data-manter-numeros
       className={`inline-flex items-center gap-1 shrink-0 rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 text-micro text-ink-muted ${className}`}
     >
       <Icon className="h-3 w-3" aria-hidden="true" />

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, Sun, Moon, FilePlus2, ChevronDown, Check } from 'lucide-react'
+import { RefreshCw, Sun, Moon, FilePlus2, ChevronDown, Check, Eye, EyeOff } from 'lucide-react'
 import { RangeCalendar } from '@/components/RangeCalendar'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import type { DashboardPreset } from '@/hooks/useDashboard'
@@ -9,6 +9,7 @@ import {
 } from './DashboardFilterContext'
 import { TABS, type TabId } from './tabs'
 import { n } from './ui/format'
+import { MASCARA } from './ocultarNumeros'
 
 function hojeISO(): string {
   const d = new Date()
@@ -29,6 +30,7 @@ function agoraHHMM(ts?: number): string {
  */
 export function DashboardHeader({
   preset, setPreset, tab, setTab, totalLeads, atualizadoEm, atualizando, onAtualizar,
+  ocultarNumeros, onAlternarNumeros,
 }: {
   preset: DashboardPreset
   setPreset: (p: DashboardPreset) => void
@@ -38,6 +40,8 @@ export function DashboardHeader({
   atualizadoEm?: number
   atualizando?: boolean
   onAtualizar: () => void
+  ocultarNumeros: boolean
+  onAlternarNumeros: () => void
 }) {
   const [dark, toggleDark] = useDarkMode()
   const [maisAberto, setMaisAberto] = useState(false)
@@ -70,7 +74,7 @@ export function DashboardHeader({
           <h1 className="text-kpi-sm text-ink">Dashboard</h1>
           <p className="text-label text-ink-faint mt-0.5">
             {periodoLabel}
-            {totalLeads != null && <> · {n(totalLeads)} leads no período</>}
+            {totalLeads != null && <> · {ocultarNumeros ? MASCARA : n(totalLeads)} leads no período</>}
             {' · '}
             <span className="tabular-nums">atualizado {agoraHHMM(atualizadoEm)}</span>
           </p>
@@ -85,6 +89,19 @@ export function DashboardHeader({
             className="grid h-11 w-11 md:h-9 md:w-9 place-items-center rounded-lg border border-border bg-surface text-ink-muted hover:text-ink hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <RefreshCw className={`h-4 w-4 ${atualizando ? 'animate-spin' : ''}`} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={onAlternarNumeros}
+            aria-pressed={ocultarNumeros}
+            title={ocultarNumeros ? 'Mostrar números' : 'Ocultar números'}
+            aria-label={ocultarNumeros ? 'Mostrar os números do dashboard' : 'Ocultar os números do dashboard'}
+            className={[
+              'grid h-11 w-11 md:h-9 md:w-9 place-items-center rounded-lg border bg-surface hover:text-ink hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+              ocultarNumeros ? 'border-accent text-accent' : 'border-border text-ink-muted',
+            ].join(' ')}
+          >
+            {ocultarNumeros ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
           </button>
           <button
             type="button"

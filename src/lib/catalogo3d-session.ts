@@ -4,7 +4,16 @@ type CatalogRequest = { origin: string; source: unknown; data: unknown }
 type CatalogReply = { type: 'branorte:catalog:session:result'; requestId: string; accessToken: string | null }
 
 export const CONFIGURADOR_ORIGIN = 'https://branorte-configurador-3d.vercel.app'
+// O catálogo do configurador pede a sessão com postMessage endereçado a ESTE
+// origin. Aberto por branorte-crm.vercel.app, o pedido é descartado pelo
+// navegador e o catálogo cai em "Acesso restrito" (e o botão dele some).
+export const CRM_ORIGIN_CATALOGO = 'https://sistema.mbranorte.com.br'
 const CATALOGO_OWNER_ID = '9cf979c3-17cc-4aee-b692-ff9d1eea5540'
+
+/** Só a conta dona do catálogo vê o atalho da biblioteca de blocos. */
+export function podeVerCatalogo3d(profile: CatalogProfile | null): boolean {
+  return profile?.id === CATALOGO_OWNER_ID && profile.role === 'admin' && !!profile.approved_at
+}
 
 // Esta seleção evita compartilhar sessões da equipe. A autorização definitiva
 // continua no servidor do configurador, que valida o JWT e a identidade.

@@ -61,7 +61,7 @@ function layout(role = 'admin', allowed: (key: string) => boolean = () => true) 
   const { Layout } = load('./Layout.tsx', ['MENUS_RESTRITOS', 'NAV_SECTIONS', 'NAV_GROUPS', 'MOBILE_NAV', 'fmtCount', 'Layout'], {
     NavLink, ModalDialog, Outlet: () => null, Suspense: () => null, ErrorBoundary: () => null,
     RoadmapFAB: () => null, GenerationOverlay: () => null, LembretesNotifier: () => null, PageLoading: () => null,
-    isNavigationItemActive, useLocation: () => ({ pathname: '/', search: '' }),
+    isNavigationItemActive, podeVerCatalogo3d: () => false, useLocation: () => ({ pathname: '/', search: '' }),
     useAuth: () => ({ profile: { id: 'qa-local', role, email: 'qa@example.invalid', approved_at: '2026-10-03' }, signOut() {} }),
     useCan: () => allowed, useAtendimentosTotalMenu: () => ({ data: 0 }),
     useDarkMode: () => [false, () => {}], useCollapsed: () => [false, () => {}], useAiDrawerOpen: () => false,

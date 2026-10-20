@@ -679,6 +679,7 @@ function AppRoutes() {
         <Route path="/projeto" element={<Projeto />} />
         <Route path="/projeto-3d" element={<Projeto3D key="novo-layout" entry="new" />} />
         <Route path="/projeto-3d/meus" element={<Projeto3D key="meus-layouts" entry="mine" />} />
+        <Route path="/projeto-3d/blocos" element={<Projeto3D key="blocos" entry="blocos" />} />
         {profile.role === 'admin' && <Route path="/estudio-video" element={<EstudioVideo />} />}
         {/* DUAS telas de ração, com propósitos opostos — não confundir:
             /producao-propria = vale a pena o CLIENTE parar de comprar e produzir?
