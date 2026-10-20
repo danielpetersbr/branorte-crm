@@ -183,6 +183,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
       { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
+      { to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.campanhas' },
       { to: '/campanhas', label: 'Análise de Campanhas', icon: Megaphone, permKey: 'menu.campanhas' },
     ],
   },
