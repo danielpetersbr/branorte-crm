@@ -31,6 +31,7 @@ export function useMarketingRelatorio(periodo: PeriodoMkt) {
         linhas(vendas.data).map(lerVenda),
         gasto.error ? [] : linhas(gasto.data).map(lerGasto),
         vend.error ? [] : linhas(vend.data).map(lerVendedor),
+        { emAndamento: periodo !== 'mes_passado' },
       )
       return { ...rel, label, faltou }
     },

@@ -51,16 +51,17 @@ with l as materialized (
     and a.dispatch_vendedor_nome is not null
 ),
 m as materialized (
-  select w.vendedor_nome vn, nullif(auditoria.wa_phone_strip9(w.phone),'') pm, w.from_me, w.data_msg
+  select w.vendedor_nome vn, nullif(auditoria.wa_phone_strip9(w.phone),'') pm, w.from_me, w.data_msg, w.tipo = 'call_log' ligacao
   from public.wa_chat_messages w
   where w.data_msg >= p_from - interval '1 day' and w.data_msg < p_to + interval '14 days'
-    and w.chat_id not like '%@g.us' and w.tipo <> 'call_log'
+    and w.chat_id not like '%@g.us'
+    -- ligação do vendedor conta como resposta; ligação do cliente não conta como "cliente escreveu"
     and w.vendedor_nome in (select distinct vn from l)
 ),
 c as (
   select l.vn, l.pm, l.fc, l.data,
-    min(m.data_msg) filter (where not m.from_me) cli,
-    count(m.*) filter (where m.from_me) env
+    min(m.data_msg) filter (where not m.from_me and not m.ligacao) cli,
+    count(m.*) filter (where m.from_me and not m.ligacao) env
   from l left join m on m.vn = l.vn and m.pm = l.pm and m.data_msg >= l.data
   group by 1,2,3,4
 ),
@@ -92,11 +93,12 @@ select r.vn,
   count(*) filter (where r.fc is not null)::int,
   count(*) filter (where exists (select 1 from og where og.fc = r.fc and og.created_at >= r.data - interval '2 days'))::int,
   count(*) filter (where coalesce(lab.sumiu, false))::int,
-  count(r.cli)::int,
+  -- só quem escreveu há mais de 24 h entra na base do "sem resposta em 24 h" (senão o mês aberto infla)
+  count(r.cli) filter (where r.cli <= now() - interval '24 hours')::int,
   count(r.resp)::int,
   round((percentile_cont(0.5) within group (order by extract(epoch from r.resp - r.cli) / 60) filter (where r.resp is not null))::numeric),
-  count(*) filter (where r.resp - r.cli <= interval '1 hour')::int,
-  count(*) filter (where r.cli is not null and (r.resp is null or r.resp - r.cli > interval '24 hours'))::int,
+  count(*) filter (where r.cli <= now() - interval '24 hours' and r.resp - r.cli <= interval '1 hour')::int,
+  count(*) filter (where r.cli <= now() - interval '24 hours' and (r.resp is null or r.resp - r.cli > interval '24 hours'))::int,
   (percentile_cont(0.5) within group (order by r.env))::numeric
 from r left join lab on lab.pm = r.pm
 group by r.vn;
