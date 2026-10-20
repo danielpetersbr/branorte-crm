@@ -143,9 +143,9 @@ function finamePorKey(key: string): FinameTipo | undefined {
 }
 
 // Lista pronta pra popular o seletor "Tratar como" na UI (key → nome/código oficiais).
-/** Título da linha no orçamento: nome + modelo do cadastro BNDES. */
+/** Título da linha no orçamento: só o nome; código e modelo ficam na descrição. */
 export function tituloFiname(t: FinameTipo): string {
-  return `${t.nomeFiname} - Modelo ${t.modeloFiname}`
+  return t.nomeFiname
 }
 
 export const FINAME_TIPOS = FINAME_MAP.map(t => ({
@@ -261,7 +261,7 @@ export interface FinameInputItem {
 
 export interface FinameResultItem {
   uid: string
-  /** Título da linha: nome + modelo do cadastro BNDES. */
+  /** Título da linha: nome do cadastro BNDES, sem o modelo. */
   nomeFiname: string
   codigoFiname: string
   categoria: string

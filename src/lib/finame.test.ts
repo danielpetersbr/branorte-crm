@@ -17,12 +17,12 @@ const item = (uid: string, nome: string, categoria: string, specs: string[] = []
   uid, nome, categoria, qtd: 1, subtotal: 10000, motorValor: 0, specs,
 })
 
-describe('FINAME — nome e modelo iguais ao cadastro do BNDES', () => {
-  it('cada código sai com o nome e o modelo do cadastro', () => {
-    for (const [codigo, nome, modelo] of CADASTRO_BNDES) {
+describe('FINAME — títulos sem modelo e descrição com cadastro do BNDES', () => {
+  it('cada código sai com o nome do cadastro sem acrescentar o modelo ao título', () => {
+    for (const [codigo, nome] of CADASTRO_BNDES) {
       const t = FINAME_TIPOS.find(x => x.codigo === codigo)
       assert.ok(t, codigo)
-      assert.equal(t!.nome.toUpperCase(), `${nome} - MODELO ${modelo}`)
+      assert.equal(t!.nome.toUpperCase(), nome)
     }
     assert.equal(FINAME_TIPOS.length, CADASTRO_BNDES.length)
   })
@@ -33,7 +33,7 @@ describe('FINAME — nome e modelo iguais ao cadastro do BNDES', () => {
       0,
     )
     assert.equal(r.bloqueios.length, 0)
-    assert.equal(r.itens[0].nomeFiname, 'Caixa de Armazenagem - Modelo BNCX200')
+    assert.equal(r.itens[0].nomeFiname, 'Caixa de Armazenagem')
     assert.equal(r.itens[0].specs[0], 'Código FINAME: 03617124 · Modelo: BNCX200.')
     assert.ok(r.itens[0].specs.includes('Capacidade: 3.900 kg'))
     assert.equal(r.itens[0].specs.some(s => /BNCX1236/.test(s)), false)
@@ -44,7 +44,7 @@ describe('FINAME — nome e modelo iguais ao cadastro do BNDES', () => {
     const salvo = r1.itens[0]
     const r2 = montarItensFiname([item('a', salvo.nomeFiname, 'MISTURADOR', salvo.specs)], 0)
     assert.deepEqual(r2.itens[0].specs, salvo.specs)
-    assert.equal(r2.itens[0].nomeFiname, 'Misturador Vertical - Modelo BNMV-500')
+    assert.equal(r2.itens[0].nomeFiname, 'Misturador Vertical')
   })
 
   it('misturador horizontal não tem cadastro: bloqueia, mas o vendedor pode forçar', () => {
