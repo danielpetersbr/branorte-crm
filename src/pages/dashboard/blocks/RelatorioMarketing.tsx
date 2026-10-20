@@ -161,6 +161,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
                 <th scope="col" className={`${th} text-right`}>Contatos</th>
                 <th scope="col" className={`${th} text-right`}>Orçamentos a cada 100 contatos</th>
                 <th scope="col" className={`${th} text-right`} title="Soma do último orçamento de cada contato">R$ em orçamentos</th>
+                <th scope="col" className={`${th} text-right`} title="Verba da plataforma no período ÷ orçamentos do canal. Site usa a verba do Google (o site também recebe visita orgânica).">Custo por orçamento</th>
               </tr>
             </thead>
             <tbody>
@@ -175,6 +176,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
                       <Selo s={s} />
                     </td>
                     <td className={`${td} text-right`}>{c.rsProposto > 0 ? brl(c.rsProposto) : '—'}</td>
+                    <td className={`${td} text-right`}>{rel.custoCanal[c.chave] != null ? brl(rel.custoCanal[c.chave]) : '—'}</td>
                   </tr>
                 )
               })}
@@ -184,22 +186,27 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
                   <td className={`${tdTot} text-right`}>{n(total.leads)}</td>
                   <td className={`${tdTot} text-right`}>{dec1(total.propPor100)} <span className="text-micro font-normal text-ink-faint">({n(total.comProposta)} orçamentos)</span></td>
                   <td className={`${tdTot} text-right`}>{brl(total.rsProposto)}</td>
+                  <td className={`${tdTot} text-right`} />
                 </tr>
               )}
             </tbody>
           </table>
         </div>
         <p className="mt-3 text-micro text-ink-faint">
+          “Site (Google e orgânico)” = chegou pelo botão do site (“vim pelo site da Branorte”); o custo usa a verba do Google Ads.
           “WhatsApp direto” = escreveu direto no WhatsApp da casa, sem anúncio. “Não identificado” = chegou sem origem.
           “Sem telefone” = Messenger e Instagram Direct quase não deixam telefone, então o orçamento não se liga ao canal.
           R$ em orçamentos é o valor orçado, não vendido.
         </p>
       </Card>
 
-      {/* 2 · Anúncios */}
+      {/* 2 · Verba por plataforma */}
+      <VerbaPlataformas rel={rel} />
+
+      {/* 3 · Anúncios do Meta */}
       <Card id="marketing-anuncios">
         <CardHeader
-          title="2. Onde pôr a verba do Meta"
+          title="3. Anúncios do Meta: onde pôr a verba"
           subtitle={temGasto
             ? `Cada anúncio pelo código &NN, com o gasto do período e a decisão. Média do Meta: ${dec1(regua.mediaPor100)} orçamentos a cada 100 contatos${regua.custoOrcamento != null ? `, ${brl(regua.custoOrcamento)} por orçamento` : ''}.`
             : `Cada anúncio pelo código &NN. Sem o gasto carregado não há custo nem decisão por dinheiro. Média do Meta: ${dec1(regua.mediaPor100)} orçamentos a cada 100 contatos.`}
@@ -239,7 +246,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
       {/* 3 · Vendas */}
       <Card id="marketing-vendas">
         <CardHeader
-          title="3. Pedidos fechados e de onde veio o cliente"
+          title="4. Pedidos fechados e de onde veio o cliente"
           subtitle="Pedidos fechados no período, pela origem que o vendedor marca no pedido. O contato pode ter chegado meses antes — por isso não se compara com os contatos acima."
         />
         {!vendasTotal || vendasTotal.vendas === 0 ? <p className="text-body text-ink-faint">Nenhum pedido fechado no período.</p> : (
@@ -277,7 +284,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
       {total && total.fechados > 0 && (
         <Card id="marketing-motivos">
           <CardHeader
-            title="4. Por que os atendimentos fecham"
+            title="5. Por que os atendimentos fecham"
             subtitle={`${n(total.fechados)} dos ${n(total.leads)} contatos do período já foram encerrados pelo vendedor (um motivo por contato). Percentuais sobre todos os contatos, inclusive os que ficaram só com a Ana.${rel.emAndamento ? ' Período ainda aberto: os motivos vão crescer até os atendimentos fecharem.' : ''}`}
           />
           <BarraMotivos f={total} />
@@ -301,7 +308,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
       {vendedores.length > 0 && (
         <Card id="marketing-vendedores">
           <CardHeader
-            title="5. O contato chega bem atendido?"
+            title="6. O contato chega bem atendido?"
             subtitle="Contatos repassados no período a cada vendedor. Resposta = tempo entre o cliente escrever e o vendedor responder (a 1ª mensagem do repasse sai automática e não conta)."
           />
           <TabelaVendedores rel={rel} />
@@ -543,7 +550,7 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
 
       <Secao titulo="1. Quais canais trazem os melhores contatos" subtitulo="Quantos contatos de cada canal viraram orçamento. A comparação desconta a margem de erro (95%).">
         <table style={tabela}>
-          <thead><tr><th style={{ ...thP, textAlign: 'left' }}>Canal</th><th style={thP}>Contatos</th><th style={thP}>Orçamentos a cada 100 contatos</th><th style={thP}>Comparação</th><th style={thP}>R$ em orçamentos</th></tr></thead>
+          <thead><tr><th style={{ ...thP, textAlign: 'left' }}>Canal</th><th style={thP}>Contatos</th><th style={thP}>Orçamentos a cada 100 contatos</th><th style={thP}>Comparação</th><th style={thP}>R$ em orçamentos</th><th style={thP}>Custo por orçamento</th></tr></thead>
           <tbody>
             {canais.map(c => {
               const s = seloProposta(c, media)
@@ -553,17 +560,20 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
                   <td style={{ ...tdP, fontWeight: 600, color: s === 'sem_fone' ? P.faint : P.ink }}>{dec1(c.propPor100)}</td>
                   <td style={{ ...tdP, color: s === 'acima' ? P.bom : s === 'abaixo' ? P.ruim : P.faint }}>{s === 'acima' ? '▲ ' : s === 'abaixo' ? '▼ ' : ''}{SELO_TEXTO[s]}</td>
                   <td style={tdP}>{c.rsProposto > 0 ? brl(c.rsProposto) : '—'}</td>
+                  <td style={tdP}>{rel.custoCanal[c.chave] != null ? brl(rel.custoCanal[c.chave]) : '—'}</td>
                 </tr>
               )
             })}
-            {total && <tr><td style={{ ...totP, textAlign: 'left' }}>Média da conta</td><td style={totP}>{n(total.leads)}</td><td style={totP}>{dec1(total.propPor100)}</td><td style={totP} /><td style={totP}>{brl(total.rsProposto)}</td></tr>}
+            {total && <tr><td style={{ ...totP, textAlign: 'left' }}>Média da conta</td><td style={totP}>{n(total.leads)}</td><td style={totP}>{dec1(total.propPor100)}</td><td style={totP} /><td style={totP}>{brl(total.rsProposto)}</td><td style={totP} /></tr>}
           </tbody>
         </table>
       </Secao>
 
+      <VerbaPlataformasP rel={rel} />
+
       <Secao
         inteira={false}
-        titulo="2. Onde pôr a verba do Meta"
+        titulo="3. Anúncios do Meta: onde pôr a verba"
         subtitulo={`Por código &NN. Média do Meta: ${dec1(regua.mediaPor100)} orçamentos a cada 100 contatos${regua.custoOrcamento != null ? `, ${brl(regua.custoOrcamento)} por orçamento` : ''}. Decisão só com ${JULGAVEL_CONTATOS} contatos ou R$ ${JULGAVEL_GASTO.toLocaleString('pt-BR')} gastos no período.`}
       >
         <table style={tabela}>
@@ -596,7 +606,7 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
         </p>
       </Secao>
 
-      <Secao titulo="3. Pedidos fechados e de onde veio o cliente" subtitulo="Origem marcada pelo vendedor no pedido. O contato pode ter chegado meses antes.">
+      <Secao titulo="4. Pedidos fechados e de onde veio o cliente" subtitulo="Origem marcada pelo vendedor no pedido. O contato pode ter chegado meses antes.">
         {!vendasTotal || vendasTotal.vendas === 0 ? <p>Nenhum pedido fechado no período.</p> : (
           <>
             <table style={tabela}>
@@ -620,7 +630,7 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
       </Secao>
 
       {total && total.fechados > 0 && (
-        <Secao titulo="4. Por que os atendimentos fecham" subtitulo={`${n(total.fechados)} dos ${n(total.leads)} contatos já foram encerrados (um motivo por contato). Percentuais sobre os contatos.`}>
+        <Secao titulo="5. Por que os atendimentos fecham" subtitulo={`${n(total.fechados)} dos ${n(total.leads)} contatos já foram encerrados (um motivo por contato). Percentuais sobre os contatos.`}>
           <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', background: P.bg2, marginBottom: 5 }}>
             {MOTIVOS_MKT.map(m => { const v = total[m.campo] as number; return v > 0 ? <div key={m.rotulo} style={{ width: `${(100 * v) / total.fechados}%`, background: m.cor }} /> : null })}
           </div>
@@ -647,7 +657,7 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
       )}
 
       {rel.vendedores.length > 0 && (
-        <Secao titulo="5. O contato chega bem atendido?" subtitulo="Contatos repassados no período. Resposta = do cliente escrever até o vendedor responder (a 1ª mensagem do repasse é automática e não conta). O “sumiu” aqui é sobre os contatos repassados — por isso é maior que o da seção 4, que conta todos os contatos, inclusive os que ficaram só com a Ana.">
+        <Secao titulo="6. O contato chega bem atendido?" subtitulo="Contatos repassados no período. Resposta = do cliente escrever até o vendedor responder (a 1ª mensagem do repasse é automática e não conta). O “sumiu” aqui é sobre os contatos repassados — por isso é maior que o da seção 5, que conta todos os contatos, inclusive os que ficaram só com a Ana.">
           <table style={tabela}>
             <thead><tr>{['Vendedor', 'Contatos', 'Orçamentos a cada 100', 'Sumiu', 'Resposta (mediana)', 'Até 1 h', 'Sem resposta em 24 h'].map((h, i) => <th key={h} style={{ ...thP, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
             <tbody>
@@ -677,5 +687,113 @@ export function RelatorioMarketingImpressao({ rel, label, geradoEm }: { rel: Rel
         Gasto = Gerenciador de Anúncios da conta Branorte, ligado ao CRM pelo código &amp;NN no nome do anúncio. “Pior” = 25% acima da média, só com {AMOSTRA_MIN_MKT}+ contatos.
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 2 · Onde a verba está indo — Google e Meta (tela e PDF)
+// ---------------------------------------------------------------------------
+
+const dataBr = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—')
+
+function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
+  const tot = (p: 'Meta' | 'Google') => rel.plataformas.find(x => x.tipo === 'plataforma' && x.plataforma === p)
+  const camp = rel.plataformas.filter(x => x.tipo === 'campanha').sort((a, b) => b.gasto - a.gasto)
+  const meta = tot('Meta'), google = tot('Google')
+  return (
+    <Card id="marketing-plataformas">
+      <CardHeader
+        title="2. Onde a verba está indo — Google e Meta"
+        subtitle="Cada campanha no ar no período, com o gasto e o que a própria plataforma conta como resultado (conversas no Meta, conversões no Google)."
+      />
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Kpi rotulo="Meta Ads" valor={meta ? brl(meta.gasto) : '—'}
+          apoio={meta?.carregadoAte ? `${n(meta.resultado)} conversas · ${n(meta.cliques)} cliques · dados até ${dataBr(meta.carregadoAte)}` : 'gasto não carregado'} />
+        <Kpi rotulo="Google Ads" valor={rel.googleLigado && google ? brl(google.gasto) : 'não ligado'}
+          apoio={rel.googleLigado && google ? `${n(google.cliques)} cliques · ${n(google.resultado)} conversões do Google · dados até ${dataBr(google.carregadoAte)}` : 'falta ativar o script na conta do Google Ads'} />
+      </div>
+      {camp.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-separate border-spacing-0">
+            <thead>
+              <tr>
+                {['Plataforma', 'Campanha', 'Orçamento/dia', 'Gasto', 'Cliques', 'Resultado na plataforma', 'Custo por resultado'].map((h, i) => (
+                  <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {camp.map(c => (
+                <tr key={c.plataforma + c.campanha}>
+                  <td className={`${td} text-left`}>{c.plataforma}</td>
+                  <th scope="row" className="border-t border-border px-2 py-2 text-left text-body font-medium text-ink">
+                    {c.campanha}{c.status && c.status !== 'ENABLED' && <span className="ml-2 text-micro text-ink-faint">({c.status === 'PAUSED' ? 'pausada' : c.status.toLowerCase()})</span>}
+                  </th>
+                  <td className={`${td} text-right`}>{c.orcamentoDia != null ? brl(c.orcamentoDia) : '—'}</td>
+                  <td className={`${td} text-right`}>{brl(c.gasto)}</td>
+                  <td className={`${td} text-right`}>{n(c.cliques)}</td>
+                  <td className={`${td} text-right`}>{n(c.resultado)} <span className="text-micro text-ink-faint">{c.plataforma === 'Meta' ? 'conversas' : 'conversões'}</span></td>
+                  <td className={`${td} text-right`}>{c.resultado > 0 ? brl(c.gasto / c.resultado) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {rel.termosGoogle.length > 0 && (
+        <div className="mt-5">
+          <p className="mb-2 text-body font-semibold text-ink">O que as pessoas pesquisaram no Google (últimos 30 dias, maiores gastos)</p>
+          <ul className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+            {rel.termosGoogle.map(t => (
+              <li key={t.termo + t.campanha} className="flex justify-between gap-3 text-body text-ink-muted">
+                <span className="truncate">“{t.termo}”</span>
+                <span className="whitespace-nowrap tabular-nums">{n(t.cliques)} cliques · {brl(t.gasto)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <p className="mt-3 text-micro text-ink-faint">
+        O “resultado” é o que cada plataforma conta e não é igual a contato no CRM: no Meta é conversa iniciada; no Google é a conversão configurada na conta
+        (hoje, visualização de página — não mede quem chamou no WhatsApp). O que vira contato e orçamento está na seção 1 (canal Site e Meta) e na seção 3 (por anúncio do Meta).
+      </p>
+    </Card>
+  )
+}
+
+function VerbaPlataformasP({ rel }: { rel: RelatorioMkt }) {
+  const tot = (p: 'Meta' | 'Google') => rel.plataformas.find(x => x.tipo === 'plataforma' && x.plataforma === p)
+  const camp = rel.plataformas.filter(x => x.tipo === 'campanha').sort((a, b) => b.gasto - a.gasto)
+  const meta = tot('Meta'), google = tot('Google')
+  return (
+    <Secao titulo="2. Onde a verba está indo — Google e Meta" subtitulo="Campanhas no ar no período. Resultado = o que a própria plataforma conta (conversas no Meta, conversões no Google), não contato no CRM.">
+      <p style={{ margin: '0 0 6px' }}>
+        <strong>Meta Ads:</strong> {meta ? `${brl(meta.gasto)} · ${n(meta.resultado)} conversas` : '—'}{meta?.carregadoAte ? ` (dados até ${dataBr(meta.carregadoAte)})` : ''}
+        {'   ·   '}
+        <strong>Google Ads:</strong> {rel.googleLigado && google ? `${brl(google.gasto)} · ${n(google.cliques)} cliques (dados até ${dataBr(google.carregadoAte)})` : 'ainda não ligado ao CRM'}
+      </p>
+      {camp.length > 0 && (
+        <table style={tabela}>
+          <thead><tr>{['Plataforma', 'Campanha', 'Orçamento/dia', 'Gasto', 'Cliques', 'Resultado', 'Custo por resultado'].map((h, i) => <th key={h} style={{ ...thP, textAlign: i < 2 ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {camp.map(c => (
+              <tr key={c.plataforma + c.campanha}>
+                <td style={{ ...rowH, fontWeight: 400, color: P.muted }}>{c.plataforma}</td>
+                <td style={rowH}>{c.campanha}{c.status && c.status !== 'ENABLED' ? ` (${c.status === 'PAUSED' ? 'pausada' : c.status.toLowerCase()})` : ''}</td>
+                <td style={tdP}>{c.orcamentoDia != null ? brl(c.orcamentoDia) : '—'}</td>
+                <td style={tdP}>{brl(c.gasto)}</td><td style={tdP}>{n(c.cliques)}</td>
+                <td style={tdP}>{n(c.resultado)} {c.plataforma === 'Meta' ? 'conversas' : 'conversões'}</td>
+                <td style={tdP}>{c.resultado > 0 ? brl(c.gasto / c.resultado) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {rel.termosGoogle.length > 0 && (
+        <p style={{ ...sub, marginTop: 4 }}>
+          <strong style={{ color: P.ink }}>Mais pesquisado no Google (30 dias):</strong> {rel.termosGoogle.slice(0, 10).map(t => `“${t.termo}” (${t.cliques} cliques, ${brl(t.gasto)})`).join('; ')}.
+        </p>
+      )}
+    </Secao>
   )
 }
