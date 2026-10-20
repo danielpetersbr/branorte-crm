@@ -304,6 +304,20 @@ test('especificação nominal conflitante da cópia impede vínculo ao comprimen
   assert.equal(match(line(origin.sourceName, { sourceSpecifications: ['Comprimento: 5,5 m'] }), [old]), null)
 })
 
+test('identidade comercial no detalhe Equipamento impede preço do título legado com medida herdada', () => {
+  const old = product(origin.sourceName)
+  const resized = product('TRANSPORTADOR HELICOIDAL 160 X 5,5 M', { id: 92 })
+  const source = line('CHUPIM Ø160 X 3,5MALT1 — CÓPIA 1', { sourceSpecifications: ['Equipamento: TRANSPORTADOR HELICOIDAL 160 X 5,5 M'] })
+  assert.equal(match(source, [old, resized]), null)
+  assert.equal(match(source, [old]), null)
+  assert.equal(match(line(source.nome, { sourceSpecifications: ['Equipamento: TRANSPORTADOR HELICOIDAL 210 X 3,5 M'] }), [old]), null)
+})
+
+test('detalhe Equipamento coerente mantém o vínculo e a proteção não interpreta descrições naturais do catálogo', () => {
+  const wanted = product(origin.sourceName, { specs: ['Equipamento: TRANSPORTADOR HELICOIDAL 160 X 5,5 M'] })
+  assert.equal(match(line('CHUPIM Ø160 X 3,5MALT1 — CÓPIA 1', { sourceSpecifications: ['Equipamento: TRANSPORTADOR HELICOIDAL 160 X 3,5 M'] }), [wanted]), wanted)
+})
+
 test('medidas nominais coerentes refinam transportador e contradições na ficha do catálogo o rejeitam', () => {
   const wanted = product(origin.sourceName, { specs: ['Diâmetro: 160 mm', 'Comprimento: 3,5 metros'] })
   assert.equal(match(line(origin.sourceName, { sourceSpecifications: ['Diâmetro nominal: 160 mm', 'Comprimento nominal: 3500 mm'] }), [wanted]), wanted)

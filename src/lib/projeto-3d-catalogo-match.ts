@@ -187,6 +187,15 @@ export function encontrarCatalogoProjeto3D(line: LinhaProjeto3D, catalogo: reado
   const titleIdentity = identidade(name)
   const source = titleIdentity && refinarEspecificacoes(titleIdentity, origin.sourceSpecifications)
   if (titleIdentity && !source) return null
+  // Legacy user labels can retain the old CAD length while this source detail
+  // carries the current commercial identity. Conflicting evidence stays pending.
+  if (source && origin.sourceSpecifications.some(detail => {
+    const declaredName = normalizar(detail).match(/^EQUIPAMENTO\s*:\s*(.+)$/)?.[1]
+    const declared = declaredName ? identidade(declaredName) : null
+    return declared !== null && (declared.familia !== source.familia || declared.tipo !== source.tipo
+      || (['diametro', 'comprimento', 'potencia', 'litros', 'kg'] as const).some(field =>
+        source[field] !== undefined && declared[field] !== undefined && !mesmoValor(source[field], declared[field])))
+  })) return null
   // A family name without an explicit size/capacity is not a commercial identity.
   if (!source && /^(?:TRANSPORTADOR|CHUPIM|CALHA|TH\b|MOINHO|TRITURADOR|MISTURADOR|SILO MISTURADOR|ELEVADOR|CACAMBA)/.test(sourceName)) return null
   const sourceVariants = variantes(normalizar(`${name} ${detalhesParaVariantes(origin.sourceSpecifications)}`))
