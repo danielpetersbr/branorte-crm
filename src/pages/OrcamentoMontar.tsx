@@ -1728,7 +1728,7 @@ export function OrcamentoMontar() {
         (line, item) => precificarLinhaProjeto3D(line, item, snapshot.voltagem ?? 'trifasico')) })
     }
     else if (transfer3D) {
-      setCarrinho(autoVincularProjeto3D(materializeProjeto3DOrcamento(transfer3D), items,
+      setCarrinho(autoVincularProjeto3D<CarrinhoItem>(materializeProjeto3DOrcamento(transfer3D), items,
         (line, item) => precificarLinhaProjeto3D(line, item, voltagem)))
       setAcessorios(materializeProjeto3DAcessorios(transfer3D))
       setClienteDados({ nome: transfer3D.clientName })

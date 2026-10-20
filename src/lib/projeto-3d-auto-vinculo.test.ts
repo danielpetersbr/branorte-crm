@@ -114,7 +114,7 @@ test('reordenar ou retirar especificações de linha pendente também preserva a
   assert.ok(integration)
   for (const specs of [['Segunda observação', 'Primeira observação'], []]) {
     const original = { ...linha('descricao-reordenada', 'MOINHO MARTELO 20 CV', 1, { sourceSpecifications: ['Primeira observação', 'Segunda observação'] }), specs }
-    const result = integration.autoVincularProjeto3D([original], [catalogo(17, 'MOINHO MARTELO 20 CV')], vincular)
+    const result: typeof original[] = integration.autoVincularProjeto3D([original], [catalogo(17, 'MOINHO MARTELO 20 CV')], vincular)
     assert.equal(result[0], original)
   }
 })
@@ -131,7 +131,7 @@ test('valor editado diretamente em linha pendente não é sobrescrito mesmo sem 
   assert.ok(integration)
   for (const [valor, valor_original] of [[17500, 0], [0, 17500]]) {
     const original = { ...linha('preco-editado', 'MOINHO MARTELO 20 CV', 1), valor, valor_original }
-    const result = integration.autoVincularProjeto3D([original], [catalogo(17, 'MOINHO MARTELO 20 CV')], vincular)
+    const result: typeof original[] = integration.autoVincularProjeto3D([original], [catalogo(17, 'MOINHO MARTELO 20 CV')], vincular)
     assert.equal(result[0], original)
     assert.equal(result[0].valor, valor)
     assert.equal(result[0].valor_original, valor_original)
