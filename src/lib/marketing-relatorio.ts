@@ -104,6 +104,35 @@ export interface VendedorMkt {
   medianaEnviadas: number | null
 }
 
+/** Campanha (ou total) de uma plataforma de anúncio no período. */
+export interface PlataformaMkt {
+  tipo: 'plataforma' | 'campanha'
+  plataforma: 'Meta' | 'Google'
+  campanha: string | null
+  status: string | null
+  orcamentoDia: number | null
+  gasto: number
+  impressoes: number
+  cliques: number
+  /** o que a própria plataforma conta: conversas iniciadas (Meta) / conversões (Google) */
+  resultado: number
+  diasComGasto: number | null
+  carregadoAte: string | null
+  /** o que conta como resultado nessa campanha: conversas / cliques no link / cadastros/conversões do pixel / conversões */
+  resultadoTipo: string
+}
+
+/** ACTIVE/ENABLED → ativa; PAUSED → pausada (Meta e Google usam nomes diferentes). */
+export function situacaoCampanha(status: string | null): string | null {
+  if (!status) return null
+  if (status === 'ACTIVE' || status === 'ENABLED') return 'ativa'
+  if (status === 'PAUSED' || status === 'CAMPAIGN_PAUSED' || status === 'ADSET_PAUSED') return 'pausada'
+  if (status === 'REMOVED' || status === 'DELETED' || status === 'ARCHIVED') return 'encerrada'
+  return status.toLowerCase().replace(/_/g, ' ')
+}
+
+export interface TermoMkt { termo: string; campanha: string; cliques: number; impressoes: number; gasto: number; conversoes: number; de: string | null; ate: string | null }
+
 const num = (v: unknown) => (v == null || v === '' ? 0 : Number(v) || 0)
 const numOuNulo = (v: unknown) => (v == null || v === '' ? null : Number(v))
 const txt = (v: unknown) => (v == null ? null : String(v))
@@ -146,6 +175,23 @@ export function lerGasto(r: Record<string, unknown>): GastoLinhaMkt {
   return {
     tipo: String(r.tipo) as GastoLinhaMkt['tipo'], codigo: txt(r.codigo), gasto: num(r.gasto), conversas: num(r.conversas),
     anuncios: num(r.anuncios), carregadoAte: txt(r.carregado_ate), campanhas: txt(r.campanhas),
+  }
+}
+
+export function lerPlataforma(r: Record<string, unknown>): PlataformaMkt {
+  return {
+    tipo: String(r.tipo) as PlataformaMkt['tipo'], plataforma: String(r.plataforma) as PlataformaMkt['plataforma'],
+    campanha: txt(r.campanha), status: txt(r.status), orcamentoDia: numOuNulo(r.orcamento_dia), gasto: num(r.gasto),
+    impressoes: num(r.impressoes), cliques: num(r.cliques), resultado: num(r.resultado),
+    diasComGasto: numOuNulo(r.dias_com_gasto), carregadoAte: txt(r.carregado_ate),
+    resultadoTipo: txt(r.resultado_tipo) ?? (String(r.plataforma) === 'Google' ? 'conversões' : 'conversas'),
+  }
+}
+
+export function lerTermo(r: Record<string, unknown>): TermoMkt {
+  return {
+    termo: String(r.termo ?? ''), campanha: String(r.campanha ?? ''), cliques: num(r.cliques), impressoes: num(r.impressoes),
+    gasto: num(r.gasto), conversoes: num(r.conversoes), de: txt(r.de), ate: txt(r.ate),
   }
 }
 
@@ -323,6 +369,13 @@ export interface RelatorioMkt {
   tarefasVendas: string[]
   /** período termina hoje: motivos e "sumiu" ainda vão crescer */
   emAndamento: boolean
+  /** totais e campanhas por plataforma (Meta, Google) */
+  plataformas: PlataformaMkt[]
+  termosGoogle: TermoMkt[]
+  /** Google ligado = o script da conta já mandou dado */
+  googleLigado: boolean
+  /** custo por orçamento do canal: Meta (verba Meta ÷ orçamentos do canal Meta) e Site (verba Google ÷ orçamentos do Site) */
+  custoCanal: Record<string, number | null>
 }
 
 const META_CANAL = 'Meta ADS (WhatsApp)'
@@ -341,7 +394,7 @@ export const poucaEtiqueta = (v: VendedorMkt) => v.contatos >= 30 && (taxa(v.sum
 
 export function montarRelatorio(
   fontes: FonteMkt[], vendas: VendaMkt[], gastos: GastoLinhaMkt[] = [], vendedores: VendedorMkt[] = [],
-  opts: { emAndamento?: boolean } = {},
+  opts: { emAndamento?: boolean; plataformas?: PlataformaMkt[]; termosGoogle?: TermoMkt[] } = {},
 ): RelatorioMkt {
   // Período que termina hoje: o vendedor ainda não encerrou (nem etiquetou) boa parte dos contatos,
   // então "sumiu" baixo não quer dizer que ele não etiqueta.
@@ -402,6 +455,16 @@ export function montarRelatorio(
     anuncios.push({ ...parcial, ...d })
   }
   anuncios.sort((a, b) => (ORDEM_DECISAO[a.decisao] - ORDEM_DECISAO[b.decisao]) || (b.gasto - a.gasto) || (b.contatos - a.contatos))
+
+  // ---- Plataformas (Google e Meta) ----
+  const plataformas = opts.plataformas ?? []
+  const totGoogle = plataformas.find(p => p.tipo === 'plataforma' && p.plataforma === 'Google')
+  const totMeta = plataformas.find(p => p.tipo === 'plataforma' && p.plataforma === 'Meta')
+  const googleLigado = !!totGoogle?.carregadoAte
+  const site = canais.find(c => c.chave.startsWith('Site'))
+  const custoCanal: Record<string, number | null> = {}
+  if (meta && totMeta && totMeta.gasto > 0) custoCanal[meta.chave] = meta.comProposta > 0 ? totMeta.gasto / meta.comProposta : null
+  if (site && totGoogle && googleLigado && totGoogle.gasto > 0) custoCanal[site.chave] = site.comProposta > 0 ? totGoogle.gasto / site.comProposta : null
 
   const vendasTotal = vendas.find(v => v.tipo === 'total') ?? null
   const vendasGrupo = vendas.filter(v => v.tipo === 'grupo').sort((a, b) => b.valor - a.valor)
@@ -504,6 +567,7 @@ export function montarRelatorio(
     gastoCarregadoAte: gTotal?.carregadoAte ?? null,
     vendasTotal, vendasGrupo, vendasOrigem, vendasCriativo,
     vendedores: vendOrd, destaques, tarefasTrafego, tarefasVendas, emAndamento,
+    plataformas, termosGoogle: opts.termosGoogle ?? [], googleLigado, custoCanal,
   }
 }
 
