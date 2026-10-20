@@ -49,7 +49,7 @@ const TITULO_CLIENTE = 'MONTAGEM DOS ITENS ORÇADOS ACIMA: (POR CONTA DO CLIENTE
 
 test('DOCX mantém descrições de acessórios sem preço separado, mesmo com valor zero', async () => {
   const document = opts(null)
-  document.acessorios = { items: ['Boca de entrada · Qtde: 2 · 160 × 600 × 600 × 30°'], valor: 0 }
+  document.acessorios = { pct: 0, items: ['Boca de entrada · Qtde: 2 · 160 × 600 × 600 × 30°'], valor: 0 }
   const paragraphs = await paragrafos(document)
   assert.ok(paragraphs.some(line => line.includes('ACESSÓRIOS')))
   assert.ok(paragraphs.some(line => line.includes('Boca de entrada') && line.includes('Qtde: 2')))
