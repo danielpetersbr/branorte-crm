@@ -48,7 +48,8 @@ test('nova transferência hidrata acessórios descritivos, mas reload prioriza o
     let restored: unknown = null
     let accessoryWrites = 0
     const context = run(`var hydrate = ${callback}`, {
-      ...transfer, import3dToken: withAccessories.exportId, editingId: null, loadingItems: false, loadingMotores: false, importedTokenRef: { current: null }, transfer3D: withAccessories,
+      ...transfer, import3dToken: withAccessories.exportId, editingId: null, loadingItems: false, loadingMotores: false, loadingPrecos: false, items: [], motores: [], precos: [], importedTokenRef: { current: null }, transfer3D: withAccessories,
+      autoVincularProjeto3D: (rows: unknown[]) => rows,
       window: { localStorage: {} }, readProjeto3DDraft: () => recovered,
       setCarrinho() {}, setClienteDados() {}, setInitialModal() {}, setAcessorios(value: unknown) { accessoryState = value; accessoryWrites++ },
       aplicarRascunho(value: unknown) { restored = value }, isApplyingUndoRef: { current: false }, setHistoryStack() {}, draft: { dismissRecovered() {} }, setHydrated3DToken() {}, setImport3DError() {},
@@ -60,7 +61,9 @@ test('nova transferência hidrata acessórios descritivos, mas reload prioriza o
   assert.deepEqual(created.accessoryState, transfer.materializeProjeto3DAcessorios(withAccessories))
   const edited = { carrinho: transfer.materializeProjeto3DOrcamento(withAccessories), acessorios: { pct: 9, items: ['Descrição conferida'], valorFixo: 900 }, clienteDados: { nome: 'Cliente editado' } }
   const recovered = hydrate(edited)
-  assert.equal(recovered.restored, edited)
+  assert.equal((recovered.restored as typeof edited).acessorios, edited.acessorios)
+  assert.equal((recovered.restored as typeof edited).clienteDados, edited.clienteDados)
+  assert.equal((recovered.restored as typeof edited).carrinho, edited.carrinho)
   assert.equal(recovered.accessoryWrites, 0, 'a transferência original não sobrescreve edição de acessórios recuperada')
 })
 
@@ -147,7 +150,7 @@ test('moinho 30 CV monofásico sem motor compatível continua pendente e mostra 
   const handler = (event.initializer as ts.JsxExpression).expression!.getText(resolver)
   let error = ''
   let mutations = 0
-  const context = run(`${fn(page, 'motorJaInclusoNoItem')}\n${fn(page, 'criarItemCatalogo')}\n${fn(page, 'vincularLinhaProjeto3D')}\nvar onVincular = vincularLinhaProjeto3D; var click = ${handler}`, {
+  const context = run(`${fn(page, 'motorJaInclusoNoItem')}\n${fn(page, 'criarItemCatalogo')}\n${fn(page, 'precificarLinhaProjeto3D')}\n${fn(page, 'vincularLinhaProjeto3D')}\nvar onVincular = vincularLinhaProjeto3D; var click = ${handler}`, {
     ...integration, Error, item: original, selected: catalogItem, carrinho: [original], voltagem: 'monofasico', gerarUid: () => 'discard',
     precos: [{ id: 77, valor_equipamento: 32061, valor_com_motor_trif: 44919, valor_com_motor_mono: null }],
     motores: [{ cv: 30, polos: 2, voltagem: 'trifasico', valor: 12858 }], acharMotorCompativel, valorPorVoltagem,
