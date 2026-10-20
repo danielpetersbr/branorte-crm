@@ -1,7 +1,8 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronUp,
-  CircleDashed, Info, Minus, Pause, Search, TrendingUp, Unlink, Wrench,
+  CircleDashed, FileDown, Info, Minus, Pause, Search, TrendingUp, Unlink, Wrench,
 } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 
@@ -25,6 +26,9 @@ import { QueryNotice } from '@/components/ui/QueryNotice'
 import { useDashboardCanais } from '@/hooks/useDashboardCanais'
 import { QualidadePorCanal } from './blocks/QualidadePorCanal'
 import { PorteDoLeadPorAnuncio } from './blocks/PorteDoLeadPorAnuncio'
+import { RelatorioMarketingImpressao, RelatorioMarketingTela } from './blocks/RelatorioMarketing'
+import { useMarketingRelatorio } from '@/hooks/useMarketingRelatorio'
+import { PERIODOS_MKT, type PeriodoMkt } from '@/lib/marketing-relatorio'
 
 // ============================================================================
 // ABA MARKETING — "pra onde vai ou corta a verba?"
@@ -1199,6 +1203,118 @@ function MotivosPorFonteView({ data }: { data: { por_criativo: MotivoFonte[]; po
 // ---------------------------------------------------------------------------
 
 export function TabMarketing() {
+  // 20/10/2026 — "muito confusa, muita informação": a aba abre no relatório de 4 perguntas,
+  // com período próprio (mês, mês passado, 90 dias) e o PDF pro gestor de tráfego.
+  // A análise antiga (vereditos, top 10, tabelas por origem/criativo) fica atrás de um botão
+  // e só consulta o banco quando aberta.
+  const [periodo, setPeriodo] = useState<PeriodoMkt>(() => {
+    try { const v = localStorage.getItem('marketing-periodo'); return (PERIODOS_MKT.some(p => p.value === v) ? v : 'mes') as PeriodoMkt } catch { return 'mes' }
+  })
+  useEffect(() => { try { localStorage.setItem('marketing-periodo', periodo) } catch { /* sem storage */ } }, [periodo])
+  const q = useMarketingRelatorio(periodo)
+  const [detalhe, setDetalhe] = useState(false)
+  const [imprimindo, setImprimindo] = useState<{ geradoEm: string } | null>(null)
+  const [alvo, setAlvo] = useState<HTMLElement | null>(null)
+
+  // PDF: a folha é montada num nó próprio do <body>; o CSS de impressão (index.css,
+  // html.mk-printing) esconde o resto do app. "Salvar como PDF" usa o título como nome.
+  useEffect(() => {
+    if (!imprimindo) return
+    const el = document.createElement('div')
+    el.id = 'mk-print-root'
+    document.body.appendChild(el)
+    setAlvo(el)
+    return () => { el.remove(); setAlvo(null) }
+  }, [imprimindo])
+  useEffect(() => {
+    if (!imprimindo || !alvo || !q.data) return
+    const html = document.documentElement
+    const tituloAntes = document.title
+    const t = window.setTimeout(() => {
+      html.classList.add('mk-printing')
+      document.title = `Branorte - Relatorio de marketing - ${q.data.label}`
+      try { window.print() } finally {
+        html.classList.remove('mk-printing')
+        document.title = tituloAntes
+        setImprimindo(null)
+      }
+    }, 150)
+    return () => window.clearTimeout(t)
+  }, [imprimindo, alvo, q.data])
+
+  return (
+    <div className="space-y-5">
+      <Card id="marketing-topo">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-title font-semibold text-ink">Relatório de marketing</h2>
+            <p className="text-micro text-ink-faint">{q.data ? q.data.label.charAt(0).toUpperCase() + q.data.label.slice(1) : 'Carregando…'}{q.isPlaceholderData && ' · atualizando…'}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1" role="group" aria-label="Período do relatório">
+              {PERIODOS_MKT.map(p => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setPeriodo(p.value)}
+                  aria-pressed={periodo === p.value}
+                  className={`inline-flex min-h-[44px] items-center rounded-lg px-3 py-1 text-micro md:min-h-0 ${periodo === p.value ? 'bg-accent font-semibold text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setImprimindo({ geradoEm: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) })}
+              disabled={!q.data || q.isPlaceholderData || !!imprimindo}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-micro font-semibold text-ink hover:bg-surface-2 disabled:opacity-50 md:min-h-0"
+            >
+              <FileDown className="h-4 w-4" aria-hidden="true" />
+              Exportar PDF
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      {q.error && !q.data ? (
+        <QueryNotice error={q.error} loading={q.isFetching} message="Não foi possível carregar o relatório de marketing." onRetry={() => { void q.refetch() }} />
+      ) : !q.data ? (
+        <div className="space-y-5">
+          {[0, 1, 2].map(i => (
+            <Card key={i}>
+              <div className="h-4 w-48 animate-pulse rounded-sm bg-surface-2" />
+              <div className="mt-4 h-32 animate-pulse rounded-lg bg-surface-2" />
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <RelatorioMarketingTela rel={q.data} label={q.data.label} velho={q.isPlaceholderData} />
+      )}
+
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={() => setDetalhe(v => !v)}
+          aria-expanded={detalhe}
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-surface-2 px-4 py-2 text-micro text-ink-muted hover:text-ink md:min-h-0"
+        >
+          {detalhe ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+          {detalhe ? 'Esconder a análise detalhada' : 'Ver análise detalhada (margem de erro, porte por anúncio, vereditos de verba)'}
+        </button>
+      </div>
+      {detalhe && <MarketingDetalhado />}
+
+      {imprimindo && alvo && q.data && createPortal(
+        <RelatorioMarketingImpressao rel={q.data} label={q.data.label} geradoEm={imprimindo.geradoEm} />,
+        alvo,
+      )}
+    </div>
+  )
+}
+
+/** A aba como era até 20/10/2026 — segue o período do topo do Dashboard. */
+function MarketingDetalhado() {
   const { preset, periodoLabel } = useJanela()
   const dashboardQuery = useDashboard({ preset })
   const etiquetasQuery = useDashboardEtiquetas(preset)
