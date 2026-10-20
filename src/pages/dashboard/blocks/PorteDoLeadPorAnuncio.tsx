@@ -22,10 +22,18 @@ const AMOSTRA_MIN = 15
 
 const fmt = (v: number | null) => (v == null ? '—' : n(Math.round(v)))
 
-function rotulo(l: PorteAnuncio): { titulo: string; sub: string | null } {
-  if (!l.ad_id) return { titulo: 'Sem anúncio', sub: 'orgânico, site ou indicação' }
-  if (l.anuncio) return { titulo: l.anuncio, sub: l.texto }
-  return { titulo: `Anúncio …${l.ad_id.slice(-6)}`, sub: l.texto }
+function rotulo(l: PorteAnuncio): { titulo: string; sub: string | null; dica: string | null } {
+  if (!l.ad_id) return { titulo: 'Sem anúncio', sub: 'orgânico, site ou indicação', dica: null }
+  // Com nome, o subtítulo é o CONJUNTO (público): "AD3- COMPACTA 01 - &54" roda em
+  // conjuntos diferentes e rende diferente — sem ele, as linhas pareciam repetidas.
+  if (l.anuncio) {
+    return {
+      titulo: l.anuncio,
+      sub: l.conjunto ? `Conjunto: ${l.conjunto}` : l.texto,
+      dica: [l.campanha && `Campanha: ${l.campanha}`, l.conjunto && `Conjunto: ${l.conjunto}`, l.texto && `Texto: ${l.texto}`, `ID: ${l.ad_id}`].filter(Boolean).join(' · '),
+    }
+  }
+  return { titulo: `Anúncio …${l.ad_id.slice(-6)}`, sub: l.texto, dica: `ID: ${l.ad_id} (fora do cadastro de anúncios — provavelmente anúncio de Status do WhatsApp)` }
 }
 
 export function PorteDoLeadPorAnuncio({ preset, periodoLabel }: { preset: DashboardPreset; periodoLabel: string }) {
@@ -112,7 +120,7 @@ export function PorteDoLeadPorAnuncio({ preset, periodoLabel }: { preset: Dashbo
                   return (
                     <tr key={l.ad_id ?? 'sem-anuncio'}>
                       <th scope="row" className="max-w-[280px] border-t border-border px-2 py-2 text-left align-top">
-                        <span className="block text-body font-medium text-ink">{r.titulo}</span>
+                        <span className="block text-body font-medium text-ink" title={r.dica ?? undefined}>{r.titulo}</span>
                         {r.sub && <span className="block truncate text-micro text-ink-faint" title={r.sub}>{r.sub}</span>}
                         <span className="mt-0.5 flex flex-wrap gap-1">
                           {l.app && <span className="rounded-sm bg-surface-2 px-1.5 py-0.5 text-micro text-ink-faint">{l.app}</span>}
@@ -154,7 +162,7 @@ export function PorteDoLeadPorAnuncio({ preset, periodoLabel }: { preset: Dashbo
               <li><strong className="text-ink">Anúncio de equipamento</strong> (ensacadeira, esteira, moinho…) quase não tem porte: nesse caminho a Ana não pergunta os animais.</li>
               <li><strong className="text-ink">O mesmo texto roda em anúncios diferentes</strong> e rende diferente — muda o público. Compare por anúncio, não pela mensagem.</li>
               <li><strong className="text-ink">Proposta e venda por anúncio ainda não dá:</strong> na maioria das conversas o WhatsApp entrega só o código interno do contato, sem telefone. Para proposta, use o quadro por canal acima.</li>
-              <li>Anúncio sem nome aparece pelo final do ID e pelo texto: o cadastro de anúncios do Gerenciador ainda não tem os mais novos.</li>
+              <li>Anúncio sem nome aparece pelo final do ID e pelo texto: não está no cadastro puxado do Gerenciador (em geral, anúncio de Status do WhatsApp). Passe o mouse no nome para ver campanha, conjunto e ID.</li>
             </ul>
           </Inner>
         </div>
