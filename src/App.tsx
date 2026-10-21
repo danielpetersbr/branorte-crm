@@ -397,7 +397,8 @@ function AppRoutes() {
 
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
-  const VIEWER_PATHS = new Set(['/', '/dashboard', '/atendimentos', '/perfil', '/agenda'])
+  // 21/10/2026: o visualizador é o gestor de tráfego (Fabrício) — só Anúncios Meta e Google e Leads Recebidos.
+  const VIEWER_PATHS = new Set(['/anuncios', '/atendimentos', '/perfil'])
   if (loc.pathname === '/conversao-comercial' && (!['admin', 'vendor'].includes(profile.role) || !can('menu.vendidos'))) {
     return <Navigate to={profile.role === 'vendor' ? '/atendimentos' : '/'} replace />
   }
@@ -406,8 +407,8 @@ function AppRoutes() {
   }
   // Frete liberado pra TODOS os roles (exceto a fila de aprovação /frete/aprovar, gateada).
   const freteLiberado = loc.pathname.startsWith('/frete') && !loc.pathname.startsWith('/frete/aprovar')
-  if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !freteLiberado && !fabricaPermitida) {
-    return <Navigate to="/" replace />
+  if (profile.role === 'visualizador' && !VIEWER_PATHS.has(loc.pathname) && !fabricaPermitida) {
+    return <Navigate to="/anuncios" replace />
   }
 
   // Vendedor: acesso restrito a Atendimentos, Consulta, Montar/Editar Orçamento e
@@ -600,7 +601,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/analytics" element={<Analytics />} />
         {can('menu.campanhas') && <Route path="/campanhas" element={<Campanhas />} />}
-        {can('menu.campanhas') && <Route path="/anuncios" element={<Anuncios />} />}
+        {(can('menu.campanhas') || can('menu.anuncios')) && <Route path="/anuncios" element={<Anuncios />} />}
         <Route path="/contatos" element={<Contacts />} />
         {can('due_diligence.consultar') && (
           <>
@@ -787,9 +788,9 @@ function AppRoutes() {
  */
 // Vigia de venda nova (som + aviso). Lazy: o cliente do banco do controle não pesa
 // no carregamento de quem não usa. Representante é externo e não ouve as vendas
-// da casa; pending/rejected nem entram no sistema.
+// da casa; pending/rejected nem entram no sistema. O visualizador (gestor de tráfego de fora) também não (21/10/2026).
 const AvisoVendaNova = lazy(() => import('@/components/AvisoVendaNova'))
-const PAPEIS_AVISO_VENDA = new Set(['admin', 'vendor', 'marketing', 'visualizador'])
+const PAPEIS_AVISO_VENDA = new Set(['admin', 'vendor', 'marketing'])
 
 function OverlaysGlobais() {
   const { pathname } = useLocation()

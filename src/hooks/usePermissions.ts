@@ -30,6 +30,7 @@ export const FEATURE_CATALOG: Array<{
 }> = [
   { key: 'menu.dashboard', label: 'Dashboard', group: 'Menu' },
   { key: 'menu.campanhas', label: 'Análise de Campanhas (leads, orçamentos e venda por anúncio)', group: 'Menu' },
+  { key: 'menu.anuncios', label: 'Anúncios Meta e Google (só a página /anuncios, sem a Análise de Campanhas)', group: 'Menu' },
   { key: 'menu.atendimentos', label: 'Atendimentos', group: 'Menu' },
   { key: 'menu.whatsapp', label: 'Atendimento WhatsApp (número da Ana)', group: 'Menu' },
   { key: 'menu.contatos', label: 'Contatos', group: 'Menu' },
@@ -153,8 +154,8 @@ const FALLBACK: Record<AssignableRole, Record<string, boolean>> = {
   marketing: {},
   // Visualizador: só Dashboard + Atendimentos.
   visualizador: {
-    'menu.dashboard': true,
     'menu.atendimentos': true,
+    'menu.anuncios': true,
   },
   // Financeiro: confere comprovante e confirma pagamento, sem ser admin do sistema.
   // Do lado do servidor ele é gestor (vê todos os vendedores) — ver PAPEIS_GESTORES
