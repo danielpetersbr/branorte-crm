@@ -6,9 +6,9 @@ import { ChatAvatar, ChatMedia } from '@/components/chat/ChatMedia'
 import { chaveWaKanban, MSGS_PAGINA_INCREMENTO, MSGS_PAGINA_INICIAL, useWaKanban, useWaMensagens, type WaKanban, type WaMensagem } from '@/hooks/useWaKanban'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
-import { buscarMudancasEspelho, useSinalEspelho } from '@/hooks/useWhatsAppEspelho'
+import { buscarMudancasEspelho, useDocumentosEspelho, useSinalEspelho } from '@/hooks/useWhatsAppEspelho'
 import { corpoVisivel, FAMILIA_CHIP, familiaDe, formatarTelefone, nomeContato, tempoRelativo } from '@/lib/wa-funil'
-import { achatarConversas, aplicarDeltaKanban, chaveConversa, CONTA_ANA, etiquetasDaLista, filtrarConversas, historicoAtrasado, nomeEtiqueta, rotuloConta, type ContaWhatsApp, type ConversaEspelho, type FiltroEspelho } from '@/lib/whatsapp-espelho'
+import { achatarConversas, aplicarDeltaKanban, caminhoDocPrivado, chaveConversa, CONTA_ANA, etiquetasDaLista, filtrarConversas, historicoAtrasado, nomeEtiqueta, rotuloConta, type ContaWhatsApp, type ConversaEspelho, type FiltroEspelho } from '@/lib/whatsapp-espelho'
 
 const inputClass='w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent/30'
 const buttonClass='inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed'
@@ -79,23 +79,27 @@ const TIPOS:Record<string,{Icon:typeof Mic;label:string}>={
 }
 const temArquivo=(url:string|null)=>!!url&&/^https:\/\//i.test(url)
 
-function BolhaEspelho({m,vendedor}:{m:WaMensagem;vendedor:string}) {
+function BolhaEspelho({m,vendedor,urlDoc}:{m:WaMensagem;vendedor:string;urlDoc:string|null}) {
   const texto=corpoVisivel(m.body)
   const meta=TIPOS[m.tipo]
   const deMim=m.from_me===true,indefinido=m.from_me==null
   const ehAudio=m.tipo==='ptt'||m.tipo==='audio',ehFoto=m.tipo==='image'||m.tipo==='sticker'
   const arquivo=temArquivo(m.media_url)
+  // documento do vendedor fica em bucket privado: abre pelo link assinado
+  const ehDoc=m.tipo==='document',docPrivado=ehDoc&&!!caminhoDocPrivado(m.media_url),arquivoDoc=docPrivado&&temArquivo(urlDoc)
   const antiga=!!m.data_msg&&Date.now()-Date.parse(m.data_msg)>10*86_400_000
   return <div className={cn('flex',indefinido?'justify-center':deMim?'justify-end':'justify-start')}>
     <div className={cn('max-w-[88%] sm:max-w-[78%] rounded-xl border px-3 py-2 shadow-sm',indefinido?'border-border bg-surface-2/60 text-ink-muted':deMim?'bg-accent/10 border-accent/20 rounded-tr-sm':'bg-surface border-border rounded-tl-sm')}>
       {deMim&&<p className="mb-1 text-xs font-semibold text-accent">{rotuloConta(vendedor)} · WhatsApp</p>}
       {m.tipo==='revoked'?<p className="flex items-center gap-1.5 text-xs italic text-ink-faint"><Ban size={13}/>Mensagem apagada</p>:<>
-        {meta&&!(ehFoto&&arquivo)&&!(ehAudio&&arquivo)&&<p className="flex items-center gap-1.5 text-xs font-medium text-ink-muted"><meta.Icon size={14}/>{meta.label}{m.duracao_seg?<span className="tabular-nums">· {fmtDuracao(m.duracao_seg)}</span>:null}</p>}
+        {meta&&!(ehFoto&&arquivo)&&!(ehAudio&&arquivo)&&!arquivoDoc&&<p className="flex items-center gap-1.5 text-xs font-medium text-ink-muted"><meta.Icon size={14}/>{meta.label}{m.duracao_seg?<span className="tabular-nums">· {fmtDuracao(m.duracao_seg)}</span>:null}</p>}
         {(ehAudio||ehFoto)&&arquivo&&<ChatMedia type={m.tipo} url={m.media_url}/>}
+        {arquivoDoc&&<ChatMedia type="document" url={urlDoc} filename={m.filename}/>}
+        {docPrivado&&!arquivoDoc&&<p className="mt-0.5 text-[11px] italic text-ink-faint">Abrindo o documento…</p>}
         {ehAudio&&arquivo&&!!m.duracao_seg&&<p className="mt-1 text-[10px] tabular-nums text-ink-faint">{fmtDuracao(m.duracao_seg)}</p>}
         {m.origem==='espelho'&&meta&&m.tipo!=='call_log'&&m.tipo!=='location'&&!m.tipo.includes('vcard')&&<p className="mt-0.5 text-[11px] italic text-ink-faint">Conversa fora do funil: só o texto é copiado. Abre no WhatsApp do vendedor.</p>}
         {m.origem!=='espelho'&&(ehAudio||m.tipo==='image')&&!arquivo&&<p className="mt-0.5 text-[11px] italic text-ink-faint">{m.media_url==='unavailable'||antiga?'Arquivo expirou no aparelho':'Arquivo ainda não copiado pro CRM'}</p>}
-        {m.origem!=='espelho'&&['video','document','sticker'].includes(m.tipo)&&!arquivo&&<p className="mt-0.5 text-[11px] italic text-ink-faint">Abre só no WhatsApp do vendedor</p>}
+        {m.origem!=='espelho'&&['video','document','sticker'].includes(m.tipo)&&!arquivo&&!docPrivado&&<p className="mt-0.5 text-[11px] italic text-ink-faint">Abre só no WhatsApp do vendedor</p>}
         {texto&&<p className={cn('whitespace-pre-wrap break-words text-sm leading-relaxed',(meta||arquivo)&&'mt-1.5')}>{texto}</p>}
         {!texto&&!meta&&<p className="text-xs italic text-ink-faint">({m.tipo})</p>}
         {m.transcricao&&<details className="mt-2 text-xs text-ink-muted"><summary className="cursor-pointer">Transcrição do áudio</summary><p className="mt-1 whitespace-pre-wrap">{m.transcricao}</p></details>}
@@ -116,6 +120,7 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
     if(conversa.chat_id)void refetchHistorico()
   },[conversa.last_message_at,conversa.chat_id,refetchHistorico])
   const mensagens=historico.data?.mensagens??[]
+  const docs=useDocumentosEspelho(useMemo(()=>mensagens.map(m=>m.tipo==='document'?m.media_url:null),[mensagens]))
   const area=useRef<HTMLDivElement>(null),grudado=useRef(true),alturaAntes=useRef<number|null>(null)
   const nome=nomeContato(conversa.contact_name,conversa.phone)
   const ultimaGravada=mensagens.length?mensagens[mensagens.length-1].data_msg:null
@@ -149,7 +154,7 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
         const dia=m.data_msg?new Date(m.data_msg).toDateString():''
         const separador=dia&&dia!==diaAnterior?<p className="py-2 text-center text-[10px] font-medium uppercase tracking-wide text-ink-faint">{fmtDia(m.data_msg!)}</p>:null
         diaAnterior=dia||diaAnterior
-        return <div key={m.msg_id}>{separador}<BolhaEspelho m={m} vendedor={vendedor}/></div>
+        return <div key={m.msg_id}>{separador}<BolhaEspelho m={m} vendedor={vendedor} urlDoc={docs.data?.[caminhoDocPrivado(m.media_url)??'']??null}/></div>
       })}</div>
       {atrasado&&<div role="status" className="mx-auto mt-5 max-w-md rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-ink-muted">
         <p className="font-medium text-ink">{conversa.last_message_from_me?`${rotuloConta(vendedor)} mandou`:'Cliente mandou'} {conversa.last_message_at&&fmtHora(conversa.last_message_at)}: <span className="font-normal">{corpoVisivel(conversa.last_message_preview)||'mídia'}</span></p>

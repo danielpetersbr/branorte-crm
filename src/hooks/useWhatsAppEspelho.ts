@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { contasDoEspelho, finalDoNumero, mapaEtiquetas, type ContaWhatsApp, type LinhaEspelho } from '@/lib/whatsapp-espelho'
+import { useMemo } from 'react'
+import { caminhoDocPrivado, contasDoEspelho, finalDoNumero, mapaEtiquetas, type ContaWhatsApp, type LinhaEspelho } from '@/lib/whatsapp-espelho'
 import { useAuth } from './useAuth'
 
 /**
@@ -51,6 +52,24 @@ export async function buscarMudancasEspelho(vendedor: string, desdeMsg: string |
   // 500 = algo grande mudou (ex.: limpeza em massa de etiquetas) — melhor reler tudo
   if ((linhas.data ?? []).length >= 500) return null
   return { linhas: (linhas.data ?? []) as LinhaEspelho[], idParaNome: mapaEtiquetas(catalogo.data ?? []) }
+}
+
+/** Links assinados (5 min) dos documentos privados que aparecem na conversa aberta. */
+export function useDocumentosEspelho(urls: (string | null)[]) {
+  const userId = useAuth().session?.user.id
+  const caminhos = useMemo(() => [...new Set(urls.map(caminhoDocPrivado).filter((c): c is string => !!c))].sort(), [urls])
+  return useQuery<Record<string, string>>({
+    queryKey: ['whatsapp-espelho-docs', userId, caminhos],
+    enabled: !!userId && caminhos.length > 0,
+    staleTime: 120_000,
+    refetchInterval: 240_000,
+    retry: 1,
+    queryFn: async () => {
+      const { data, error } = await supabase.storage.from('wa-documentos').createSignedUrls(caminhos, 300)
+      if (error) throw error
+      return Object.fromEntries((data ?? []).filter(d => d.path && !d.error && d.signedUrl).map(d => [d.path!, d.signedUrl]))
+    },
+  })
 }
 
 /**

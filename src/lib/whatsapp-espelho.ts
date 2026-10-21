@@ -201,3 +201,14 @@ export function aplicarDeltaKanban(kanban: WaKanban, linhas: LinhaEspelho[], idP
   const ultimaSync = linhas.reduce<string | null>((max, l) => (l.updated_at && (!max || l.updated_at > max) ? l.updated_at : max), kanban.ultimaSync)
   return { colunas, semEtiqueta, totalChats: kanban.totalChats + novos, ultimaSync }
 }
+
+/**
+ * Documento (PDF de orçamento etc.) das conversas do funil dos vendedores: bucket PRIVADO wa-documentos
+ * (edge wa-sync-messages v20). Só o admin abre, por link assinado. Caminho = VENDEDOR/<id seguro>.<ext>.
+ */
+export const DOC_PRIVADO_PREFIXO = 'https://flwbeevtvjiouxdjmziv.supabase.co/storage/v1/object/authenticated/wa-documentos/'
+export function caminhoDocPrivado(url: string | null | undefined): string | null {
+  if (!url?.startsWith(DOC_PRIVADO_PREFIXO)) return null
+  const caminho = url.slice(DOC_PRIVADO_PREFIXO.length)
+  return /^[A-Z][A-Z ]{0,40}\/[A-Za-z0-9_-]{1,180}\.[a-z0-9]{2,5}$/.test(caminho) ? caminho : null
+}

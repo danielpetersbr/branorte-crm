@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { achatarConversas, aplicarDeltaKanban, contasDoEspelho, mapaEtiquetas, etiquetasDaLista, filtrarConversas, finalDoNumero, historicoAtrasado, nomeEtiqueta, rotuloConta } from './whatsapp-espelho'
+import { achatarConversas, aplicarDeltaKanban, caminhoDocPrivado, DOC_PRIVADO_PREFIXO, contasDoEspelho, mapaEtiquetas, etiquetasDaLista, filtrarConversas, finalDoNumero, historicoAtrasado, nomeEtiqueta, rotuloConta } from './whatsapp-espelho'
 import type { WaChat, WaKanban } from '../hooks/useWaKanban'
 
 const chat = (over: Partial<WaChat>): WaChat => ({
@@ -118,4 +118,13 @@ test('remendo da lista: conversa muda de etiqueta, conversa nova entra, o resto 
   assert.deepEqual(lista[0].etiquetas, []) // marcador "SEM ETIQUETA" cai em sem etiqueta
   assert.equal(kanban.colunas[0].chats.length, 2) // não mexe no objeto antigo do cache
   assert.equal(aplicarDeltaKanban(kanban, [], mapa), kanban)
+})
+
+test('documento privado: só aceita o caminho que a edge grava', () => {
+  assert.equal(caminhoDocPrivado(DOC_PRIVADO_PREFIXO + 'GUSTAVO/3EB0F4AB_12.pdf'), 'GUSTAVO/3EB0F4AB_12.pdf')
+  assert.equal(caminhoDocPrivado(DOC_PRIVADO_PREFIXO + 'EDILSON JR/ABC.docx'), 'EDILSON JR/ABC.docx')
+  assert.equal(caminhoDocPrivado(DOC_PRIVADO_PREFIXO + '../outro-bucket/x.pdf'), null)
+  assert.equal(caminhoDocPrivado('https://flwbeevtvjiouxdjmziv.supabase.co/storage/v1/object/public/wa-midias/GUSTAVO/x.jpg'), null)
+  assert.equal(caminhoDocPrivado('unavailable'), null)
+  assert.equal(caminhoDocPrivado(null), null)
 })
