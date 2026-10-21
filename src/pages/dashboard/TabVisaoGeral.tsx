@@ -15,7 +15,7 @@ import { Metric } from './ui/Metric'
 import { brl, n, pct, primeiroNome } from './ui/format'
 import { MetaDoMes } from './blocks/MetaDoMes'
 import { OperacaoAgora } from './blocks/OperacaoAgora'
-import { FunilResumo } from './blocks/FunilResumo'
+import { FinalizadosPorMotivo } from './blocks/FinalizadosPorMotivo'
 import { Tendencia } from './blocks/Tendencia'
 import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
 import { TopEquipe } from './blocks/TopEquipe'
@@ -220,7 +220,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
             : undefined}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Qualificado pela IA OU com etiqueta que só existe depois de conversa com o vendedor: LEAD QUENTE, FOLLOW UP, AGENDAMENTO, ORÇAMENTO ou VENDIDO. NOVO LEAD, PROSPECÇÃO, 2ª TENTATIVA e INTERESSE FUTURO não contam: são etapa da cadência, não qualificação. A etapa Qualificou do funil abaixo conta só a IA; a diferença entre os dois é o 'pela etiqueta'."
+          ajuda="Lead do período que a ANA PASSOU PRO VENDEDOR (ela só passa quem respondeu e quer algo que a Branorte fabrica; repasse de dúvida técnica não conta), ou que já qualificava pelo critério antigo do robô, ou com etiqueta que só existe depois de conversa com o vendedor: LEAD QUENTE, FOLLOW UP, AGENDAMENTO, ORÇAMENTO ou VENDIDO. NOVO LEAD, PROSPECÇÃO, 2ª TENTATIVA e INTERESSE FUTURO não contam. 'Pela etiqueta' = os que só entram pela etiqueta."
         />
         <Metric
           label="Clientes com proposta"
@@ -300,15 +300,9 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
 
       {/* ── 3. Onde trava? ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        <div className={`xl:col-span-5 ${esmaece(funilPendente)}`} aria-busy={funilPendente}>
-          {funilPendente ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando funil do período" /> : orcamentosReais === undefined || vendas === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O funil está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <FunilResumo
-            funil={data.funil}
-            clientesComProposta={propostasClientes}
-            vendasComOrigem={vendasComOrigem}
-            vendasTotal={vendasQtd}
-            periodoLabel={periodoLabel}
-            onVerDetalhes={() => ir('funil')}
-          />}
+        {/* (21/10/2026, Daniel) Atendimentos finalizados por motivo no lugar do funil do período, que foi pro topo da aba Funil */}
+        <div className="xl:col-span-5">
+          <FinalizadosPorMotivo />
         </div>
         <div className="xl:col-span-7">
           <Tendencia
