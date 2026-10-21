@@ -95,8 +95,9 @@ interface NavGroup {
   id: string
   label: string
   icon: typeof LayoutDashboard
-  section: 'comercial' | 'operacao' | 'gestao'
+  section: 'comercial' | 'operacao' | 'gestao' | 'marketing'
   items: NavItem[]
+  direto?: boolean   // grupo de UMA tela: vira link direto, sem abrir/fechar
 }
 
 const NAV_SECTIONS = [
@@ -259,6 +260,64 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
+// ============================================================================
+// Papel MARKETING (21/10/2026, pedido do Daniel): UM bloco só, nesta ordem, no
+// lugar das três seções. Menu FIXO do papel (como MENUS_RESTRITOS): não passa por
+// permKey, então ligar/desligar algo em /admin/permissoes não muda este menu.
+// ⚠️ Casar com rotaMarketingPermitida (src/lib/marketing-acesso.ts), que é o guard
+// de URL — o teste marketing-acesso.test.ts confere que todo item aqui abre.
+// ============================================================================
+const MARKETING_SECTIONS = [{ id: 'marketing', label: 'Marketing' }] as const
+
+const MARKETING_GROUPS: NavGroup[] = [
+  {
+    id: 'mkt-visao-geral', label: 'Visão geral', icon: LayoutDashboard, section: 'marketing',
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/funil', label: 'Funil de Vendas', icon: GitBranch },
+      { to: '/controle', label: 'Painel de Vendas', icon: LayoutDashboard, end: true },
+      { to: '/controle/rastreio', label: 'Rastreio de Origem', icon: Route },
+      { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2 },
+    ],
+  },
+  {
+    id: 'mkt-atendimento', label: 'Atendimento', icon: MessageSquare, section: 'marketing',
+    items: [
+      { to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos' },
+    ],
+  },
+  {
+    id: 'mkt-vendas', label: 'Vendas e pedidos', icon: ShoppingBag, section: 'marketing',
+    items: [
+      { to: '/controle/pedidos', label: 'Pedidos de Venda', icon: FileText },
+      { to: '/vendidos', label: 'Vendidos', icon: CheckCircle },
+    ],
+  },
+  {
+    id: 'mkt-anuncios', label: 'Análise Meta e Google', icon: Megaphone, section: 'marketing', direto: true,
+    items: [{ to: '/anuncios', label: 'Análise Meta e Google', icon: Megaphone }],
+  },
+  {
+    id: 'mkt-campanhas', label: 'Análise de campanhas', icon: TrendingUp, section: 'marketing', direto: true,
+    items: [{ to: '/campanhas', label: 'Análise de campanhas', icon: TrendingUp }],
+  },
+  {
+    id: 'mkt-guias', label: 'Catálogo e guias', icon: BookOpen, section: 'marketing',
+    items: [
+      { to: '/guia?modo=atendimento', label: 'Atendimento rápido', icon: Headphones },
+      { to: '/guia?modo=animais', label: 'Guia de Animais', icon: Beef },
+      { to: '/guia?modo=materias', label: 'Matérias-primas', icon: Wheat },
+    ],
+  },
+  {
+    id: 'mkt-mapa', label: 'Mapa', icon: MapPin, section: 'marketing',
+    items: [
+      { to: '/mapa-visitas', label: 'Mapa de clientes', icon: MapPin },
+      { to: '/mapa-visual', label: 'Mapa visual', icon: ScanEye },
+    ],
+  },
+]
+
 // Bottom nav mobile — destinos mais usados no dia-a-dia. Itens com permKey só
 // aparecem pra quem tem a permissão (ver filtro `mobileNav`).
 const MOBILE_NAV: NavItem[] = [
@@ -408,8 +467,11 @@ export function Layout() {
     && (!item.catalogo3d || podeVerCatalogo3d(profile))
     && (!item.permKey || can(item.permKey))
     && (!item.roles || (!!profile?.role && item.roles.includes(profile.role)))
+  // Marketing tem menu próprio, num bloco só (ver MARKETING_GROUPS).
+  const ehMarketing = profile?.role === 'marketing'
+  const sections: ReadonlyArray<{ id: string; label: string }> = ehMarketing ? MARKETING_SECTIONS : NAV_SECTIONS
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
-  const groups = NAV_GROUPS
+  const groups = (ehMarketing ? MARKETING_GROUPS : NAV_GROUPS)
     .map(g => ({ ...g, items: g.items.filter(item => !item.hidden && visible(item)) }))
     .filter(g => g.items.length > 0)
 
@@ -431,6 +493,8 @@ export function Layout() {
     ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
     : profile?.role === 'vendor'
     ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/whatsapp' || l.to === '/orcamentos/montar')
+    : ehMarketing
+    ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos' || l.to === '/vendidos')
     : MOBILE_NAV
   // Respeita permKey: item só entra na barra se o usuário tiver a permissão.
   const mobileNav = mobileBase.filter(visible)
@@ -466,8 +530,32 @@ export function Layout() {
     )
   }
 
+  // Grupo de uma tela só (direto): link no nível do grupo, sem abrir/fechar.
+  const renderDireto = (g: NavGroup, mobile = false) => {
+    const it = g.items[0]
+    const isActive = isItemActive(it)
+    return (
+      <NavLink
+        key={g.id}
+        to={it.to}
+        end={it.end}
+        onClick={mobile ? () => setMobileMenuOpen(false) : undefined}
+        aria-current={isActive ? 'page' : false}
+        className={cn(
+          'mb-0.5 w-full group flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-semibold transition-all duration-150',
+          mobile && 'min-h-11 py-3',
+          isActive ? 'text-accent bg-accent-bg/50' : 'text-ink hover:bg-surface-2',
+        )}
+      >
+        <g.icon className={cn('h-[15px] w-[15px] shrink-0', isActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted')} />
+        <span className="flex-1 text-left truncate">{g.label}</span>
+      </NavLink>
+    )
+  }
+
   // Grupo colapsavel (modo expandido)
   const renderGroup = (g: NavGroup, mobile = false) => {
+    if (g.direto && g.items.length === 1) return renderDireto(g, mobile)
     const groupActive = g.items.some(isItemActive)
     const open = openGroups[g.id] ?? false
     const headerCount = g.items.reduce(
@@ -507,6 +595,23 @@ export function Layout() {
   // Modo colapsado (w-14): icone de cada grupo. Clicar expande a sidebar e abre o grupo.
   const renderGroupCollapsed = (g: NavGroup) => {
     const groupActive = g.items.some(isItemActive)
+    if (g.direto && g.items.length === 1) {
+      return (
+        <NavLink
+          key={g.id}
+          to={g.items[0].to}
+          aria-label={g.label}
+          onMouseEnter={e => mostrarTip(g.label, e.currentTarget)}
+          onMouseLeave={() => setTip(null)}
+          className={cn(
+            'h-9 w-9 flex items-center justify-center rounded-md transition-colors',
+            groupActive ? 'bg-accent-bg text-accent' : 'text-ink-faint hover:text-ink hover:bg-surface-2',
+          )}
+        >
+          <g.icon className="h-[16px] w-[16px]" />
+        </NavLink>
+      )
+    }
     return (
       <button
         key={g.id}
@@ -723,7 +828,7 @@ export function Layout() {
         )}
 
         <nav aria-label="Menu principal" className={cn('flex-1 min-h-0 overflow-y-auto flex flex-col', collapsed ? 'p-2 items-center gap-0.5' : 'p-3 gap-4')}>
-          {NAV_SECTIONS.map(section => {
+          {sections.map(section => {
             const sectionGroups = groups.filter(g => g.section === section.id)
             if (sectionGroups.length === 0) return null
             return (
@@ -815,7 +920,7 @@ export function Layout() {
               </button>
             </header>
             <nav aria-label="Menu completo" className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-4">
-              {NAV_SECTIONS.map(section => {
+              {sections.map(section => {
                 const sectionGroups = groups.filter(g => g.section === section.id)
                 if (!sectionGroups.length) return null
                 return (

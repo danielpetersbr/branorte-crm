@@ -58,7 +58,7 @@ function layout(role = 'admin', allowed: (key: string) => boolean = () => true) 
   const viewport = { matches: false, addEventListener(_name: string, fn: () => void) { resize = fn }, removeEventListener() { resize = undefined } }
   let cursor = 0
   const NavLink = () => null, ModalDialog = () => null
-  const { Layout } = load('./Layout.tsx', ['MENUS_RESTRITOS', 'NAV_SECTIONS', 'NAV_GROUPS', 'MOBILE_NAV', 'fmtCount', 'Layout'], {
+  const { Layout } = load('./Layout.tsx', ['MENUS_RESTRITOS', 'NAV_SECTIONS', 'NAV_GROUPS', 'MARKETING_SECTIONS', 'MARKETING_GROUPS', 'MOBILE_NAV', 'fmtCount', 'Layout'], {
     NavLink, ModalDialog, Outlet: () => null, Suspense: () => null, ErrorBoundary: () => null,
     RoadmapFAB: () => null, GenerationOverlay: () => null, LembretesNotifier: () => null, PageLoading: () => null,
     isNavigationItemActive, useLocation: () => ({ pathname: '/', search: '' }),
@@ -113,6 +113,20 @@ test('Mais respeita permissão negada, adminOnly e roles sem esconder destinos p
   const destinosMarketing = elements(marketing.open(), el => el.type === marketing.NavLink).map(link => link.props.to)
   assert.ok(destinosMarketing.includes('/mapa-visitas'))
   assert.ok(!destinosMarketing.includes('/whatsapp'), 'roles permanece restrito mesmo com can=true')
+})
+
+test('marketing vê um bloco só, com os 7 grupos pedidos e nada de fora', () => {
+  const f = layout('marketing')
+  const dialog = f.open()
+  const titulos = elements(dialog, el => el.type === 'h3').map(el => label(el.props.children))
+  assert.deepEqual(titulos, ['Marketing'])
+  const grupos = elements(dialog, el => (el.type === 'button' && el.props['aria-expanded'] !== undefined) || (el.type === f.NavLink && String(el.props.className).includes('font-semibold')))
+    .map(el => label(el.props.children))
+  assert.deepEqual(grupos, ['Visão geral', 'Atendimento', 'Vendas e pedidos', 'Análise Meta e Google', 'Análise de campanhas', 'Catálogo e guias', 'Mapa'])
+  const destinos = elements(dialog, el => el.type === f.NavLink).map(link => link.props.to)
+  for (const fora of ['/orcamentos/montar', '/frete', '/disparos', '/agenda', '/controle/financeiro', '/producao-propria']) {
+    assert.ok(!destinos.includes(fora), `fora do bloco do marketing: ${fora}`)
+  }
 })
 
 test('contas externas mantêm seu menu restrito sem montar Mais do CRM', () => {

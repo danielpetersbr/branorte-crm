@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useCan,useProducaoEspelhoPermissions,useCatalogoPermissions } from '@/hooks/usePermissions'
 import { rotaCatalogo } from '@/lib/catalogo-acesso'
 import { rotaPedidosVendedorPermitida } from '@/lib/novo-pedido-acesso'
+import { rotaMarketingPermitida } from '@/lib/marketing-acesso'
 import {decidirRotaProducaoFabrica} from '@/lib/producao-espelho-permissoes'
 import { useTrilhaAcesso } from '@/hooks/useAcesso'
 import { AcessoBloqueado } from '@/components/AcessoBloqueado'
@@ -508,6 +509,13 @@ function AppRoutes() {
     const whatsappOk = p === '/whatsapp' && can('menu.whatsapp')
     const allowed = (rotaCatalogo(p) && catalogo.permitido) || fabricaPermitida || whatsappOk || vendidosOk || freteLiberado || aprovarOk || projeto3dOk || viabilidadeOk || producaoPropriaOk || roadmapOk || contatosOk || financeiroOk || pedidosOk || iaTesteOk || ligacoesOk || areaVendedorOk || funilOk || VENDOR_PREFIXES.some(pre => p === pre || p.startsWith(pre + '/'))
     if (!allowed) return <Navigate to="/atendimentos" replace />
+  }
+
+  // Marketing (21/10/2026, pedido do Daniel): só o bloco "Marketing" do menu
+  // (MARKETING_GROUPS no Layout.tsx). Qualquer outra rota por link volta pro
+  // Dashboard. A lista mora em src/lib/marketing-acesso.ts.
+  if (profile.role === 'marketing' && !rotaMarketingPermitida(loc.pathname) && !fabricaPermitida) {
+    return <Navigate to="/" replace />
   }
 
   // PAPÉIS DE ACESSO RESTRITO: contas externas liberadas por LISTA BRANCA —
