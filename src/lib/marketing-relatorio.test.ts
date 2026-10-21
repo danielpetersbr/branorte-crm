@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   intervaloMkt, lerFonte, montarRelatorio, seloProposta,
-  type FonteMkt, type GastoLinhaMkt, type VendaMkt, type VendedorMkt,
+  type FonteMkt, type GastoLinhaMkt, type PlataformaMkt, type VendaMkt, type VendedorMkt,
 } from './marketing-relatorio'
 
 const fonte = (p: Partial<FonteMkt>): FonteMkt => ({
@@ -89,4 +89,18 @@ test('vendas: carteira separada da internet e vendedor sem espelho vira tarefa',
   assert.ok(rel.tarefasVendas.some(t => t.startsWith('Jardel') && t.includes('espelho')))
   assert.ok(rel.tarefasVendas.some(t => t.startsWith('Pedro') && t.includes('5,2 h')))
   assert.ok(rel.tarefasVendas.some(t => t.includes('12 de 69 pedidos')))
+})
+
+test('verba do Google: vai para o canal Google Ads; sem esse canal no período (antes de 21/10), fica no Site', () => {
+  const google: PlataformaMkt = { tipo: 'plataforma', plataforma: 'Google', campanha: null, status: null, orcamentoDia: null,
+    gasto: 1200, impressoes: 0, cliques: 0, resultado: 0, diasComGasto: null, carregadoAte: '2026-10-21', resultadoTipo: 'conversões' }
+  const site = fonte({ chave: 'Site', comProposta: 8 })
+  const antes = montarRelatorio([...fontes, site], [], gastos, [], { plataformas: [google] })
+  assert.equal(antes.custoCanal['Site'], 150)
+  const ads = fonte({ chave: 'Google Ads', comProposta: 3 })
+  const busca = fonte({ chave: 'Google (busca)', comProposta: 4 })
+  const depois = montarRelatorio([...fontes, site, ads, busca], [], gastos, [], { plataformas: [google] })
+  assert.equal(depois.custoCanal['Google Ads'], 400)
+  assert.equal(depois.custoCanal['Site'], undefined)
+  assert.equal(depois.custoCanal['Google (busca)'], undefined)
 })

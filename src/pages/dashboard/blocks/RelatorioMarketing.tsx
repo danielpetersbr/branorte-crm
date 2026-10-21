@@ -161,7 +161,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
                 <th scope="col" className={`${th} text-right`}>Contatos</th>
                 <th scope="col" className={`${th} text-right`}>Orçamentos a cada 100 contatos</th>
                 <th scope="col" className={`${th} text-right`} title="Soma do último orçamento de cada contato">R$ em orçamentos</th>
-                <th scope="col" className={`${th} text-right`} title="Verba da plataforma no período ÷ orçamentos do canal. Site usa a verba do Google (o site também recebe visita orgânica).">Custo por orçamento</th>
+                <th scope="col" className={`${th} text-right`} title="Verba da plataforma no período ÷ orçamentos do canal. A verba do Google vai para o canal Google Ads (antes de 21/10/2026, quando o site ainda não separava, ia para o Site).">Custo por orçamento</th>
               </tr>
             </thead>
             <tbody>
@@ -193,7 +193,9 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
           </table>
         </div>
         <p className="mt-3 text-micro text-ink-faint">
-          “Site (Google e orgânico)” = chegou pelo botão do site (“vim pelo site da Branorte”); o custo usa a verba do Google Ads.
+          Botão de WhatsApp do site (desde 21/10/2026 ele diz de onde veio a visita): “Google Ads” = veio de anúncio do Google
+          (o custo usa a verba do Google Ads); “Google (busca)” = achou na busca do Google; “Site” = digitou o endereço ou chegou
+          sem pista (antes de 21/10 todo o site ficava aqui, com a verba do Google). YouTube, ChatGPT/IA, E-mail etc. = de onde ele veio pro site.
           “WhatsApp direto” = escreveu direto no WhatsApp da casa, sem anúncio. “Não identificado” = chegou sem origem.
           “Sem telefone” = Messenger e Instagram Direct quase não deixam telefone, então o orçamento não se liga ao canal.
           R$ em orçamentos é o valor orçado, não vendido.
@@ -759,7 +761,7 @@ function VerbaPlataformas({ rel }: { rel: RelatorioMkt }) {
       <p className="mt-3 text-micro text-ink-faint">
         O “resultado” segue o objetivo de cada campanha, como no Gerenciador: mensagem = conversa iniciada; tráfego = clique no link; cadastro = cadastro ou evento do pixel da página.
         Não é igual a contato no CRM. No Google é a conversão configurada na conta
-        (hoje, visualização de página — não mede quem chamou no WhatsApp). O que vira contato e orçamento está na seção 1 (canal Site e Meta) e na seção 3 (por anúncio do Meta).
+        (hoje, visualização de página — não mede quem chamou no WhatsApp). O que vira contato e orçamento está na seção 1 (canais Google Ads, Google (busca), Site e Meta) e na seção 3 (por anúncio do Meta).
       </p>
     </Card>
   )
