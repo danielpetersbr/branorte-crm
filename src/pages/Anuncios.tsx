@@ -73,12 +73,14 @@ interface Funil {
   diretos: number
   semResposta: number
   respMedH: number | null
+  /** o cliente respondeu ao vendedor ou deu informação de compra no WhatsApp dele (todo canal) */
+  conversou: number
 }
-const FUNIL0: Funil = { contatos: 0, qualificados: 0, orcamentos: 0, rsOrcado: 0, vendas: 0, rsVendido: 0, soAna: 0, voltaram: 0, diretos: 0, semResposta: 0, respMedH: null }
+const FUNIL0: Funil = { contatos: 0, qualificados: 0, orcamentos: 0, rsOrcado: 0, vendas: 0, rsVendido: 0, soAna: 0, voltaram: 0, diretos: 0, semResposta: 0, respMedH: null, conversou: 0 }
 const lerFunil = (r: Record<string, unknown> | undefined): Funil => ({
   contatos: num(r?.contatos), qualificados: num(r?.qualificados), orcamentos: num(r?.orcamentos),
   rsOrcado: num(r?.rs_orcado), vendas: num(r?.vendas), rsVendido: num(r?.rs_vendido), soAna: num(r?.so_ana), voltaram: num(r?.voltaram),
-  diretos: num(r?.diretos), semResposta: num(r?.sem_resposta), respMedH: numN(r?.resp_mediana_h),
+  diretos: num(r?.diretos), semResposta: num(r?.sem_resposta), respMedH: numN(r?.resp_mediana_h), conversou: num(r?.conversou),
 })
 const somarFunil = (fs: Funil[]): Funil => fs.reduce((s, f) => ({
   contatos: s.contatos + f.contatos, qualificados: s.qualificados + f.qualificados, orcamentos: s.orcamentos + f.orcamentos,
@@ -86,7 +88,7 @@ const somarFunil = (fs: Funil[]): Funil => fs.reduce((s, f) => ({
   soAna: s.soAna + f.soAna, voltaram: s.voltaram + f.voltaram,
   diretos: s.diretos + f.diretos, semResposta: s.semResposta + f.semResposta,
   // mediana não soma: fica a primeira que existir (na árvore só a LP tem)
-  respMedH: s.respMedH ?? f.respMedH,
+  respMedH: s.respMedH ?? f.respMedH, conversou: s.conversou + f.conversou,
 }), { ...FUNIL0 })
 
 /** Campanha que não é de venda (vaga de emprego): fica na árvore, mas fora dos números de venda do topo. */
@@ -256,6 +258,7 @@ function ColunasCrm({ f, gasto }: { f: Funil; gasto: number }) {
     <>
       <td className={`${td} border-l`}>{f.contatos ? n(f.contatos) : '—'}</td>
       <td className={td}>{f.contatos ? <>{n(f.qualificados)} <span className="text-micro text-ink-faint">{pct(pq, 0)}</span></> : '—'}</td>
+      <td className={td} title="O cliente respondeu ao vendedor ou deu informação de compra no WhatsApp dele">{f.contatos ? <>{n(f.conversou)} <span className="text-micro text-ink-faint">{pct(div(100 * f.conversou, f.contatos), 0)}</span></> : '—'}</td>
       <td className={td}>{f.orcamentos ? <>{n(f.orcamentos)} <span className="text-micro text-ink-faint">{brl(f.rsOrcado)}</span></> : (f.contatos ? '0' : '—')}</td>
       <td className={td}>{f.orcamentos && gasto > 0 ? cent(div(gasto, f.orcamentos)) : '—'}</td>
       <td className={td}>{f.vendas ? <span className="font-semibold text-success">{n(f.vendas)} · {brl(f.rsVendido)}</span> : (f.contatos ? '0' : '—')}</td>
@@ -352,6 +355,7 @@ export function Anuncios() {
                 <Kpi rotulo="Cliques" valor={n(d.meta.cliques)} apoio={`CTR ${pct(div(100 * d.meta.cliques, d.meta.impressoes), 1)} · CPC ${cent(div(d.meta.gasto, d.meta.cliques))}`} />
                 <Kpi rotulo="Contatos" valor={n(d.meta.crm.contatos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.contatos))} por contato · ${n(d.meta.crm.soAna)} ficaram só com a Ana`} />
                 <Kpi rotulo="Qualificados" valor={`${n(d.meta.crm.qualificados)} · ${pct(div(100 * d.meta.crm.qualificados, d.meta.crm.contatos), 0)}`} apoio={`${cent(div(d.meta.gasto, d.meta.crm.qualificados))} por qualificado`} />
+                <Kpi rotulo="Falaram com o vendedor" valor={`${n(d.meta.crm.conversou)} · ${pct(div(100 * d.meta.crm.conversou, d.meta.crm.contatos), 0)}`} apoio="responderam ou deram informação no WhatsApp do vendedor" />
                 <Kpi rotulo="Viraram orçamento" valor={n(d.meta.crm.orcamentos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.orcamentos))} por orçamento · ${brl(d.meta.crm.rsOrcado)} orçados`} />
                 <Kpi rotulo="Vendas" valor={n(d.meta.crm.vendas)} apoio={d.meta.crm.vendas ? `${brl(d.meta.crm.rsVendido)} vendidos` : 'destes contatos, até agora'} />
               </div>
@@ -418,14 +422,14 @@ export function Anuncios() {
             />
             {arvore.length === 0 ? <p className="text-body text-ink-faint">Nenhum gasto no Meta no período.</p> : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1380px] border-separate border-spacing-0">
+                <table className="w-full min-w-[1460px] border-separate border-spacing-0">
                   <thead>
                     <tr>
                       <th colSpan={9} />
-                      <th colSpan={6} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
+                      <th colSpan={7} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
                     </tr>
                     <tr>
-                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos', 'Qualificados', 'Orçamentos', 'Custo/orçamento', 'Vendas', 'Voltaram'].map((h, i) => (
+                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos', 'Qualificados', 'Falou c/ vendedor', 'Orçamentos', 'Custo/orçamento', 'Vendas', 'Voltaram'].map((h, i) => (
                         <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'} ${i === 9 ? 'border-l border-border' : ''}`}>{h}</th>
                       ))}
                     </tr>
@@ -498,7 +502,8 @@ export function Anuncios() {
               Qualificado = a Ana passou ao vendedor, ou o vendedor marcou avanço (lead quente, follow-up, agendamento, orçamento), ou virou orçamento — e não foi marcado “não fabricamos”/“outro assunto”.
               Vendas = pedidos nascidos dos orçamentos desses contatos (venda costuma demorar: períodos curtos quase sempre mostram 0).
               Contatos incluem quem conversou com a Ana por anúncio e nunca foi passado ao vendedor ({n(d.meta.crm.soAna)} no período) — sem eles o “% qualificados” ficava inflado.
-              Landing page e site vão direto ao vendedor (sem a Ana): para eles, qualificado é lido na conversa do WhatsApp do vendedor — o cliente deu informação de compra (espécie, rebanho, kg, energia, preço, pagamento, frete, cidade…) ou respondeu 2+ vezes ao vendedor; a mensagem pronta da página não conta.
+              Landing page e site vão direto ao vendedor (sem a Ana): para eles, qualificado é lido na conversa do WhatsApp do vendedor — o cliente deu informação de compra (espécie, rebanho, kg, energia, preço, pagamento, frete, cidade…) ou respondeu 2+ vezes ao vendedor; a mensagem pronta da página não conta. No Meta também vale quem conversou assim com o vendedor, mesmo sem etiqueta.
+              “Falou c/ vendedor” = o cliente respondeu ao vendedor ou deu informação de compra no WhatsApp dele (a conversa com a Ana não conta).
               “Voltaram” = clientes que já estavam no CRM e chamaram de novo pelo anúncio. Contatos de landing page entram na campanha de cadastro pela origem do CRM.
               Situação e orçamento/dia vêm do Gerenciador na última carga.
             </p>
