@@ -42,7 +42,7 @@ function overview(primary: Record<string, unknown>, secondary: Record<string, un
       return result
     } }
   }
-  imports['@/hooks/useDashboardOrcamentos'] = { useDashboardOrcamentos: hook, useDashboardVendas: hook }
+  imports['@/hooks/useDashboardOrcamentos'] = { useDashboardOrcamentos: hook, useDashboardVendas: hook, useDashboardVendasCoorte: hook }
   for (const name of ['MetaDoMes', 'OperacaoAgora', 'FunilResumo', 'FinalizadosPorMotivo', 'Tendencia', 'AcoesPrioritarias', 'TopEquipe', 'DrillModal']) {
     imports[`./blocks/${name}`] = { [name]: () => React.createElement('p', {}, name) }
   }
@@ -71,7 +71,8 @@ test('snapshot disponível libera os complementos e informa espera sem apresenta
   const result = overview({ data, isLoading: false }, { isPending: true })
   // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente;
   // entrou o contexto do tile Leads (clientes antigos que voltaram e os que ainda estão com a Ana)
-  assert.equal(result.requests, 7)
+  // + vendas dos leads do período no tile Vendas (21/10/2026)
+  assert.equal(result.requests, 8)
   assert.match(result.html, /Leads: 39/)
   assert.match(result.html, /Vendas: Carregando/)
   assert.doesNotMatch(result.html, /Vendas: 0/)
@@ -111,7 +112,8 @@ test('atualização em segundo plano preserva os dados e os complementos já dis
   const result = overview({ data, isLoading: false, isFetching: true }, { data: { qtd: 2, valor: 67000 }, isPending: false })
   // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente;
   // entrou o contexto do tile Leads (clientes antigos que voltaram e os que ainda estão com a Ana)
-  assert.equal(result.requests, 7)
+  // + vendas dos leads do período no tile Vendas (21/10/2026)
+  assert.equal(result.requests, 8)
   assert.match(result.html, /Leads: 39/)
   assert.match(result.html, /Vendas: 2/)
   assert.doesNotMatch(result.html, /Carregando/)

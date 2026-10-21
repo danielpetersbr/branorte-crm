@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDashboard, type DashboardData } from '@/hooks/useDashboard'
 import { useDashboardExtra } from '@/hooks/useDashboardExtra'
-import { useDashboardOrcamentos, useDashboardVendas } from '@/hooks/useDashboardOrcamentos'
+import { useDashboardOrcamentos, useDashboardVendas, useDashboardVendasCoorte } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
 import { useVendasReais } from '@/hooks/useVendasReais'
@@ -83,6 +83,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   const { data: orcamentosReais, isPending: orcamentosReaisPendente } = useDashboardOrcamentos(preset)
   const { data: orc, isPending: orcPendente, isPlaceholderData: orcVelho } = useOrcamentosResumo(preset)
   const { data: vendas, isPending: vendasPendente } = useDashboardVendas(preset)
+  const { data: vendasCoorte } = useDashboardVendasCoorte(preset)
   const { data: vendasReais, isPending: vendasReaisPendente } = useVendasReais()
   const { data: leadsCtx } = useLeadsContexto(preset)
   // (21/10/2026) etiquetas, funil por vendedor, status das propostas e cobertura eram só das Decisões do gerente,
@@ -201,10 +202,13 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           denso
           label="Vendas"
           valor={vendasPendente ? 'Carregando…' : vendas === undefined ? 'Indisponível' : n(vendasQtd)}
-          secundario={vendas === undefined ? undefined : `${n(vendasComOrigem)} com origem comprovada`}
+          // (21/10/2026, Daniel) primeiro quantas vieram dos leads que CHEGARAM no período: cliente do mês passado que fecha agora
+          // conta na venda do mês, mas não é do lead do mês
+          secundario={vendas === undefined ? undefined
+            : `${vendasCoorte ? `${n(vendasCoorte.qtd)} de leads do período · ` : ''}${n(vendasComOrigem)} com origem comprovada`}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Pedidos não-cancelados com data de venda no período. 'Origem comprovada' é o subconjunto que dá para rastrear até um lead — é piso de rastreio, não fatia de mercado. Lê a cópia do Controle, que atualiza de hora em hora (aos :37); a Meta do mês lê o Controle ao vivo, então por até 1 h um pedido novo aparece lá antes daqui."
+          ajuda="Pedidos não-cancelados com data de venda no período. 'De leads do período' = o cliente chegou como lead DENTRO do mesmo período (cliente que chegou antes e fechou agora fica de fora). 'Origem comprovada' é o subconjunto que dá para rastrear até um lead de qualquer época — é piso de rastreio, não fatia de mercado. Lê a cópia do Controle, que atualiza de hora em hora (aos :37); a Meta do mês lê o Controle ao vivo, então por até 1 h um pedido novo aparece lá antes daqui."
           onClick={() => setDrill('vendidos')}
         />
         <Metric
