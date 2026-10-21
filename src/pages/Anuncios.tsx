@@ -301,15 +301,17 @@ function FunilCanal({ nome, cor, f, gasto, nota }: { nome: string; cor: string; 
       </div>
       <div className="space-y-1">
         {etapas.map((e, i) => (
-          <div key={e.l} className="grid grid-cols-[7.5rem_1fr_auto] items-center gap-2 text-micro">
+          <div key={e.l} className="grid grid-cols-[7.5rem_1fr_11rem] items-center gap-2 text-micro">
             <span className="truncate text-ink-muted">{e.l}</span>
             <div className="h-5 overflow-hidden rounded bg-surface-2">
-              <div className="flex h-full items-center rounded px-1.5 text-[11px] font-semibold text-white tabular-nums"
-                style={{ width: `${Math.max(e.v ? 6 : 0, (100 * e.v) / max)}%`, background: cor, opacity: 1 - i * 0.13 }}>
-                {e.v > 0 ? n(e.v) : ''}
-              </div>
+              {e.v > 0 ? (
+                <div className="flex h-full items-center rounded px-1.5 text-[11px] font-semibold text-white tabular-nums"
+                  style={{ width: `${Math.max(6, (100 * e.v) / max)}%`, background: cor, opacity: 1 - i * 0.13 }}>
+                  {n(e.v)}
+                </div>
+              ) : <span className="flex h-full items-center px-1.5 text-[11px] text-ink-faint">0</span>}
             </div>
-            <span className="w-28 text-right tabular-nums text-ink-faint">{i > 0 && f.contatos ? pct(div(100 * e.v, f.contatos), 0) : ''}{e.extra ? ` · ${e.extra}` : ''}</span>
+            <span className="truncate whitespace-nowrap text-right tabular-nums text-ink-faint">{i > 0 && f.contatos ? pct(div(100 * e.v, f.contatos), 0) : ''}{e.extra ? ` · ${e.extra}` : ''}</span>
           </div>
         ))}
       </div>
@@ -320,6 +322,7 @@ function FunilCanal({ nome, cor, f, gasto, nota }: { nome: string; cor: string; 
 
 const th = 'whitespace-nowrap px-2 py-2 text-micro font-semibold text-ink-muted'
 const td = 'whitespace-nowrap border-t border-border px-2 py-1.5 text-body tabular-nums text-ink-muted text-right'
+const tdL = 'whitespace-nowrap border-t border-border px-2 py-1.5 text-body tabular-nums text-ink-muted text-left'
 
 interface Soma { gasto: number; impressoes: number; cliques: number; resultado: number }
 const somar = (ls: LinhaMeta[]): Soma => ls.reduce((s, l) => ({ gasto: s.gasto + l.gasto, impressoes: s.impressoes + l.impressoes, cliques: s.cliques + l.cliques, resultado: s.resultado + l.resultado }), { gasto: 0, impressoes: 0, cliques: 0, resultado: 0 })
@@ -506,10 +509,10 @@ export function Anuncios() {
                     <YAxis yAxisId="c" orientation="right" tick={{ fill: CHART.ink, fontSize: 11 }} width={32} allowDecimals={false} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, nome) => (String(nome).startsWith('Gasto') ? brl(Number(v)) : n(Number(v)))} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar yAxisId="r" dataKey="gastoMeta" name="Gasto Meta Ads" fill={COR_META} maxBarSize={18} radius={[2, 2, 0, 0]} />
-                    <Bar yAxisId="r" dataKey="gastoGoogle" name="Gasto Google Ads" fill={COR_GOOGLE} maxBarSize={18} radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="c" dataKey="contatosMeta" name="Contatos do Meta" stroke={CHART.s1} strokeWidth={2} dot={d.dias.length < 3} />
-                    <Line yAxisId="c" dataKey="contatosSite" name="Contatos do Site" stroke={CHART.s4} strokeWidth={2} dot={d.dias.length < 3} />
+                    <Bar yAxisId="r" dataKey="gastoMeta" name="Gasto Meta Ads" fill={COR_META} maxBarSize={18} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+                    <Bar yAxisId="r" dataKey="gastoGoogle" name="Gasto Google Ads" fill={COR_GOOGLE} maxBarSize={18} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+                    <Line yAxisId="c" dataKey="contatosMeta" name="Contatos do Meta" stroke={CHART.s1} strokeWidth={2} dot={d.dias.length < 3} isAnimationActive={false} />
+                    <Line yAxisId="c" dataKey="contatosSite" name="Contatos do Site" stroke={CHART.s4} strokeWidth={2} dot={d.dias.length < 3} isAnimationActive={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -677,9 +680,9 @@ export function Anuncios() {
                   <tbody>
                     {d.pedidosSemOrc.map(x => (
                       <tr key={String(x.pedido)}>
-                        <td className={`${td} text-left`}>{String(x.pedido)}</td>
-                        <td className={`${td} text-left`}>{String(x.numero_orcamento)}</td>
-                        <td className={`${td} text-left`}>{String(x.vendedor ?? '—')}</td>
+                        <td className={tdL}>{String(x.pedido)}</td>
+                        <td className={tdL}>{String(x.numero_orcamento)}</td>
+                        <td className={tdL}>{String(x.vendedor ?? '—')}</td>
                         <td className={td}>{dataBr(txt(x.data_venda))}</td>
                         <td className={td}>{brl(num(x.valor))}</td>
                       </tr>
@@ -691,7 +694,7 @@ export function Anuncios() {
           )}
 
           {/* Google */}
-          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
+          <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-12">
           <Card className="2xl:col-span-7">
             <CardHeader title="Google: campanha → grupo de anúncios" subtitle="Gasto, cliques e conversões da conta BRANORTE-ADS no período." />
             {!googleLigado ? (
