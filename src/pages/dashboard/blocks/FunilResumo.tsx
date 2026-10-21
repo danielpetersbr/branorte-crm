@@ -136,8 +136,9 @@ export function FunilResumo({
   }
 
   return (
-    <Card className="h-full">
+    <Card className="h-full 2xl:p-4">
       <CardHeader
+        denso
         title="Funil do período"
         subtitle={topo > 0
           ? `De ${n(topo)} que entraram, ${n(ultimaCoorte?.valor ?? 0)} qualificaram (${pct(conversaoCoorte, 0)}). No período, ${n(proposta)} clientes receberam proposta e ${n(comprou)}${deVendas} dá para ligar a um lead.`
@@ -159,16 +160,16 @@ export function FunilResumo({
       />
 
       {topo > 0 ? (
-        <ol className="flex flex-col gap-3">
+        <ol className="flex flex-col gap-3 2xl:gap-2">
           {etapas.map((e, i) => (e.coorte ? linha(e, i) : null))}
         </ol>
       ) : (
         <p className="py-3 text-center text-body text-ink-faint">Nenhum lead entrou neste período.</p>
       )}
 
-      <div className="mt-4 border-t border-border pt-3">
-        <p className="mb-3 text-micro text-ink-faint">No mesmo período, de qualquer lead (não só os que entraram acima)</p>
-        <ul className="flex flex-col gap-3">
+      <div className="mt-4 border-t border-border pt-3 2xl:mt-3 2xl:pt-2">
+        <p className="mb-3 text-micro text-ink-faint 2xl:mb-2">No mesmo período, de qualquer lead (não só os que entraram acima)</p>
+        <ul className="flex flex-col gap-3 2xl:gap-2">
           {etapas.map((e, i) => (e.coorte ? null : linha(e, i)))}
         </ul>
       </div>

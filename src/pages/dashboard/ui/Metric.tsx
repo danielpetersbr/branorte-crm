@@ -82,6 +82,7 @@ export function Metric({
   ajuda,
   onClick,
   id,
+  denso = false,
 }: {
   label: string
   /** Já formatado (brl/n/pct) — o card não decide formato. */
@@ -96,6 +97,11 @@ export function Metric({
   ajuda: string
   onClick?: () => void
   id?: string
+  /** (21/10/2026) Visão geral numa tela só: a partir de 2xl o tile encolhe (menos padding, número 22 px com o delta ao lado,
+   *  sem "ver origem" — o tile inteiro continua clicável). A reserva de 2 linhas do rótulo só cai a partir de 1800 px, onde
+   *  "Atendimentos hoje" + carimbo cabem numa linha; entre 1536 e 1800 o rótulo longo ainda quebra e a reserva segura a
+   *  linha de base dos números. Abaixo de 2xl nada muda. */
+  denso?: boolean
 }) {
   const clicavel = typeof onClick === 'function'
   const Tag = clicavel ? 'button' : 'div'
@@ -140,6 +146,7 @@ export function Metric({
         // diferente em cada card e a fileira perdia a linha de base. Agora o
         // topo é fixo (cabeçalho + número) e só o rodapé é empurrado pro fim.
         'group flex flex-col gap-3 rounded-xl border border-border bg-surface p-5 text-left',
+        denso ? '2xl:gap-1 2xl:px-4 2xl:py-3' : '',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
         clicavel ? 'cursor-pointer transition-colors hover:border-border-strong' : '',
       ].join(' ')}
@@ -153,22 +160,29 @@ export function Metric({
           segunda linha e o número desce ~25px em relação aos vizinhos —
           a fileira perde a linha de base e o olho para de varrer na
           horizontal. Alinhar custa altura; desalinhar custa a leitura. */}
-      <div className="flex min-h-[3rem] flex-wrap items-start justify-between gap-2">
+      <div className={`flex min-h-[3rem] flex-wrap items-start justify-between gap-2${denso ? ' min-[1800px]:min-h-0' : ''}`}>
         <span className="min-w-0 text-label text-ink-muted">{label}</span>
         <JanelaBadge tipo={janela} label={janelaLabel} />
       </div>
 
       <div className="min-w-0">
         {/* break-words + leading apertado: "R$ 22.218.198" não pode cortar */}
-        <div className="text-kpi text-ink tabular-nums break-words">{valor}</div>
-        <div className="mt-1.5 flex items-center gap-2 flex-wrap min-h-[18px]">
-          {delta != null && <Delta pct={delta} bom={deltaBom} />}
+        <div className={denso ? '2xl:flex 2xl:flex-wrap 2xl:items-baseline 2xl:gap-x-2' : undefined}>
+          <div className={`text-kpi text-ink tabular-nums break-words${denso ? ' 2xl:text-kpi-sm' : ''}`}>{valor}</div>
+          {/* denso: a partir de 2xl o delta sobe pra linha do número (uma linha a menos no tile). As duas cópias nunca
+              aparecem juntas: `hidden` tira a outra também do leitor de tela. */}
+          {denso && delta != null && <span className="hidden 2xl:inline-flex"><Delta pct={delta} bom={deltaBom} /></span>}
+        </div>
+        <div className={`mt-1.5 flex items-center gap-2 flex-wrap min-h-[18px]${denso ? ' 2xl:mt-1 2xl:min-h-0' : ''}`}>
+          {delta != null && (denso
+            ? <span className="inline-flex 2xl:hidden"><Delta pct={delta} bom={deltaBom} /></span>
+            : <Delta pct={delta} bom={deltaBom} />)}
           {secundario && <span className="text-micro text-ink-faint">{secundario}</span>}
         </div>
       </div>
 
       {clicavel && (
-        <span className="mt-auto inline-flex items-center gap-0.5 text-micro text-ink-faint group-hover:text-accent">
+        <span className={`mt-auto inline-flex items-center gap-0.5 text-micro text-ink-faint group-hover:text-accent${denso ? ' 2xl:hidden' : ''}`}>
           ver origem
           <ChevronRight className="h-3 w-3" aria-hidden="true" />
         </span>

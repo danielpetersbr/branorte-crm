@@ -184,7 +184,10 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   const valorComOrigem = vendas?.valorLead ?? 0
 
   return (
-    <div className="flex flex-col gap-5">
+    // (21/10/2026, Daniel: "não quero precisar rolar, quero que ao abrir a visão geral apareça tudo certinho já") A partir
+    // de 2xl a aba cabe numa tela de 1920×1080 sem rolar: espaços de 16 px, cartões com padding menor, os 6 números em
+    // tile baixo e Decisões do gerente como 4ª coluna da última faixa. Notebook e celular continuam como eram.
+    <div className="flex flex-col gap-5 2xl:gap-4">
       {/* ── 1. Bato a meta? Quem está entregando? E como está a operação agora? ──
           (21/10/2026, Daniel: "diminuir a meta, puxar pra esquerda, e onde eu circulei os atendimentos em aberto…")
           A meta fica com a coluna da esquerda; a direita é Operação agora (etiquetas, follow up, lead quente,
@@ -193,7 +196,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           O top 5 do mês (era a seção 5, no fim da aba) sobe pra cá. A partir de 2xl (1536 px) fica LADO A LADO: meta, ranking
           e Operação agora na mesma linha (3 + 3 + 6) — o `2xl:contents` desfaz a coluna da esquerda e os dois viram itens da
           grade. Entre xl e 2xl três colunas apertariam o painel: o ranking fica embaixo da meta, na mesma coluna. */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12 2xl:gap-4">
         <div className="flex flex-col gap-5 xl:col-span-5 2xl:contents">
           <div className="2xl:col-span-3"><MetaDoMes compacto /></div>
           <div className="flex-1 2xl:col-span-3">
@@ -223,6 +226,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
         className={`grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 ${esmaece(numerosPendentes)}`}
       >
         <Metric
+          denso
           label="Leads"
           valor={n(data.kpiTotal.valor)}
           // Período anterior sem lead: o hook devolve +100%, que não é uma variação de verdade.
@@ -232,6 +236,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           ajuda="Contatos que CHEGARAM no período (data do 1º contato). Um telefone conta uma vez. O /atendimentos filtra pela data da ÚLTIMA mensagem e esconde quem não tem telefone, por isso lá o número do mesmo período é outro."
         />
         <Metric
+          denso
           label="Qualificados"
           valor={funilUnionPendente ? 'Carregando…' : funilUnion === undefined ? 'Indisponível' : n(qualificados)}
           secundario={funilUnion !== undefined && baseQualificados > 0
@@ -242,6 +247,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           ajuda="Lead do período que a ANA PASSOU PRO VENDEDOR (ela só passa quem respondeu e quer algo que a Branorte fabrica; repasse de dúvida técnica não conta), ou que já qualificava pelo critério antigo do robô, ou com etiqueta que só existe depois de conversa com o vendedor: LEAD QUENTE, FOLLOW UP, AGENDAMENTO, ORÇAMENTO ou VENDIDO. NOVO LEAD, PROSPECÇÃO, 2ª TENTATIVA e INTERESSE FUTURO não contam. 'Pela etiqueta' = os que só entram pela etiqueta."
         />
         <Metric
+          denso
           label="Clientes com proposta"
           valor={orcamentosReaisPendente ? 'Carregando…' : orcamentosReais === undefined ? 'Indisponível' : n(propostasClientes)}
           secundario={!orcPendente && propostasBrutas > 0 ? `${n(propostasBrutas)} propostas emitidas` : undefined}
@@ -251,6 +257,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           onClick={() => setDrill('orcamentos')}
         />
         <Metric
+          denso
           label="Vendas"
           valor={vendasPendente ? 'Carregando…' : vendas === undefined ? 'Indisponível' : n(vendasQtd)}
           secundario={vendas === undefined ? undefined : `${n(vendasComOrigem)} com origem comprovada`}
@@ -260,6 +267,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           onClick={() => setDrill('vendidos')}
         />
         <Metric
+          denso
           label="Valor vendido"
           valor={vendasPendente ? 'Carregando…' : vendas === undefined ? 'Indisponível' : brl(valorVendido)}
           secundario={vendas === undefined ? undefined : `${brl(valorComOrigem)} com origem comprovada`}
@@ -288,6 +296,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           if (!at) {
             return (
               <Metric
+                denso
                 label="Atendimentos hoje"
                 valor={extraPendente ? 'Carregando…' : 'Indisponível'}
                 janela="fixo"
@@ -302,6 +311,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           const nomeConta = (s: string) => s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase())
           return (
             <Metric
+              denso
               label="Atendimentos hoje"
               valor={n(at.hoje)}
               delta={deltaPct}
@@ -309,7 +319,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
               janelaLabel="hoje · parcial"
               secundario={<>
                 <span className="block">
-                  {base > 0 ? `${dif > 0 ? '+' : ''}${n(dif)} vs. ontem até esta hora (${n(base)})` : 'ontem até esta hora: 0'} · ontem inteiro: {n(at.ontem)}
+                  {base > 0 ? `${dif > 0 ? '+' : ''}${n(dif)} vs. ontem até esta hora (${n(base)})` : 'ontem até esta hora: 0'} · <span className="whitespace-nowrap">ontem inteiro: {n(at.ontem)}</span>
                 </span>
                 <span className="block">{n(at.hojeComVendedor)} com vendedor · {n(at.hojeSoAna)} só com a Ana</span>
                 {at.semEspelho.length > 0 && (
@@ -322,12 +332,15 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
         })()}
       </section>
 
-      {/* ── 3. Onde trava? ──────────────────────────────────────────────
+      {/* ── 3. Onde trava? E o que faço hoje? ───────────────────────────
           (21/10/2026, Daniel: "eu quero os três, um do ladinho do outro") Funil do período, atendimentos finalizados e evolução
           diária na MESMA linha a partir de 2xl (1536 px). Entre xl e 2xl os três apertariam demais o gráfico: o funil e os
           finalizados ficam lado a lado e a evolução ocupa a linha de baixo inteira. Abaixo de xl, empilham.
+          (21/10/2026, Daniel: "não quero precisar rolar") Decisões do gerente (era a seção 4, embaixo de tudo) vira a 4ª
+          coluna desta faixa a partir de 2xl, com rolagem própria: o wrapper é `relative` e o cartão `absolute inset-0`, então
+          ele não estica a faixa — a altura é a dos outros três. Abaixo de 2xl ocupa a largura toda, como antes.
           Entrou / Engajou / Qualificou vêm de dashboard_funil_union, a mesma conta do card Qualificados. */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-4 2xl:gap-4">
         <div className={esmaece(funilBlocoPendente || funilUnionVelho)} aria-busy={funilBlocoPendente || funilUnionVelho}>
           {funilBlocoPendente ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando funil do período" /> : orcamentosReais === undefined || vendas === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O funil está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <FunilResumo
             funil={data.funil}
@@ -346,11 +359,9 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
             orcamentosPorDia={extra?.orcamentos_por_dia}
           />
         </div>
-      </div>
-
-      {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
-      <div className={esmaece(decisoesPendentes)} aria-busy={decisoesPendentes}>
-        {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} vendedoresComProposta={vendedoresComProposta} onIr={ir} />}
+        <div className={`xl:col-span-2 2xl:relative 2xl:col-span-1 ${esmaece(decisoesPendentes)}`} aria-busy={decisoesPendentes}>
+          {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias denso data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} vendedoresComProposta={vendedoresComProposta} onIr={ir} />}
+        </div>
       </div>
 
 

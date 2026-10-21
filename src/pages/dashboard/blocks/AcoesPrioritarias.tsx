@@ -83,6 +83,7 @@ export function AcoesPrioritarias({
   positivo,
   vendedoresComProposta,
   onIr,
+  denso = false,
 }: {
   data: DashboardData
   etq: ReturnType<typeof useDashboardEtiquetas>['data']
@@ -91,8 +92,17 @@ export function AcoesPrioritarias({
   /** 1º nome em CAIXA de quem montou proposta no builder no período. */
   vendedoresComProposta: Set<string>
   onIr: (tab: TabId, anchor?: string) => void
+  /**
+   * (21/10/2026, Daniel: "não quero precisar rolar") Na Visão geral, a partir de 2xl o bloco é a 4ª coluna da última
+   * faixa: as duas metades empilham com COBRAR em cima (é o que pede decisão hoje; a ordem muda só no visual, `order`),
+   * reforçar vira lista de uma linha por item, cada item mostra só o título (o porquê fica no title=, ao passar o mouse)
+   * e o cartão ocupa a altura da faixa com rolagem própria (absolute no wrapper `relative` da TabVisaoGeral), pra não
+   * esticar a página. Abaixo de 2xl nada muda.
+   */
+  denso?: boolean
 }) {
   const { periodoLabel } = useJanela()
+  const d = (cls: string) => (denso ? ` ${cls}` : '')
 
   const acoes = useMemo<Acao[]>(() => {
     const out: Acao[] = []
@@ -228,38 +238,40 @@ export function AcoesPrioritarias({
   ]
 
   return (
-    <Card>
+    <Card className={denso ? '2xl:absolute 2xl:inset-0 2xl:overflow-y-auto 2xl:p-4' : ''}>
       <CardHeader
+        denso={denso}
         title="Decisões do gerente"
         subtitle="O que reforçar e o que cobrar agora. Clique num item de cobrança para abrir a lista de clientes."
         janela={<JanelaBadge tipo="periodo" label={periodoLabel} />}
       />
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-5 lg:grid-cols-2${d('2xl:grid-cols-1 2xl:gap-3')}`}>
         {/* ── REFORÇAR ──────────────────────────────────────────────── */}
         <div>
           <h4 className="flex items-center gap-2 text-title text-ink">
             <TrendingUp className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
             Reforçar
           </h4>
-          <p className="mt-1 text-label text-ink-faint">Está funcionando — dobre a aposta e diga isso em voz alta.</p>
+          <p className={`mt-1 text-label text-ink-faint${d('2xl:hidden')}`}>Está funcionando — dobre a aposta e diga isso em voz alta.</p>
 
           {reforcar.length === 0 ? (
-            <p className="mt-3 rounded-lg border border-border bg-surface-2 p-3 text-body text-ink-muted">
+            <p className={`mt-3 rounded-lg border border-border bg-surface-2 p-3 text-body text-ink-muted${d('2xl:mt-1.5 2xl:p-2 2xl:text-label')}`}>
               Sem destaque no período. Ninguém montou proposta com valor, nenhum vendedor com 50 clientes ou mais
               passou de 55% de etiquetagem e não há R$ em negociação quente.
             </p>
           ) : (
-            <ul className="mt-3 flex flex-col gap-2">
+            <ul className={`mt-3 flex flex-col gap-2${d('2xl:mt-1.5 2xl:gap-1')}`}>
               {reforcar.map(r => (
                 <li
                   key={r.titulo}
-                  className="flex items-start gap-3 rounded-lg border border-success/30 bg-success-bg p-3"
+                  className={`flex items-start gap-3 rounded-lg border border-success/30 bg-success-bg p-3${d('2xl:gap-2 2xl:rounded-none 2xl:border-0 2xl:bg-transparent 2xl:p-0')}`}
+                  title={denso ? r.motivo : undefined}
                 >
-                  <r.Icon className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                  <r.Icon className={`mt-0.5 h-4 w-4 shrink-0 text-success${d('2xl:h-3.5 2xl:w-3.5')}`} aria-hidden="true" />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-body font-medium text-ink">{r.titulo}</span>
-                    <span className="mt-0.5 block text-label text-ink-faint">{r.motivo}</span>
+                    <span className={`block text-body font-medium text-ink${d('2xl:text-label')}`}>{r.titulo}</span>
+                    <span className={`mt-0.5 block text-label text-ink-faint${d('2xl:hidden')}`}>{r.motivo}</span>
                   </span>
                 </li>
               ))}
@@ -268,33 +280,34 @@ export function AcoesPrioritarias({
         </div>
 
         {/* ── COBRAR ────────────────────────────────────────────────── */}
-        <div>
+        <div className={denso ? '2xl:order-first' : undefined}>
           <h4 className="flex items-center gap-2 text-title text-ink">
             <AlertTriangle className="h-4 w-4 shrink-0 text-danger" aria-hidden="true" />
             Cobrar
           </h4>
-          <p className="mt-1 text-label text-ink-faint">Precisa de decisão hoje. Cada item abre a lista de clientes.</p>
+          <p className={`mt-1 text-label text-ink-faint${d('2xl:hidden')}`}>Precisa de decisão hoje. Cada item abre a lista de clientes.</p>
 
           {acoes.length === 0 ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-success/30 bg-success-bg p-3">
+            <div className={`mt-3 flex items-center gap-2 rounded-lg border border-success/30 bg-success-bg p-3${d('2xl:mt-2 2xl:p-2')}`}>
               <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
               <p className="text-body text-success">Nada urgente agora. Nenhum lead quente parado, nenhum vendedor sem proposta.</p>
             </div>
           ) : (
-            <ul className="mt-3 flex flex-col gap-2">
+            <ul className={`mt-3 flex flex-col gap-2${d('2xl:mt-2 2xl:gap-1.5')}`}>
               {acoes.map((a, i) => (
                 <li key={i}>
                   <button
                     type="button"
                     onClick={() => onIr(a.destino.tab, a.destino.anchor)}
-                    className="group flex min-h-[44px] w-full items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:min-h-0"
+                    title={denso ? a.motivo : undefined}
+                    className={`group flex min-h-[44px] w-full items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:min-h-0${d('2xl:gap-2 2xl:px-2.5 2xl:py-2')}`}
                   >
-                    <span className={`mt-0.5 shrink-0 rounded-sm border px-2 py-1 text-micro ${ESTILO[a.prioridade].pill}`}>
+                    <span className={`mt-0.5 shrink-0 rounded-sm border px-2 py-1 text-micro ${ESTILO[a.prioridade].pill}${d('2xl:mt-0 2xl:px-1.5 2xl:py-0.5')}`}>
                       {ESTILO[a.prioridade].label}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-body font-medium text-ink">{a.titulo}</span>
-                      <span className="mt-0.5 block text-label text-ink-faint">{a.motivo}</span>
+                      <span className={`block text-body font-medium text-ink${d('2xl:text-label')}`}>{a.titulo}</span>
+                      <span className={`mt-0.5 block text-label text-ink-faint${d('2xl:hidden')}`}>{a.motivo}</span>
                       {(a.valor != null || a.responsavel) && (
                         <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-ink-muted">
                           {a.valor != null && <span className="tabular-nums">{brl(a.valor)} em jogo</span>}
@@ -315,10 +328,10 @@ export function AcoesPrioritarias({
       </div>
 
       {/* Rodapé: o tamanho do jogo, para as duas metades acima terem escala. */}
-      <div className="mt-5 grid grid-cols-1 gap-2 border-t border-border pt-3 sm:grid-cols-3">
+      <div className={`mt-5 grid grid-cols-1 gap-2 border-t border-border pt-3 sm:grid-cols-3${d('2xl:mt-3 2xl:gap-1.5')}`}>
         {numeros.map(x => (
-          <div key={x.l} className="rounded-lg border border-border/60 bg-surface-2 p-3">
-            <div className="text-kpi-sm text-ink tabular-nums break-words">{x.v}</div>
+          <div key={x.l} className={`rounded-lg border border-border/60 bg-surface-2 p-3${d('2xl:p-2')}`}>
+            <div className={`text-kpi-sm text-ink tabular-nums break-words${d('2xl:text-body 2xl:font-semibold')}`}>{x.v}</div>
             <div className="mt-1 text-micro text-ink-faint">{x.l}</div>
           </div>
         ))}
