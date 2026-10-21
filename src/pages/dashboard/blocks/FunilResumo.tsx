@@ -35,21 +35,29 @@ export function FunilResumo({
   vendasTotal,
   periodoLabel,
   onVerDetalhes,
+  uniao,
 }: {
   funil: DashboardData['funil'] | undefined
+  /**
+   * (21/10/2026) Entrou / Engajou / Qualificou da RPC dashboard_funil_union — a MESMA conta do cartão Qualificados: qualificado é quem a
+   * Ana passou pro vendedor (ou o critério antigo do robô, ou etiqueta de conversa avançada). Sem ela, vale o cálculo de data.funil.
+   */
+  uniao?: { entrou: number; engajou: number; qualificou: number } | null
   clientesComProposta: number | undefined
   vendasComOrigem: number | undefined
   /** Total de vendas do período (o card Vendas), para dizer "6 de 27" e não deixar o 6 parecer o total. */
   vendasTotal: number | undefined
   periodoLabel: string
-  onVerDetalhes: () => void
+  /** Sem ele (dentro da própria aba Funil) o link "Ver aba Funil" some. */
+  onVerDetalhes?: () => void
 }) {
   const etapas = useMemo<Etapa[]>(() => {
     const get = (nome: string) => funil?.find(e => e.etapa === nome)?.valor ?? 0
     return [
-      { nome: 'Entrou',    valor: get('Entrou'),    ajuda: 'Contatos que chegaram no período.', coorte: true },
-      { nome: 'Engajou',   valor: get('Engajou'),   ajuda: 'Respondeu pelo menos uma pergunta do atendimento.', coorte: true },
-      { nome: 'Qualificou', valor: get('Qualificou'), ajuda: 'Disse à IA o que precisa, e é algo que a Branorte fabrica.', coorte: true },
+      { nome: 'Entrou',    valor: uniao ? uniao.entrou : get('Entrou'),    ajuda: 'Contatos que chegaram no período.', coorte: true },
+      { nome: 'Engajou',   valor: uniao ? uniao.engajou : get('Engajou'),   ajuda: 'Respondeu pelo menos uma pergunta do atendimento.', coorte: true },
+      { nome: 'Qualificou', valor: uniao ? uniao.qualificou : get('Qualificou'), coorte: true,
+        ajuda: uniao ? 'A Ana passou pro vendedor (respondeu e quer algo que a Branorte fabrica), ou etiqueta de conversa avançada.' : 'Disse à IA o que precisa, e é algo que a Branorte fabrica.' },
       {
         nome: 'Recebeu proposta',
         coorte: false,
@@ -71,7 +79,7 @@ export function FunilResumo({
         ajuda: 'Venda que dá para rastrear até um lead (pedido → orçamento → telefone). É piso de rastreio, não o total de vendas da fábrica.',
       },
     ]
-  }, [funil, clientesComProposta, vendasComOrigem])
+  }, [funil, clientesComProposta, vendasComOrigem, uniao])
 
   const topo = etapas[0]?.valor || 0
 
@@ -138,7 +146,7 @@ export function FunilResumo({
         // um lead de meses atrás. Fica no title pra não virar parágrafo na tela.
         titleHint="Proposta e compra contam o cliente venha de onde vier: a venda de hoje pode ter vindo de um lead de meses atrás. Por isso não têm '% da anterior'."
         janela={<JanelaBadge tipo="periodo" label={periodoLabel} />}
-        right={
+        right={onVerDetalhes &&
           <button
             type="button"
             onClick={onVerDetalhes}
