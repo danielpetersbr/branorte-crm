@@ -42,6 +42,9 @@ const linhas = (d: unknown) => (d ?? []) as Record<string, unknown>[]
 /** Cores do gráfico "Dia a dia": Meta azul, Google laranja (as linhas de contatos seguem verde e vermelho). */
 const COR_META = CHART.s2
 const COR_GOOGLE = '#f97316'
+/** 0,4 → "24 min"; 7,6 → "7,6 h"; 50 → "2,1 dias" */
+const horas = (h: number) => h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : h < 48 ? `${h.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} h` : `${(h / 24).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} dias`
+
 /** "21/10 às 09:44" */
 const horaBr = (iso: string | null) => {
   if (!iso) return '—'
@@ -66,16 +69,24 @@ interface Funil {
   soAna: number
   /** clientes que JÁ estavam no CRM e voltaram por este anúncio (não somam em contatos novos) */
   voltaram: number
+  /** LP e site (vão direto ao vendedor): quantos, quantos escreveram e ninguém respondeu, horas até a 1ª resposta (mediana) */
+  diretos: number
+  semResposta: number
+  respMedH: number | null
 }
-const FUNIL0: Funil = { contatos: 0, qualificados: 0, orcamentos: 0, rsOrcado: 0, vendas: 0, rsVendido: 0, soAna: 0, voltaram: 0 }
+const FUNIL0: Funil = { contatos: 0, qualificados: 0, orcamentos: 0, rsOrcado: 0, vendas: 0, rsVendido: 0, soAna: 0, voltaram: 0, diretos: 0, semResposta: 0, respMedH: null }
 const lerFunil = (r: Record<string, unknown> | undefined): Funil => ({
   contatos: num(r?.contatos), qualificados: num(r?.qualificados), orcamentos: num(r?.orcamentos),
   rsOrcado: num(r?.rs_orcado), vendas: num(r?.vendas), rsVendido: num(r?.rs_vendido), soAna: num(r?.so_ana), voltaram: num(r?.voltaram),
+  diretos: num(r?.diretos), semResposta: num(r?.sem_resposta), respMedH: numN(r?.resp_mediana_h),
 })
 const somarFunil = (fs: Funil[]): Funil => fs.reduce((s, f) => ({
   contatos: s.contatos + f.contatos, qualificados: s.qualificados + f.qualificados, orcamentos: s.orcamentos + f.orcamentos,
   rsOrcado: s.rsOrcado + f.rsOrcado, vendas: s.vendas + f.vendas, rsVendido: s.rsVendido + f.rsVendido,
   soAna: s.soAna + f.soAna, voltaram: s.voltaram + f.voltaram,
+  diretos: s.diretos + f.diretos, semResposta: s.semResposta + f.semResposta,
+  // mediana não soma: fica a primeira que existir (na árvore só a LP tem)
+  respMedH: s.respMedH ?? f.respMedH,
 }), { ...FUNIL0 })
 
 /** Campanha que não é de venda (vaga de emprego): fica na árvore, mas fora dos números de venda do topo. */
@@ -353,7 +364,8 @@ export function Anuncios() {
                   <Kpi rotulo="Cliques" valor={n(d.google.cliques)} apoio={`CTR ${pct(div(100 * d.google.cliques, d.google.impressoes), 1)} · CPC ${cent(div(d.google.gasto, d.google.cliques))}`} />
                   <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio={`${n(d.google.conversoes - d.google.conversoesYoutube)} da pesquisa (visualização de página)${d.google.conversoesYoutube ? ` · ${n(d.google.conversoesYoutube)} do YouTube` : ''} — não é contato`} />
                   <Kpi rotulo="Contatos do Site no CRM" valor={n(d.google.crm.contatos)} apoio={`${cent(div(d.google.gasto, d.google.crm.contatos))} por contato (site inclui orgânico)`} />
-                  <Kpi rotulo="Qualificados" valor={`${n(d.google.crm.qualificados)} · ${pct(div(100 * d.google.crm.qualificados, d.google.crm.contatos), 0)}`} apoio={`${cent(div(d.google.gasto, d.google.crm.qualificados))} por qualificado`} />
+                  <Kpi rotulo="Qualificados" valor={`${n(d.google.crm.qualificados)} · ${pct(div(100 * d.google.crm.qualificados, d.google.crm.contatos), 0)}`} apoio={`${cent(div(d.google.gasto, d.google.crm.qualificados))} por qualificado · lido na conversa`} />
+                  <Kpi rotulo="Resposta do vendedor" valor={d.google.crm.respMedH != null ? horas(d.google.crm.respMedH) : '—'} apoio={`até a 1ª mensagem (mediana)${d.google.crm.semResposta ? ` · ${n(d.google.crm.semResposta)} sem resposta` : ' · todos respondidos'}`} />
                   <Kpi rotulo="Viraram orçamento" valor={n(d.google.crm.orcamentos)} apoio={`${cent(div(d.google.gasto, d.google.crm.orcamentos))} por orçamento · ${brl(d.google.crm.rsOrcado)} orçados`} />
                   <Kpi rotulo="Vendas" valor={n(d.google.crm.vendas)} apoio={d.google.crm.vendas ? `${brl(d.google.crm.rsVendido)} vendidos` : 'destes contatos, até agora'} />
                 </div>
@@ -427,7 +439,8 @@ export function Anuncios() {
                             <th scope="row" className="border-t border-border px-2 py-1.5 text-left text-body font-semibold text-ink">
                               <span className="inline-flex items-center gap-1">{ab ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}{c.nome}</span>
                               {naoEhVenda(c.nome) && <span className="ml-2 rounded bg-surface-2 px-1 text-micro font-normal text-ink-faint">não é de venda</span>}
-                              {c.viaLp && <span className="ml-2 rounded bg-surface-2 px-1 text-micro font-normal text-ink-faint" title="Contatos da landing page ligados pela origem do CRM">contatos via LP</span>}
+                              {c.viaLp && <span className="ml-2 rounded bg-surface-2 px-1 text-micro font-normal text-ink-faint" title="Contatos da landing page ligados pela origem do CRM">contatos via LP{c.funil.respMedH != null ? ` · 1ª resposta do vendedor em ${horas(c.funil.respMedH)}` : ''}</span>}
+                              {c.funil.semResposta > 0 && <span className="ml-2 rounded bg-danger/10 px-1 text-micro font-semibold text-danger" title="O cliente escreveu e nenhum vendedor respondeu até agora">{n(c.funil.semResposta)} sem resposta do vendedor</span>}
                             </th>
                             <td className="border-t border-border px-2 py-1.5"><Situacao s={l0.campanhaStatus} /></td>
                             <td className={td}>{l0.campanhaOrc != null ? brl(l0.campanhaOrc) : '—'}</td>
@@ -485,6 +498,7 @@ export function Anuncios() {
               Qualificado = a Ana passou ao vendedor, ou o vendedor marcou avanço (lead quente, follow-up, agendamento, orçamento), ou virou orçamento — e não foi marcado “não fabricamos”/“outro assunto”.
               Vendas = pedidos nascidos dos orçamentos desses contatos (venda costuma demorar: períodos curtos quase sempre mostram 0).
               Contatos incluem quem conversou com a Ana por anúncio e nunca foi passado ao vendedor ({n(d.meta.crm.soAna)} no período) — sem eles o “% qualificados” ficava inflado.
+              Landing page e site vão direto ao vendedor (sem a Ana): para eles, qualificado é lido na conversa do WhatsApp do vendedor — o cliente deu informação de compra (espécie, rebanho, kg, energia, preço, pagamento, frete, cidade…) ou respondeu 2+ vezes ao vendedor; a mensagem pronta da página não conta.
               “Voltaram” = clientes que já estavam no CRM e chamaram de novo pelo anúncio. Contatos de landing page entram na campanha de cadastro pela origem do CRM.
               Situação e orçamento/dia vêm do Gerenciador na última carga.
             </p>
