@@ -180,10 +180,13 @@ function useDados(p: Periodo) {
       const porAd = new Map<string, Funil>(crmL.filter(f => f.tipo === 'anuncio').map(f => [String(f.chave), lerFunil(f)]))
       const semAnuncio = (c: string): Funil => lerFunil(crmL.find(f => f.tipo === 'sem_anuncio' && f.chave === c))
       const porLp = crmL.filter(f => f.tipo === 'origem_lp').map(f => ({ origem: String(f.chave), funil: lerFunil(f) }))
-      // o Site separado pela origem que o script do site grava (desde 21/10): Google Ads (pago), Google busca, direto
-      const ORDEM_SITE = ['Google Ads', 'Google busca', 'Site direto', 'Sem origem (antes de 21/10)']
+      // o Site separado pela origem que o script do site grava (desde 21/10): Google Ads (pago), Google busca, as outras
+      // origens do script (Instagram, YouTube, ChatGPT…) e direto; origem fora da lista vai pro fim
+      const ORDEM_SITE = ['Google Ads', 'Google busca', 'Instagram', 'Facebook', 'YouTube', 'TikTok', 'LinkedIn', 'ChatGPT/IA', 'E-mail',
+        'Link no WhatsApp', 'Outros buscadores', 'Outros sites', 'Site direto', 'Sem origem (antes de 21/10)']
+      const posSite = (o: string) => { const i = ORDEM_SITE.indexOf(o); return i < 0 ? ORDEM_SITE.length : i }
       const siteOrigem = crmL.filter(f => f.tipo === 'site_origem').map(f => ({ origem: String(f.chave), funil: lerFunil(f) }))
-        .sort((a, b) => ORDEM_SITE.indexOf(a.origem) - ORDEM_SITE.indexOf(b.origem))
+        .sort((a, b) => posSite(a.origem) - posSite(b.origem))
       // vaga de emprego: fora dos números de venda do topo
       const vaga = metaLinhas.filter(l => naoEhVenda(l.campanha))
       const vagaSoma = { gasto: vaga.reduce((a, l) => a + l.gasto, 0), cliques: vaga.reduce((a, l) => a + l.cliques, 0),
@@ -598,7 +601,7 @@ export function Anuncios() {
               <div className="space-y-5">
                 <FunilCanal nome="Meta Ads" cor={COR_META} f={d.meta.crm} gasto={d.meta.gasto} />
                 <FunilCanal nome="Google Ads / Site" cor={COR_GOOGLE} f={d.google.crm} gasto={d.google.gasto}
-                  nota={d.siteOrigem.length ? `Origem: ${d.siteOrigem.map(x => `${x.origem} ${n(x.funil.contatos)}`).join(' · ')}. O site separa Google Ads (pago), busca e direto desde 21/10.` : undefined} />
+                  nota={d.siteOrigem.length ? `Origem: ${d.siteOrigem.map(x => `${x.origem} ${n(x.funil.contatos)}`).join(' · ')}. Desde 21/10 o site diz de onde veio a visita (Google Ads, busca, Instagram, YouTube, ChatGPT, e-mail…).` : undefined} />
                 {d.outros.contatos > 0 && <FunilCanal nome="Outros (orgânico, LP, indicação…)" cor={CHART.s5} f={d.outros} gasto={null} />}
               </div>
             </Card>
