@@ -1075,8 +1075,8 @@ export function Atendimentos() {
                     <th className="hidden 2xl:table-cell w-[64px]" title="Produção desejada quando é venda (kg/h)">Kg/h</th>
                     <th className="hidden 2xl:table-cell w-[124px]" title="O que o cliente quer: modelo de fábrica ou equipamento avulso. Vem do que o VENDEDOR marcou na extensão (bloco O QUE PERGUNTAR); o palpite da IA só entra quando o vendedor não preencheu.">Equipamento</th>
                     <th className="w-[88px]">Vendedor</th>
-                    <th className="w-[86px]" title="Cliente tocou no botão FALAR COM CONSULTOR e foi levado pro WhatsApp do vendedor">Tocou</th>
-                    <th className="hidden xl:table-cell w-[140px]" title="Mensagem que o cliente envia pro vendedor ao tocar no botão (montada com o anúncio que ele viu, animal e quantidade)">Mensagem</th>
+                    <th className="w-[86px]" title="Hora em que o vendedor chamou o cliente pelo WhatsApp dele (repasse da ANA ou disparo). Em verde, com a mão: o cliente tocou no botão FALAR COM CONSULTOR dos robôs antigos e foi sozinho pro WhatsApp do vendedor (acabou em 21/10/2026)">Chamou</th>
+                    <th className="hidden xl:table-cell w-[140px]" title="1ª mensagem do vendedor pro cliente (repasse da ANA ou disparo). Nos leads antigos dos robôs: a mensagem que o cliente mandou ao tocar no botão FALAR COM CONSULTOR">Mensagem</th>
                     <th className="hidden lg:table-cell w-[104px]" title="Etiqueta atribuída no WhatsApp do vendedor">Etiqueta WA</th>
                     <th className="w-[70px]" title="Já foi montado orçamento pra esse telefone? (match automático pelo número)">Orç.</th>
                     <th className="w-[54px]" title="Esse lead virou venda? (orçamento dele virou pedido não-cancelado)">Venda</th>
@@ -1406,22 +1406,22 @@ export function Atendimentos() {
                           })()}
                           </div>
                         </td>
-                        {/* TOCOU — cliente clicou em FALAR COM CONSULTOR (edge function `ir` grava tocou_botao_em) */}
-                        <td className="px-1.5 py-2.5 overflow-hidden" title={r.tocou_botao_em ?? ''}>
+                        {/* CHAMOU (21/10/2026, era TOCOU) — a hora em que o vendedor chamou o cliente pelo WhatsApp dele (outbound_dispatch:
+                            repasse da ANA ou disparo). A Ana do 1144 não manda botão e, desde 21/10, os robôs do Instagram/Facebook mandam wa.me
+                            direto pra Ana: o toque em FALAR COM CONSULTOR (edge `ir` grava tocou_botao_em) só aparece nos leads antigos, em verde. */}
+                        <td className="px-1.5 py-2.5 overflow-hidden" title={r.tocou_botao_em ?? r.dispatch_em ?? ''}>
                           {r.tocou_botao_em ? (
                             <span
                               className="inline-flex max-w-full items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[10px] font-semibold leading-tight bg-success-bg/40 text-success"
-                              title={`Tocou no botão em ${formatDateTimeShort(r.tocou_botao_em)}`}
+                              title={`O cliente tocou no botão FALAR COM CONSULTOR (robô antigo) em ${formatDateTimeShort(r.tocou_botao_em)} e foi pro WhatsApp do vendedor`}
                             >
                               <Hand className="h-2.5 w-2.5" />
                               {formatDateTimeShort(r.tocou_botao_em)}
                             </span>
                           ) : r.foi_dispatched && r.dispatch_em ? (
-                            // (28/09) Lead que não passa pelo botão (repasse da ANA, disparo direto): o
-                            // equivalente é a hora em que o vendedor chamou o cliente. Cinza = não é toque.
                             <span
-                              className="inline-flex max-w-full items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[10px] leading-tight bg-surface-2 text-ink-faint"
-                              title={`Não tocou no botão — o vendedor${r.dispatch_vendedor_nome ? ` ${r.dispatch_vendedor_nome}` : ''} chamou o cliente em ${formatDateTimeShort(r.dispatch_em)} (${r.dispatch_origem === 'WhatsApp ANA' ? 'repasse da ANA' : 'disparo'})`}
+                              className="inline-flex max-w-full items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1 py-0.5 text-[10px] leading-tight bg-surface-2 text-ink-muted"
+                              title={`O vendedor${r.dispatch_vendedor_nome ? ` ${r.dispatch_vendedor_nome}` : ''} chamou o cliente em ${formatDateTimeShort(r.dispatch_em)} (${r.dispatch_origem === 'WhatsApp ANA' ? 'repasse da ANA' : 'disparo'})`}
                             >
                               <Send className="h-2.5 w-2.5" />
                               {formatDateTimeShort(r.dispatch_em)}
