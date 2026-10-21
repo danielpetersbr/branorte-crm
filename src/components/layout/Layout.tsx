@@ -124,6 +124,8 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/rastreio', label: 'Rastreio de Origem', icon: Route, permKey: 'menu.controle' },
       { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
       { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2, permKey: 'menu.financeiro' },
+      { to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.campanhas' },
+      { to: '/campanhas', label: 'Análise de Campanhas', icon: TrendingUp, permKey: 'menu.campanhas' },
       { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado', hidden: true },
     ],
   },
@@ -184,8 +186,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/controle/financeiro', label: 'Financeiro', icon: Wallet, permKey: 'menu.financeiro' },
       { to: '/consulta', label: 'Consultar SPC', icon: Search, permKey: 'due_diligence.consultar' },
-      { to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.campanhas' },
-      { to: '/campanhas', label: 'Análise de Campanhas', icon: Megaphone, permKey: 'menu.campanhas' },
     ],
   },
   {
