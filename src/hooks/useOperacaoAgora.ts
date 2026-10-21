@@ -11,14 +11,14 @@ import type { LigacaoResumo } from './useLigacoes'
 // RPCs: dashboard_atendimentos_abertos, dashboard_gasto_anuncios (supabase/migrations/20261021120000_dashboard_operacao_agora.sql)
 // e ligacoes_resumo (a mesma da tela Ligações, com a RLS de wa_ligacoes).
 
-export type EtapaAberta = 'prospeccao' | 't2' | 't3' | 'novo_lead' | 'orcamento_enviado' | 'follow_up' | 'lead_quente'
+export type EtapaAberta = 'prospeccao' | 't2' | 't3' | 'novo_lead' | 'follow_up' | 'lead_quente'
 export const ETAPAS_ABERTAS: { k: EtapaAberta; rotulo: string }[] = [
   { k: 'prospeccao', rotulo: 'Prospecção' },
   { k: 't2', rotulo: '2ª tentativa' },
   { k: 't3', rotulo: '3ª tentativa' },
   { k: 'novo_lead', rotulo: 'Novo lead' },
-  // (21/10/2026, auditoria) entre novo lead e follow up: quem já tem FOLLOW UP ou LEAD QUENTE continua contado lá
-  { k: 'orcamento_enviado', rotulo: 'Orçamento enviado' },
+  // (21/10/2026, Daniel: "Ali não é para aparecer orçamento enviado. Pode remover isso aí dali.") ORÇAMENTO ENVIADO entrou
+  // aqui de manhã pela auditoria e saiu à tarde: não é etapa deste painel (migração 20261021210000).
   { k: 'follow_up', rotulo: 'Follow up' },
   { k: 'lead_quente', rotulo: 'Lead quente' },
 ]
@@ -34,7 +34,6 @@ export interface Projecao { clientes: number; comProposta: number; brl: number }
 export interface AtendimentosAbertos {
   contatos: number
   porEtapa: Record<EtapaAberta, number>
-  orcamentoEnviado: Projecao
   followUp: Projecao
   leadQuente: Projecao
   porConta: AbertosConta[]
@@ -59,13 +58,12 @@ export function useAtendimentosAbertos() {
       return {
         contatos: num(d.contatos),
         porEtapa: Object.fromEntries(ETAPAS_ABERTAS.map(e => [e.k, num(pe[e.k])])) as Record<EtapaAberta, number>,
-        orcamentoEnviado: proj(d.orcamento_enviado),
         followUp: proj(d.follow_up),
         leadQuente: proj(d.lead_quente),
         porConta: ((d.por_vendedor ?? []) as Record<string, unknown>[]).map(r => ({
           vendedor: String(r.vendedor ?? ''),
           abertos: num(r.abertos),
-          prospeccao: num(r.prospeccao), t2: num(r.t2), t3: num(r.t3), novo_lead: num(r.novo_lead), orcamento_enviado: num(r.orcamento_enviado), follow_up: num(r.follow_up), lead_quente: num(r.lead_quente),
+          prospeccao: num(r.prospeccao), t2: num(r.t2), t3: num(r.t3), novo_lead: num(r.novo_lead), follow_up: num(r.follow_up), lead_quente: num(r.lead_quente),
           conversas_lidas: num(r.conversas_lidas),
           leitura_ok: r.leitura_ok === true,
         })),

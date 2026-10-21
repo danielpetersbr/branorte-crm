@@ -18,14 +18,12 @@ import {
  * relido pela extensão a cada minuto); anúncio e ligação seguem o FILTRO do topo.
  */
 
-// frio → quente: as tentativas são o mesmo azul da entrada, mais claro; orçamento enviado roxo; follow up âmbar (em jogo);
-// lead quente verde (avanço)
+// frio → quente: as tentativas são o mesmo azul da entrada, mais claro; follow up âmbar (em jogo); lead quente verde (avanço)
 const COR_ETAPA: Record<EtapaAberta, { cor: string; opacidade: number }> = {
   prospeccao: { cor: CHART.s2, opacidade: 0.35 },
   t2: { cor: CHART.s2, opacidade: 0.55 },
   t3: { cor: CHART.s2, opacidade: 0.75 },
   novo_lead: { cor: CHART.s2, opacidade: 1 },
-  orcamento_enviado: { cor: CHART.s4, opacidade: 1 },
   follow_up: { cor: CHART.s3, opacidade: 1 },
   lead_quente: { cor: CHART.s1, opacidade: 1 },
 }
@@ -90,9 +88,9 @@ export function OperacaoAgoraView({ periodoLabel, ab, abPendente, abErro, gasto,
             <span className="text-kpi tabular-nums text-ink">{n(ab.contatos)}</span>
             <span
               className="text-label text-ink-faint"
-              title="Contato distinto com etiqueta de PROSPECÇÃO, 2ª TENTATIVA, 3ª TENTATIVA, NOVO LEAD, ORÇAMENTO ENVIADO, FOLLOW UP ou LEAD QUENTE (inclui CLIENTE QUENTE) em algum WhatsApp da casa (a Ana entra). O mesmo cliente em duas contas conta uma vez, na etapa mais avançada. Conversa com etiqueta de fechamento junto (vendido, perdido, resolvido) não conta, nem número da casa (etiqueta BRANORTE ou telefone de vendedor)."
+              title="Contato distinto com etiqueta de PROSPECÇÃO, 2ª TENTATIVA, 3ª TENTATIVA, NOVO LEAD, FOLLOW UP ou LEAD QUENTE (inclui CLIENTE QUENTE) em algum WhatsApp da casa (a Ana entra). ORÇAMENTO ENVIADO não entra. O mesmo cliente em duas contas conta uma vez, na etapa mais avançada. Conversa com etiqueta de fechamento junto (vendido, perdido, resolvido) não conta, nem número da casa (etiqueta BRANORTE ou telefone de vendedor)."
             >
-              contatos de Prospecção a Lead quente, com orçamento enviado
+              contatos de Prospecção a Lead quente
             </span>
           </div>
 
@@ -128,8 +126,7 @@ export function OperacaoAgoraView({ periodoLabel, ab, abPendente, abErro, gasto,
         </>
       )}
 
-      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-4 lg:grid-cols-5 2xl:mt-3 2xl:pt-3">
-        <MiniProjecao titulo="Orçamento enviado" p={ab?.orcamentoEnviado} pendente={abPendente} erro={abErro} />
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-4 lg:grid-cols-4 2xl:mt-3 2xl:pt-3">
         <MiniProjecao titulo="Follow up" p={ab?.followUp} pendente={abPendente} erro={abErro} />
         <MiniProjecao titulo="Lead quente" p={ab?.leadQuente} pendente={abPendente} erro={abErro} />
         <Mini
