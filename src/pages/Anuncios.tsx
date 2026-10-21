@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, Info, Megaphone, RefreshCw, Search } from 'lucide-react'
+import { AlertTriangle, ArrowUpDown, CheckCircle2, ChevronDown, ChevronRight, Info, Megaphone, RefreshCw, Search } from 'lucide-react'
 import { Bar, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { Card, CardHeader } from './dashboard/ui/Card'
@@ -142,7 +142,7 @@ function useDados(p: Periodo) {
   const { from, to } = intervalo(p)
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
-    queryKey: ['pagina-anuncios-v3', p_from, p_to],
+    queryKey: ['pagina-anuncios-v4', p_from, p_to],
     queryFn: async () => {
       const [meta, diario, plat, crm, google, palavras, termos, atual, pedSemOrc] = await Promise.all([
         supabase.rpc('anuncios_meta', { p_from, p_to }),
@@ -177,6 +177,10 @@ function useDados(p: Periodo) {
       const porAd = new Map<string, Funil>(crmL.filter(f => f.tipo === 'anuncio').map(f => [String(f.chave), lerFunil(f)]))
       const semAnuncio = (c: string): Funil => lerFunil(crmL.find(f => f.tipo === 'sem_anuncio' && f.chave === c))
       const porLp = crmL.filter(f => f.tipo === 'origem_lp').map(f => ({ origem: String(f.chave), funil: lerFunil(f) }))
+      // o Site separado pela origem que o script do site grava (desde 21/10): Google Ads (pago), Google busca, direto
+      const ORDEM_SITE = ['Google Ads', 'Google busca', 'Site direto', 'Sem origem (antes de 21/10)']
+      const siteOrigem = crmL.filter(f => f.tipo === 'site_origem').map(f => ({ origem: String(f.chave), funil: lerFunil(f) }))
+        .sort((a, b) => ORDEM_SITE.indexOf(a.origem) - ORDEM_SITE.indexOf(b.origem))
       // vaga de emprego: fora dos números de venda do topo
       const vaga = metaLinhas.filter(l => naoEhVenda(l.campanha))
       const vagaSoma = { gasto: vaga.reduce((a, l) => a + l.gasto, 0), cliques: vaga.reduce((a, l) => a + l.cliques, 0),
@@ -185,7 +189,7 @@ function useDados(p: Periodo) {
       const atualL = atual.error ? [] : linhas(atual.data)
       const horaCarga = (pl: string) => txt(atualL.find(r => r.plataforma === pl)?.atualizado_em)
       return {
-        metaLinhas, dias, porAd, semAnuncioMeta: semAnuncio('Meta'), porLp, vagaSoma,
+        metaLinhas, dias, porAd, semAnuncioMeta: semAnuncio('Meta'), porLp, vagaSoma, siteOrigem, outros: canal('Outros'),
         horaMeta: horaCarga('Meta'), horaGoogle: horaCarga('Google'),
         pedidosSemOrc: pedSemOrc.error ? [] : linhas(pedSemOrc.data),
         meta: {
@@ -215,6 +219,38 @@ function useDados(p: Periodo) {
   })
 }
 
+interface Problema { gravidade: 'alta' | 'atencao'; plataforma: string; titulo: string; detalhe: string }
+/** O que precisa de atenção agora (anúncio reprovado, campanha que não gastou, carga atrasada) — RPC anuncios_problemas. */
+function useProblemas() {
+  return useQuery({
+    queryKey: ['anuncios-problemas-v1'],
+    queryFn: async () => {
+      const r = await supabase.rpc('anuncios_problemas')
+      if (r.error) throw r.error
+      return linhas(r.data).map(x => ({ gravidade: x.gravidade === 'alta' ? 'alta' : 'atencao', plataforma: String(x.plataforma), titulo: String(x.titulo), detalhe: String(x.detalhe ?? '') }) as Problema)
+        .sort((a, b) => (a.gravidade === b.gravidade ? 0 : a.gravidade === 'alta' ? -1 : 1))
+    },
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    retry: 1,
+  })
+}
+
+type Ordem = 'gasto' | 'qualificados' | 'cpq' | 'contatos'
+const ORDENS: { v: Ordem; l: string }[] = [
+  { v: 'gasto', l: 'Maior gasto' }, { v: 'qualificados', l: 'Mais qualificados' }, { v: 'cpq', l: 'Menor custo por qualificado' }, { v: 'contatos', l: 'Mais contatos' },
+]
+/** Compara duas linhas da árvore pela ordem escolhida (custo por qualificado: quem não tem qualificado vai pro fim). */
+function comparar(o: Ordem, a: { gasto: number; f: Funil }, b: { gasto: number; f: Funil }) {
+  if (o === 'qualificados') return b.f.qualificados - a.f.qualificados || b.gasto - a.gasto
+  if (o === 'contatos') return b.f.contatos - a.f.contatos || b.gasto - a.gasto
+  if (o === 'cpq') {
+    const ca = a.f.qualificados ? a.gasto / a.f.qualificados : Infinity, cb = b.f.qualificados ? b.gasto / b.f.qualificados : Infinity
+    return ca - cb || b.gasto - a.gasto
+  }
+  return b.gasto - a.gasto
+}
+
 function Situacao({ s }: { s: string | null }) {
   const t = situacaoCampanha(s)
   if (!t) return <span className="text-ink-faint">—</span>
@@ -224,10 +260,60 @@ function Situacao({ s }: { s: string | null }) {
 
 function Kpi({ rotulo, valor, apoio }: { rotulo: string; valor: string; apoio?: string }) {
   return (
-    <div className="min-w-0 rounded-lg bg-surface-2 px-3 py-2">
+    <div className="min-w-0 rounded-lg border border-border/60 bg-surface-2 px-3 py-2.5">
       <p className="text-micro text-ink-faint">{rotulo}</p>
       <p className="text-title font-semibold tabular-nums text-ink">{valor}</p>
-      {apoio && <p className="text-micro text-ink-muted">{apoio}</p>}
+      {apoio && <p className="mt-0.5 text-micro leading-snug text-ink-muted">{apoio}</p>}
+    </div>
+  )
+}
+
+/** Bloco grande do resumo do topo: total + Meta e Google lado a lado. */
+function Tile({ rotulo, valor, meta, google, rodape, destaque }: { rotulo: string; valor: string; meta: string; google: string; rodape?: string; destaque?: boolean }) {
+  return (
+    <div className={`min-w-0 rounded-xl border p-4 ${destaque ? 'border-accent/40 bg-accent-bg' : 'border-border bg-surface'}`}>
+      <p className="text-micro font-semibold uppercase tracking-wide text-ink-faint">{rotulo}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{valor}</p>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-micro tabular-nums">
+        <span className="inline-flex items-center gap-1 text-ink-muted"><span className="h-2 w-2 rounded-full" style={{ background: COR_META }} aria-hidden="true" />Meta {meta}</span>
+        <span className="inline-flex items-center gap-1 text-ink-muted"><span className="h-2 w-2 rounded-full" style={{ background: COR_GOOGLE }} aria-hidden="true" />Google {google}</span>
+      </div>
+      {rodape && <p className="mt-1 text-micro text-ink-faint">{rodape}</p>}
+    </div>
+  )
+}
+
+/** Funil de um canal em barras horizontais: contatos → qualificados → falou c/ vendedor → orçamentos → vendas. */
+function FunilCanal({ nome, cor, f, gasto, nota }: { nome: string; cor: string; f: Funil; gasto: number | null; nota?: string }) {
+  const etapas: { l: string; v: number; extra?: string }[] = [
+    { l: 'Contatos', v: f.contatos, extra: gasto ? `${cent(div(gasto, f.contatos))} cada` : undefined },
+    { l: 'Qualificados', v: f.qualificados, extra: gasto ? `${cent(div(gasto, f.qualificados))} cada` : undefined },
+    { l: 'Falou c/ vendedor', v: f.conversou },
+    { l: 'Orçamentos', v: f.orcamentos, extra: f.orcamentos ? brl(f.rsOrcado) : undefined },
+    { l: 'Vendas', v: f.vendas, extra: f.vendas ? brl(f.rsVendido) : undefined },
+  ]
+  const max = Math.max(1, f.contatos)
+  return (
+    <div className="min-w-0">
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-body font-semibold text-ink"><span className="h-2.5 w-2.5 rounded-full" style={{ background: cor }} aria-hidden="true" />{nome}</p>
+        {gasto != null && <p className="text-micro tabular-nums text-ink-faint">{brl(gasto)} gastos</p>}
+      </div>
+      <div className="space-y-1">
+        {etapas.map((e, i) => (
+          <div key={e.l} className="grid grid-cols-[7.5rem_1fr_auto] items-center gap-2 text-micro">
+            <span className="truncate text-ink-muted">{e.l}</span>
+            <div className="h-5 overflow-hidden rounded bg-surface-2">
+              <div className="flex h-full items-center rounded px-1.5 text-[11px] font-semibold text-white tabular-nums"
+                style={{ width: `${Math.max(e.v ? 6 : 0, (100 * e.v) / max)}%`, background: cor, opacity: 1 - i * 0.13 }}>
+                {e.v > 0 ? n(e.v) : ''}
+              </div>
+            </div>
+            <span className="w-28 text-right tabular-nums text-ink-faint">{i > 0 && f.contatos ? pct(div(100 * e.v, f.contatos), 0) : ''}{e.extra ? ` · ${e.extra}` : ''}</span>
+          </div>
+        ))}
+      </div>
+      {nota && <p className="mt-1 text-micro text-ink-faint">{nota}</p>}
     </div>
   )
 }
@@ -258,6 +344,7 @@ function ColunasCrm({ f, gasto }: { f: Funil; gasto: number }) {
     <>
       <td className={`${td} border-l`}>{f.contatos ? n(f.contatos) : '—'}</td>
       <td className={td}>{f.contatos ? <>{n(f.qualificados)} <span className="text-micro text-ink-faint">{pct(pq, 0)}</span></> : '—'}</td>
+      <td className={`${td} font-medium text-ink`} title="Gasto ÷ qualificados">{f.qualificados && gasto > 0 ? cent(div(gasto, f.qualificados)) : '—'}</td>
       <td className={td} title="O cliente respondeu ao vendedor ou deu informação de compra no WhatsApp dele">{f.contatos ? <>{n(f.conversou)} <span className="text-micro text-ink-faint">{pct(div(100 * f.conversou, f.contatos), 0)}</span></> : '—'}</td>
       <td className={td}>{f.orcamentos ? <>{n(f.orcamentos)} <span className="text-micro text-ink-faint">{brl(f.rsOrcado)}</span></> : (f.contatos ? '0' : '—')}</td>
       <td className={td}>{f.orcamentos && gasto > 0 ? cent(div(gasto, f.orcamentos)) : '—'}</td>
@@ -276,6 +363,11 @@ export function Anuncios() {
   const prev = usePrevisaoMes()
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [soNoAr, setSoNoAr] = useState(false)
+  const [ordem, setOrdem] = useState<Ordem>(() => {
+    try { const v = localStorage.getItem('anuncios-ordem'); return (ORDENS.some(o => o.v === v) ? v : 'gasto') as Ordem } catch { return 'gasto' }
+  })
+  const escolherOrdem = (o: Ordem) => { setOrdem(o); try { localStorage.setItem('anuncios-ordem', o) } catch { /* sem storage */ } }
+  const probs = useProblemas()
   const alternar = (k: string) => setAbertos(prev => { const s = new Set(prev); if (s.has(k)) s.delete(k); else s.add(k); return s })
 
   const arvore = useMemo(() => {
@@ -293,22 +385,24 @@ export function Anuncios() {
       }).map(x => x.funil)
       return {
         nome, linhas: cl, soma: somar(cl), funil: somarFunil([funilDe(cl), ...lp]), viaLp: lp.length > 0,
-        conjuntos: [...conj.entries()].map(([cn, al]) => ({ nome: cn, linhas: al, soma: somar(al), funil: funilDe(al) })).sort((a, b) => b.soma.gasto - a.soma.gasto),
+        conjuntos: [...conj.entries()].map(([cn, al]) => ({ nome: cn, linhas: al, soma: somar(al), funil: funilDe(al) }))
+          .sort((a, b) => comparar(ordem, { gasto: a.soma.gasto, f: a.funil }, { gasto: b.soma.gasto, f: b.funil })),
       }
-    }).sort((a, b) => b.soma.gasto - a.soma.gasto)
-  }, [q.data?.metaLinhas, q.data?.porAd, q.data?.porLp, soNoAr])
+    }).sort((a, b) => comparar(ordem, { gasto: a.soma.gasto, f: a.funil }, { gasto: b.soma.gasto, f: b.funil }))
+  }, [q.data?.metaLinhas, q.data?.porAd, q.data?.porLp, soNoAr, ordem])
 
   const d = q.data
   const googleLigado = !!d?.google.ate
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-5 p-4 md:p-6">
+    <div className="w-full space-y-5 p-4 md:p-6 2xl:px-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-ink"><Megaphone className="h-5 w-5" aria-hidden="true" />Anúncios — Meta e Google</h1>
-          <p className="text-micro text-ink-faint">
-            Meta: atualizado {horaBr(d?.horaMeta ?? null)} · Google: {googleLigado ? `atualizado ${horaBr(d!.horaGoogle)}` : 'ainda não ligado'} · a página relê a cada 5 min
-            {q.isFetching && ' · atualizando…'}
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-ink"><Megaphone className="h-6 w-6 text-accent" aria-hidden="true" />Anúncios — Meta e Google</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-ink-faint">
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COR_META }} aria-hidden="true" />Meta atualizado {horaBr(d?.horaMeta ?? null)}</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COR_GOOGLE }} aria-hidden="true" />Google {googleLigado ? `atualizado ${horaBr(d!.horaGoogle)}` : 'ainda não ligado'}</span>
+            <span>a página relê a cada 5 min{q.isFetching && ' · atualizando…'}</span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -326,18 +420,47 @@ export function Anuncios() {
         </div>
       </div>
 
-      {prev.data && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-border bg-surface px-4 py-3 text-body text-ink-muted">
-          <span className="font-semibold text-ink">Previsão de gasto em {prev.data.mes}:</span>
-          {([['Meta', prev.data.meta], ['Google', prev.data.google]] as const).map(([nome, x]) => (
-            <span key={nome} title={`${brl(x.gasto)} gastos até ontem + ${brl(x.orcDia)}/dia (campanhas ativas) × ${prev.data!.restantes} dias que faltam, com hoje`}>
-              {nome} <strong className="text-ink">{brl(x.previsto)}</strong>
-              <span className="text-micro text-ink-faint"> ({brl(x.gasto)} até ontem + {brl(x.orcDia)}/dia)</span>
-            </span>
-          ))}
-          <span>Total <strong className="text-ink">{brl(prev.data.meta.previsto + prev.data.google.previsto)}</strong></span>
-        </div>
-      )}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        {prev.data && (
+          <section className="rounded-xl border border-border bg-surface p-4 xl:col-span-5">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-body font-semibold text-ink">Previsão de gasto em {prev.data.mes}</p>
+              <p className="text-title font-semibold tabular-nums text-ink">{brl(prev.data.meta.previsto + prev.data.google.previsto)}</p>
+            </div>
+            <div className="mt-3 space-y-2.5">
+              {([['Meta', prev.data.meta, COR_META], ['Google', prev.data.google, COR_GOOGLE]] as const).map(([nome, x, cor]) => (
+                <div key={nome} title={`${brl(x.gasto)} gastos até ontem + ${brl(x.orcDia)}/dia (campanhas ativas) × ${prev.data!.restantes} dias que faltam, com hoje`}>
+                  <div className="flex items-baseline justify-between text-micro">
+                    <span className="font-semibold text-ink">{nome}</span>
+                    <span className="tabular-nums text-ink-muted">{brl(x.gasto)} até ontem · <strong className="text-ink">{brl(x.previsto)}</strong> no mês</span>
+                  </div>
+                  <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-surface-2">
+                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, (100 * x.gasto) / Math.max(1, x.previsto))}%`, background: cor }} />
+                  </div>
+                  <p className="mt-0.5 text-micro text-ink-faint">+ {brl(x.orcDia)}/dia nas campanhas ativas × {prev.data!.restantes} dias que faltam</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        <section className={`rounded-xl border p-4 ${prev.data ? 'xl:col-span-7' : 'xl:col-span-12'} ${(probs.data ?? []).some(x => x.gravidade === 'alta') ? 'border-danger/40 bg-danger-bg' : (probs.data ?? []).length ? 'border-warning/40 bg-warning-bg' : 'border-border bg-surface'}`}>
+          <p className="flex items-center gap-2 text-body font-semibold text-ink">
+            {(probs.data ?? []).length ? <AlertTriangle className="h-4 w-4 text-danger" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />}
+            {probs.isLoading ? 'Conferindo as contas…' : (probs.data ?? []).length ? `Precisa de atenção (${(probs.data ?? []).length})` : 'Nada fora do normal nas contas'}
+          </p>
+          {(probs.data ?? []).length > 0 && (
+            <ul className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1.5 lg:grid-cols-2">
+              {(probs.data ?? []).map((x, i) => (
+                <li key={i} className="flex min-w-0 items-start gap-2 text-micro">
+                  <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-semibold ${x.gravidade === 'alta' ? 'bg-danger text-white' : 'bg-warning text-white'}`}>{x.plataforma}</span>
+                  <span className="min-w-0"><span className="font-semibold text-ink">{x.titulo}</span><span className="block text-ink-muted">{x.detalhe}</span></span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {!probs.isLoading && !(probs.data ?? []).length && <p className="mt-1 text-micro text-ink-muted">Sem anúncio reprovado em conjunto ativo, sem campanha parada ontem e as cargas estão em dia.</p>}
+        </section>
+      </div>
 
       {q.error && !d ? (
         <Card><p className="text-body text-ink-muted">Não deu para carregar os anúncios agora. Tente o botão de recarregar.</p></Card>
@@ -345,11 +468,59 @@ export function Anuncios() {
         <Card><div className="h-40 animate-pulse rounded-lg bg-surface-2" /></Card>
       ) : (
         <div className={`space-y-5 ${q.isPlaceholderData ? 'opacity-60' : ''}`}>
-          {/* Resumo por plataforma */}
+          {/* Resumo geral: Meta + Google */}
+          {(() => {
+            const fm = d.meta.crm, fg = d.google.crm, gm = d.meta.gasto, gg = d.google.gasto
+            const tot = { gasto: gm + gg, contatos: fm.contatos + fg.contatos, qualif: fm.qualificados + fg.qualificados, conv: fm.conversou + fg.conversou, orc: fm.orcamentos + fg.orcamentos, rsOrc: fm.rsOrcado + fg.rsOrcado, vendas: fm.vendas + fg.vendas, rsVend: fm.rsVendido + fg.rsVendido }
+            return (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <Tile rotulo="Investido" valor={brl(tot.gasto)} meta={brl(gm)} google={brl(gg)} rodape="sem a vaga de emprego" />
+                <Tile rotulo="Contatos" valor={n(tot.contatos)} meta={`${n(fm.contatos)} · ${cent(div(gm, fm.contatos))}`} google={`${n(fg.contatos)} · ${cent(div(gg, fg.contatos))}`} rodape={`${cent(div(tot.gasto, tot.contatos))} por contato`} />
+                <Tile destaque rotulo="Qualificados" valor={`${n(tot.qualif)} · ${pct(div(100 * tot.qualif, tot.contatos), 0)}`} meta={`${n(fm.qualificados)} · ${cent(div(gm, fm.qualificados))}`} google={`${n(fg.qualificados)} · ${cent(div(gg, fg.qualificados))}`} rodape={`${cent(div(tot.gasto, tot.qualif))} por qualificado`} />
+                <Tile rotulo="Falaram c/ vendedor" valor={`${n(tot.conv)} · ${pct(div(100 * tot.conv, tot.contatos), 0)}`} meta={n(fm.conversou)} google={n(fg.conversou)} rodape="responderam no WhatsApp do vendedor" />
+                <Tile rotulo="Orçamentos" valor={n(tot.orc)} meta={`${n(fm.orcamentos)} · ${cent(div(gm, fm.orcamentos))}`} google={`${n(fg.orcamentos)} · ${cent(div(gg, fg.orcamentos))}`} rodape={`${brl(tot.rsOrc)} orçados`} />
+                <Tile rotulo="Vendas" valor={n(tot.vendas)} meta={n(fm.vendas)} google={n(fg.vendas)} rodape={tot.vendas ? `${brl(tot.rsVend)} vendidos` : 'destes contatos, até agora'} />
+              </div>
+            )
+          })()}
+
+          {/* Funil por canal + dia a dia */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+            <Card className="xl:col-span-5">
+              <CardHeader title="Funil por canal" subtitle="Dos contatos que chegaram no período: quantos qualificaram, falaram com o vendedor, viraram orçamento e venda." />
+              <div className="space-y-5">
+                <FunilCanal nome="Meta Ads" cor={COR_META} f={d.meta.crm} gasto={d.meta.gasto} />
+                <FunilCanal nome="Google Ads / Site" cor={COR_GOOGLE} f={d.google.crm} gasto={d.google.gasto}
+                  nota={d.siteOrigem.length ? `Origem: ${d.siteOrigem.map(x => `${x.origem} ${n(x.funil.contatos)}`).join(' · ')}. O site separa Google Ads (pago), busca e direto desde 21/10.` : undefined} />
+                {d.outros.contatos > 0 && <FunilCanal nome="Outros (orgânico, LP, indicação…)" cor={CHART.s5} f={d.outros} gasto={null} />}
+              </div>
+            </Card>
+            <Card className="xl:col-span-7">
+              <CardHeader title="Dia a dia" subtitle="Gasto de cada plataforma (barras) e contatos que chegaram no CRM (linhas)." />
+              <div className="h-80 2xl:h-96">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={d.dias.map(x => ({ ...x, rotulo: x.dia.slice(8, 10) + '/' + x.dia.slice(5, 7) }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
+                    <CartesianGrid stroke={CHART.grid} vertical={false} />
+                    <XAxis dataKey="rotulo" tick={{ fill: CHART.ink, fontSize: 11 }} />
+                    <YAxis yAxisId="r" tick={{ fill: CHART.ink, fontSize: 11 }} tickFormatter={v => `R$ ${Math.round(Number(v))}`} width={64} />
+                    <YAxis yAxisId="c" orientation="right" tick={{ fill: CHART.ink, fontSize: 11 }} width={32} allowDecimals={false} />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, nome) => (String(nome).startsWith('Gasto') ? brl(Number(v)) : n(Number(v)))} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar yAxisId="r" dataKey="gastoMeta" name="Gasto Meta Ads" fill={COR_META} maxBarSize={18} radius={[2, 2, 0, 0]} />
+                    <Bar yAxisId="r" dataKey="gastoGoogle" name="Gasto Google Ads" fill={COR_GOOGLE} maxBarSize={18} radius={[2, 2, 0, 0]} />
+                    <Line yAxisId="c" dataKey="contatosMeta" name="Contatos do Meta" stroke={CHART.s1} strokeWidth={2} dot={d.dias.length < 3} />
+                    <Line yAxisId="c" dataKey="contatosSite" name="Contatos do Site" stroke={CHART.s4} strokeWidth={2} dot={d.dias.length < 3} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
+
+          {/* Detalhe por plataforma */}
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card>
-              <p className="mb-2 text-body font-semibold text-ink">Meta Ads</p>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+              <p className="mb-3 flex items-center gap-2 text-body font-semibold text-ink"><span className="h-2.5 w-2.5 rounded-full" style={{ background: COR_META }} aria-hidden="true" />Meta Ads</p>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-4">
                 <Kpi rotulo="Gasto (vendas)" valor={brl(d.meta.gasto)} apoio={`${d.meta.orcDia ? `${brl(d.meta.orcDia)}/dia nas campanhas ativas` : ''}${d.vagaSoma.gasto > 0 ? ` · sem a vaga de emprego (${brl(d.vagaSoma.gasto)})` : ''}`} />
                 <Kpi rotulo="Conversas iniciadas" valor={n(d.meta.conversas)} apoio={`${cent(div(d.meta.gastoConversas, d.meta.conversas))} cada (gasto só das campanhas de mensagem)`} />
                 <Kpi rotulo="Cliques" valor={n(d.meta.cliques)} apoio={`CTR ${pct(div(100 * d.meta.cliques, d.meta.impressoes), 1)} · CPC ${cent(div(d.meta.gasto, d.meta.cliques))}`} />
@@ -361,9 +532,9 @@ export function Anuncios() {
               </div>
             </Card>
             <Card>
-              <p className="mb-2 text-body font-semibold text-ink">Google Ads</p>
+              <p className="mb-3 flex items-center gap-2 text-body font-semibold text-ink"><span className="h-2.5 w-2.5 rounded-full" style={{ background: COR_GOOGLE }} aria-hidden="true" />Google Ads</p>
               {googleLigado ? (
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-4">
                   <Kpi rotulo="Gasto" valor={brl(d.google.gasto)} />
                   <Kpi rotulo="Cliques" valor={n(d.google.cliques)} apoio={`CTR ${pct(div(100 * d.google.cliques, d.google.impressoes), 1)} · CPC ${cent(div(d.google.gasto, d.google.cliques))}`} />
                   <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio={`${n(d.google.conversoes - d.google.conversoesYoutube)} da pesquisa (clique no WhatsApp do site, formulário e outras)${d.google.conversoesYoutube ? ` · ${n(d.google.conversoesYoutube)} do YouTube (inscrição/engajamento)` : ''}`} />
@@ -385,51 +556,36 @@ export function Anuncios() {
             </Card>
           </div>
 
-          {/* Por dia */}
-          <Card>
-            <CardHeader title="Dia a dia" subtitle="Gasto de cada plataforma (barras) e contatos que chegaram no CRM (linhas)." />
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                {/* Barras AGRUPADAS (lado a lado), não empilhadas: cada uma é o gasto só daquela plataforma no dia.
-                    barGap = espaço entre as duas barras do dia; barCategoryGap = espaço entre os dias; maxBarSize
-                    deixa a barra fina em períodos curtos e o Recharts afina sozinho em 90 dias. */}
-                <ComposedChart data={d.dias.map(x => ({ ...x, rotulo: x.dia.slice(8, 10) + '/' + x.dia.slice(5, 7) }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
-                  <CartesianGrid stroke={CHART.grid} vertical={false} />
-                  <XAxis dataKey="rotulo" tick={{ fill: CHART.ink, fontSize: 11 }} />
-                  <YAxis yAxisId="r" tick={{ fill: CHART.ink, fontSize: 11 }} tickFormatter={v => `R$ ${Math.round(Number(v))}`} width={64} />
-                  <YAxis yAxisId="c" orientation="right" tick={{ fill: CHART.ink, fontSize: 11 }} width={32} allowDecimals={false} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, nome) => (String(nome).startsWith('Gasto') ? brl(Number(v)) : n(Number(v)))} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar yAxisId="r" dataKey="gastoMeta" name="Gasto Meta Ads" fill={COR_META} maxBarSize={18} radius={[2, 2, 0, 0]} />
-                  <Bar yAxisId="r" dataKey="gastoGoogle" name="Gasto Google Ads" fill={COR_GOOGLE} maxBarSize={18} radius={[2, 2, 0, 0]} />
-                  <Line yAxisId="c" dataKey="contatosMeta" name="Contatos do Meta" stroke={CHART.s1} strokeWidth={2} dot={false} />
-                  <Line yAxisId="c" dataKey="contatosSite" name="Contatos do Site" stroke={CHART.s4} strokeWidth={2} dot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-
           {/* Meta em árvore */}
           <Card>
             <CardHeader
               title="Meta: campanha → conjunto → anúncio"
               subtitle="Clique na campanha para abrir os conjuntos, e no conjunto para ver os anúncios. O resultado segue o objetivo de cada campanha."
               right={
-                <label className="inline-flex items-center gap-2 text-micro text-ink-muted">
-                  <input type="checkbox" checked={soNoAr} onChange={e => setSoNoAr(e.target.checked)} /> só campanhas ativas
-                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="inline-flex items-center gap-1.5 text-micro text-ink-muted">
+                    <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="sr-only">Ordenar por</span>
+                    <select value={ordem} onChange={e => escolherOrdem(e.target.value as Ordem)} className="rounded-md border border-border bg-surface-2 px-2 py-1 text-micro text-ink">
+                      {ORDENS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                    </select>
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-micro text-ink-muted">
+                    <input type="checkbox" checked={soNoAr} onChange={e => setSoNoAr(e.target.checked)} /> só campanhas ativas
+                  </label>
+                </div>
               }
             />
             {arvore.length === 0 ? <p className="text-body text-ink-faint">Nenhum gasto no Meta no período.</p> : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1460px] border-separate border-spacing-0">
+                <table className="w-full min-w-[1540px] border-separate border-spacing-0">
                   <thead>
                     <tr>
                       <th colSpan={9} />
-                      <th colSpan={7} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
+                      <th colSpan={8} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
                     </tr>
                     <tr>
-                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos', 'Qualificados', 'Falou c/ vendedor', 'Orçamentos', 'Custo/orçamento', 'Vendas', 'Voltaram'].map((h, i) => (
+                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos', 'Qualificados', 'Custo/qualif.', 'Falou c/ vendedor', 'Orçamentos', 'Custo/orçamento', 'Vendas', 'Voltaram'].map((h, i) => (
                         <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'} ${i === 9 ? 'border-l border-border' : ''}`}>{h}</th>
                       ))}
                     </tr>
@@ -464,7 +620,7 @@ export function Anuncios() {
                                   <Metricas s={cj.soma} tipo={j0.resultadoTipo} />
                                   <ColunasCrm f={cj.funil} gasto={cj.soma.gasto} />
                                 </tr>
-                                {abj && [...cj.linhas].sort((a, b) => b.gasto - a.gasto).map(a => {
+                                {abj && [...cj.linhas].sort((a, b) => comparar(ordem, { gasto: a.gasto, f: d.porAd.get(a.adId) ?? FUNIL0 }, { gasto: b.gasto, f: d.porAd.get(b.adId) ?? FUNIL0 })).map(a => {
                                   const fa = d.porAd.get(a.adId) ?? FUNIL0
                                   return (
                                     <tr key={a.adId}>
@@ -497,7 +653,9 @@ export function Anuncios() {
                 </table>
               </div>
             )}
-            <p className="mt-3 text-micro text-ink-faint">
+            <details className="mt-3 text-micro text-ink-faint">
+              <summary className="cursor-pointer select-none text-ink-muted hover:text-ink">Como os números são calculados</summary>
+              <p className="mt-2 leading-relaxed">
               No CRM: o contato é ligado ao anúncio exato pela conversa da Ana (ela guarda de qual anúncio o cliente veio).
               Qualificado = a Ana passou ao vendedor, ou o vendedor marcou avanço (lead quente, follow-up, agendamento, orçamento), ou virou orçamento — e não foi marcado “não fabricamos”/“outro assunto”.
               Vendas = pedidos nascidos dos orçamentos desses contatos (venda costuma demorar: períodos curtos quase sempre mostram 0).
@@ -505,8 +663,9 @@ export function Anuncios() {
               Landing page e site vão direto ao vendedor (sem a Ana): para eles, qualificado é lido na conversa do WhatsApp do vendedor — o cliente deu informação de compra (espécie, rebanho, kg, energia, preço, pagamento, frete, cidade…) ou respondeu 2+ vezes ao vendedor; a mensagem pronta da página não conta. No Meta também vale quem conversou assim com o vendedor, mesmo sem etiqueta.
               “Falou c/ vendedor” = o cliente respondeu ao vendedor ou deu informação de compra no WhatsApp dele (a conversa com a Ana não conta).
               “Voltaram” = clientes que já estavam no CRM e chamaram de novo pelo anúncio. Contatos de landing page entram na campanha de cadastro pela origem do CRM.
-              Situação e orçamento/dia vêm do Gerenciador na última carga.
-            </p>
+              Situação e orçamento/dia vêm do Gerenciador na última carga. Custo/qualif. = gasto ÷ qualificados.
+              </p>
+            </details>
           </Card>
 
           {d.pedidosSemOrc.length > 0 && (
@@ -532,7 +691,8 @@ export function Anuncios() {
           )}
 
           {/* Google */}
-          <Card>
+          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
+          <Card className="2xl:col-span-7">
             <CardHeader title="Google: campanha → grupo de anúncios" subtitle="Gasto, cliques e conversões da conta BRANORTE-ADS no período." />
             {!googleLigado ? (
               <p className="text-body text-ink-faint">Aparece assim que o script do CRM rodar na conta do Google Ads.</p>
@@ -542,7 +702,7 @@ export function Anuncios() {
           </Card>
 
           {googleLigado && (d.google.palavras.length > 0 || d.google.termos.length > 0) && (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:col-span-5 2xl:grid-cols-1">
               <Card>
                 <CardHeader title="Palavras-chave (30 dias)" subtitle="As que mais gastaram." />
                 <ListaGoogle itens={d.google.palavras.map(p => ({ k: `${p.palavra}|${p.grupo}|${p.correspondencia}`, nome: String(p.palavra), extra: `${String(p.correspondencia ?? '').toLowerCase()} · ${String(p.grupo ?? '')}`, cliques: num(p.cliques), gasto: num(p.gasto), conv: num(p.conversoes) }))} />
@@ -553,6 +713,7 @@ export function Anuncios() {
               </Card>
             </div>
           )}
+          </div>
         </div>
       )}
     </div>
@@ -616,7 +777,7 @@ function TabelaGoogle({ linhas: ls, abertos, alternar }: { linhas: Record<string
 function ListaGoogle({ itens, icone }: { itens: { k: string; nome: string; extra: string; cliques: number; gasto: number; conv: number }[]; icone?: boolean }) {
   if (itens.length === 0) return <p className="text-body text-ink-faint">Nada no período.</p>
   return (
-    <ul className="space-y-1">
+    <ul className="max-h-[28rem] space-y-1 overflow-y-auto pr-1">
       {itens.map(i => (
         <li key={i.k} className="flex items-start justify-between gap-3 border-t border-border py-1.5 text-body">
           <span className="min-w-0">
