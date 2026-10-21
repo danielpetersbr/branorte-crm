@@ -14,7 +14,7 @@ export function useMarketingRelatorio(periodo: PeriodoMkt) {
 }
 
 /** O mesmo relatório para um intervalo qualquer (a página /anuncios tem Hoje e 7 dias, que a aba Marketing não tem). */
-export function useMarketingRelatorioIntervalo(from: Date, to: Date, label: string, emAndamento: boolean) {
+export function useMarketingRelatorioIntervalo(from: Date, to: Date, label: string, emAndamento: boolean, enabled = true) {
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
     queryKey: ['marketing-relatorio-v3', p_from, p_to],
@@ -47,6 +47,7 @@ export function useMarketingRelatorioIntervalo(from: Date, to: Date, label: stri
       )
       return { ...rel, label, faltou }
     },
+    enabled,
     staleTime: 10 * 60_000,
     refetchInterval: 10 * 60_000,
     placeholderData: prev => prev,
