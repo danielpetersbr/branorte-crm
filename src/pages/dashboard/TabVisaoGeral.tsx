@@ -15,6 +15,7 @@ import { Metric } from './ui/Metric'
 import { brl, n, pct, primeiroNome } from './ui/format'
 import { MetaDoMes } from './blocks/MetaDoMes'
 import { OperacaoAgora } from './blocks/OperacaoAgora'
+import { FunilResumo } from './blocks/FunilResumo'
 import { FinalizadosPorMotivo } from './blocks/FinalizadosPorMotivo'
 import { Tendencia } from './blocks/Tendencia'
 import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
@@ -101,6 +102,8 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   // número ainda não é do período que você escolheu". Background refetch da MESMA
   // key não liga nenhuma das duas flags, então não pisca a cada poll.
   const funilPendente = orcamentosReaisPendente || vendasPendente
+  // o bloco do funil espera também a RPC da união: sem ela o Qualificou nasceria pela regra antiga e pularia ao chegar
+  const funilBlocoPendente = funilPendente || funilUnionPendente
   const numerosPendentes = funilPendente || funilUnionPendente || orcPendente || funilUnionVelho || orcVelho
   const decisoesCarregando = etqPendente || vendFunilPendente || funilUnionPendente || orcPendente || propStatusPendente || coberturaPendente
   const decisoesPendentes = decisoesCarregando || etqVelho || vendFunilVelho || funilUnionVelho || orcVelho || propStatusVelho || coberturaVelho
@@ -298,19 +301,28 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
         })()}
       </section>
 
-      {/* ── 3. Onde trava? ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        {/* (21/10/2026, Daniel) Atendimentos finalizados por motivo no lugar do funil do período, que foi pro topo da aba Funil */}
-        <div className="xl:col-span-5">
-          <FinalizadosPorMotivo />
+      {/* ── 3. Onde trava? ──────────────────────────────────────────────
+          (21/10/2026, Daniel: "tinha um outro ali que era pra manter junto") O funil do período e os atendimentos finalizados
+          ficam LADO A LADO: quem entrou e qualificou, e como os atendimentos terminaram. A evolução diária desce pra linha de
+          baixo, com a largura toda. Entrou / Engajou / Qualificou vêm de dashboard_funil_union, a mesma conta do card Qualificados. */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <div className={esmaece(funilBlocoPendente || funilUnionVelho)} aria-busy={funilBlocoPendente || funilUnionVelho}>
+          {funilBlocoPendente ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando funil do período" /> : orcamentosReais === undefined || vendas === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O funil está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <FunilResumo
+            funil={data.funil}
+            uniao={funilUnion}
+            clientesComProposta={propostasClientes}
+            vendasComOrigem={vendasComOrigem}
+            vendasTotal={vendasQtd}
+            periodoLabel={periodoLabel}
+            onVerDetalhes={() => ir('funil')}
+          />}
         </div>
-        <div className="xl:col-span-7">
-          <Tendencia
-            leadsPorDia={data.leadsPorDia}
-            orcamentosPorDia={extra?.orcamentos_por_dia}
-          />
-        </div>
+        <FinalizadosPorMotivo />
       </div>
+      <Tendencia
+        leadsPorDia={data.leadsPorDia}
+        orcamentosPorDia={extra?.orcamentos_por_dia}
+      />
 
       {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
       <div className={esmaece(decisoesPendentes)} aria-busy={decisoesPendentes}>

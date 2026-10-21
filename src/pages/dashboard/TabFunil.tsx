@@ -12,8 +12,6 @@ import { useOrfaosPorVendedor, type OrfaosPorVendedor } from '@/hooks/useOrfaosP
 import { useCicloVenda, type CicloVenda as CicloVendaData } from '@/hooks/useCicloVenda'
 import { useDashboardEtiquetas, type EtiquetaCategoria } from '@/hooks/useDashboardEtiquetas'
 import { useOrcamentosResumo, type OrcamentosResumo } from '@/hooks/useOrcamentosResumo'
-import { useFunilUnion } from '@/hooks/useFunilUnion'
-import { useDashboardOrcamentos, useDashboardVendas } from '@/hooks/useDashboardOrcamentos'
 import { RISCO_MIN_HORAS, RISCO_MAX_HORAS, RISCO_TOP } from '@/lib/dashboard-risco'
 
 import { Card, Inner, CardHeader } from './ui/Card'
@@ -21,7 +19,6 @@ import { JanelaBadge } from './ui/JanelaBadge'
 import { n, brl, brlFull, pct } from './ui/format'
 import { useJanela } from './DashboardFilterContext'
 import { QueryNotice } from '@/components/ui/QueryNotice'
-import { FunilResumo } from './blocks/FunilResumo'
 
 /* ────────────────────────────────────────────────────────────────────────────
    Aba FUNIL — "onde o lead morre?"
@@ -749,10 +746,6 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
   const orfaosQuery = useOrfaosPorVendedor(7)
   const cicloQuery = useCicloVenda(preset)
   const etiquetasQuery = useDashboardEtiquetas(preset)
-  // funil do período (21/10/2026: veio da Visão geral). Fora de `consultas` de propósito: se faltar, só ele fica esperando.
-  const { data: funilUnion } = useFunilUnion(preset)
-  const { data: clientesComProposta } = useDashboardOrcamentos(preset)
-  const { data: vendas } = useDashboardVendas(preset)
   const data = dashboardQuery.data, extra = extraQuery.data, propStatus = propostasQuery.data
   const orc = orcQuery.data, orfaos = orfaosQuery.data, ciclo = cicloQuery.data, etq = etiquetasQuery.data
   const consultas = [dashboardQuery, extraQuery, propostasQuery, orcQuery, orfaosQuery, cicloQuery, etiquetasQuery]
@@ -766,14 +759,6 @@ export function TabFunil({ onAbrirFaixa }: { onAbrirFaixa?: (faixa: string) => v
   return (
     <div className="space-y-5">
       <QueryNotice error={erro} loading={consultas.some(q => q.isFetching)} message="Não foi possível atualizar todo o funil. Os dados anteriores permanecem visíveis." onRetry={atualizar} />
-      {/* ── 0 · Funil do período ──────────────────────────────────────────
-          (21/10/2026) Saiu da Visão geral, que ganhou "Atendimentos finalizados" no lugar. Entrou, Engajou e Qualificou saem da
-          RPC dashboard_funil_union: a mesma conta do cartão Qualificados (quem a Ana passou pro vendedor conta). */}
-      {funilUnion && clientesComProposta !== undefined && vendas !== undefined
-        ? <FunilResumo funil={data?.funil} uniao={funilUnion} clientesComProposta={clientesComProposta}
-            vendasComOrigem={vendas.qtdLead} vendasTotal={vendas.qtd} periodoLabel={periodoLabel} />
-        : <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando funil do período" />}
-
       {/* ── 1 · Etiquetas de atendimento ────────────────────────────────── */}
       <Card id="funil-etiquetas">
         <CardHeader

@@ -625,11 +625,14 @@ export function Atendimentos() {
               pelo ROTEAMENTO AUTOMÁTICO, não por decisão humana. Dos 325 com vendedor, em 138
               o cliente nunca escreveu nada e em 98 nem o vendedor tinha escrito. O card mede
               DISTRIBUIÇÃO — mexe quando o roteamento mexe (cota, vendedor desligado), não
-              quando o cliente esquenta. Em ago/26 essa fatia caiu de 96% pra 52%. */}
+              quando o cliente esquenta. Em ago/26 essa fatia caiu de 96% pra 52%.
+              (21/10/2026, Daniel: "tá errado esse 100%") A ANA virou `responsavel` dos leads que ela está atendendo,
+              então "tem responsável" passou a ser todo mundo. Na RPC: a ANA não é vendedor, e lead que veio por ela conta
+              só quando ela passou como qualificado (repasse de dúvida técnica não conta). */}
           <KpiCard label="Qualificados" value={acao?.qualificados ?? 0} hero tone="success" icon={Flame}
                    pct={pctDe(acao?.qualificados)} pctBase={pctBase}
                    hint={(acao?.qualificados ?? 0) === 0 ? 'nenhum passou pro vendedor' : 'passaram pro vendedor'}
-                   tooltip={'Lead que já tem VENDEDOR responsável — passou do roteamento e está na mão de alguém.\n\nNão soma com os outros cards: é o complemento dos leads sem dono (todo lead ou tem dono, ou está sem dono).\n\n⚠️ Não olha se o cliente respondeu. Quem preenche o responsável é o roteamento automático, então entra também quem ainda não abriu a boca — o card mede DISTRIBUIÇÃO, e cai quando o roteamento trava (cota, vendedor desligado).'} />
+                   tooltip={'Lead que está na mão de um VENDEDOR.\n\nSe veio pela Ana, conta quando ela passou pro vendedor como qualificado: o cliente respondeu e quer algo que a Branorte fabrica. Não contam quem ainda está com a Ana nem o repasse de dúvida técnica (a Ana chamou o vendedor só pra responder uma pergunta).\n\nLead que foi direto pro vendedor, sem passar pela Ana, conta pelo roteamento, mesmo sem ter respondido.'} />
           {/* ⚠️ 13/08: "Não engajaram / nem começou o bot" SAIU daqui. A regra era
               !motivo_contato && !tocou_botao_em — dois campos do QUIZ DA LP, que lead de
               click-to-WhatsApp nunca preenche. Media por origem em 30d: Facebook Formulário
