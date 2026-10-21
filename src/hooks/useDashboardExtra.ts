@@ -15,6 +15,38 @@ export interface DashboardExtra {
    * parcial de hoje se compara (antes era contra o dia inteiro: −44% às 16h que eram −18%).
    */
   atendimentos: { hoje: number; ontem: number; ontem_ate_agora?: number } | null
+  /**
+   * (21/10/2026, issue #227) "Atendimentos hoje" pela régua do Daniel: conversa com 2 idas e voltas no dia (o cliente
+   * manda, a Branorte responde, o cliente manda, a Branorte responde), 1 por cliente. RPC dashboard_atendimentos_troca,
+   * buscada junto com a dashboard_extra; se só ela falhar, fica null e o tile diz "indisponível" (não 0). O `atendimentos`
+   * acima é a régua antiga (lead novo do dia) e ficou sem leitor na tela.
+   */
+  atendimentosTroca: AtendimentosTroca | null
+}
+
+export interface AtendimentosTroca {
+  hoje: number
+  hojeComVendedor: number
+  hojeSoAna: number
+  ontem: number
+  /** clientes de ontem que já tinham as 2 idas e voltas na mesma hora de agora */
+  ontemAteAgora: number
+  /** contas cujo espelho de mensagens não está copiando hoje (os atendimentos delas ficam de fora) */
+  semEspelho: string[]
+}
+
+function lerTroca(d: unknown): AtendimentosTroca | null {
+  if (!d || typeof d !== 'object') return null
+  const r = d as Record<string, unknown>
+  const num = (v: unknown) => Number(v) || 0
+  return {
+    hoje: num(r.hoje),
+    hojeComVendedor: num(r.hoje_com_vendedor),
+    hojeSoAna: num(r.hoje_so_ana),
+    ontem: num(r.ontem),
+    ontemAteAgora: num(r.ontem_ate_agora),
+    semEspelho: Array.isArray(r.sem_espelho) ? r.sem_espelho.map(String) : [],
+  }
 }
 
 export function useDashboardExtra() {
@@ -24,10 +56,14 @@ export function useDashboardExtra() {
       const to = new Date()
       const from = new Date(); from.setDate(from.getDate() - 29); from.setHours(0, 0, 0, 0)
       const toExcl = new Date(to); toExcl.setDate(toExcl.getDate() + 1); toExcl.setHours(0, 0, 0, 0)
-      const { data, error } = await supabase.rpc('dashboard_extra', {
-        p_from: from.toISOString(),
-        p_to: toExcl.toISOString(),
-      })
+      const [extraRes, trocaRes] = await Promise.all([
+        supabase.rpc('dashboard_extra', {
+          p_from: from.toISOString(),
+          p_to: toExcl.toISOString(),
+        }),
+        supabase.rpc('dashboard_atendimentos_troca'),
+      ])
+      const { data, error } = extraRes
       if (error) throw error
       const r = (data ?? {}) as Partial<DashboardExtra>
       const av = r.avaliacao ?? { media: 0, total: 0, por_nota: [] }
@@ -38,6 +74,7 @@ export function useDashboardExtra() {
         aberto: r.aberto ?? { total: 0, prospeccao: 0, novo_lead: 0, follow_up: 0, lead_quente: 0, em_negociacao: 0 },
         negociacao: r.negociacao ?? { follow_up: 0, lead_quente: 0, em_negociacao: 0, com_orcamento: 0, valor: 0, valor_followup: 0, com_orcamento_followup: 0 },
         atendimentos: r.atendimentos ?? null,
+        atendimentosTroca: trocaRes.error ? null : lerTroca(trocaRes.data),
       }
     },
     staleTime: 60_000,
