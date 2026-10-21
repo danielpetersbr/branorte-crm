@@ -1,5 +1,5 @@
 import { createSnapshotRevision } from './snapshot.js'
-import type { ItemResolvido, OrcamentoAISnapshot, PropostaOrcamento } from './types.js'
+import type { ItemResolvido, MotorResolvido, OrcamentoAISnapshot, PropostaOrcamento } from './types.js'
 
 const LEGACY_MODEL_MOTOR_ITEM_RE = /^\s*motor\s+\d+(?:[.,]\d+)?\s*cv\s+\d+\s*polos?\s*$/i
 
@@ -34,4 +34,33 @@ export function applyProposal(snapshot: OrcamentoAISnapshot, proposal: PropostaO
     fotoPrincipalUrl: proposal.fotoPrincipalUrl,
     condicoes: { ...proposal.condicoes },
   }
+}
+
+export interface MotorDoItem {
+  motor: MotorResolvido
+  /** Valor de UMA unidade do motor: é o que o carrinho guarda em `motor_valor_unit`. */
+  valorUnitario: number
+}
+
+/**
+ * Motor de cada item da proposta, na ordem dos itens. Cada motor serve a um item só:
+ * o primeiro item do mesmo catálogo que ainda não tem motor. Antes, todo item de mesmo
+ * catálogo pegava o primeiro motor, e dois itens iguais com quantidades diferentes
+ * ficavam com o motor do outro.
+ *
+ * O orçamentista manda o motor avulso com o valor da QUANTIDADE TODA (motorDoPreco ×
+ * quantidade, em api/_lib/orcamento-ai-catalog.ts). O carrinho guarda o valor de UMA
+ * unidade, e o agruparMotores multiplica pela quantidade do item. Sem a divisão,
+ * 3 chupins cobravam 9 motores (issue #208).
+ */
+export function motoresDosItens(itens: readonly ItemResolvido[], motores: readonly MotorResolvido[]): Array<MotorDoItem | null> {
+  const usados = new Set<number>()
+  return itens.map((item) => {
+    if (item.catalogoId == null) return null
+    const idx = motores.findIndex((motor, i) => !usados.has(i) && motor.itemCatalogoId === item.catalogoId)
+    if (idx < 0) return null
+    usados.add(idx)
+    const motor = motores[idx]
+    return { motor, valorUnitario: motor.incluso ? 0 : motor.valor / Math.max(1, item.quantidade) }
+  })
 }

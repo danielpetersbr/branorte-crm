@@ -22,7 +22,7 @@ import { ResponsiveScaler } from '@/components/ResponsiveScaler'
 import { ClienteEditModal } from '@/components/ClienteEditModal'
 import { useOrcamentoModelos, useOrcamentoGerado, type OrcamentoModelo, detectarBalancaDuplicada, stripSufixoVoltagem } from '@/hooks/useOrcamentoBuilder'
 import { OrcamentoAIChat } from '@/components/orcamento/OrcamentoAIChat'
-import { applyProposal, proposalExtrasForModel } from '@/lib/orcamento-ai/apply-proposal'
+import { applyProposal, motoresDosItens, proposalExtrasForModel, type MotorDoItem } from '@/lib/orcamento-ai/apply-proposal'
 import type { OrcamentoAISnapshot, PropostaOrcamento } from '@/lib/orcamento-ai/types'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useOrcamentoDraft } from '@/hooks/useOrcamentoDraft'
@@ -1216,10 +1216,13 @@ export function OrcamentoMontar() {
     const next = applyProposal(aiSnapshot, proposal)
     const localModel = proposal.modelo ? (modelos ?? []).find((modelo) => modelo.id === proposal.modelo!.id) : null
     if (proposal.modelo && !localModel) throw new Error('O modelo escolhido não está mais disponível. Atualize a página e tente novamente.')
-    const materializarItem = (item: PropostaOrcamento['itens'][number]): CarrinhoItem => {
+    // Motor de cada item na ordem (um por item) e com o valor de UMA unidade: o orçamentista
+    // manda o motor avulso com o valor da quantidade toda, e o agruparMotores multiplica pela
+    // quantidade de novo (3 chupins cobravam 9 motores, #208).
+    const materializarItem = (item: PropostaOrcamento['itens'][number], ligado: MotorDoItem | null): CarrinhoItem => {
       const preco = item.catalogoId != null ? (precos ?? []).find((entry) => entry.id === item.catalogoId) : null
       const catalogo = preco ? (items ?? []).find((entry) => entry.preco_branorte_id === preco.id) : null
-      const motor = next.motores.find((entry) => entry.itemCatalogoId === item.catalogoId)
+      const motor = ligado?.motor
       return {
         uid: gerarUid(),
         catalogo_id: catalogo?.id ?? -1,
@@ -1233,20 +1236,24 @@ export function OrcamentoMontar() {
         motor_cv: motor?.cv ?? preco?.motor_cv ?? null,
         motor_polos: motor?.polos ?? preco?.motor_polos ?? null,
         motor_qtd: motor ? 1 : 0,
-        motor_valor_unit: motor?.incluso ? 0 : motor?.valor ?? 0,
+        motor_valor_unit: ligado?.valorUnitario ?? 0,
         foto_url: item.fotoUrl ?? catalogo?.foto_url ?? null,
       }
+    }
+    const materializar = (lista: PropostaOrcamento['itens']): CarrinhoItem[] => {
+      const ligados = motoresDosItens(lista, next.motores)
+      return lista.map((item, i) => materializarItem(item, ligados[i]))
     }
     if (localModel) {
       // O servidor monta a proposta como [itens do modelo, itens adicionais].
       // Carrega o pacote oficial (preservando toda a lógica local de motores/fotos)
       // e acrescenta somente o que o vendedor pediu fora dele. Antes, esses extras
       // apareciam na conferência da IA e sumiam silenciosamente ao aplicar.
-      const extras = proposalExtrasForModel(next.itens, localModel.itens).map(materializarItem)
+      const extras = materializar(proposalExtrasForModel(next.itens, localModel.itens))
       carregarDoModelo(localModel, false, true)
       if (extras.length) setCarrinho((current) => [...current, ...extras])
     } else {
-      setCarrinho(next.itens.map(materializarItem))
+      setCarrinho(materializar(next.itens))
     }
     setAiModeloAtual(next.modelo)
     setVoltagem(next.voltagem ?? voltagem)
