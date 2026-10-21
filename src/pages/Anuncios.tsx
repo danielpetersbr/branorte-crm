@@ -199,7 +199,7 @@ function useDados(p: Periodo) {
         google: {
           gasto: num(totGoogle?.gasto), cliques: num(totGoogle?.cliques), impressoes: num(totGoogle?.impressoes),
           conversoes: num(totGoogle?.resultado),
-          // a campanha do YouTube conta inscrição/engajamento como conversão; as de pesquisa contam visualização de página
+          // a campanha do YouTube conta inscrição/engajamento como conversão; as de pesquisa contam o clique no WhatsApp do site ([BOTÃO] - WHATS, principal) e formulário
           conversoesYoutube: (google.error ? [] : linhas(google.data)).filter(l => l.nivel === 'campanha' && /youtube/i.test(String(l.campanha))).reduce((a, l) => a + num(l.conversoes), 0),
           ate: txt(totGoogle?.carregado_ate), crm: canal('Site'),
           linhas: google.error ? [] : linhas(google.data),
@@ -366,7 +366,7 @@ export function Anuncios() {
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                   <Kpi rotulo="Gasto" valor={brl(d.google.gasto)} />
                   <Kpi rotulo="Cliques" valor={n(d.google.cliques)} apoio={`CTR ${pct(div(100 * d.google.cliques, d.google.impressoes), 1)} · CPC ${cent(div(d.google.gasto, d.google.cliques))}`} />
-                  <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio={`${n(d.google.conversoes - d.google.conversoesYoutube)} da pesquisa (visualização de página)${d.google.conversoesYoutube ? ` · ${n(d.google.conversoesYoutube)} do YouTube` : ''} — não é contato`} />
+                  <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio={`${n(d.google.conversoes - d.google.conversoesYoutube)} da pesquisa (clique no WhatsApp do site, formulário e outras)${d.google.conversoesYoutube ? ` · ${n(d.google.conversoesYoutube)} do YouTube (inscrição/engajamento)` : ''}`} />
                   <Kpi rotulo="Contatos do Site no CRM" valor={n(d.google.crm.contatos)} apoio={`${cent(div(d.google.gasto, d.google.crm.contatos))} por contato (site inclui orgânico)`} />
                   <Kpi rotulo="Qualificados" valor={`${n(d.google.crm.qualificados)} · ${pct(div(100 * d.google.crm.qualificados, d.google.crm.contatos), 0)}`} apoio={`${cent(div(d.google.gasto, d.google.crm.qualificados))} por qualificado · lido na conversa`} />
                   <Kpi rotulo="Resposta do vendedor" valor={d.google.crm.respMedH != null ? horas(d.google.crm.respMedH) : '—'} apoio={`até a 1ª mensagem (mediana)${d.google.crm.semResposta ? ` · ${n(d.google.crm.semResposta)} sem resposta` : ' · todos respondidos'}`} />
