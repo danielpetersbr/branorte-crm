@@ -76,7 +76,7 @@ test('reabrir transferência prioriza percentual ou valor fixo editados, inclusi
     let restored: any = null
     const context = run(`var hydrate = ${hydration.arguments[0].getText(page)}`, {
       import3dToken: payload.exportId, editingId: null, loadingItems: false, loadingMotores: false, loadingPrecos: false,
-      items: [], motores: [], precos: [], importedTokenRef: { current: null }, transfer3D: payload,
+      items: [], catalogo3D: [], motores: [], precos: [], importedTokenRef: { current: null }, transfer3D: payload,
       window: { localStorage: storage }, readProjeto3DDraft, autoVincularProjeto3D,
       aplicarRascunho(value: unknown) { restored = value },
       precificarLinhaProjeto3D() { throw new Error('não há catálogo nesta recuperação') },

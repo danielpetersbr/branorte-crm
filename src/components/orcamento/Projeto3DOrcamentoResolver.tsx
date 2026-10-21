@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import { Boxes, Check, ChevronDown, Link2, Search } from 'lucide-react'
+import { AlertCircle, Boxes, Check, ChevronDown, Link2, RefreshCw, Search } from 'lucide-react'
 import type { CatalogoItem } from '@/hooks/useCatalogo'
 import type { OrigemProjeto3D } from '@/lib/projeto-3d-orcamento'
 import { nomeComercialMoegaDescarga } from '@/lib/projeto-3d-catalogo-match'
+import type { DiagnosticoAutoVinculoProjeto3D } from '@/lib/projeto-3d-auto-vinculo'
 
-type Linha = { uid: string; nome: string; qtd: number; valor: number; catalogo_id?: number; origem_projeto3d?: OrigemProjeto3D }
+type Linha = { uid: string; nome: string; qtd: number; valor: number; catalogo_id?: number; preco_branorte_id?: number | null; origem_projeto3d?: OrigemProjeto3D }
 
-export function Projeto3DOrcamentoResolver({ items, catalogo, onVincular, onManual }: {
+export function Projeto3DOrcamentoResolver({ items, catalogo, diagnosticos = [], onReanalisar, onVincular, onManual }: {
   items: Linha[]; catalogo: CatalogoItem[];
+  diagnosticos?: DiagnosticoAutoVinculoProjeto3D[];
+  onReanalisar?: () => void;
   onVincular: (uid: string, item: CatalogoItem) => void;
   onManual: (uid: string, valor: number) => void;
 }) {
@@ -23,30 +26,33 @@ export function Projeto3DOrcamentoResolver({ items, catalogo, onVincular, onManu
       <ChevronDown className={`h-4 w-4 text-ink-muted transition-transform ${expanded ? 'rotate-180' : ''}`} />
     </button>
     {expanded && <div className="border-t border-border">
-      <p className="px-4 py-3 text-xs text-ink-muted bg-accent/5">Os equipamentos reconhecidos recebem o cadastro e o preço automaticamente. Confira os itens pendentes para liberar a emissão.</p>
+      <div className="px-4 py-3 text-xs text-ink-muted bg-accent/5 flex flex-wrap items-center gap-3"><p className="flex-1 min-w-48">{pending ? 'Revise as pendências abaixo. A emissão fica bloqueada até cada equipamento ter cadastro e preço conferidos.' : 'Cadastro, descrição e preço conferidos. A sequência e as quantidades seguem o projeto.'}</p>{pending > 0 && onReanalisar && <button type="button" onClick={onReanalisar} className="inline-flex items-center gap-1.5 rounded-lg border border-accent/25 bg-surface px-3 py-2 font-semibold text-accent"><RefreshCw className="h-3.5 w-3.5" />Tentar vínculos novamente</button>}</div>
       <ol className="divide-y divide-border max-h-[480px] overflow-y-auto">
-        {imported.map(item => <LinhaResolver key={item.uid} item={item} catalogo={catalogo} onVincular={onVincular} onManual={onManual} />)}
+        {imported.map(item => <LinhaResolver key={item.uid} item={item} catalogo={catalogo} diagnostico={diagnosticos.find(entry => entry.uid === item.uid)} onVincular={onVincular} onManual={onManual} />)}
       </ol>
     </div>}
   </section>
 }
 
-function LinhaResolver({ item, catalogo, onVincular, onManual }: { item: Linha; catalogo: CatalogoItem[]; onVincular: (uid: string, item: CatalogoItem) => void; onManual: (uid: string, valor: number) => void }) {
+function LinhaResolver({ item, catalogo, diagnostico, onVincular, onManual }: { item: Linha; catalogo: CatalogoItem[]; diagnostico?: DiagnosticoAutoVinculoProjeto3D; onVincular: (uid: string, item: CatalogoItem) => void; onManual: (uid: string, valor: number) => void }) {
   const [editing, setEditing] = useState(false)
   const [mode, setMode] = useState<'catalogo' | 'manual'>('catalogo')
   const [search, setSearch] = useState('')
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedId, setSelectedId] = useState(diagnostico?.catalogo ? String(diagnostico.catalogo.id) : '')
   const [price, setPrice] = useState('')
   const [error, setError] = useState('')
   const origin = item.origem_projeto3d!
   const pending = origin.resolution === 'pendente'
-  const linkedCatalog = origin.resolution === 'vinculado' ? catalogo.find(row => row.id === item.catalogo_id) : null
+  const linkedCatalog = origin.resolution === 'vinculado' ? catalogo.find(row => item.catalogo_id === -1 ? row.id < 0 && row.preco_branorte_id === item.preco_branorte_id : row.id === item.catalogo_id) : null
   const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  const matches = editing ? catalogo.filter(row => row.ativo && normalize(`${nomeComercialMoegaDescarga(row) ?? ''} ${row.nome_curto} ${row.nome_completo} ${row.categoria}`).includes(normalize(search))) : []
+  const query = normalize(search).split(/\s+/).filter(Boolean)
+  const matches = editing ? catalogo.filter(row => row.ativo && row.is_oficial && query.every(word => normalize(`${nomeComercialMoegaDescarga(row) ?? ''} ${row.nome_curto} ${row.nome_completo} ${row.categoria}`).includes(word))) : []
   const selected = catalogo.find(row => row.ativo && String(row.id) === selectedId)
   const manualPrice = Number(price.replace(',', '.'))
   return <li className="p-4 space-y-2.5">
     <div className="flex items-start gap-2.5"><span className="text-xs text-ink-faint tabular-nums pt-0.5">{origin.sequence}.</span><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-ink break-words">{item.nome}</p><p className="text-[11px] text-ink-muted mt-0.5">{origin.floorName} · Quantidade: {item.qtd}</p></div>{!pending && <span className="flex items-center gap-1 text-xs font-medium text-accent"><Check className="h-3.5 w-3.5" />{origin.resolution === 'manual' ? 'Manual' : 'Vinculado'}</span>}</div>
+    {pending && <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-950"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><p><strong className="block mb-1">{diagnostico?.motivo === 'motor_incompleto' ? 'Conferir motor' : diagnostico?.motivo === 'sem_preco' ? 'Preço indisponível' : diagnostico?.motivo === 'ambiguo' ? 'Escolher entre cadastros' : 'Vínculo pendente'}</strong>{diagnostico?.mensagem ?? 'Confira o produto e o preço no catálogo antes de emitir o orçamento.'}</p></div>}
+    {pending && diagnostico?.catalogo && <div className="flex gap-3 rounded-lg border border-border bg-bg p-3">{diagnostico.catalogo.foto_url && <img src={diagnostico.catalogo.foto_url} alt={diagnostico.catalogo.nome_curto} className="h-16 w-20 rounded-md bg-white object-contain" />}<div className="min-w-0"><p className="text-xs font-semibold text-ink">Cadastro identificado: {nomeComercialMoegaDescarga(diagnostico.catalogo) ?? diagnostico.catalogo.nome_curto}</p><ul className="mt-1 list-disc pl-4 text-[11px] text-ink-muted">{diagnostico.catalogo.specs.slice(0, 3).map((spec, index) => <li key={index}>{spec}</li>)}</ul></div></div>}
     <button type="button" onClick={() => setEditing(value => !value)} aria-expanded={editing} className="text-xs font-semibold text-accent hover:underline">{editing ? 'Fechar conferência' : pending ? 'Conferir preço' : 'Alterar vínculo ou valor'}</button>
     {editing && <>
     <div className="flex gap-1 text-xs"><button type="button" onClick={() => setMode('catalogo')} className={`rounded-md px-2.5 py-1.5 ${mode === 'catalogo' ? 'bg-accent/10 text-accent font-semibold' : 'text-ink-muted hover:bg-bg'}`}>Vincular catálogo</button><button type="button" onClick={() => setMode('manual')} className={`rounded-md px-2.5 py-1.5 ${mode === 'manual' ? 'bg-accent/10 text-accent font-semibold' : 'text-ink-muted hover:bg-bg'}`}>Valor manual</button></div>

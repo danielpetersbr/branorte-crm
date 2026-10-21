@@ -41,7 +41,8 @@ import { resolverVendedorDoOrcamento } from '@/lib/orcamento-vendedor'
 import { decidirDestinoPasta, saveFalhou } from '@/lib/orcamento-folder-scan'
 import { parseProjeto3DOrcamentoPayload, readProjeto3DOrcamentoTransfer, saveProjeto3DOrcamentoTransfer, materializeProjeto3DOrcamento, materializeProjeto3DAcessorios, type OrigemProjeto3D, type OrigemAcessoriosProjeto3D, type Projeto3DOrcamentoPayload } from '@/lib/projeto-3d-orcamento'
 import { mensagemPopupProjeto3DValida, readProjeto3DDraft, resolverManualProjeto3D, resolverVinculoProjeto3D, temPendenciasProjeto3D } from '@/lib/projeto-3d-orcamento-integracao'
-import { autoVincularProjeto3D } from '@/lib/projeto-3d-auto-vinculo'
+import { autoVincularProjeto3D, autoVincularProjeto3DComDiagnostico } from '@/lib/projeto-3d-auto-vinculo'
+import { catalogoProjeto3DComTransportadores } from '@/lib/projeto-3d-transportadores'
 import { nomeComercialMoegaDescarga } from '@/lib/projeto-3d-catalogo-match'
 import { CONFIGURADOR_ORIGIN } from '@/lib/catalogo3d-session'
 import { fetchConfiguradorProjetoMetaAtual } from '@/hooks/useConfiguradorProjetos'
@@ -1663,6 +1664,7 @@ export function OrcamentoMontar() {
   }, [carrinho.length, algumPickerAberto, substituirUid])
 
   const { data: precos, isLoading: loadingPrecos } = usePrecosBranorte()
+  const catalogo3D = useMemo(() => catalogoProjeto3DComTransportadores(items ?? [], precos ?? [], chupimMaterial, chupimInclinacao), [items, precos, chupimMaterial, chupimInclinacao])
 
   useEffect(() => {
     if (!import3dToken || editingId) return
@@ -1725,11 +1727,11 @@ export function OrcamentoMontar() {
     if (transfer3D && transfer3D.exportId !== import3dToken) return
     if (recovered) {
       const snapshot = recovered as unknown as DraftSnap
-      aplicarRascunho({ ...snapshot, carrinho: autoVincularProjeto3D(snapshot.carrinho, items,
+      aplicarRascunho({ ...snapshot, carrinho: autoVincularProjeto3D(snapshot.carrinho, catalogo3D,
         (line, item) => precificarLinhaProjeto3D(line, item, snapshot.voltagem ?? 'trifasico')) })
     }
     else if (transfer3D) {
-      setCarrinho(autoVincularProjeto3D<CarrinhoItem>(materializeProjeto3DOrcamento(transfer3D), items,
+      setCarrinho(autoVincularProjeto3D<CarrinhoItem>(materializeProjeto3DOrcamento(transfer3D), catalogo3D,
         (line, item) => precificarLinhaProjeto3D(line, item, voltagem)))
       setAcessorios(materializeProjeto3DAcessorios(transfer3D))
       setClienteDados({ nome: transfer3D.clientName })
@@ -1741,7 +1743,7 @@ export function OrcamentoMontar() {
     draft.dismissRecovered()
     setHydrated3DToken(import3dToken)
     setImport3DError('')
-  }, [import3dToken, transfer3D, editingId, loadingItems, loadingMotores, loadingPrecos, items, motores, precos])
+  }, [import3dToken, transfer3D, editingId, loadingItems, loadingMotores, loadingPrecos, items, motores, precos, catalogo3D])
   // Lista de modelos de pacote — usado pelo copiloto IA pra resolver onCarregarPacote.
   // (Outros componentes mais abaixo no arquivo carregam de novo; ok porque o hook
   // usa React Query e dedup automaticamente.)
@@ -2144,7 +2146,7 @@ export function OrcamentoMontar() {
 
     return {
       uid: gerarUid(),
-      catalogo_id: item.id,
+      catalogo_id: item.id < 0 ? -1 : item.id,
       categoria: item.categoria,
       nome: nomeComercial,
       nome_custom: nomeCustom,
@@ -2170,11 +2172,12 @@ export function OrcamentoMontar() {
 
   function precificarLinhaProjeto3D(original: CarrinhoItem, item: CatalogoItem, voltagemOrcamento: Voltagem = voltagem): CarrinhoItem {
     if (!item.ativo || !precos) throw new Error('O cadastro ou a tabela de preços ainda não está disponível.')
+    if (item.id < 0 && item.subcategoria === 'CHUPIM' && !(Number(item.motor_padrao_cv) > 0)) throw new Error('Não foi possível calcular o motor deste transportador. Confira a capacidade e o acionamento antes de emitir.')
     const priced = criarItemCatalogo(item, undefined, voltagemOrcamento)
     const priceRow = item.preco_branorte_id ? precos.find(row => row.id === item.preco_branorte_id) : null
     if (item.preco_branorte_id && !priceRow) throw new Error('O preço oficial deste cadastro não está disponível.')
     const motorIncluso = motorJaInclusoNoItem(priced.specs) || !!(priceRow && valorPorVoltagem(priceRow, item.usa_inversor ? 'trifasico' : voltagemOrcamento).motorIncluso)
-    const linked = resolverVinculoProjeto3D(original, priced, { motorIncluso })
+    const linked = resolverVinculoProjeto3D(original, priced, { motorIncluso, ...(item.id < 0 && priceRow ? { precoOficialId: priceRow.id } : {}) })
     const motorSemPreco = agruparMotores([linked], motores, voltagemOrcamento, []).some(motor =>
       !motor.removido && !motor.por_conta_cliente && !motor.incluso_real
       && !(motorIncluso && (motor.motorIndex == null || motor.motorIndex < 100))
@@ -2190,6 +2193,17 @@ export function OrcamentoMontar() {
     // Valida antes do updater: o painel captura o erro e mantém a linha pendente.
     const linked = precificarLinhaProjeto3D(original, item)
     setCarrinho(current => current.map(line => line.uid === uid ? linked : line))
+  }
+
+  const diagnosticos3D = useMemo(() => {
+    if (loadingItems || loadingMotores || loadingPrecos || !precos || !motores) return []
+    return autoVincularProjeto3DComDiagnostico(carrinho, catalogo3D,
+      (line, item) => precificarLinhaProjeto3D(line, item, voltagem)).diagnosticos
+  }, [carrinho, catalogo3D, precos, motores, voltagem, loadingItems, loadingMotores, loadingPrecos])
+
+  function reanalisarVinculosProjeto3D() {
+    setCarrinho(current => autoVincularProjeto3D(current, catalogo3D,
+      (line, item) => precificarLinhaProjeto3D(line, item, voltagem)))
   }
 
   function confirmarLinhaManualProjeto3D(uid: string, valor: number) {
@@ -3476,7 +3490,7 @@ export function OrcamentoMontar() {
       ) : null}
 
       {import3dToken && !import3DReady && <div role="status" className="shrink-0 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-sm text-ink">{import3DError || 'Recebendo a lista completa do projeto 3D…'}</div>}
-      {carrinho.some(item => item.origem_projeto3d) && <div className="shrink-0 max-h-[38vh] overflow-y-auto rounded-xl"><Projeto3DOrcamentoResolver items={carrinho} catalogo={precos ? items ?? [] : []} onVincular={vincularLinhaProjeto3D} onManual={confirmarLinhaManualProjeto3D} /></div>}
+      {carrinho.some(item => item.origem_projeto3d) && <div className="shrink-0 max-h-[38vh] overflow-y-auto rounded-xl"><Projeto3DOrcamentoResolver items={carrinho} catalogo={precos ? catalogo3D : []} diagnosticos={diagnosticos3D} onReanalisar={reanalisarVinculosProjeto3D} onVincular={vincularLinhaProjeto3D} onManual={confirmarLinhaManualProjeto3D} /></div>}
       {acessorios?.origem_projeto3d && <div role="status" className="shrink-0 flex flex-wrap items-center gap-2 rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 text-xs text-ink"><span className="flex-1"><strong>Acessórios do projeto.</strong> {acessorios.items.length} descrições preservadas. {acessorios.valorFixo != null && acessorios.valorFixo > 0 ? 'Valor fixo definido para este orçamento.' : acessorios.pct > 0 ? `${acessorios.pct}% sobre o valor dos equipamentos, com atualização automática.` : 'Sem cobrança automática. Confira o valor ou percentual antes de emitir.'}</span><button type="button" onClick={() => setAcessoriosOpen(true)} className="rounded-lg border border-accent/30 px-3 py-2 font-semibold text-accent hover:bg-accent/10">Ajustar acessórios</button></div>}
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">

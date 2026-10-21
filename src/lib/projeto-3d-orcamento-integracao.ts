@@ -10,8 +10,10 @@ export function temPendenciasProjeto3D(items: readonly { origem_projeto3d?: Orig
 }
 
 /** A escolha comercial altera preço e acionamento; a linha do projeto mantém sua identidade. */
-export function resolverVinculoProjeto3D<T extends LinhaProjeto3D, P extends { specs: string[]; valor: number; catalogo_id: number; motor_cv?: number | null; motor_qtd?: number; motor_valor_unit?: number }>(original: T, precificado: P, options: { motorIncluso?: boolean } = {}): T {
-  if (!original.origem_projeto3d || !Number.isFinite(precificado.valor) || precificado.valor <= 0 || precificado.catalogo_id < 0) throw new Error('O equipamento não tem preço válido no catálogo. Confirme um valor manual para esta linha.')
+export function resolverVinculoProjeto3D<T extends LinhaProjeto3D, P extends { specs: string[]; valor: number; catalogo_id: number; preco_branorte_id?: number | null; motor_cv?: number | null; motor_qtd?: number; motor_valor_unit?: number }>(original: T, precificado: P, options: { motorIncluso?: boolean; precoOficialId?: number } = {}): T {
+  const precoOficialValidado = Number.isInteger(options.precoOficialId) && Number(options.precoOficialId) > 0
+    && precificado.preco_branorte_id === options.precoOficialId && precificado.catalogo_id === -1
+  if (!original.origem_projeto3d || !Number.isFinite(precificado.valor) || precificado.valor <= 0 || (precificado.catalogo_id < 0 && !precoOficialValidado)) throw new Error('O equipamento não tem preço válido no catálogo. Confirme um valor manual para esta linha.')
   if (Number(precificado.motor_cv) > 0 && Number(precificado.motor_qtd) > 0 && !options.motorIncluso && (!Number.isFinite(precificado.motor_valor_unit) || Number(precificado.motor_valor_unit) <= 0)) throw new Error('O catálogo não tem preço válido para o motor nesta voltagem. Selecione Trifásico no orçamento ou confirme um valor manual completo.')
   return {
     ...original, ...precificado,

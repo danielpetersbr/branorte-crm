@@ -29,7 +29,7 @@ function hydrate(options: { loadingPrecos?: boolean; recovered?: any } = {}) {
   const voltageCalls: string[] = []
   const values = {
     ...transfer, import3dToken: payload.exportId, editingId: null, loadingItems: false, loadingMotores: false, loadingPrecos: options.loadingPrecos ?? false,
-    items: [{ id: 5 }], motores: [], precos: [], voltagem: 'trifasico', importedTokenRef: { current: null }, transfer3D: payload,
+    items: [{ id: 5 }], catalogo3D: [{ id: 5 }], motores: [], precos: [], voltagem: 'trifasico', importedTokenRef: { current: null }, transfer3D: payload,
     window: { localStorage: {} }, readProjeto3DDraft: () => options.recovered ?? null,
     autoVincularProjeto3D(rows: any[], _catalog: unknown, price: (line: any, catalog: any) => any) { return rows.map(row => price(row, { id: 5 })) },
     precificarLinhaProjeto3D(row: any, item: any, voltage: string) { voltageCalls.push(voltage); return { ...row, catalogo_id: item.id, valor: voltage === 'monofasico' ? 3100 : 2600, origem_projeto3d: { ...row.origem_projeto3d, resolution: 'vinculado' } } },

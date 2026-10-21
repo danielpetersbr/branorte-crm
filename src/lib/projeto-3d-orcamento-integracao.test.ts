@@ -29,6 +29,17 @@ test('confirmação manual exige valor válido e mantém cada duplicata separada
   assert.equal(integration.temPendenciasProjeto3D([original, result[0]]), true)
 })
 
+test('transportador da tabela oficial pode ser precificado sem inventar FK de catálogo', () => {
+  assert.ok(integration)
+  const price = { ...original, specs: ['Comprimento: 5,5 metros.'], valor: 6976, catalogo_id: -1, preco_branorte_id: 101 }
+  assert.throws(() => integration.resolverVinculoProjeto3D(original, price))
+  assert.throws(() => integration.resolverVinculoProjeto3D(original, price, { precoOficialId: 102 }))
+  const linked = integration.resolverVinculoProjeto3D({ ...original, preco_branorte_id: null as number | null }, price, { precoOficialId: 101 })
+  assert.equal(linked.catalogo_id, -1)
+  assert.equal(linked.preco_branorte_id, 101)
+  assert.equal(linked.origem_projeto3d.resolution, 'vinculado')
+})
+
 test('popup só recebe o projeto esperado da janela e origem exatas', () => {
   assert.ok(integration)
   const opener = {}

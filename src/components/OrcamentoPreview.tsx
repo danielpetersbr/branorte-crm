@@ -14,10 +14,11 @@ import {
   type MontagemCfg, type MontagemResponsavel,
 } from '@/lib/orcamento-montagem'
 import { letraItem } from '@/lib/utils'
-import type { OrigemAcessoriosProjeto3D } from '@/lib/projeto-3d-orcamento'
+import type { OrigemAcessoriosProjeto3D, OrigemProjeto3D } from '@/lib/projeto-3d-orcamento'
 
 export interface PreviewItem {
   uid?: string
+  origem_projeto3d?: OrigemProjeto3D
   catalogo_id?: number
   categoria: string
   // Bug #6: item com inversor roda motor TRIFÁSICO mesmo em orçamento mono —
@@ -1035,6 +1036,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                       </div>
                     )}
                   </div>
+                  {!renderMode && it.origem_projeto3d?.resolution === 'pendente' && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"><strong>Vínculo pendente.</strong> Confira este equipamento no painel “Lista do projeto 3D” acima para trazer descrição, foto e preço do cadastro correto.</p>}
                   <div className="flex flex-row gap-4 items-start">
                     <div className="flex-1 pl-3 text-[14.5px] text-gray-700 leading-normal space-y-0.5 min-w-0">
                       {(() => {
@@ -1159,7 +1161,7 @@ export function OrcamentoPreview(props: OrcamentoPreviewProps) {
                           </div>
                         )}
                       </div>
-                    ) : !renderMode && onUpdateFotoItem ? (
+                    ) : !renderMode && onUpdateFotoItem && it.origem_projeto3d?.resolution !== 'pendente' ? (
                       <div
                         className="flex-shrink-0 w-[100px] h-[100px] sm:w-[220px] sm:h-[180px] bg-gray-50 border border-dashed border-gray-300 rounded cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/40 flex items-center justify-center text-center px-2"
                         onDoubleClick={() => trocarFotoItem(it.uid)}

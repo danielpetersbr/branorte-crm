@@ -39,6 +39,9 @@ const num = (v: unknown) => (v == null || v === '' ? 0 : Number(v) || 0)
 const numN = (v: unknown) => (v == null || v === '' ? null : Number(v))
 const txt = (v: unknown) => (v == null ? null : String(v))
 const linhas = (d: unknown) => (d ?? []) as Record<string, unknown>[]
+/** Cores do gráfico "Dia a dia": Meta azul, Google laranja (as linhas de contatos seguem verde e vermelho). */
+const COR_META = CHART.s2
+const COR_GOOGLE = '#f97316'
 const dataBr = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—')
 const cent = (v: number | null) => (v == null || !Number.isFinite(v) ? '—' : v < 10 ? `R$ ${v.toFixed(2).replace('.', ',')}` : brl(v))
 const div = (a: number, b: number) => (b > 0 ? a / b : null)
@@ -245,15 +248,18 @@ export function Anuncios() {
             <CardHeader title="Dia a dia" subtitle="Gasto de cada plataforma (barras) e contatos que chegaram no CRM (linhas)." />
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={d.dias.map(x => ({ ...x, rotulo: x.dia.slice(8, 10) + '/' + x.dia.slice(5, 7) }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                {/* Barras AGRUPADAS (lado a lado), não empilhadas: cada uma é o gasto só daquela plataforma no dia.
+                    barGap = espaço entre as duas barras do dia; barCategoryGap = espaço entre os dias; maxBarSize
+                    deixa a barra fina em períodos curtos e o Recharts afina sozinho em 90 dias. */}
+                <ComposedChart data={d.dias.map(x => ({ ...x, rotulo: x.dia.slice(8, 10) + '/' + x.dia.slice(5, 7) }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
                   <CartesianGrid stroke={CHART.grid} vertical={false} />
                   <XAxis dataKey="rotulo" tick={{ fill: CHART.ink, fontSize: 11 }} />
                   <YAxis yAxisId="r" tick={{ fill: CHART.ink, fontSize: 11 }} tickFormatter={v => `R$ ${Math.round(Number(v))}`} width={64} />
                   <YAxis yAxisId="c" orientation="right" tick={{ fill: CHART.ink, fontSize: 11 }} width={32} allowDecimals={false} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v, nome) => (String(nome).startsWith('Gasto') ? brl(Number(v)) : n(Number(v)))} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar yAxisId="r" dataKey="gastoMeta" name="Gasto Meta" stackId="g" fill={CHART.s2} />
-                  <Bar yAxisId="r" dataKey="gastoGoogle" name="Gasto Google" stackId="g" fill={CHART.s3} />
+                  <Bar yAxisId="r" dataKey="gastoMeta" name="Gasto Meta Ads" fill={COR_META} maxBarSize={18} radius={[2, 2, 0, 0]} />
+                  <Bar yAxisId="r" dataKey="gastoGoogle" name="Gasto Google Ads" fill={COR_GOOGLE} maxBarSize={18} radius={[2, 2, 0, 0]} />
                   <Line yAxisId="c" dataKey="contatosMeta" name="Contatos do Meta" stroke={CHART.s1} strokeWidth={2} dot={false} />
                   <Line yAxisId="c" dataKey="contatosSite" name="Contatos do Site" stroke={CHART.s4} strokeWidth={2} dot={false} />
                 </ComposedChart>
