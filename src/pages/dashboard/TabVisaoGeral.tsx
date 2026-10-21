@@ -14,6 +14,7 @@ import { irPara, useDashboardTab, type TabId } from './tabs'
 import { Metric } from './ui/Metric'
 import { brl, n, pct, primeiroNome } from './ui/format'
 import { MetaDoMes } from './blocks/MetaDoMes'
+import { OperacaoAgora } from './blocks/OperacaoAgora'
 import { FunilResumo } from './blocks/FunilResumo'
 import { Tendencia } from './blocks/Tendencia'
 import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
@@ -181,8 +182,14 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── 1. Bato a meta? ─────────────────────────────────────────── */}
-      <MetaDoMes />
+      {/* ── 1. Bato a meta? E como está a operação agora? ────────────────
+          (21/10/2026, Daniel: "diminuir a meta, puxar pra esquerda, e onde eu circulei os atendimentos em aberto…")
+          A meta fica com a metade da esquerda; a direita é Operação agora (etiquetas, follow up, lead quente,
+          anúncio e ligações). Abaixo de xl as duas empilham. */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+        <div className="xl:col-span-5"><MetaDoMes compacto /></div>
+        <div className="xl:col-span-7"><OperacaoAgora /></div>
+      </div>
 
       {/* Aviso falado da troca de período: o esmaecido é só visual. Sempre montado
           (vazio quando não há troca) pra região viva existir antes da mensagem. */}
