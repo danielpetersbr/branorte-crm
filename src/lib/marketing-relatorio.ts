@@ -374,7 +374,8 @@ export interface RelatorioMkt {
   termosGoogle: TermoMkt[]
   /** Google ligado = o script da conta já mandou dado */
   googleLigado: boolean
-  /** custo por orçamento do canal: Meta (verba Meta ÷ orçamentos do canal Meta) e Site (verba Google ÷ orçamentos do Site) */
+  /** custo por orçamento do canal: Meta (verba Meta ÷ orçamentos do canal Meta) e Google Ads (verba Google ÷ orçamentos
+   *  do canal Google Ads; em período sem esse canal, antes de 21/10/2026, a verba Google vai pro Site) */
   custoCanal: Record<string, number | null>
 }
 
@@ -461,10 +462,16 @@ export function montarRelatorio(
   const totGoogle = plataformas.find(p => p.tipo === 'plataforma' && p.plataforma === 'Google')
   const totMeta = plataformas.find(p => p.tipo === 'plataforma' && p.plataforma === 'Meta')
   const googleLigado = !!totGoogle?.carregadoAte
+  // (21/10/2026) o botão do site passou a dizer de onde veio a visita e os canais separam "Google Ads", "Google (busca)"
+  // e "Site". A verba do Google Ads é do canal Google Ads; período sem esse canal (antes de 21/10) fica no Site, como era.
   const site = canais.find(c => c.chave.startsWith('Site'))
+  const googleAds = canais.find(c => c.chave === 'Google Ads')
+  const canalVerbaGoogle = googleAds ?? site
   const custoCanal: Record<string, number | null> = {}
   if (meta && totMeta && totMeta.gasto > 0) custoCanal[meta.chave] = meta.comProposta > 0 ? totMeta.gasto / meta.comProposta : null
-  if (site && totGoogle && googleLigado && totGoogle.gasto > 0) custoCanal[site.chave] = site.comProposta > 0 ? totGoogle.gasto / site.comProposta : null
+  if (canalVerbaGoogle && totGoogle && googleLigado && totGoogle.gasto > 0) {
+    custoCanal[canalVerbaGoogle.chave] = canalVerbaGoogle.comProposta > 0 ? totGoogle.gasto / canalVerbaGoogle.comProposta : null
+  }
 
   const vendasTotal = vendas.find(v => v.tipo === 'total') ?? null
   const vendasGrupo = vendas.filter(v => v.tipo === 'grupo').sort((a, b) => b.valor - a.valor)
