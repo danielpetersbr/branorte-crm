@@ -5,6 +5,7 @@ import { ATENDIMENTO_PAGE_SIZE, type Atendimento, type StatusReal, type StatusVe
 import { DDD_TO_UF } from '@/lib/ddd-uf'
 import { codigosParaFiltro } from '@/lib/criativo-codigo'
 import { emLotes, paginaPorUltimaMsg, type ChaveAtendimento } from '@/lib/atendimentos-lotes'
+import { normalizeOrigem, corOrigem } from '@/lib/origem-atendimento'
 
 /**
  * Pega primeiro nome do vendedor logado. NULL se admin (sem filtro)
@@ -1425,36 +1426,7 @@ export interface OrigemEntry {
   color: string
 }
 
-function normalizeOrigem(raw: string | null | undefined): string {
-  if (!raw) return 'Não identificado'
-  const s = raw.toLowerCase().trim()
-  if (s.includes('1144') || s.includes('8878')) return 'WhatsApp (48) 8878-1144'
-  if (s.includes('4502') || s.includes('3658')) return 'WhatsApp (48) 3658-4502'
-  // (28/09) lead que chegou direto no WhatsApp da ANA (IA), sem anúncio
-  if (s.includes('whatsapp') && /\bana\b/.test(s)) return 'WhatsApp ANA'
-  if (s.includes('whatsapp')) return 'WhatsApp'
-  if (s === 'meta ads' || s === 'meta') return 'Meta ADS'
-  if (s.includes('instagram') && s.includes('formul')) return 'Instagram'
-  if (s.includes('instagram')) return 'Instagram'
-  if (s.includes('facebook') && s.includes('formul')) return 'Facebook Form'
-  if (s === 'facebook') return 'Facebook'
-  if (s.includes('google')) return 'Google'
-  if (s.includes('não identif') || s === 'nao identificou' || s === 'não identificou') return 'Não identificado'
-  return raw
-}
-
-const ORIGEM_COLORS: Record<string, string> = {
-  'WhatsApp (48) 8878-1144': '#25D366',
-  'WhatsApp (48) 3658-4502': '#128C7E',
-  'WhatsApp ANA': '#0F9D58',
-  'WhatsApp': '#25D366',
-  'Meta ADS': '#1877F2',
-  'Facebook': '#1877F2',
-  'Facebook Form': '#4267B2',
-  'Instagram': '#E1306C',
-  'Google': '#4285F4',
-  'Não identificado': '#6B7280',
-}
+// rótulo e cor de cada origem: src/lib/origem-atendimento.ts (com as origens do botão do site)
 
 export function useAtendimentoOrigens(filters?: Partial<AtendimentoFilters>) {
   const filterKey = JSON.stringify({
@@ -1487,7 +1459,7 @@ export function useAtendimentoOrigens(filters?: Partial<AtendimentoFilters>) {
         .map(([label, count]) => ({
           label,
           count,
-          color: ORIGEM_COLORS[label] ?? '#6B7280',
+          color: corOrigem(label),
         }))
         .sort((a, b) => b.count - a.count)
     },
