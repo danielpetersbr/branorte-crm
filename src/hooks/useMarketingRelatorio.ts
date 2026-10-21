@@ -10,6 +10,11 @@ import {
 // (e diz isso) em vez de não sair. A coorte de 90 dias custa ~3 s no banco Micro — cache de 10 min.
 export function useMarketingRelatorio(periodo: PeriodoMkt) {
   const { from, to, label } = intervaloMkt(periodo)
+  return useMarketingRelatorioIntervalo(from, to, label, periodo !== 'mes_passado')
+}
+
+/** O mesmo relatório para um intervalo qualquer (a página /anuncios tem Hoje e 7 dias, que a aba Marketing não tem). */
+export function useMarketingRelatorioIntervalo(from: Date, to: Date, label: string, emAndamento: boolean) {
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
     queryKey: ['marketing-relatorio-v3', p_from, p_to],
@@ -35,7 +40,7 @@ export function useMarketingRelatorio(periodo: PeriodoMkt) {
         gasto.error ? [] : linhas(gasto.data).map(lerGasto),
         vend.error ? [] : linhas(vend.data).map(lerVendedor),
         {
-          emAndamento: periodo !== 'mes_passado',
+          emAndamento,
           plataformas: plat.error ? [] : linhas(plat.data).map(lerPlataforma),
           termosGoogle: termos.error ? [] : linhas(termos.data).map(lerTermo),
         },

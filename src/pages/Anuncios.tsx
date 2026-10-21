@@ -7,6 +7,8 @@ import { Card, CardHeader } from './dashboard/ui/Card'
 import { brl, n, pct } from './dashboard/ui/format'
 import { CHART, TOOLTIP_STYLE } from './dashboard/ui/chart-tokens'
 import { situacaoCampanha } from '@/lib/marketing-relatorio'
+import { useMarketingRelatorioIntervalo } from '@/hooks/useMarketingRelatorio'
+import { AnunciosVerbaCard, MotivosCard, VendedoresCard } from './dashboard/blocks/RelatorioMarketing'
 
 /**
  * /anuncios — acompanhar Meta e Google no detalhe (20/10/2026, pedido do Daniel: "uma página que fica
@@ -464,6 +466,9 @@ export function Anuncios() {
   })
   const escolherOrdem = (o: Ordem) => { setOrdem(o); try { localStorage.setItem('anuncios-ordem', o) } catch { /* sem storage */ } }
   const probs = useProblemas()
+  // "onde pôr a verba": a mesma régua da aba Marketing, no período desta página
+  const iv = intervalo(periodo)
+  const rel = useMarketingRelatorioIntervalo(iv.from, iv.to, PERIODOS.find(x => x.v === periodo)?.l ?? '', periodo !== 'mes_passado')
   const alternar = (k: string) => setAbertos(prev => { const s = new Set(prev); if (s.has(k)) s.delete(k); else s.add(k); return s })
 
   const arvore = useMemo(() => {
@@ -658,6 +663,14 @@ export function Anuncios() {
               )}
             </Card>
           </div>
+
+          {rel.data ? (
+            <div className={`space-y-5 ${rel.isPlaceholderData ? 'opacity-60' : ''}`}>
+              <AnunciosVerbaCard rel={rel.data} titulo="Anúncios do Meta: onde pôr a verba" />
+              <MotivosCard rel={rel.data} titulo="Por que os atendimentos fecham — por canal e por criativo" porCriativo />
+              <VendedoresCard rel={rel.data} titulo="O contato chega bem atendido? — por vendedor" />
+            </div>
+          ) : rel.isLoading ? <Card><div className="h-32 animate-pulse rounded-lg bg-surface-2" /></Card> : null}
 
           {/* Meta em árvore */}
           <Card>

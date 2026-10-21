@@ -206,44 +206,7 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
       <VerbaPlataformas rel={rel} />
 
       {/* 3 · Anúncios do Meta */}
-      <Card id="marketing-anuncios">
-        <CardHeader
-          title="3. Anúncios do Meta: onde pôr a verba"
-          subtitle={temGasto
-            ? `Cada anúncio pelo código &NN, com o gasto do período e a decisão. Média do Meta: ${dec1(regua.mediaPor100)} orçamentos a cada 100 contatos${regua.custoOrcamento != null ? `, ${brl(regua.custoOrcamento)} por orçamento` : ''}.`
-            : `Cada anúncio pelo código &NN. Sem o gasto carregado não há custo nem decisão por dinheiro. Média do Meta: ${dec1(regua.mediaPor100)} orçamentos a cada 100 contatos.`}
-        />
-        {anuncios.length === 0 ? <p className="text-body text-ink-faint">Nenhum anúncio com 10 contatos ou R$ 100 gastos no período.</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-separate border-spacing-0">
-              <thead>
-                <tr>
-                  <th scope="col" className={`${th} text-left`}>Anúncio</th>
-                  <th scope="col" className={`${th} text-left`}>Decisão</th>
-                  <th scope="col" className={`${th} text-right`}>Gasto</th>
-                  <th scope="col" className={`${th} text-right`}>Contatos</th>
-                  <th scope="col" className={`${th} text-right`}>Custo por contato</th>
-                  <th scope="col" className={`${th} text-right`}>Orçamentos</th>
-                  <th scope="col" className={`${th} text-right`}>Custo por orçamento</th>
-                  <th scope="col" className={`${th} text-right`} title="Pecuarista com 200 cabeças de gado ou mais (informou à IA)">Gado 200+ cab.</th>
-                  <th scope="col" className={`${th} text-right`} title="Nunca respondeu ou parou de responder">Sumiu</th>
-                  <th scope="col" className={`${th} text-right`} title="Pediu o que a Branorte não fabrica">Não fabricamos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {anuncios.map(a => <LinhaAnuncio key={a.codigo} a={a} metaSumiu={regua.sumiuPct} metaNf={regua.naoFabPct} custoMedio={regua.custoOrcamento} />)}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="mt-3 text-micro text-ink-faint">
-          Passe o mouse na decisão para ver o motivo. Só julga anúncio com {JULGAVEL_CONTATOS} contatos ou R$ {JULGAVEL_GASTO.toLocaleString('pt-BR')} gastos no período (antes disso, “Esperar volume”).
-          “Subir verba” = 3+ orçamentos e taxa acima da média do Meta (descontada a margem de erro) ou custo por orçamento 25% abaixo da média, sem sumir mais que a média. “Testar com mais verba” = o mesmo sinal, mas ainda sem volume.
-          “Cortar ou refazer” = taxa abaixo da média, R$ {JULGAVEL_GASTO.toLocaleString('pt-BR')}+ sem nenhum orçamento, ou custo por orçamento acima do dobro da média.
-          {temGasto && rel.gastoCarregadoAte && ` Gasto do Gerenciador carregado até ${rel.gastoCarregadoAte.split('-').reverse().join('/')}.`}
-          {temGasto && rel.gastoSemCodigo > 0 && ` ${brl(rel.gastoSemCodigo)} foram em ${rel.anunciosSemCodigo} anúncios sem código &NN e não aparecem aqui.`}
-        </p>
-      </Card>
+      <AnunciosVerbaCard rel={rel} />
 
       {/* 3 · Vendas */}
       <Card id="marketing-vendas">
@@ -283,40 +246,74 @@ export function RelatorioMarketingTela({ rel, label, velho, faltou = [] }: { rel
       </Card>
 
       {/* 4 · Motivos */}
-      {total && total.fechados > 0 && (
-        <Card id="marketing-motivos">
-          <CardHeader
-            title="5. Por que os atendimentos fecham"
-            subtitle={`${n(total.fechados)} dos ${n(total.leads)} contatos do período já foram encerrados pelo vendedor (um motivo por contato). Percentuais sobre todos os contatos, inclusive os que ficaram só com a Ana.${rel.emAndamento ? ' Período ainda aberto: os motivos vão crescer até os atendimentos fecharem.' : ''}`}
-          />
-          <BarraMotivos f={total} />
-          <ul className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
-            {MOTIVOS_MKT.map(m => {
-              const v = total[m.campo] as number
-              return (
-                <li key={m.rotulo} className="flex items-center gap-2 text-body text-ink-muted">
-                  <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: m.cor }} aria-hidden="true" />
-                  <span className="flex-1">{m.rotulo}</span>
-                  <span className="tabular-nums"><strong className="text-ink">{n(v)}</strong> · {pct(taxa(v, total.leads), 0)}</span>
-                </li>
-              )
-            })}
-          </ul>
-          <MotivosPorCanal canais={canais} total={total} />
-        </Card>
-      )}
+      <MotivosCard rel={rel} />
 
       {/* 5 · Vendedores */}
-      {vendedores.length > 0 && (
-        <Card id="marketing-vendedores">
-          <CardHeader
-            title="6. O contato chega bem atendido?"
-            subtitle="Contatos repassados no período a cada vendedor. Resposta = tempo entre o cliente escrever e o vendedor responder (a 1ª mensagem do repasse sai automática e não conta)."
-          />
-          <TabelaVendedores rel={rel} />
-        </Card>
-      )}
+      <VendedoresCard rel={rel} />
     </div>
+  )
+}
+
+/** "O contato chega bem atendido?" — por vendedor: contatos recebidos, orçamentos/100, sumiu e tempo de resposta. Aba Marketing e /anuncios. */
+export function VendedoresCard({ rel, titulo = '6. O contato chega bem atendido?' }: { rel: RelatorioMkt; titulo?: string }) {
+  if (rel.vendedores.length === 0) return null
+  return (
+    <Card id="marketing-vendedores">
+      <CardHeader
+        title={titulo}
+        subtitle="Contatos repassados no período a cada vendedor. Resposta = tempo entre o cliente escrever e o vendedor responder (a 1ª mensagem do repasse sai automática e não conta)."
+      />
+      <TabelaVendedores rel={rel} />
+    </Card>
+  )
+}
+
+/**
+ * "Anúncios do Meta: onde pôr a verba" — cada anúncio pelo código &NN, gasto, custo por orçamento e a decisão
+ * (subir / testar / manter / esperar / cortar). Usado na aba Marketing e na página /anuncios.
+ */
+export function AnunciosVerbaCard({ rel, titulo = '3. Anúncios do Meta: onde pôr a verba' }: { rel: RelatorioMkt; titulo?: string }) {
+  const { regua, anuncios } = rel
+  const temGasto = rel.gastoTotal != null
+  return (
+      <Card id="marketing-anuncios">
+        <CardHeader
+          title={titulo}
+          subtitle={temGasto
+            ? `Cada anúncio pelo código &NN, com o gasto do período e a decisão. Média do Meta: ${dec1(regua.mediaPor100)} orçamentos a cada 100 contatos${regua.custoOrcamento != null ? `, ${brl(regua.custoOrcamento)} por orçamento` : ''}.`
+            : `Cada anúncio pelo código &NN. Sem o gasto carregado não há custo nem decisão por dinheiro. Média do Meta: ${dec1(regua.mediaPor100)} orçamentos a cada 100 contatos.`}
+        />
+        {anuncios.length === 0 ? <p className="text-body text-ink-faint">Nenhum anúncio com 10 contatos ou R$ 100 gastos no período.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] border-separate border-spacing-0">
+              <thead>
+                <tr>
+                  <th scope="col" className={`${th} text-left`}>Anúncio</th>
+                  <th scope="col" className={`${th} text-left`}>Decisão</th>
+                  <th scope="col" className={`${th} text-right`}>Gasto</th>
+                  <th scope="col" className={`${th} text-right`}>Contatos</th>
+                  <th scope="col" className={`${th} text-right`}>Custo por contato</th>
+                  <th scope="col" className={`${th} text-right`}>Orçamentos</th>
+                  <th scope="col" className={`${th} text-right`}>Custo por orçamento</th>
+                  <th scope="col" className={`${th} text-right`} title="Pecuarista com 200 cabeças de gado ou mais (informou à IA)">Gado 200+ cab.</th>
+                  <th scope="col" className={`${th} text-right`} title="Nunca respondeu ou parou de responder">Sumiu</th>
+                  <th scope="col" className={`${th} text-right`} title="Pediu o que a Branorte não fabrica">Não fabricamos</th>
+                </tr>
+              </thead>
+              <tbody>
+                {anuncios.map(a => <LinhaAnuncio key={a.codigo} a={a} metaSumiu={regua.sumiuPct} metaNf={regua.naoFabPct} custoMedio={regua.custoOrcamento} />)}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-3 text-micro text-ink-faint">
+          Passe o mouse na decisão para ver o motivo. Só julga anúncio com {JULGAVEL_CONTATOS} contatos ou R$ {JULGAVEL_GASTO.toLocaleString('pt-BR')} gastos no período (antes disso, “Esperar volume”).
+          “Subir verba” = 3+ orçamentos e taxa acima da média do Meta (descontada a margem de erro) ou custo por orçamento 25% abaixo da média, sem sumir mais que a média. “Testar com mais verba” = o mesmo sinal, mas ainda sem volume.
+          “Cortar ou refazer” = taxa abaixo da média, R$ {JULGAVEL_GASTO.toLocaleString('pt-BR')}+ sem nenhum orçamento, ou custo por orçamento acima do dobro da média.
+          {temGasto && rel.gastoCarregadoAte && ` Gasto do Gerenciador carregado até ${rel.gastoCarregadoAte.split('-').reverse().join('/')}.`}
+          {temGasto && rel.gastoSemCodigo > 0 && ` ${brl(rel.gastoSemCodigo)} foram em ${rel.anunciosSemCodigo} anúncios sem código &NN e não aparecem aqui.`}
+        </p>
+      </Card>
   )
 }
 
@@ -354,6 +351,66 @@ function LinhaAnuncio({ a, metaSumiu, metaNf, custoMedio }: { a: AnuncioMkt; met
   )
 }
 
+/** O que cada motivo de encerramento quer dizer e o que fazer quando ele está alto num canal/criativo. */
+const MOTIVO_EXPLICA: { rotulo: string; quer: string; fazer: string }[] = [
+  { rotulo: 'Sumiu (nunca respondeu / parou)', quer: 'o cliente chamou e some — curioso, clique sem querer, ou demorou pra ser atendido.', fazer: 'olhe o tempo de resposta do vendedor; se o atendimento foi rápido, o anúncio está trazendo gente fria (público ou texto genérico demais).' },
+  { rotulo: 'Só preço / fora do orçamento', quer: 'queria saber o valor e achou caro ou não tem dinheiro agora.', fazer: 'o anúncio está atraindo quem não tem porte; mostre o porte certo (produção, rebanho) ou faixa de investimento no criativo.' },
+  { rotulo: 'Pediu o que não fabricamos', quer: 'procurava ração pronta, peletizadora, extrusora, outro produto.', fazer: 'o criativo/LP deixa dúvida sobre o que a Branorte vende; deixe claro "fábrica de ração farelada / equipamento".' },
+  { rotulo: 'Outro assunto', quer: 'suporte, peça, frete, vaga, fornecedor — não é compra.', fazer: 'normal em WhatsApp direto e orgânico; em anúncio pago, revisar público (está pegando cliente atual ou curioso).' },
+]
+
+/**
+ * "Por que os atendimentos fecham" — o motivo que o vendedor marca ao encerrar (etiqueta), no total, por canal e por
+ * criativo (código &NN). Usado na aba Marketing e na página /anuncios.
+ */
+export function MotivosCard({ rel, titulo = '5. Por que os atendimentos fecham', porCriativo = false }: { rel: RelatorioMkt; titulo?: string; porCriativo?: boolean }) {
+  const { total, canais, anuncios } = rel
+  if (!total || total.fechados <= 0) return null
+  const criativos: FonteMkt[] = porCriativo
+    ? anuncios.filter(a => a.fonte).map(a => ({ ...(a.fonte as FonteMkt), nome: rotuloCriativo(a.codigo, a.nome) }))
+    : []
+  return (
+    <Card id="marketing-motivos">
+      <CardHeader
+        title={titulo}
+        subtitle={`${n(total.fechados)} dos ${n(total.leads)} contatos do período já foram encerrados pelo vendedor (um motivo por contato). Percentuais sobre todos os contatos, inclusive os que ficaram só com a Ana.${rel.emAndamento ? ' Período ainda aberto: os motivos vão crescer até os atendimentos fecharem.' : ''}`}
+      />
+      <BarraMotivos f={total} />
+      <ul className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+        {MOTIVOS_MKT.map(m => {
+          const v = total[m.campo] as number
+          return (
+            <li key={m.rotulo} className="flex items-center gap-2 text-body text-ink-muted">
+              <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: m.cor }} aria-hidden="true" />
+              <span className="flex-1">{m.rotulo}</span>
+              <span className="tabular-nums"><strong className="text-ink">{n(v)}</strong> · {pct(taxa(v, total.leads), 0)}</span>
+            </li>
+          )
+        })}
+      </ul>
+      {porCriativo && (
+        <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+          {MOTIVO_EXPLICA.map(m => (
+            <div key={m.rotulo} className="rounded-lg border border-border/60 bg-surface-2 p-3 text-micro">
+              <p className="font-semibold text-ink">{m.rotulo}</p>
+              <p className="mt-1 text-ink-muted"><span className="font-medium text-ink">Quer dizer:</span> {m.quer}</p>
+              <p className="mt-1 text-ink-muted"><span className="font-medium text-ink">Se estiver alto:</span> {m.fazer}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className={porCriativo ? 'grid grid-cols-1 gap-x-6 2xl:grid-cols-2' : ''}>
+        <MotivosPorCanal canais={canais} total={total} />
+        {criativos.length > 0 && <MotivosPorCanal canais={criativos} total={total} rotulo="Criativo" legenda="Por criativo do Meta (código &NN) — % dos contatos do criativo" />}
+      </div>
+      <p className="mt-3 text-micro text-ink-faint">
+        “Encerrados” = contatos que o vendedor já fechou com um motivo (etiqueta). “Sumiu” = nunca respondeu + parou de responder.
+        Em vermelho “pior” = 25% acima da média da conta e pelo menos 3 pontos acima, com {AMOSTRA_MIN_MKT}+ contatos (abaixo disso é ruído). Só aparecem canais e criativos com {AMOSTRA_MIN_MKT}+ contatos.
+      </p>
+    </Card>
+  )
+}
+
 function BarraMotivos({ f }: { f: FonteMkt }) {
   return (
     <div className="mb-3 flex h-4 w-full overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
@@ -365,18 +422,18 @@ function BarraMotivos({ f }: { f: FonteMkt }) {
   )
 }
 
-function MotivosPorCanal({ canais, total }: { canais: FonteMkt[]; total: FonteMkt }) {
+function MotivosPorCanal({ canais, total, legenda = 'Por canal — % dos contatos do canal', rotulo = 'Canal' }: { canais: FonteMkt[]; total: FonteMkt; legenda?: string; rotulo?: string }) {
   const linhas = canais.filter(c => c.leads >= AMOSTRA_MIN_MKT && c.fechados > 0)
   if (linhas.length === 0) return null
   const col = (f: FonteMkt) => [taxa(f.fechados, f.leads), taxa(sumiuDe(f), f.leads), taxa(f.preco, f.leads), taxa(f.naoFabricamos, f.leads), taxa(f.foraEscopo, f.leads)]
   const med = col(total)
   return (
     <div className="mt-5 overflow-x-auto">
-      <table className="w-full min-w-[640px] border-separate border-spacing-0">
-        <caption className="mb-2 text-left text-micro font-semibold text-ink-muted">Por canal — % dos contatos do canal</caption>
+      <table className="w-full min-w-[720px] border-separate border-spacing-0">
+        <caption className="mb-2 text-left text-micro font-semibold text-ink-muted">{legenda}</caption>
         <thead>
           <tr>
-            {['Canal', 'Encerrados', 'Sumiu', 'Só preço', 'Não fabricamos', 'Outro assunto'].map((h, i) => (
+            {[rotulo, 'Contatos', 'Encerrados', 'Sumiu', 'Só preço', 'Não fabricamos', 'Outro assunto'].map((h, i) => (
               <th key={h} scope="col" className={`${th} ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
             ))}
           </tr>
@@ -384,12 +441,14 @@ function MotivosPorCanal({ canais, total }: { canais: FonteMkt[]; total: FonteMk
         <tbody>
           {linhas.map(c => (
             <tr key={c.chave}>
-              <th scope="row" className="border-t border-border px-2 py-2 text-left text-body font-medium text-ink">{c.chave}</th>
+              <th scope="row" className="border-t border-border px-2 py-2 text-left text-body font-medium text-ink">{c.nome ?? c.chave}</th>
+              <td className={`${td} text-right`}>{n(c.leads)}</td>
               {col(c).map((v, i) => <td key={i} className={`${td} text-right`}>{i === 0 ? pct(v, 0) : <Pct v={v} media={med[i]} base={c.leads} />}</td>)}
             </tr>
           ))}
           <tr>
             <th scope="row" className={`${tdTot} text-left`}>Média da conta</th>
+            <td className={`${tdTot} text-right`}>{n(total.leads)}</td>
             {med.map((v, i) => <td key={i} className={`${tdTot} text-right`}>{pct(v, 0)}</td>)}
           </tr>
         </tbody>
