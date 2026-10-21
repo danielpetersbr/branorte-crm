@@ -21,6 +21,7 @@ export function TopEquipe({
   totalMes,
   degradado,
   onVerTodos,
+  compacto = false,
 }: {
   corrida: CorridaVendedor[] | undefined
   metaVendedor: number
@@ -28,6 +29,12 @@ export function TopEquipe({
   totalMes: number | undefined
   degradado: boolean
   onVerTodos: () => void
+  /**
+   * (21/10/2026) Na coluna estreita da Meta do mês: cada vendedor em DUAS linhas (nome e valor; barra da meta e
+   * vendas), porque a linha única com as 4 colunas fixas passava da largura do cartão no notebook. Estica até o
+   * fim da coluna.
+   */
+  compacto?: boolean
 }) {
   // O dono fecha venda de verdade, mas não entra em ranking de vendedor
   // (em 19/10 ele aparecia em 4º, com a meta individual de vendedor).
@@ -46,7 +53,7 @@ export function TopEquipe({
   const mesLabel = new Date().toLocaleDateString('pt-BR', { month: 'long' })
 
   return (
-    <Card>
+    <Card className={compacto ? 'h-full' : ''}>
       <CardHeader
         title="Quem está entregando"
         subtitle={metaVendedor > 0 ? `Meta individual de ${brl(metaVendedor)} no mês.` : undefined}
@@ -74,7 +81,33 @@ export function TopEquipe({
         <p className="py-5 text-center text-body text-ink-faint">Nenhuma venda registrada no mês.</p>
       ) : (
         <ol className="flex flex-col">
-          {top.map((v, i) => (
+          {top.map((v, i) => compacto ? (
+            <li key={v.vendedor} className="flex items-start gap-3 border-b border-border/60 py-2.5 last:border-b-0">
+              <span className="w-6 shrink-0 pt-0.5 text-center text-label tabular-nums text-ink-faint" aria-hidden="true">
+                {MEDALHA[i] ?? i + 1}
+              </span>
+              <span className="sr-only">{i + 1}º lugar:</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  {/* break-words e sem truncate: nome de vendedor não pode ser cortado */}
+                  <span className="min-w-0 break-words text-body text-ink">{nomeExibido(v.vendedor)}</span>
+                  <span className="shrink-0 text-body tabular-nums text-ink">{brl(v.valor)}</span>
+                </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
+                    <span
+                      className={`block h-full rounded-full ${v.pct >= 100 ? 'bg-success' : 'bg-accent'}`}
+                      style={{ width: `${Math.min(100, Math.max(v.pct, 1))}%` }}
+                    />
+                  </span>
+                  <span className="w-10 text-right text-micro tabular-nums text-ink-muted">{pct(v.pct, 0)}</span>
+                  <span className="w-16 shrink-0 text-right text-micro tabular-nums text-ink-faint">
+                    {n(v.numVendas)} {v.numVendas === 1 ? 'venda' : 'vendas'}
+                  </span>
+                </div>
+              </div>
+            </li>
+          ) : (
             <li
               key={v.vendedor}
               className="flex items-center gap-3 border-b border-border/60 py-3 last:border-b-0"
