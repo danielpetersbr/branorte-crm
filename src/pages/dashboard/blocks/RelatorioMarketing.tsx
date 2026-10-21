@@ -399,7 +399,7 @@ export function MotivosCard({ rel, titulo = '5. Por que os atendimentos fecham',
           ))}
         </div>
       )}
-      <div className={porCriativo ? 'grid grid-cols-1 gap-x-6 2xl:grid-cols-2' : ''}>
+      <div>
         <MotivosPorCanal canais={canais} total={total} />
         {criativos.length > 0 && <MotivosPorCanal canais={criativos} total={total} rotulo="Criativo" legenda="Por criativo do Meta (código &NN) — % dos contatos do criativo" />}
       </div>
