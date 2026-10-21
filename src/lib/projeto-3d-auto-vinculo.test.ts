@@ -35,6 +35,28 @@ function linha(uid: string, nome: string, sequence: number, patch: Partial<Orige
 
 type Linha = ReturnType<typeof linha>
 
+test('conjunto confirmado vira duas linhas reais com quantidade e origem preservadas, sem duplicar no reload', () => {
+  const original = linha('conjunto', 'Caixa 6m³ + Ensacadeira (sem Chupim)', 4, { catalogId: 'branorte_caixa_6m3_ensacadeira_sm_chupim' })
+  const box = catalogo(659, 'Caixa 3.900 kg', { categoria:'CAIXA', capacidade_litros:6000, capacidade_kg:3900, valor:16645 })
+  const bagger = catalogo(78, 'ENSACADEIRA SEMI AUTOMATICA', { categoria:'ENSACADEIRA',valor:26400 })
+  const result = integration!.autoVincularProjeto3D([original], [box, bagger], vincular)
+  assert.deepEqual(result.map(row => [row.nome,row.catalogo_id,row.qtd,row.origem_projeto3d.sequence]), [['Caixa 3.900 kg',659,3,4],['ENSACADEIRA SEMI AUTOMATICA',78,3,4]])
+  assert.equal(new Set(result.map(row => row.uid)).size,2)
+  assert.ok(result.every(row => row.origem_projeto3d.sourceId === 'conjunto' && row.origem_projeto3d.sourceName === original.nome))
+  assert.equal(result.reduce((sum,row)=>sum+row.valor*row.qtd,0),129135)
+  assert.deepEqual(integration!.autoVincularProjeto3D(result, [box,bagger],vincular),result)
+  assert.equal(original.origem_projeto3d.resolution,'pendente')
+})
+
+test('falha de preço de um componente mantém o conjunto inteiro pendente sem cobrança parcial', () => {
+  const original = linha('conjunto', 'Caixa 6m³ + Ensacadeira (sem Chupim)', 1, { catalogId: 'branorte_caixa_6m3_ensacadeira_sm_chupim' })
+  const box = catalogo(659, 'Caixa 3.900 kg', { categoria:'CAIXA', capacidade_litros:6000, capacidade_kg:3900 })
+  const bagger = catalogo(78, 'ENSACADEIRA SEMI AUTOMATICA', { categoria:'ENSACADEIRA',valor:0 })
+  const result = integration!.autoVincularProjeto3DComDiagnostico([original], [box,bagger],vincular)
+  assert.deepEqual(result.linhas,[original])
+  assert.equal(result.diagnosticos[0].motivo,'sem_preco')
+})
+
 function vincular(original: Linha, item: CatalogoItem): Linha {
   return resolverVinculoProjeto3D(original, {
     ...original, nome: item.nome_curto, uid: 'novo-id-descartado', qtd: 1,

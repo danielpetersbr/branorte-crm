@@ -15,6 +15,20 @@ test('transportador nominal do print vincula a chave comercial sem usar envelope
   assert.equal(match(line(), [product('TRANSPORTADOR HELICOIDAL 160 X 4,0 M')]), null)
 })
 
+test('transportador intermediário usa a próxima medida maior da tabela, com prioridade para a medida exata', () => {
+  const source = line('TRANSPORTADOR HELICOIDAL 160 X 6,8 M')
+  const lower = product('TRANSPORTADOR HELICOIDAL 160 X 6,5 M')
+  const wanted = product('TRANSPORTADOR HELICOIDAL 160 X 7,0 M', { id: 92 })
+  const larger = product('TRANSPORTADOR HELICOIDAL 160 X 7,5 M', { id: 93 })
+  assert.equal(match(source, [larger, lower, wanted]), wanted)
+  assert.equal(match(source, [lower]), null)
+  assert.equal(match(source, [product('TRANSPORTADOR HELICOIDAL 210 X 7 M')]), null)
+  assert.equal(match(source, [product('TRANSPORTADOR HELICOIDAL CALHA TH 160 X 7 M')]), null)
+  assert.equal(match(source, [wanted, { ...wanted, id: 94 }]), null)
+  const exact = product(source.nome, { id: 95 })
+  assert.equal(match(source, [wanted, exact]), exact)
+})
+
 test('moinho martelo e triturador de grãos são aliases pela potência explícita em MOINHO', () => {
   const wanted = product('TRITURADOR DE GRÃOS 20 CV', { categoria: 'MOINHO' })
   const source = line('MOINHO MARTELO 20 CV', { catalogId: 'branorte_650_001_01alt3_moinho_martelo_20cv_bnmm20_com_base', sourceSpecifications: ['COM BASE', 'Referência 3D: BNMM20'] })
@@ -121,6 +135,39 @@ test('pulmão, secador, plástico e aquecimento são variantes distintas do mist
   assert.equal(match(line('MISTURADOR HORIZONTAL C/PULMÃO 900 LITROS'), [wanted]), wanted)
 })
 
+test('misturador explicitamente para plástico reconhece a categoria comercial PLASTICO', () => {
+  const source = line('Misturador vertical Plástico 4000 L BNMV4000 NOVEL', {catalogId:'branorte_misturador_vertical_plastico_4000l_bnmv4000_novel'})
+  const wanted = product('Misturador Vertical 4000 Litros (Para Plásticos)', {categoria:'PLASTICO',capacidade_litros:4000})
+  assert.equal(match(source,[wanted]),wanted)
+  assert.equal(match(line('MISTURADOR VERTICAL 4000 LITROS'),[wanted]),null)
+  assert.equal(match(source,[{...wanted,nome_completo:`${wanted.nome_completo} COM AQUECIMENTO`}]),null)
+})
+
+test('elevador reconhece o cadastro que apresenta altura antes da série EC', () => {
+  const source = line('ELEVADOR CANECA 2310 X 9 M',{catalogId:'branorte_mg_elevador_2310x9m_paraf'})
+  const wanted=product('Elevador de Caneca 9,0m - 6 ton/h (EC-2310)',{categoria:'ELEVADOR'})
+  assert.equal(match(source,[wanted]),wanted)
+  assert.equal(match(source,[{...wanted,nome_completo:'Elevador de Caneca 9,0m - 40 ton/h (EC-5014)'}]),null)
+})
+
+test('aliases de família preservam os qualificadores comerciais da origem e do cadastro', () => {
+  const elevator=line('ELEVADOR CANECA 2310 X 8 M',{catalogId:'branorte_elevador_2310_8',sourceSpecifications:['SAÍDA ESQUERDA']})
+  const standard=product('Elevador de Caneca 8,0m - 10 ton/h (EC-2310)',{categoria:'ELEVADOR'})
+  assert.equal(match(elevator,[standard]),null)
+  const bagger=line('ENSACADEIRA SEMI AUTOMATICA',{catalogId:'branorte_ensacadeira',sourceSpecifications:['COM AQUECIMENTO']})
+  const standardBagger=product('ENSACADEIRA SEMI AUTOMATICA',{categoria:'ENSACADEIRA'})
+  assert.equal(match(bagger,[standardBagger]),null)
+  assert.equal(match(line(bagger.nome,{catalogId:'branorte_ensacadeira'}),[{...standardBagger,specs:['COM AQUECIMENTO']}]),null)
+})
+
+test('cadastro canônico e alias comercial duplicados mantêm a família ambígua', () => {
+  const source=line('ELEVADOR CANECA 2310 X 8 M',{catalogId:'branorte_elevador_2310_8'})
+  const canonical=product(source.nome,{categoria:'ELEVADOR'})
+  const alias=product('Elevador de Caneca 8,0m - 10 ton/h (EC-2310)',{id:92,categoria:'ELEVADOR'})
+  assert.equal(match(source,[canonical,alias]),null)
+  assert.equal(match(source,[alias,canonical]),null)
+})
+
 test('ensacadeiras valvulada e saco aberto não se confundem', () => {
   const wanted = product('ENSACADEIRA VALVULADA SEMI AUTOMATICA', { categoria: 'ENSACADEIRA' })
   assert.equal(match(line('ENSACADEIRA SEMI AUTOMATICA'), [wanted]), null)
@@ -187,6 +234,22 @@ test('entradas e saídas especiais precisam coincidir inclusive quando descritas
     assert.equal(match(line(`${name} ${variant}`), [product(name, { categoria: 'MISTURADOR' })]), null)
   }
   assert.equal(match(line(`${name} ENTRADA ESQ`), [product(`${name} ENTRADA DIREITA`, { categoria: 'MISTURADOR' })]), null)
+})
+
+test('bloco BNMH1900 com entrada esquerda usa o cadastro nominal sem cobrar a orientação de montagem', () => {
+  const source = line('MISTURADOR HORIZONTAL 1900 LITROS', {
+    catalogId: 'branorte_500_009_13_misturador_horizontal_1900l_bnmh1900_entrada_esquerda',
+    sourceSpecifications: ['ENTRADA ESQUERDA'],
+  })
+  const wanted = product('Misturador Horizontal de 1000 kg', {
+    categoria: 'MISTURADOR', capacidade_litros: 1900, capacidade_kg: 1000,
+    specs: ['Modelo: BNMH 1900L', 'Capacidade 1000 KG', 'Acionamento 15 CV por motorredutor (Incluso)'],
+  })
+  assert.equal(match(source, [wanted]), wanted)
+  assert.equal(match(source, [{ ...wanted, capacidade_litros: 900 }]), null)
+  assert.equal(match(source, [{ ...wanted, nome_completo: `${wanted.nome_completo} ENTRADA DIREITA` }]), null)
+  assert.equal(match(source, [{ ...wanted, nome_completo: `${wanted.nome_completo} INOX 304` }]), null)
+  assert.equal(match(line(source.nome, { ...source.origem_projeto3d, sourceSpecifications: ['ENTRADA DIREITA'] }), [wanted]), null)
 })
 
 test('acionamento padrão descrito na ficha não é uma variante de título motorredutor', () => {

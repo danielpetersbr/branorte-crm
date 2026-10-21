@@ -51,6 +51,8 @@ export interface OrigemProjeto3D {
   sourceName: string
   sourceSpecifications: string[]
   resolution: 'pendente' | 'vinculado' | 'manual'
+  /** A real catalog component of an assembly; sourceId keeps the original CAD row. */
+  componentCatalogId?: number
 }
 
 export interface CarrinhoProjeto3DItem {

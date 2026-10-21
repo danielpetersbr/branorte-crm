@@ -1,4 +1,5 @@
 import type { OrigemProjeto3D } from './projeto-3d-orcamento'
+import { especificacoesMedidaProjeto3D } from './projeto-3d-catalogo-match'
 
 type LinhaProjeto3D = {
   uid: string; nome: string; nome_custom?: string | null; specs: string[]; qtd: number;
@@ -10,7 +11,7 @@ export function temPendenciasProjeto3D(items: readonly { origem_projeto3d?: Orig
 }
 
 /** A escolha comercial altera preço e acionamento; a linha do projeto mantém sua identidade. */
-export function resolverVinculoProjeto3D<T extends LinhaProjeto3D, P extends { specs: string[]; valor: number; catalogo_id: number; preco_branorte_id?: number | null; motor_cv?: number | null; motor_qtd?: number; motor_valor_unit?: number }>(original: T, precificado: P, options: { motorIncluso?: boolean; precoOficialId?: number } = {}): T {
+export function resolverVinculoProjeto3D<T extends LinhaProjeto3D, P extends { nome?: string; specs: string[]; valor: number; catalogo_id: number; preco_branorte_id?: number | null; motor_cv?: number | null; motor_qtd?: number; motor_valor_unit?: number }>(original: T, precificado: P, options: { motorIncluso?: boolean; precoOficialId?: number } = {}): T {
   const precoOficialValidado = Number.isInteger(options.precoOficialId) && Number(options.precoOficialId) > 0
     && precificado.preco_branorte_id === options.precoOficialId && precificado.catalogo_id === -1
   if (!original.origem_projeto3d || !Number.isFinite(precificado.valor) || precificado.valor <= 0 || (precificado.catalogo_id < 0 && !precoOficialValidado)) throw new Error('O equipamento não tem preço válido no catálogo. Confirme um valor manual para esta linha.')
@@ -19,7 +20,7 @@ export function resolverVinculoProjeto3D<T extends LinhaProjeto3D, P extends { s
     ...original, ...precificado,
     uid: original.uid, nome: original.nome, nome_custom: original.nome_custom,
     qtd: original.qtd,
-    specs: [...new Set([...original.origem_projeto3d.sourceSpecifications, ...precificado.specs])],
+    specs: [...new Set([...original.origem_projeto3d.sourceSpecifications, ...especificacoesMedidaProjeto3D(original, precificado.nome ?? '', precificado.specs)])],
     origem_projeto3d: { ...original.origem_projeto3d, resolution: 'vinculado' },
   } as T
 }

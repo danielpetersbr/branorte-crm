@@ -1,5 +1,6 @@
 import type { CatalogoItem } from '../hooks/useCatalogo'
 import type { OrigemProjeto3D } from './projeto-3d-orcamento'
+import { candidatosFamiliaProjeto3D } from './projeto-3d-familias'
 
 type LinhaProjeto3D = { nome: string; specs?: string[]; origem_projeto3d?: OrigemProjeto3D }
 type Identidade = {
@@ -89,6 +90,21 @@ function identidade(value: string): Identidade | null {
   return null
 }
 
+/** Keep the configured length in the offer; the larger standard SKU is only
+ * the billing reference, per Branorte's rule for intermediate lengths.
+ */
+export function especificacoesMedidaProjeto3D(line: LinhaProjeto3D, cadastroNome: string, specs: string[]): string[] {
+  const source = identidade(line.origem_projeto3d?.sourceName ?? '')
+  const candidate = identidade(cadastroNome)
+  if (source?.familia !== 'transportador' || candidate?.familia !== 'transportador'
+    || source.tipo !== candidate.tipo || source.diametro !== candidate.diametro
+    || !source.comprimento || !candidate.comprimento || candidate.comprimento <= source.comprimento) return specs
+  const real = String(source.comprimento).replace('.', ',')
+  const billed = String(candidate.comprimento).replace('.', ',')
+  return [...specs.map(spec => /^Comprimento\s*:/i.test(spec) ? `Comprimento: ${real} metros.` : spec),
+    `Referência de preço: transportador de ${billed} m (próxima medida da tabela).`]
+}
+
 function mesmoValor(a: number | undefined, b: number | undefined): boolean {
   return a === b
 }
@@ -155,6 +171,9 @@ function compativel(source: Identidade, candidate: Identidade): boolean {
 }
 
 function categoriaCompativel(identity: Identidade, item: CatalogoItem): boolean {
+  if (identity.familia === 'misturador' && normalizar(item.categoria) === 'PLASTICO') {
+    return /\bPLASTIC[OA]S?\b/.test(normalizar(`${item.nome_curto} ${item.nome_completo ?? ''} ${(item.specs ?? []).join(' ')}`))
+  }
   const allowed = { transportador: ['TRANSPORTADOR'], moinho: ['MOINHO'], misturador: ['MISTURADOR'], elevador: ['ELEVADOR'], cacamba: ['CACAMBA', 'CACAMBA_PESAGEM', 'CACAMBA DE PESAGEM'] }
   return allowed[identity.familia].includes(normalizar(item.categoria))
 }
@@ -202,10 +221,13 @@ export function encontrarCatalogoProjeto3D(line: LinhaProjeto3D, catalogo: reado
       || (['diametro', 'comprimento', 'potencia', 'litros', 'kg'] as const).some(field =>
         source[field] !== undefined && declared[field] !== undefined && !mesmoValor(source[field], declared[field])))
   })) return null
-  // A family name without an explicit size/capacity is not a commercial identity.
-  if (!source && /^(?:TRANSPORTADOR|CHUPIM|CALHA|TH\b|MOINHO|TRITURADOR|MISTURADOR|SILO MISTURADOR|ELEVADOR|CACAMBA)/.test(sourceName)) return null
   const sourceVariants = variantes(normalizar(`${name} ${detalhesParaVariantes(origin.sourceSpecifications, source?.familia)}`))
   if (sourceVariants === null) return null
+  const familyMatches = candidatosFamiliaProjeto3D(origin, catalogo).filter(item =>
+    variantes(normalizar(`${item.nome_curto} ${item.nome_completo ?? ''} ${detalhesParaVariantes(item.specs ?? [], source?.familia)}`)) === sourceVariants)
+  if (familyMatches.length) return familyMatches.length === 1 ? familyMatches[0] : null
+  // A family name without an explicit size/capacity is not a commercial identity.
+  if (!source && /^(?:TRANSPORTADOR|CHUPIM|CALHA|TH\b|MOINHO|TRITURADOR|MISTURADOR|SILO MISTURADOR|ELEVADOR|CACAMBA)/.test(sourceName)) return null
   // This exact CAD was identified by Daniel as the 3 x 1 m graded unloading
   // hopper. Its live quotation record retains the old "caixa entrada" title.
   // Match the current record by that verified title plus both nominal measures;
@@ -217,10 +239,21 @@ export function encontrarCatalogoProjeto3D(line: LinhaProjeto3D, catalogo: reado
     const matches = sourceVariants === '' ? catalogo.filter(item => nomeComercialMoegaDescarga(item) !== null) : []
     return matches.length === 1 ? matches[0] : null
   }
-  const matches = catalogo.filter(item => {
+  // These native BNMH drawings differ by mounting inlet, while the commercial
+  // record is the same nominal mixer. Keep the inlet in the quotation specs.
+  const montagemBNMH1900 = origin.catalogId === 'branorte_500_009_13_misturador_horizontal_1900l_bnmh1900_entrada_esquerda'
+    && source?.familia === 'misturador' && source.tipo === 'HORIZONTAL' && source.litros === 1900
+    && sourceVariants.split('|').includes('ENTRADA ESQUERDA')
+    && !sourceVariants.split('|').includes('ENTRADA DIREITA')
+  const variantesCompativeis = (candidate: string | null) => candidate === sourceVariants
+    || (montagemBNMH1900 && candidate === sourceVariants.split('|').filter(value => value !== 'ENTRADA ESQUERDA').join('|'))
+  const elegivel = (item: CatalogoItem) => {
     if (item.ativo !== true || item.is_oficial !== true) return false
     const candidateName = normalizar([item.nome_curto, item.nome_completo].filter(Boolean).join(' '))
-    if (conjunto(candidateName) || variantes(normalizar(`${candidateName} ${detalhesParaVariantes(item.specs ?? [], source?.familia)}`)) !== sourceVariants) return false
+    return !conjunto(candidateName) && variantesCompativeis(variantes(normalizar(`${candidateName} ${detalhesParaVariantes(item.specs ?? [], source?.familia)}`)))
+  }
+  const matches = catalogo.filter(item => {
+    if (!elegivel(item)) return false
     if (source) {
       const candidate = candidatoIdentidade(item)
       return candidate !== null && categoriaCompativel(source, item) && compativel(source, candidate)
@@ -228,5 +261,22 @@ export function encontrarCatalogoProjeto3D(line: LinhaProjeto3D, catalogo: reado
     if (/^(?:CAIXA\b|CX\.(?=\s|\d))/.test(sourceName) && !/\bMOEGA\b/.test(sourceName) && normalizar(item.categoria) !== 'CAIXA') return false
     return [item.nome_curto, item.nome_completo].some(value => value && tituloExato(value) === tituloExato(name))
   })
-  return matches.length === 1 ? matches[0] : null
+  if (matches.length) return matches.length === 1 ? matches[0] : null
+  // Intermediate configured lengths use the next larger size, never a smaller
+  // or different-diameter machine. Standard half-metre sizes still need their
+  // exact record; missing standard records must not silently change product.
+  if (source?.familia === 'transportador' && source.comprimento
+    && Math.abs(source.comprimento * 2 - Math.round(source.comprimento * 2)) > 1e-8) {
+    const larger = catalogo.filter(item => {
+      if (!elegivel(item)) return false
+      const candidate = candidatoIdentidade(item)
+      return candidate !== null && categoriaCompativel(source, item)
+        && Number(candidate.comprimento) > source.comprimento!
+        && compativel({ ...source, comprimento: candidate.comprimento }, candidate)
+    })
+    const nextLength = Math.min(...larger.map(item => candidatoIdentidade(item)!.comprimento!))
+    const next = larger.filter(item => candidatoIdentidade(item)!.comprimento === nextLength)
+    return next.length === 1 ? next[0] : null
+  }
+  return null
 }

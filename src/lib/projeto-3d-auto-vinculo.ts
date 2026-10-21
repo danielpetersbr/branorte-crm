@@ -1,8 +1,10 @@
 import type { CatalogoItem } from '../hooks/useCatalogo'
 import type { OrigemProjeto3D } from './projeto-3d-orcamento'
 import { encontrarCatalogoProjeto3D } from './projeto-3d-catalogo-match'
+import { encontrarComponentesConjuntoProjeto3D } from './projeto-3d-conjuntos'
 
 type LinhaAutoVinculo = {
+  uid?: string
   nome: string
   origem_projeto3d?: OrigemProjeto3D
   specs?: string[]
@@ -38,9 +40,9 @@ export function autoVincularProjeto3DComDiagnostico<T extends LinhaAutoVinculo>(
   vincular: (linha: T, item: CatalogoItem) => T,
 ): ResultadoAutoVinculoProjeto3D<T> {
   const diagnosticos: DiagnosticoAutoVinculoProjeto3D[] = []
-  const resultado = linhas.map((linha, index) => {
+  const resultado = linhas.flatMap((linha, index): T[] => {
     const origem = linha.origem_projeto3d
-    if (origem?.resolution !== 'pendente' || origem.kind !== 'equipment') return linha
+    if (origem?.resolution !== 'pendente' || origem.kind !== 'equipment') return [linha]
     const registrar = (diagnostico: Omit<DiagnosticoAutoVinculoProjeto3D, 'index' | 'uid'>) => {
       const uid = 'uid' in linha && typeof linha.uid === 'string' ? linha.uid : undefined
       diagnosticos.push({ index, uid, ...diagnostico })
@@ -50,7 +52,24 @@ export function autoVincularProjeto3DComDiagnostico<T extends LinhaAutoVinculo>(
       || (linha.specs && (linha.specs.length !== origem.sourceSpecifications.length
         || linha.specs.some((spec, specIndex) => spec !== origem.sourceSpecifications[specIndex])))) {
       registrar({ motivo: 'edicao_preservada', mensagem: 'Esta linha já foi editada no orçamento. A edição foi preservada; confira o vínculo ou confirme o valor manual.' })
-      return linha
+      return [linha]
+    }
+    const componentes = encontrarComponentesConjuntoProjeto3D(linha, catalogo)
+    if (componentes && linha.uid) {
+      try {
+        // Price every component before replacing the source row. A missing
+        // price/motor leaves the entire assembly pending, without a partial bill.
+        const vinculadas = componentes.map(item => vincular({
+          ...linha, uid: `${linha.uid}:componente:${item.id}`, nome: item.nome_curto,
+          origem_projeto3d: { ...origem, componentCatalogId: item.id },
+        }, item))
+        registrar({ motivo: 'vinculado', mensagem: 'Componentes do conjunto vinculados aos cadastros atuais.' })
+        return vinculadas
+      } catch (error) {
+        const mensagem = error instanceof Error ? error.message : 'Não foi possível conferir o preço de todos os componentes do conjunto.'
+        registrar({ motivo: /motor/i.test(mensagem) ? 'motor_incompleto' : 'sem_preco', mensagem })
+        return [linha]
+      }
     }
     const item = encontrarCatalogoProjeto3D(linha, catalogo)
     if (!item) {
@@ -62,12 +81,12 @@ export function autoVincularProjeto3DComDiagnostico<T extends LinhaAutoVinculo>(
       } else {
         registrar({ motivo: 'sem_cadastro', mensagem: 'Nenhum cadastro ativo e oficial corresponde com segurança a esta peça. Confira o catálogo ou confirme um valor manual.' })
       }
-      return linha
+      return [linha]
     }
     try {
       const vinculada = vincular(linha, item)
       registrar({ motivo: 'vinculado', mensagem: 'Cadastro e preço conferidos para esta peça.', catalogo: item })
-      return vinculada
+      return [vinculada]
     } catch (error) {
       // An incomplete price or motor keeps this row pending without blocking the rest.
       const mensagemOriginal = error instanceof Error ? error.message.trim() : ''
@@ -75,7 +94,7 @@ export function autoVincularProjeto3DComDiagnostico<T extends LinhaAutoVinculo>(
       const motivo: MotivoAutoVinculoProjeto3D = /motor/i.test(mensagemOriginal) ? 'motor_incompleto'
         : /pre[cç]o|valor/i.test(mensagemOriginal) ? 'sem_preco' : 'falha_precificacao'
       registrar({ motivo, mensagem, catalogo: item })
-      return linha
+      return [linha]
     }
   })
   return { linhas: resultado, diagnosticos }
