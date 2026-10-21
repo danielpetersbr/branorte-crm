@@ -940,6 +940,14 @@ export interface AtendimentoKpis {
   emAndamento: number
   paraPegar: number  // leads sem responsavel (null, vazio, "a definir") — disponíveis pra puxar
   tocaram: number    // clicaram em FALAR COM CONSULTOR e foram levados pro WhatsApp do vendedor
+  /**
+   * (21/10/2026) Os `hoje` separados pela CHEGADA. Lista e card cortam por atividade no período (last_message_at,
+   * desde 17/09: o cliente que volta tem que aparecer no dia), então "Hoje" junta quem chegou agora com quem já tinha
+   * chegado antes e voltou a falar. O Daniel viu o Renato (chegou 08/05, voltou hoje pelo anúncio, no WhatsApp da
+   * Ana) com o "Chegou 08/05" e achou que era erro de etiqueta.
+   */
+  hojeNovos: number
+  hojeVoltaram: number
 }
 
 function startOfTodayISO(): string {
@@ -1112,7 +1120,9 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
       // count — degradável (sem throw): se estourar, mostra 0 sem quebrar a tela.
       let _hojeBase = supabaseAuditoria
         .from('atendimentos_por_cliente')
-        .select('responsavel, motivo_contato, tocou_botao_em, o_que_precisa')
+        // created_at (coluna da tabela) e não primeira_data: primeira_data é window function da view e levava esta
+        // consulta de 230 para 576 ms (21/10/2026). As duas diferem em 3 de 519 linhas.
+        .select('responsavel, motivo_contato, tocou_botao_em, o_que_precisa, created_at')
         .eq('is_internal', false)
         .gte('last_message_at', _kpiFrom)
       if (_kpiRange.to) _hojeBase = _hojeBase.lte('last_message_at', _kpiRange.to)
@@ -1129,7 +1139,7 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
       // 'hoje' agora é leve (poucas linhas) — se falhar, é erro real; vale sinalizar.
       if (hojeRes.error) throw hojeRes.error
 
-      type LinhaKpi = { responsavel: string | null; motivo_contato: string | null; tocou_botao_em: string | null; o_que_precisa: string | null }
+      type LinhaKpi = { responsavel: string | null; motivo_contato: string | null; tocou_botao_em: string | null; o_que_precisa: string | null; created_at: string | null }
       const rows = (hojeRes.data ?? []) as LinhaKpi[]
       const semResp = (r: LinhaKpi) => !r.responsavel || r.responsavel === '' || r.responsavel === 'a definir'
       const motivoDe = (r: LinhaKpi) => (r.motivo_contato ?? '').toLowerCase()
@@ -1144,9 +1154,19 @@ export function useAtendimentoKpis(filters?: Partial<AtendimentoFilters>) {
         return false
       }
 
+      // Chegou antes do início da janela e teve atividade dentro dela = voltou.
+      const inicioJanela = Date.parse(_kpiFrom)
+      const voltou = (r: LinhaKpi) => {
+        const t = Date.parse(r.created_at ?? '')
+        return Number.isFinite(t) && Number.isFinite(inicioJanela) && t < inicioJanela
+      }
+      const hojeVoltaram = rows.filter(voltou).length
+
       return {
         total:        totalRes.count ?? 0,
         hoje:         rows.length,
+        hojeNovos:    rows.length - hojeVoltaram,
+        hojeVoltaram,
         contatados:   rows.filter(r => !semResp(r)).length,
         naoEngajaram: rows.filter(r => !r.motivo_contato && !r.tocou_botao_em).length,
         qualificados: rows.filter(qualificado).length,
