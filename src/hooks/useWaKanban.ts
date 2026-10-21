@@ -173,6 +173,8 @@ export interface WaMensagem {
   data_msg: string | null
   /** Só na visão do espelho: 'espelho' = conversa fora do funil, texto sem mídia. */
   origem?: 'funil' | 'espelho'
+  /** Só na visão do espelho: nome do documento. */
+  filename?: string | null
 }
 
 /** Quantas mensagens o drawer carrega de cara (cobre ~87% dos chats por inteiro). */
@@ -218,7 +220,7 @@ export function useWaMensagens(
       // Busca só a janela pedida e mais uma sonda, mesmo quando ela ultrapassa
       // max_rows. Uma resposta truncada não significa fim do histórico.
       const colunas: string = 'msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg, transcricao, transcricao_em'
-        + (tabela === 'wa_chat_messages' ? '' : ', origem')
+        + (tabela === 'wa_chat_messages' ? '' : ', origem, filename')
       const data = await todasAsLinhas<WaMensagem>(async (de, ate) => {
         const { data, error, count } = await supabase
           .from(tabela)
