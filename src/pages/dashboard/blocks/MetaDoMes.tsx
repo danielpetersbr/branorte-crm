@@ -51,7 +51,15 @@ export function MetaDoMes({ compacto = false }: {
   const ritmoAtual = diaDoMes > 0 ? vendido / diaDoMes : 0
   const projecao = ritmoAtual * diasNoMes
   const pctProjecao = meta > 0 ? (projecao / meta) * 100 : 0
-  const precisaPorDia = diasRestantes > 0 ? falta / diasRestantes : falta
+  // (21/10/2026, auditoria) por DIA ÚTIL: em 2026 só 7 de 506 pedidos caíram em sábado ou domingo. Dividir pelos dias
+  // corridos (24, 25 e 31/10 incluídos) dava R$ 161 mil por dia quando o esforço real era R$ 230 mil por dia útil.
+  // Feriado não entra na conta (seg a sex).
+  let diasUteisRestantes = 0
+  for (let d = diaDoMes + 1; d <= diasNoMes; d++) {
+    const sem = new Date(anoRef, mesRef - 1, d).getDay()
+    if (sem !== 0 && sem !== 6) diasUteisRestantes++
+  }
+  const precisaPorDiaUtil = diasUteisRestantes > 0 ? falta / diasUteisRestantes : falta
 
   // Projeção com poucos dias ou poucos pedidos é ruído: em 02/10 um pedido grande dava
   // "No ritmo da meta · 154%" e no dia 04 já era vermelho. Até lá, não projeta.
@@ -128,13 +136,14 @@ export function MetaDoMes({ compacto = false }: {
           <div className="text-kpi-sm tabular-nums text-ink">{brl(falta)}</div>
         </div>
         <div>
-          <div className="text-label text-ink-faint" title="Dias corridos depois de hoje. Hoje entra no ritmo (dias já corridos), não aqui.">Dias restantes</div>
+          <div className="text-label text-ink-faint" title="Dias corridos depois de hoje, e quantos deles são dias úteis (segunda a sexta; feriado não entra na conta). Hoje entra na média do mês, não aqui.">Dias restantes</div>
           <div className="text-kpi-sm tabular-nums text-ink">{diasRestantes}</div>
+          <div className="text-micro text-ink-faint">{diasUteisRestantes} {diasUteisRestantes === 1 ? 'dia útil' : 'dias úteis'}</div>
         </div>
         <div>
-          <div className="text-label text-ink-faint">Precisa por dia</div>
-          <div className="text-kpi-sm tabular-nums text-ink">{brl(precisaPorDia)}</div>
-          <div className="text-micro text-ink-faint">hoje o ritmo é {brl(ritmoAtual)}/dia</div>
+          <div className="text-label text-ink-faint" title="O que falta para a meta dividido pelos dias úteis que sobram no mês (segunda a sexta). Embaixo, a média do mês até hoje por dia corrido, que é a base da projeção ao lado.">Precisa por dia útil</div>
+          <div className="text-kpi-sm tabular-nums text-ink">{brl(precisaPorDiaUtil)}</div>
+          <div className="text-micro text-ink-faint">média do mês: {brl(ritmoAtual)} por dia</div>
         </div>
         <div>
           <div className="text-label text-ink-faint">No ritmo atual, fecha</div>

@@ -5,6 +5,7 @@ import { useDashboardOrcamentos, useDashboardVendas } from '@/hooks/useDashboard
 import { useOrcamentosResumo } from '@/hooks/useOrcamentosResumo'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
 import { useVendasReais } from '@/hooks/useVendasReais'
+import { useLeadsContexto } from '@/hooks/useLeadsContexto'
 import { useJanela } from './DashboardFilterContext'
 import { irPara, useDashboardTab, type TabId } from './tabs'
 import { Metric } from './ui/Metric'
@@ -83,6 +84,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   const { data: orc, isPending: orcPendente, isPlaceholderData: orcVelho } = useOrcamentosResumo(preset)
   const { data: vendas, isPending: vendasPendente } = useDashboardVendas(preset)
   const { data: vendasReais, isPending: vendasReaisPendente } = useVendasReais()
+  const { data: leadsCtx } = useLeadsContexto(preset)
   // (21/10/2026) etiquetas, funil por vendedor, status das propostas e cobertura eram só das Decisões do gerente,
   // que saíram da aba: não são mais buscados aqui (as outras abas buscam o que usam).
 
@@ -164,9 +166,15 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           valor={n(data.kpiTotal.valor)}
           // Período anterior sem lead: o hook devolve +100%, que não é uma variação de verdade.
           delta={temPeriodo && data.kpiTotal.anterior > 0 ? data.kpiTotal.deltaPct : null}
+          // (21/10/2026, Daniel: "as 53 hoje… mas chegou 72") o /atendimentos conta quem MANDOU MENSAGEM no período, inclusive
+          // cliente antigo; aqui é cliente NOVO. A linha de baixo mostra a diferença: quem voltou e quem a Ana ainda não passou.
+          secundario={leadsCtx && (leadsCtx.voltaram > 0 || leadsCtx.comAna > 0)
+            ? [leadsCtx.voltaram > 0 ? `+${n(leadsCtx.voltaram)} ${leadsCtx.voltaram === 1 ? 'cliente antigo voltou' : 'clientes antigos voltaram'}` : '',
+               leadsCtx.comAna > 0 ? `${n(leadsCtx.comAna)} ainda com a Ana` : ''].filter(Boolean).join(' · ')
+            : undefined}
           janela="periodo"
           janelaLabel={periodoLabel}
-          ajuda="Contatos que CHEGARAM no período (data do 1º contato). Um telefone conta uma vez. O /atendimentos filtra pela data da ÚLTIMA mensagem e esconde quem não tem telefone, por isso lá o número do mesmo período é outro."
+          ajuda="Clientes NOVOS que chegaram no período (data do 1º contato) e já viraram linha no CRM. Um telefone conta uma vez. O cliente da Ana só vira linha quando ela passa pro vendedor: os que ela ainda atende aparecem como 'ainda com a Ana' e entram quando ela repassar. 'Clientes antigos voltaram' = quem já estava no CRM antes e conversou no período. Novos + voltaram = o que o /atendimentos mostra no mesmo período (ele filtra pela ÚLTIMA mensagem)."
         />
         <Metric
           denso

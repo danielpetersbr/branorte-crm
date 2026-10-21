@@ -32,7 +32,7 @@ function overview(primary: Record<string, unknown>, secondary: Record<string, un
     './ui/format': { n: String, brl: String, pct: String, primeiroNome: String },
     '@/lib/vendedores-fora-do-ranking': { foraDoRanking: () => false },
   }
-  for (const name of ['useDashboardEtiquetas', 'useDashboardExtra', 'useDashboardVendedorFunil', 'useOrcamentosResumo', 'usePropostasStatus', 'useVendedorCobertura', 'useFunilUnion', 'useVendasReais']) {
+  for (const name of ['useDashboardEtiquetas', 'useDashboardExtra', 'useDashboardVendedorFunil', 'useOrcamentosResumo', 'usePropostasStatus', 'useVendedorCobertura', 'useFunilUnion', 'useVendasReais', 'useLeadsContexto']) {
     imports[`@/hooks/${name}`] = { [name]: () => {
       const result = hook()
       if (result.data === undefined) return result
@@ -69,8 +69,9 @@ test('falha do snapshot não dispara consultas complementares nem apresenta núm
 
 test('snapshot disponível libera os complementos e informa espera sem apresentar vendas falsas como zero', () => {
   const result = overview({ data, isLoading: false }, { isPending: true })
-  // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente
-  assert.equal(result.requests, 6)
+  // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente;
+  // entrou o contexto do tile Leads (clientes antigos que voltaram e os que ainda estão com a Ana)
+  assert.equal(result.requests, 7)
   assert.match(result.html, /Leads: 39/)
   assert.match(result.html, /Vendas: Carregando/)
   assert.doesNotMatch(result.html, /Vendas: 0/)
@@ -108,8 +109,9 @@ test('troca de período mantém o aviso de dados anteriores enquanto os compleme
 
 test('atualização em segundo plano preserva os dados e os complementos já disponíveis', () => {
   const result = overview({ data, isLoading: false, isFetching: true }, { data: { qtd: 2, valor: 67000 }, isPending: false })
-  // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente
-  assert.equal(result.requests, 6)
+  // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente;
+  // entrou o contexto do tile Leads (clientes antigos que voltaram e os que ainda estão com a Ana)
+  assert.equal(result.requests, 7)
   assert.match(result.html, /Leads: 39/)
   assert.match(result.html, /Vendas: 2/)
   assert.doesNotMatch(result.html, /Carregando/)
