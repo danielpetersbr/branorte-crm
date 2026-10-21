@@ -5,9 +5,11 @@ import { QueryClient } from '@tanstack/react-query'
 
 test('contrato dos hooks inclui identidade e impede placeholder entre conversas', () => {
   const fonte = readFileSync(new URL('../hooks/useWaKanban.ts', import.meta.url), 'utf8')
-  const keys = fonte.match(/queryKey: \[[^\n]+/g) ?? []
+  // O quadro usa chaveWaKanban() (o espelho do /whatsapp remenda o mesmo cache); ela tem que levar userId também.
+  const keys = fonte.match(/queryKey: (?:\[|chaveWaKanban\()[^\n]+/g) ?? []
   assert.equal(keys.length, 5)
   for (const key of keys) assert.match(key, /userId/)
+  assert.match(fonte, /chaveWaKanban = \(vendedor: string \| null, userId: string \| undefined[^\n]*\n\s+\['wa-kanban', vendedor, userId,/)
   assert.match(fonte, /query\?\.queryKey\[1\] === vendedor/)
   assert.match(fonte, /query\?\.queryKey\[2\] === chatId/)
   assert.match(fonte, /query\?\.queryKey\[4\] === userId/)

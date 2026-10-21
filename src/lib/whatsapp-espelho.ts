@@ -8,8 +8,8 @@
  * por esta tela — regra do Daniel: depois do primeiro contato, quem fala com o
  * cliente ali é o próprio vendedor.
  */
-import type { WaChat, WaKanban } from '../hooks/useWaKanban'
-import { digitosDaBusca, ordemDe, precisaResposta } from './wa-funil'
+import type { WaChat, WaColuna, WaKanban } from '../hooks/useWaKanban'
+import { canonico, corDaEtiqueta, digitosDaBusca, ETIQUETAS_OCULTAS, ordemDe, precisaResposta } from './wa-funil'
 
 export const CONTA_ANA = 'ANA'
 
@@ -136,13 +136,14 @@ export function etiquetasDaLista(conversas: ConversaEspelho[]): { nome: string; 
  * ⚠️ ESPELHO da regra da extensão (`sincronizarMensagensFunil` em
  * Branorte/wa-sync-extension/background.js: MSGS_ETIQUETAS_ALVO_PILOTO e
  * MSGS_SEM_ETIQUETA_JANELA_MS). A extensão só grava o histórico de conversa:
- *  - com etiqueta do funil ativo (Prospecção, 2ª tentativa, Novo lead, Follow up, Lead quente);
+ *  - com etiqueta do funil ativo (Prospecção, 2ª e 3ª tentativa, Novo lead, Follow up, Lead quente —
+ *    a 3ª entrou na extensão 1.70.64, 21/10/2026);
  *  - sem etiqueta nenhuma e com mensagem nas últimas 6 h (lead que acabou de chegar).
  * Fora disso (Orçamento enviado sozinho, Resolvido, Branorte, Nunca respondeu…) o
  * histórico congela onde estava, mas a LISTA continua mostrando a última mensagem.
  * Mudou lá, muda aqui — senão a tela promete histórico que não vem.
  */
-export const ETIQUETAS_COM_HISTORICO = ['PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE']
+export const ETIQUETAS_COM_HISTORICO = ['PROSPECCAO', '2A TENTATIVA', '3A TENTATIVA', 'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE']
 const JANELA_LEAD_SEM_ETIQUETA_MS = 6 * 3600_000
 
 export function historicoGravado(conversa: Pick<ConversaEspelho, 'etiquetas' | 'label_ids' | 'last_message_at'>, agora = Date.now()): boolean {
@@ -163,4 +164,61 @@ export function historicoAtrasado(ultimaNaLista: string | null, ultimaNoHistoric
   if (!Number.isFinite(lista)) return false
   const historico = ultimaNoHistorico ? Date.parse(ultimaNoHistorico) : NaN
   return !Number.isFinite(historico) || lista - historico > folgaMs
+}
+
+export interface LinhaEspelho extends WaChat {
+  vendedor_nome: string
+  updated_at?: string | null
+}
+
+/** id de etiqueta → nome canônico, por vendedor (o id do WhatsApp é POR conta). Igual ao useWaKanban. */
+export function mapaEtiquetas(catalogo: { vendedor_nome: string; etiqueta_id_wascript: string | number; etiqueta_nome_normalizado: string }[]): Map<string, string> {
+  const mapa = new Map<string, string>()
+  for (const e of catalogo) {
+    const nome = canonico(e.etiqueta_nome_normalizado)
+    if (nome !== 'SEM ETIQUETA') mapa.set(`${e.vendedor_nome}::${e.etiqueta_id_wascript}`, nome)
+  }
+  return mapa
+}
+
+/**
+ * Encaixa no quadro já carregado só as conversas que mudaram (mensagem nova ou etiqueta
+ * trocada), sem baixar a lista inteira de novo (~450 KB por vendedor). A conversa sai de
+ * todas as colunas e volta nas etiquetas atuais — como o MESMO objeto em cada coluna,
+ * que é o que `achatarConversas` usa pra juntar as etiquetas numa linha só.
+ * Chave = telefone (único por vendedor em wa_chat_labels).
+ */
+export function aplicarDeltaKanban(kanban: WaKanban, linhas: LinhaEspelho[], idParaNome: Map<string, string>): WaKanban {
+  if (!linhas.length) return kanban
+  const conhecidos = new Set<string>()
+  for (const c of kanban.semEtiqueta) conhecidos.add(c.phone)
+  for (const col of kanban.colunas) for (const c of col.chats) conhecidos.add(c.phone)
+  const mudou = new Set(linhas.map(l => l.phone))
+  const fica = (c: WaChat) => !mudou.has(c.phone)
+  const colunas: WaColuna[] = kanban.colunas.map(col => ({ ...col, chats: col.chats.filter(fica) }))
+  const semEtiqueta = kanban.semEtiqueta.filter(fica)
+  for (const linha of linhas) {
+    const chat = { ...linha, vendedor: linha.vendedor_nome } as WaChat
+    const nomes = new Set<string>()
+    for (const id of linha.label_ids ?? []) {
+      const nome = idParaNome.get(`${linha.vendedor_nome}::${id}`)
+      if (nome) nomes.add(nome)
+    }
+    if (!nomes.size) { semEtiqueta.push(chat); continue }
+    for (const nome of nomes) {
+      let coluna = colunas.find(c => c.nome === nome)
+      if (!coluna) {
+        coluna = { nome, cor: corDaEtiqueta(nome), oculta: ETIQUETAS_OCULTAS.has(nome), chats: [] }
+        colunas.push(coluna)
+      }
+      coluna.chats.push(chat)
+    }
+  }
+  const recente = (a: WaChat, b: WaChat) => (b.last_message_at ?? '').localeCompare(a.last_message_at ?? '')
+  for (const col of colunas) col.chats.sort(recente)
+  semEtiqueta.sort(recente)
+  colunas.sort((a, b) => ordemDe(a.nome) - ordemDe(b.nome) || a.nome.localeCompare(b.nome))
+  const novos = linhas.filter(l => !conhecidos.has(l.phone)).length
+  const ultimaSync = linhas.reduce<string | null>((max, l) => (l.updated_at && (!max || l.updated_at > max) ? l.updated_at : max), kanban.ultimaSync)
+  return { colunas, semEtiqueta, totalChats: kanban.totalChats + novos, ultimaSync }
 }
