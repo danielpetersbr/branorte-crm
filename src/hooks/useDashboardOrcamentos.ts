@@ -62,6 +62,24 @@ export function useDashboardVendas(preset: DashboardPreset) {
   })
 }
 
+/** (21/10/2026, Daniel: "tem cliente que é do mês passado e fechou agora") Vendas do período cujo cliente CHEGOU como lead
+ *  no mesmo período — RPC dashboard_vendas_coorte (telefone do pedido × 1º atendimento). Outubro/2026: 30 vendas = 1 de lead
+ *  do mês + 6 de lead de meses antes + 23 de cliente que nunca passou como lead. */
+export function useDashboardVendasCoorte(preset: DashboardPreset) {
+  const { from, to } = rangeFor(preset)
+  return useQuery({
+    queryKey: ['dashboard-vendas-coorte', from, to],
+    queryFn: async (): Promise<{ qtd: number; valor: number }> => {
+      const { data, error } = await (supabase as any).rpc('dashboard_vendas_coorte', { p_from: from, p_to: to })
+      if (error) throw error
+      const row = Array.isArray(data) ? data[0] : data
+      return { qtd: Number(row?.qtd ?? 0), valor: Number(row?.valor ?? 0) }
+    },
+    staleTime: 60_000,
+    refetchInterval: 3 * 60_000,
+  })
+}
+
 // ─── DRILL-DOWN: de onde vem cada KPI (linhas por trás do número) ───────────
 // Espelham EXATAMENTE o match dos agregados acima (verificado: batem 1:1).
 // `enabled` = lazy: só busca quando o modal abre.
