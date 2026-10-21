@@ -18,6 +18,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner'
 import { formatPhone, whatsappLink, formatRelative, formatNumber, formatDateTimeShort, estadoNome } from '@/lib/utils'
 import { ufFromTelefone, paisDoTelefone } from '@/lib/ddd-uf'
 import { limparEquipamento } from '@/lib/atendimentos-texto'
+import { voltouEm } from '@/lib/atendimento-voltou'
 import { etapaAtendimento, ETAPAS_ATENDIMENTO } from '@/lib/atendimento-etapa'
 import { ESTADOS_BR } from '@/types'
 import { ATENDIMENTO_PAGE_SIZE, STATUS_REAL_VALUES, STATUS_VENDEDOR_MAP, type StatusReal } from '@/types/atendimento'
@@ -614,7 +615,9 @@ export function Atendimentos() {
                    hint={iaContagemError ? 'Não foi possível atualizar' : iaContagem ? `${formatNumber(iaContagem.ligados)} chats com IA ligada` : 'Consultando a IA…'}
                    tooltip="Chats com IA ativa que receberam uma resposta dela hoje, no horário de Brasília. Exclui IA pausada, bloqueada ou desligada e conta cada telefone uma vez. O total abaixo inclui também chats com IA ligada que ainda não receberam resposta hoje. Esta contagem atual independe dos filtros históricos da lista." />
           <KpiCard label="Hoje"           value={kpis.hoje}         hero tone="accent"
-                   icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje' : 'leads novos'}
+                   icon={Calendar}        hint={kpis.hoje === 0 ? 'Nenhum lead hoje'
+                     : kpis.hojeVoltaram > 0 ? `${formatNumber(kpis.hojeNovos)} novos · ${formatNumber(kpis.hojeVoltaram)} voltaram` : 'leads novos'}
+                   tooltip="Leads com contato no período: os que chegaram agora e os que já tinham chegado antes e voltaram a falar. Na lista, Chegou mostra a 1ª vez e a marca 'voltou' diz quando ele apareceu de novo. Clique pra filtrar a lista."
                    active={filters.data === 'hoje'}
                    onClick={() => setFilters(f => ({ ...f, data: f.data === 'hoje' ? '' as DataPreset : 'hoje', page: 0 }))} />
           {/* QUALIFICADO = PASSOU PRO VENDEDOR. Régua do Daniel, reafirmada em 18/08 depois de
@@ -1128,6 +1131,20 @@ export function Atendimentos() {
                           <span className="text-[11px] text-ink-muted font-mono tabular-nums block">
                             {formatDateTimeShort(r.primeira_data ?? r.created_at)}
                           </span>
+                          {(() => {
+                            const volta = voltouEm(r.primeira_data ?? r.created_at, r.last_message_at)
+                            if (!volta) return null
+                            const hojeVolta = volta.toDateString() === new Date().toDateString()
+                            return (
+                              // Sem ícone de propósito: a coluna é table-fixed de 78 px e "voltou 16:30" com ícone passava por cima do nome.
+                              <span className="mt-0.5 block text-[10px] font-semibold text-info"
+                                    title={`Chegou pela 1ª vez em ${formatDateTimeShort(r.primeira_data ?? r.created_at)} e voltou a falar em ${formatDateTimeShort(r.last_message_at)}`}>
+                                voltou {hojeVolta
+                                  ? volta.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                                  : volta.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                              </span>
+                            )
+                          })()}
                           {esperando && (
                             <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-warning"
                                   title={`Sem vendedor — na fila ${formatRelative(r.last_message_at ?? r.created_at)}`}>
