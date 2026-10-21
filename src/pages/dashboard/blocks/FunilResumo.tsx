@@ -136,7 +136,7 @@ export function FunilResumo({
   }
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader
         title="Funil do período"
         subtitle={topo > 0

@@ -43,7 +43,7 @@ function overview(primary: Record<string, unknown>, secondary: Record<string, un
     } }
   }
   imports['@/hooks/useDashboardOrcamentos'] = { useDashboardOrcamentos: hook, useDashboardVendas: hook }
-  for (const name of ['MetaDoMes', 'OperacaoAgora', 'FinalizadosPorMotivo', 'Tendencia', 'AcoesPrioritarias', 'TopEquipe', 'DrillModal']) {
+  for (const name of ['MetaDoMes', 'OperacaoAgora', 'FunilResumo', 'FinalizadosPorMotivo', 'Tendencia', 'AcoesPrioritarias', 'TopEquipe', 'DrillModal']) {
     imports[`./blocks/${name}`] = { [name]: () => React.createElement('p', {}, name) }
   }
   const { TabVisaoGeral } = load('./TabVisaoGeral.tsx', imports)
