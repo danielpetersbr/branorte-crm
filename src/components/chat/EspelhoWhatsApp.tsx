@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { buscarMudancasEspelho, useSinalEspelho } from '@/hooks/useWhatsAppEspelho'
 import { corpoVisivel, FAMILIA_CHIP, familiaDe, formatarTelefone, nomeContato, tempoRelativo } from '@/lib/wa-funil'
-import { achatarConversas, aplicarDeltaKanban, chaveConversa, CONTA_ANA, etiquetasDaLista, filtrarConversas, historicoAtrasado, historicoGravado, nomeEtiqueta, rotuloConta, type ContaWhatsApp, type ConversaEspelho, type FiltroEspelho } from '@/lib/whatsapp-espelho'
+import { achatarConversas, aplicarDeltaKanban, chaveConversa, CONTA_ANA, etiquetasDaLista, filtrarConversas, historicoAtrasado, nomeEtiqueta, rotuloConta, type ContaWhatsApp, type ConversaEspelho, type FiltroEspelho } from '@/lib/whatsapp-espelho'
 
 const inputClass='w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent/30'
 const buttonClass='inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed'
@@ -93,8 +93,9 @@ function BolhaEspelho({m,vendedor}:{m:WaMensagem;vendedor:string}) {
         {meta&&!(ehFoto&&arquivo)&&!(ehAudio&&arquivo)&&<p className="flex items-center gap-1.5 text-xs font-medium text-ink-muted"><meta.Icon size={14}/>{meta.label}{m.duracao_seg?<span className="tabular-nums">· {fmtDuracao(m.duracao_seg)}</span>:null}</p>}
         {(ehAudio||ehFoto)&&arquivo&&<ChatMedia type={m.tipo} url={m.media_url}/>}
         {ehAudio&&arquivo&&!!m.duracao_seg&&<p className="mt-1 text-[10px] tabular-nums text-ink-faint">{fmtDuracao(m.duracao_seg)}</p>}
-        {(ehAudio||m.tipo==='image')&&!arquivo&&<p className="mt-0.5 text-[11px] italic text-ink-faint">{m.media_url==='unavailable'||antiga?'Arquivo expirou no aparelho':'Arquivo ainda não copiado pro CRM'}</p>}
-        {['video','document','sticker'].includes(m.tipo)&&!arquivo&&<p className="mt-0.5 text-[11px] italic text-ink-faint">Abre só no WhatsApp do vendedor</p>}
+        {m.origem==='espelho'&&meta&&m.tipo!=='call_log'&&m.tipo!=='location'&&!m.tipo.includes('vcard')&&<p className="mt-0.5 text-[11px] italic text-ink-faint">Conversa fora do funil: só o texto é copiado. Abre no WhatsApp do vendedor.</p>}
+        {m.origem!=='espelho'&&(ehAudio||m.tipo==='image')&&!arquivo&&<p className="mt-0.5 text-[11px] italic text-ink-faint">{m.media_url==='unavailable'||antiga?'Arquivo expirou no aparelho':'Arquivo ainda não copiado pro CRM'}</p>}
+        {m.origem!=='espelho'&&['video','document','sticker'].includes(m.tipo)&&!arquivo&&<p className="mt-0.5 text-[11px] italic text-ink-faint">Abre só no WhatsApp do vendedor</p>}
         {texto&&<p className={cn('whitespace-pre-wrap break-words text-sm leading-relaxed',(meta||arquivo)&&'mt-1.5')}>{texto}</p>}
         {!texto&&!meta&&<p className="text-xs italic text-ink-faint">({m.tipo})</p>}
         {m.transcricao&&<details className="mt-2 text-xs text-ink-muted"><summary className="cursor-pointer">Transcrição do áudio</summary><p className="mt-1 whitespace-pre-wrap">{m.transcricao}</p></details>}
@@ -106,7 +107,7 @@ function BolhaEspelho({m,vendedor}:{m:WaMensagem;vendedor:string}) {
 
 function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEspelho;vendedor:string;onVoltar:()=>void}) {
   const [limite,setLimite]=useState(MSGS_PAGINA_INICIAL)
-  const historico=useWaMensagens(vendedor,conversa.chat_id,!!conversa.chat_id,limite,CONVERSA_MS)
+  const historico=useWaMensagens(vendedor,conversa.chat_id,!!conversa.chat_id,limite,CONVERSA_MS,'wa_chat_messages_espelho_todas')
   // A lista viu mensagem nova nesta conversa: busca o histórico na hora, sem esperar o ciclo.
   const refetchHistorico=historico.refetch,ultimaVista=useRef(conversa.last_message_at)
   useEffect(()=>{
@@ -117,11 +118,10 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
   const mensagens=historico.data?.mensagens??[]
   const area=useRef<HTMLDivElement>(null),grudado=useRef(true),alturaAntes=useRef<number|null>(null)
   const nome=nomeContato(conversa.contact_name,conversa.phone)
-  const gravado=historicoGravado(conversa)
   const ultimaGravada=mensagens.length?mensagens[mensagens.length-1].data_msg:null
   const chegando=!!conversa.last_message_at&&Date.now()-Date.parse(conversa.last_message_at)<=ESPERA_HISTORICO_MS
   const atrasado=!historico.isPending&&!historico.isError&&!!mensagens.length&&historicoAtrasado(conversa.last_message_at,ultimaGravada)
-  const porqueSemHistorico=`Só fica gravado o histórico de conversa com etiqueta do funil (Prospecção, 2ª tentativa, Novo lead, Follow up, Lead quente) ou de lead novo sem etiqueta. Pra ver o resto, só no WhatsApp do ${rotuloConta(vendedor)}.`
+  const nomeVend=rotuloConta(vendedor)
   useLayoutEffect(()=>{
     const el=area.current
     if(!el)return
@@ -144,7 +144,7 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
       {historico.data?.temMais&&<div className="mb-5 text-center"><button type="button" className={cn(buttonClass,'bg-surface text-xs')} disabled={historico.isFetching} onClick={()=>{alturaAntes.current=area.current?.scrollHeight??null;setLimite(l=>l+MSGS_PAGINA_INCREMENTO)}}>Carregar mensagens anteriores</button></div>}
       {historico.isPending&&!!conversa.chat_id&&<p className="text-center text-sm text-ink-muted">Carregando histórico…</p>}
       {historico.isError&&<div role="alert" className="text-center text-sm text-danger">{historico.error.message}<div><button type="button" className={cn(buttonClass,'mt-2 text-xs')} onClick={()=>historico.refetch()}>Tentar novamente</button></div></div>}
-      {!historico.isPending&&!historico.isError&&!!conversa.chat_id&&!mensagens.length&&<div className="mx-auto max-w-sm text-center text-sm text-ink-muted"><MessageSquare className="mx-auto mb-3 opacity-40"/><p>Nenhuma mensagem gravada desta conversa.</p><p className="mt-2 text-xs">Última mensagem no WhatsApp: {corpoVisivel(conversa.last_message_preview)||'mídia'} {conversa.last_message_at&&`(${tempoRelativo(conversa.last_message_at)})`}</p>{!gravado&&<p className="mt-2 text-xs">{porqueSemHistorico}</p>}</div>}
+      {!historico.isPending&&!historico.isError&&!!conversa.chat_id&&!mensagens.length&&<div className="mx-auto max-w-sm text-center text-sm text-ink-muted"><MessageSquare className="mx-auto mb-3 opacity-40"/><p>Nenhuma mensagem gravada desta conversa.</p><p className="mt-2 text-xs">Última mensagem no WhatsApp: {corpoVisivel(conversa.last_message_preview)||'mídia'} {conversa.last_message_at&&`(${tempoRelativo(conversa.last_message_at)})`}</p><p className="mt-2 text-xs">Conversa fora do funil passou a ser gravada em 21/10, a partir da próxima mensagem.</p></div>}
       <div className="space-y-3">{mensagens.map(m=>{
         const dia=m.data_msg?new Date(m.data_msg).toDateString():''
         const separador=dia&&dia!==diaAnterior?<p className="py-2 text-center text-[10px] font-medium uppercase tracking-wide text-ink-faint">{fmtDia(m.data_msg!)}</p>:null
@@ -153,7 +153,7 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
       })}</div>
       {atrasado&&<div role="status" className="mx-auto mt-5 max-w-md rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-ink-muted">
         <p className="font-medium text-ink">{conversa.last_message_from_me?`${rotuloConta(vendedor)} mandou`:'Cliente mandou'} {conversa.last_message_at&&fmtHora(conversa.last_message_at)}: <span className="font-normal">{corpoVisivel(conversa.last_message_preview)||'mídia'}</span></p>
-        <p className="mt-1">{gravado?(chegando?'A mensagem já apareceu na lista e está chegando no histórico (a extensão grava a cada ~30 s).':`Esta mensagem não chegou no histórico (costuma ser reação, mensagem apagada ou editada). Pra ver, só no WhatsApp do ${rotuloConta(vendedor)}.`):`O histórico desta conversa parou em ${ultimaGravada?fmtDia(ultimaGravada):'—'}. ${porqueSemHistorico}`}</p>
+        <p className="mt-1">{chegando?'A mensagem já apareceu na lista e está chegando no histórico (a extensão grava a cada ~30 s).':`Esta mensagem não chegou no histórico. Pode ser reação ou mensagem apagada, ou o computador do ${nomeVend} ainda está com a extensão antiga (até ele atualizar, só as conversas do funil são gravadas). Pra ver, só no WhatsApp dele.`}</p>
       </div>}
     </div>
     <div className="shrink-0 border-t border-border bg-surface px-4 py-3">
