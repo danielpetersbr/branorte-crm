@@ -179,11 +179,16 @@ function useDados(p: Periodo) {
           // sem a campanha de vaga de emprego (não é de venda)
           gasto: num(totMeta?.gasto) - vagaSoma.gasto, orcDia: numN(totMeta?.orcamento_dia), conversas: num(totMeta?.resultado) - vagaSoma.conversas,
           cliques: num(totMeta?.cliques) - vagaSoma.cliques, impressoes: num(totMeta?.impressoes) - vagaSoma.impressoes,
+          // custo por conversa só com o gasto das campanhas de mensagem (LP, cadastro e tráfego não geram conversa)
+          gastoConversas: metaLinhas.filter(l => l.resultadoTipo === 'conversas' && !naoEhVenda(l.campanha)).reduce((a, l) => a + l.gasto, 0),
           ate: txt(totMeta?.carregado_ate), crm: canal('Meta'),
         },
         google: {
           gasto: num(totGoogle?.gasto), cliques: num(totGoogle?.cliques), impressoes: num(totGoogle?.impressoes),
-          conversoes: num(totGoogle?.resultado), ate: txt(totGoogle?.carregado_ate), crm: canal('Site'),
+          conversoes: num(totGoogle?.resultado),
+          // a campanha do YouTube conta inscrição/engajamento como conversão; as de pesquisa contam visualização de página
+          conversoesYoutube: (google.error ? [] : linhas(google.data)).filter(l => l.nivel === 'campanha' && /youtube/i.test(String(l.campanha))).reduce((a, l) => a + num(l.conversoes), 0),
+          ate: txt(totGoogle?.carregado_ate), crm: canal('Site'),
           linhas: google.error ? [] : linhas(google.data),
           palavras: palavras.error ? [] : linhas(palavras.data),
           termos: termos.error ? [] : linhas(termos.data),
@@ -332,7 +337,7 @@ export function Anuncios() {
               <p className="mb-2 text-body font-semibold text-ink">Meta Ads</p>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                 <Kpi rotulo="Gasto (vendas)" valor={brl(d.meta.gasto)} apoio={`${d.meta.orcDia ? `${brl(d.meta.orcDia)}/dia nas campanhas ativas` : ''}${d.vagaSoma.gasto > 0 ? ` · sem a vaga de emprego (${brl(d.vagaSoma.gasto)})` : ''}`} />
-                <Kpi rotulo="Conversas iniciadas" valor={n(d.meta.conversas)} apoio={`${cent(div(d.meta.gasto, d.meta.conversas))} cada (campanhas de mensagem)`} />
+                <Kpi rotulo="Conversas iniciadas" valor={n(d.meta.conversas)} apoio={`${cent(div(d.meta.gastoConversas, d.meta.conversas))} cada (gasto só das campanhas de mensagem)`} />
                 <Kpi rotulo="Cliques" valor={n(d.meta.cliques)} apoio={`CTR ${pct(div(100 * d.meta.cliques, d.meta.impressoes), 1)} · CPC ${cent(div(d.meta.gasto, d.meta.cliques))}`} />
                 <Kpi rotulo="Contatos" valor={n(d.meta.crm.contatos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.contatos))} por contato · ${n(d.meta.crm.soAna)} ficaram só com a Ana`} />
                 <Kpi rotulo="Qualificados" valor={`${n(d.meta.crm.qualificados)} · ${pct(div(100 * d.meta.crm.qualificados, d.meta.crm.contatos), 0)}`} apoio={`${cent(div(d.meta.gasto, d.meta.crm.qualificados))} por qualificado`} />
@@ -346,7 +351,7 @@ export function Anuncios() {
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                   <Kpi rotulo="Gasto" valor={brl(d.google.gasto)} />
                   <Kpi rotulo="Cliques" valor={n(d.google.cliques)} apoio={`CTR ${pct(div(100 * d.google.cliques, d.google.impressoes), 1)} · CPC ${cent(div(d.google.gasto, d.google.cliques))}`} />
-                  <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio="o que a conta mede hoje (visualização de página)" />
+                  <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio={`${n(d.google.conversoes - d.google.conversoesYoutube)} da pesquisa (visualização de página)${d.google.conversoesYoutube ? ` · ${n(d.google.conversoesYoutube)} do YouTube` : ''} — não é contato`} />
                   <Kpi rotulo="Contatos do Site no CRM" valor={n(d.google.crm.contatos)} apoio={`${cent(div(d.google.gasto, d.google.crm.contatos))} por contato (site inclui orgânico)`} />
                   <Kpi rotulo="Qualificados" valor={`${n(d.google.crm.qualificados)} · ${pct(div(100 * d.google.crm.qualificados, d.google.crm.contatos), 0)}`} apoio={`${cent(div(d.google.gasto, d.google.crm.qualificados))} por qualificado`} />
                   <Kpi rotulo="Viraram orçamento" valor={n(d.google.crm.orcamentos)} apoio={`${cent(div(d.google.gasto, d.google.crm.orcamentos))} por orçamento · ${brl(d.google.crm.rsOrcado)} orçados`} />
