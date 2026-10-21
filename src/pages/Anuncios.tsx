@@ -142,9 +142,9 @@ function useDados(p: Periodo) {
   const { from, to } = intervalo(p)
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
-    queryKey: ['pagina-anuncios-v5', p_from, p_to],
+    queryKey: ['pagina-anuncios-v6', p_from, p_to],
     queryFn: async () => {
-      const [meta, diario, plat, crm, google, palavras, termos, atual, pedSemOrc] = await Promise.all([
+      const [meta, diario, plat, crm, google, palavras, termos, atual, pedSemOrc, vendOrig] = await Promise.all([
         supabase.rpc('anuncios_meta', { p_from, p_to }),
         supabase.rpc('anuncios_diario', { p_from, p_to }),
         supabase.rpc('dashboard_marketing_plataformas', { p_from, p_to }),
@@ -154,6 +154,7 @@ function useDados(p: Periodo) {
         supabase.rpc('dashboard_marketing_termos_google', { p_limite: 20 }),
         supabase.rpc('anuncios_atualizacao'),
         supabase.rpc('anuncios_pedidos_sem_orcamento', { p_from, p_to }),
+        supabase.rpc('anuncios_vendas_origem', { p_from, p_to }),
       ])
       const erro = [meta, diario, plat, crm].find(r => r.error)?.error
       if (erro) throw erro
@@ -194,6 +195,11 @@ function useDados(p: Periodo) {
         porGoogleCamp: new Map<string, Funil>(crmL.filter(f => f.tipo === 'google_campanha').map(f => [String(f.chave), lerFunil(f)])),
         horaMeta: horaCarga('Meta'), horaGoogle: horaCarga('Google'),
         pedidosSemOrc: pedSemOrc.error ? [] : linhas(pedSemOrc.data),
+        // vendas DO período e de onde veio cada cliente (chegou em qualquer data) — RPC anuncios_vendas_origem
+        vendas: (vendOrig.error ? [] : linhas(vendOrig.data)).map(r => ({
+          pedido: String(r.pedido), data: txt(r.data_venda), vendedor: txt(r.vendedor), cliente: txt(r.cliente), valor: num(r.valor),
+          canal: String(r.canal), evidencia: String(r.evidencia), detalhe: String(r.detalhe ?? ''), chegou: txt(r.chegou_em), dias: numN(r.dias_ate_venda),
+        })) as VendaOrigem[],
         meta: {
           // sem a campanha de vaga de emprego (não é de venda)
           gasto: num(totMeta?.gasto) - vagaSoma.gasto, orcDia: numN(totMeta?.orcamento_dia), conversas: num(totMeta?.resultado) - vagaSoma.conversas,
@@ -219,6 +225,91 @@ function useDados(p: Periodo) {
     placeholderData: prev => prev,
     retry: 1,
   })
+}
+
+interface VendaOrigem {
+  pedido: string; data: string | null; vendedor: string | null; cliente: string | null; valor: number
+  canal: string; evidencia: string; detalhe: string; chegou: string | null; dias: number | null
+}
+const CANAIS_VENDA: { canal: string; cor: string }[] = [
+  { canal: 'Meta', cor: COR_META }, { canal: 'Google / Site', cor: COR_GOOGLE },
+  { canal: 'Carteira e indicação', cor: CHART.s5 }, { canal: 'Sem origem', cor: 'hsl(var(--ink-faint))' },
+]
+/** "11,2×" */
+const vezes = (v: number | null) => (v == null || !Number.isFinite(v) ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: v < 10 ? 1 : 0 })}×`)
+
+/** Vendas do período por origem do cliente + retorno do anúncio (vendido ÷ gasto do mesmo período). */
+function VendasOrigem({ vendas, gastoMeta, gastoGoogle }: { vendas: VendaOrigem[]; gastoMeta: number; gastoGoogle: number }) {
+  const total = vendas.reduce((a, v) => a + v.valor, 0)
+  const blocos = CANAIS_VENDA.map(c => {
+    const vs = vendas.filter(v => v.canal === c.canal)
+    const rast = vs.filter(v => v.evidencia === 'rastreado')
+    const valor = vs.reduce((a, v) => a + v.valor, 0), valorRast = rast.reduce((a, v) => a + v.valor, 0)
+    const gasto = c.canal === 'Meta' ? gastoMeta : c.canal === 'Google / Site' ? gastoGoogle : null
+    const dias = rast.filter(v => v.dias != null).map(v => v.dias as number)
+    return { ...c, n: vs.length, nRast: rast.length, valor, valorRast, gasto, dias: dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : null }
+  })
+  return (
+    <Card>
+      <CardHeader title="Vendas do período por origem do cliente"
+        subtitle="Pedidos fechados no período e de onde veio cada cliente — mesmo que ele tenha chegado antes (o contato leva em média 1 mês para virar pedido). Retorno = vendido ÷ gasto do mesmo período." />
+      {vendas.length === 0 ? <p className="text-body text-ink-faint">Nenhum pedido no período.</p> : (
+        <>
+          <div className="mb-3 flex h-3 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
+            {blocos.filter(b => b.valor > 0).map(b => <div key={b.canal} style={{ width: `${(100 * b.valor) / Math.max(1, total)}%`, background: b.cor }} title={`${b.canal}: ${brl(b.valor)}`} />)}
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {blocos.map(b => (
+              <div key={b.canal} className="rounded-lg border border-border/60 bg-surface-2 p-3">
+                <p className="flex items-center gap-1.5 text-micro font-semibold uppercase tracking-wide text-ink-faint"><span className="h-2 w-2 rounded-full" style={{ background: b.cor }} aria-hidden="true" />{b.canal}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{brl(b.valor)}</p>
+                <p className="text-micro text-ink-muted">{n(b.n)} pedido{b.n === 1 ? '' : 's'} · {pct(div(100 * b.valor, total), 0)} do vendido</p>
+                {b.gasto != null && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border/60 pt-2 text-micro">
+                    <div><p className="text-ink-faint">Retorno (tudo)</p><p className="text-title font-semibold tabular-nums text-success">{vezes(div(b.valor, b.gasto))}</p></div>
+                    <div><p className="text-ink-faint">Retorno só rastreado</p><p className="text-title font-semibold tabular-nums text-ink">{vezes(div(b.valorRast, b.gasto))}</p></div>
+                    <p className="col-span-2 text-ink-muted">{brl(b.gasto)} gastos · {n(b.nRast)} rastreado{b.nRast === 1 ? '' : 's'} ({brl(b.valorRast)}){b.dias != null ? ` · ${b.dias} dias do contato à venda` : ''}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer select-none text-micro text-ink-muted hover:text-ink">Ver os {n(vendas.length)} pedidos e como cada origem foi achada</summary>
+            <div className="mt-2 max-h-[32rem] overflow-auto">
+              <table className="w-full min-w-[1100px] border-separate border-spacing-0">
+                <thead className="sticky top-0 bg-surface">
+                  <tr>{['Pedido', 'Data', 'Cliente', 'Vendedor', 'Valor', 'Origem', 'Como sabemos', 'Chegou em', 'Dias'].map((h, i) => (
+                    <th key={h} scope="col" className={`${th} ${[4, 7, 8].includes(i) ? 'text-right' : 'text-left'}`}>{h}</th>))}</tr>
+                </thead>
+                <tbody>
+                  {vendas.map(v => (
+                    <tr key={v.pedido}>
+                      <td className={tdL}>{v.pedido}</td>
+                      <td className={tdL}>{dataBr(v.data)}</td>
+                      <td className={`${tdL} max-w-[16rem] truncate`} title={v.cliente ?? ''}>{v.cliente ?? '—'}</td>
+                      <td className={tdL}>{v.vendedor ?? '—'}</td>
+                      <td className={td}>{brl(v.valor)}</td>
+                      <td className={tdL}><span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: CANAIS_VENDA.find(c => c.canal === v.canal)?.cor }} aria-hidden="true" />{v.canal}</span></td>
+                      <td className={`${tdL} max-w-[22rem] truncate`} title={v.detalhe}>
+                        <span className={`mr-1 rounded px-1 text-micro ${v.evidencia === 'rastreado' ? 'bg-success-bg text-success' : v.evidencia === 'declarado' ? 'bg-surface-2 text-ink-muted' : 'bg-warning-bg text-warning'}`}>{v.evidencia === 'rastreado' ? 'rastreado' : v.evidencia === 'declarado' ? 'vendedor marcou' : 'sem origem'}</span>{v.detalhe}
+                      </td>
+                      <td className={td}>{dataBr(v.chegou)}</td>
+                      <td className={td}>{v.dias ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-micro text-ink-faint">
+              Rastreado = o cliente chegou por anúncio no CRM, conversou com a Ana a partir de um anúncio, ou mandou o código do criativo (&NN) / a frase do site na 1ª mensagem ao vendedor (até 365 dias antes da venda).
+              Vendedor marcou = a origem escolhida no pedido (Facebook/Instagram contam como Meta e podem incluir orgânico; Google/Site como Google).
+            </p>
+          </details>
+        </>
+      )}
+    </Card>
+  )
 }
 
 interface Problema { gravidade: 'alta' | 'atencao'; plataforma: string; titulo: string; detalhe: string }
@@ -484,7 +575,12 @@ export function Anuncios() {
                 <Tile destaque rotulo="Qualificados" valor={`${n(tot.qualif)} · ${pct(div(100 * tot.qualif, tot.contatos), 0)}`} meta={`${n(fm.qualificados)} · ${cent(div(gm, fm.qualificados))}`} google={`${n(fg.qualificados)} · ${cent(div(gg, fg.qualificados))}`} rodape={`${cent(div(tot.gasto, tot.qualif))} por qualificado`} />
                 <Tile rotulo="Falaram c/ vendedor" valor={`${n(tot.conv)} · ${pct(div(100 * tot.conv, tot.contatos), 0)}`} meta={n(fm.conversou)} google={n(fg.conversou)} rodape="responderam no WhatsApp do vendedor" />
                 <Tile rotulo="Orçamentos" valor={n(tot.orc)} meta={`${n(fm.orcamentos)} · ${cent(div(gm, fm.orcamentos))}`} google={`${n(fg.orcamentos)} · ${cent(div(gg, fg.orcamentos))}`} rodape={`${brl(tot.rsOrc)} orçados`} />
-                <Tile rotulo="Vendas" valor={n(tot.vendas)} meta={n(fm.vendas)} google={n(fg.vendas)} rodape={tot.vendas ? `${brl(tot.rsVend)} vendidos` : 'destes contatos, até agora'} />
+                {(() => {
+                  const vm = d.vendas.filter(v => v.canal === 'Meta').reduce((a, v) => a + v.valor, 0)
+                  const vg = d.vendas.filter(v => v.canal === 'Google / Site').reduce((a, v) => a + v.valor, 0)
+                  return <Tile rotulo="Vendido por anúncio" valor={brl(vm + vg)} meta={`${brl(vm)} · ${vezes(div(vm, gm))}`} google={`${brl(vg)} · ${vezes(div(vg, gg))}`}
+                    rodape={`retorno ${vezes(div(vm + vg, tot.gasto))} no período · pedidos do período`} />
+                })()}
               </div>
             )
           })()}
@@ -520,6 +616,8 @@ export function Anuncios() {
               </div>
             </Card>
           </div>
+
+          <VendasOrigem vendas={d.vendas} gastoMeta={d.meta.gasto} gastoGoogle={d.google.gasto} />
 
           {/* Detalhe por plataforma */}
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
