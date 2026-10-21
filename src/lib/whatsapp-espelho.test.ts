@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { achatarConversas, contasDoEspelho, etiquetasDaLista, filtrarConversas, finalDoNumero, historicoAtrasado, historicoGravado, nomeEtiqueta, rotuloConta } from './whatsapp-espelho'
+import { achatarConversas, aplicarDeltaKanban, contasDoEspelho, mapaEtiquetas, etiquetasDaLista, filtrarConversas, finalDoNumero, historicoAtrasado, historicoGravado, nomeEtiqueta, rotuloConta } from './whatsapp-espelho'
 import type { WaChat, WaKanban } from '../hooks/useWaKanban'
 
 const chat = (over: Partial<WaChat>): WaChat => ({
@@ -91,7 +91,8 @@ test('histórico gravado só no funil ativo ou lead sem etiqueta das últimas 6 
   const base = { label_ids: ['9'], last_message_at: '2026-10-21T16:59:00Z' }
   assert.equal(historicoGravado({ ...base, etiquetas: ['LEAD QUENTE', 'ORCAMENTO ENVIADO'] }, agora), true)
   assert.equal(historicoGravado({ ...base, etiquetas: ['ORCAMENTO ENVIADO'] }, agora), false)
-  assert.equal(historicoGravado({ ...base, etiquetas: ['3A TENTATIVA'] }, agora), false)
+  assert.equal(historicoGravado({ ...base, etiquetas: ['3A TENTATIVA'] }, agora), true) // extensão 1.70.64
+  assert.equal(historicoGravado({ ...base, etiquetas: ['4A TENTATIVA'] }, agora), false)
   assert.equal(historicoGravado({ ...base, etiquetas: [] }, agora), false) // etiqueta fora do catálogo ainda é etiqueta
   assert.equal(historicoGravado({ etiquetas: [], label_ids: [], last_message_at: '2026-10-21T12:00:00Z' }, agora), true)
   assert.equal(historicoGravado({ etiquetas: [], label_ids: [], last_message_at: '2026-10-21T10:00:00Z' }, agora), false)
@@ -103,4 +104,31 @@ test('histórico atrasado em relação à lista, com folga de um ciclo', () => {
   assert.equal(historicoAtrasado('2026-10-21T17:00:00Z', '2026-10-21T16:55:00Z'), true)
   assert.equal(historicoAtrasado('2026-10-21T17:00:00Z', null), true)
   assert.equal(historicoAtrasado(null, '2026-10-21T16:55:00Z'), false)
+})
+
+test('remendo da lista: conversa muda de etiqueta, conversa nova entra, o resto fica intacto', () => {
+  const mapa = mapaEtiquetas([
+    { vendedor_nome: 'GUSTAVO', etiqueta_id_wascript: 1, etiqueta_nome_normalizado: 'PROSPECCAO' },
+    { vendedor_nome: 'GUSTAVO', etiqueta_id_wascript: 2, etiqueta_nome_normalizado: 'LEAD QUENTE' },
+    { vendedor_nome: 'GUSTAVO', etiqueta_id_wascript: 3, etiqueta_nome_normalizado: 'ORCAMENTO ENVIADO' },
+    { vendedor_nome: 'GUSTAVO', etiqueta_id_wascript: 9, etiqueta_nome_normalizado: 'SEM ETIQUETA' },
+  ])
+  const a = chat({ phone: '551', chat_id: 'a@lid', label_ids: ['1'], last_message_at: '2026-10-21T10:00:00Z' })
+  const b = chat({ phone: '552', chat_id: 'b@lid', label_ids: ['1'], last_message_at: '2026-10-21T09:00:00Z' })
+  const kanban: WaKanban = { colunas: [{ nome: 'PROSPECCAO', cor: '', oculta: false, chats: [a, b] }], semEtiqueta: [], totalChats: 2, ultimaSync: '2026-10-21T10:00:00Z' }
+  const novo = aplicarDeltaKanban(kanban, [
+    { ...b, vendedor_nome: 'GUSTAVO', label_ids: ['2', '3'], last_message_at: '2026-10-21T11:00:00Z', last_message_preview: 'fechado', updated_at: '2026-10-21T11:00:05Z' },
+    { ...chat({ phone: '553', chat_id: 'c@lid', label_ids: ['9'], last_message_at: '2026-10-21T11:01:00Z' }), vendedor_nome: 'GUSTAVO' },
+  ], mapa)
+  assert.deepEqual(novo.colunas.map(c => c.nome), ['PROSPECCAO', 'LEAD QUENTE', 'ORCAMENTO ENVIADO'])
+  assert.deepEqual(novo.colunas.find(c => c.nome === 'PROSPECCAO')!.chats.map(c => c.chat_id), ['a@lid'])
+  assert.equal(novo.totalChats, 3)
+  assert.equal(novo.ultimaSync, '2026-10-21T11:00:05Z')
+  const lista = achatarConversas(novo)
+  assert.deepEqual(lista.map(c => c.chat_id), ['c@lid', 'b@lid', 'a@lid'])
+  assert.deepEqual(lista[1].etiquetas, ['LEAD QUENTE', 'ORCAMENTO ENVIADO'])
+  assert.equal(lista[1].last_message_preview, 'fechado')
+  assert.deepEqual(lista[0].etiquetas, []) // marcador "SEM ETIQUETA" cai em sem etiqueta
+  assert.equal(kanban.colunas[0].chats.length, 2) // não mexe no objeto antigo do cache
+  assert.equal(aplicarDeltaKanban(kanban, [], mapa), kanban)
 })

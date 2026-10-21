@@ -58,11 +58,15 @@ export function useWaVendedores() {
   })
 }
 
+/** Chave do cache do quadro — o espelho do /whatsapp remenda esse cache com o que mudou. */
+export const chaveWaKanban = (vendedor: string | null, userId: string | undefined, incluirAna = true) =>
+  ['wa-kanban', vendedor, userId, vendedor === TODOS ? incluirAna : true] as const
+
 export function useWaKanban(vendedor: string | null, incluirAna = true, intervaloMs = 30_000) {
   const userId = useAuth().session?.user.id
   const todos = vendedor === TODOS
   return useQuery<WaKanban>({
-    queryKey: ['wa-kanban', vendedor, userId, todos ? incluirAna : true],
+    queryKey: chaveWaKanban(vendedor, userId, incluirAna),
     enabled: !!vendedor && !!userId,
     refetchInterval: intervaloMs, // padrão = cadência da extensão; o espelho do /whatsapp lê mais vezes
     queryFn: async ({ signal }) => {

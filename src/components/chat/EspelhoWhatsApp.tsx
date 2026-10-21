@@ -3,16 +3,27 @@ import * as Popover from '@radix-ui/react-popover'
 import { ArrowLeft, Ban, Check, ChevronDown, Contact2, Eye, FileText, Image as ImageIcon, MapPin, MessageSquare, Mic, PhoneCall, Search, SlidersHorizontal, Sticker, Video, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ChatAvatar, ChatMedia } from '@/components/chat/ChatMedia'
-import { MSGS_PAGINA_INCREMENTO, MSGS_PAGINA_INICIAL, useWaKanban, useWaMensagens, type WaMensagem } from '@/hooks/useWaKanban'
+import { chaveWaKanban, MSGS_PAGINA_INCREMENTO, MSGS_PAGINA_INICIAL, useWaKanban, useWaMensagens, type WaKanban, type WaMensagem } from '@/hooks/useWaKanban'
+import { useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/hooks/useAuth'
+import { buscarMudancasEspelho, useSinalEspelho } from '@/hooks/useWhatsAppEspelho'
 import { corpoVisivel, FAMILIA_CHIP, familiaDe, formatarTelefone, nomeContato, tempoRelativo } from '@/lib/wa-funil'
-import { achatarConversas, chaveConversa, CONTA_ANA, etiquetasDaLista, filtrarConversas, historicoAtrasado, historicoGravado, nomeEtiqueta, rotuloConta, type ContaWhatsApp, type ConversaEspelho, type FiltroEspelho } from '@/lib/whatsapp-espelho'
+import { achatarConversas, aplicarDeltaKanban, chaveConversa, CONTA_ANA, etiquetasDaLista, filtrarConversas, historicoAtrasado, historicoGravado, nomeEtiqueta, rotuloConta, type ContaWhatsApp, type ConversaEspelho, type FiltroEspelho } from '@/lib/whatsapp-espelho'
 
 const inputClass='w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent/30'
 const buttonClass='inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed'
 const LISTA_PAGINA=80
-// A extensão grava a lista a cada ~30 s; ler mais vezes corta a espera do lado da tela
-// (com a aba escondida o react-query para de buscar sozinho).
-const LISTA_MS=10_000,CONVERSA_MS=5_000
+// A extensão grava a lista a cada ~30 s. A tela pergunta a cada 10 s se mudou algo
+// (sinal de ~200 bytes) e busca SÓ as conversas que mudaram; a lista inteira (~450 KB)
+// é relida a cada 5 min pra pegar nome, foto e conversa apagada. Com a aba escondida o
+// react-query para de buscar sozinho.
+const SINAL_MS=10_000,LISTA_COMPLETA_MS=5*60_000,CONVERSA_MS=15_000
+// Folga do corte do delta: a lista do vendedor chega fora de ordem (medido: até 96 s).
+const FOLGA_DELTA_MS=5*60_000
+const menosFolga=(iso:string)=>iso?new Date(Date.parse(iso)-FOLGA_DELTA_MS).toISOString():null
+// Histórico atrás da lista há mais que isso, numa conversa que deveria estar gravando:
+// a mensagem não vem mais (reação, apagada, editada) — não dá pra dizer "está chegando".
+const ESPERA_HISTORICO_MS=10*60_000
 
 const hoje=()=>new Date().toDateString()
 function horaDaLista(iso:string|null):string {
@@ -52,7 +63,7 @@ export function ContaWhatsAppSwitcher({conta,contas,onChange,carregando}:{conta:
 
 /** Situação do espelho para o topo da tela (no lugar do "Tempo real conectado" da Ana). */
 export function useEspelhoStatus(vendedor:string|null) {
-  const kanban=useWaKanban(vendedor,true,LISTA_MS)
+  const kanban=useWaKanban(vendedor,true,LISTA_COMPLETA_MS)
   return {ultimaSync:kanban.data?.ultimaSync??null,erro:kanban.isError}
 }
 
@@ -108,6 +119,7 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
   const nome=nomeContato(conversa.contact_name,conversa.phone)
   const gravado=historicoGravado(conversa)
   const ultimaGravada=mensagens.length?mensagens[mensagens.length-1].data_msg:null
+  const chegando=!!conversa.last_message_at&&Date.now()-Date.parse(conversa.last_message_at)<=ESPERA_HISTORICO_MS
   const atrasado=!historico.isPending&&!historico.isError&&!!mensagens.length&&historicoAtrasado(conversa.last_message_at,ultimaGravada)
   const porqueSemHistorico=`Só fica gravado o histórico de conversa com etiqueta do funil (Prospecção, 2ª tentativa, Novo lead, Follow up, Lead quente) ou de lead novo sem etiqueta. Pra ver o resto, só no WhatsApp do ${rotuloConta(vendedor)}.`
   useLayoutEffect(()=>{
@@ -141,7 +153,7 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
       })}</div>
       {atrasado&&<div role="status" className="mx-auto mt-5 max-w-md rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-ink-muted">
         <p className="font-medium text-ink">{conversa.last_message_from_me?`${rotuloConta(vendedor)} mandou`:'Cliente mandou'} {conversa.last_message_at&&fmtHora(conversa.last_message_at)}: <span className="font-normal">{corpoVisivel(conversa.last_message_preview)||'mídia'}</span></p>
-        <p className="mt-1">{gravado?'A mensagem já apareceu na lista e está chegando no histórico (a extensão grava a cada ~30 s).':`O histórico desta conversa parou em ${ultimaGravada?fmtDia(ultimaGravada):'—'}. ${porqueSemHistorico}`}</p>
+        <p className="mt-1">{gravado?(chegando?'A mensagem já apareceu na lista e está chegando no histórico (a extensão grava a cada ~30 s).':`Esta mensagem não chegou no histórico (costuma ser reação, mensagem apagada ou editada). Pra ver, só no WhatsApp do ${rotuloConta(vendedor)}.`):`O histórico desta conversa parou em ${ultimaGravada?fmtDia(ultimaGravada):'—'}. ${porqueSemHistorico}`}</p>
       </div>}
     </div>
     <div className="shrink-0 border-t border-border bg-surface px-4 py-3">
@@ -152,7 +164,24 @@ function ConversaEspelhoPainel({conversa,vendedor,onVoltar}:{conversa:ConversaEs
 
 /** Lista e conversa do WhatsApp de um vendedor, sem envio. */
 export function EspelhoWhatsApp({vendedor}:{vendedor:string}) {
-  const kanban=useWaKanban(vendedor,true,LISTA_MS)
+  const kanban=useWaKanban(vendedor,true,LISTA_COMPLETA_MS)
+  // Sinal mudou (mensagem nova ou etiqueta trocada) → busca só o que mudou e encaixa na
+  // lista em cache. Qualquer falha cai na releitura completa.
+  const sinal=useSinalEspelho(vendedor,SINAL_MS)
+  const queryClient=useQueryClient(),userId=useAuth().session?.user.id
+  const refetchLista=kanban.refetch,sinalVisto=useRef<string|undefined>(undefined)
+  useEffect(()=>{
+    const atual=sinal.data
+    if(atual===undefined)return
+    const anterior=sinalVisto.current
+    sinalVisto.current=atual
+    if(anterior===undefined||anterior===atual)return
+    const [msg,etiqueta]=anterior.split('|')
+    void buscarMudancasEspelho(vendedor,menosFolga(msg),menosFolga(etiqueta)).then(delta=>{
+      if(!delta){void refetchLista();return}
+      queryClient.setQueryData<WaKanban>(chaveWaKanban(vendedor,userId),antigo=>antigo?aplicarDeltaKanban(antigo,delta.linhas,delta.idParaNome):antigo)
+    }).catch(()=>{void refetchLista()})
+  },[sinal.data,refetchLista,vendedor,queryClient,userId])
   const [busca,setBusca]=useState(''),[etiqueta,setEtiqueta]=useState(''),[filtro,setFiltro]=useState<FiltroEspelho>('todas')
   const [selecionada,setSelecionada]=useState<string|null>(null),[mostrar,setMostrar]=useState(LISTA_PAGINA)
   const conversas=useMemo(()=>achatarConversas(kanban.data),[kanban.data])
