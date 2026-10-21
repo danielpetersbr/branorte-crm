@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { compacta03Master150500Mono, emptyQuoteSnapshot } from './__fixtures__/compacta-03-master-150500-mono'
-import { applyProposal, proposalExtrasForModel } from './apply-proposal'
+import { applyProposal, motoresDosItens, proposalExtrasForModel } from './apply-proposal'
 import { buildProposal } from './proposal-builder'
 
 const intent = {
@@ -49,4 +49,36 @@ test('keeps proposal extras after the official model prefix, including a repeate
 
   assert.deepEqual(extras, [repeatedTransportador, ensacadeira])
   assert.notEqual(extras[0], repeatedTransportador)
+})
+
+test('motor do orçamentista vem com o valor da quantidade toda: o carrinho guarda o de UMA unidade (#208)', () => {
+  const itens = [
+    { catalogoId: 11, nome: 'TRANSPORTADOR HELICOIDAL 160 X 3,0 M', quantidade: 3, valorUnitario: 4820 },
+    { catalogoId: 22, nome: 'SILO 42,5 TONELADAS', quantidade: 2, valorUnitario: 53030 },
+    { catalogoId: 33, nome: 'TH 150 X 7,0 M', quantidade: 1, valorUnitario: 10273 },
+  ]
+  const motores = [
+    { itemCatalogoId: 11, descricao: '3x Motor 2 CV 4 polos', cv: 2, polos: 4, valor: 6594, incluso: false },
+    { itemCatalogoId: 33, descricao: 'Motor 2 CV 4 polos (incluso)', cv: 2, polos: 4, valor: 0, incluso: true },
+  ]
+  const ligados = motoresDosItens(itens, motores)
+  assert.equal(ligados[0]?.valorUnitario, 2198)
+  assert.equal(ligados[0]?.motor.cv, 2)
+  assert.equal(ligados[1], null)
+  assert.equal(ligados[2]?.valorUnitario, 0)
+  // agruparMotores cobra motor_qtd (1) × qtd do item linhas de motor_valor_unit: 3 × 2.198, não 3 × 6.594
+  assert.equal((ligados[0]?.valorUnitario ?? 0) * itens[0].quantidade, 6594)
+})
+
+test('dois itens do mesmo catálogo: cada um fica com o SEU motor, na ordem (#208)', () => {
+  const itens = [
+    { catalogoId: 11, nome: 'CHUPIM 160 X 3,0 M', quantidade: 2, valorUnitario: 4820 },
+    { catalogoId: 11, nome: 'CHUPIM 160 X 3,0 M', quantidade: 1, valorUnitario: 4820 },
+  ]
+  const motores = [
+    { itemCatalogoId: 11, descricao: '2x Motor 2 CV 4 polos', cv: 2, polos: 4, valor: 4396, incluso: false },
+    { itemCatalogoId: 11, descricao: 'Motor 3 CV 4 polos', cv: 3, polos: 4, valor: 2541, incluso: false },
+  ]
+  const ligados = motoresDosItens(itens, motores)
+  assert.deepEqual(ligados.map((l) => [l?.motor.cv, l?.valorUnitario]), [[2, 2198], [3, 2541]])
 })
