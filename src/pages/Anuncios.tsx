@@ -42,6 +42,12 @@ const linhas = (d: unknown) => (d ?? []) as Record<string, unknown>[]
 /** Cores do gráfico "Dia a dia": Meta azul, Google laranja (as linhas de contatos seguem verde e vermelho). */
 const COR_META = CHART.s2
 const COR_GOOGLE = '#f97316'
+/** "21/10 às 09:44" */
+const horaBr = (iso: string | null) => {
+  if (!iso) return '—'
+  const t = new Date(iso)
+  return `${String(t.getDate()).padStart(2, '0')}/${String(t.getMonth() + 1).padStart(2, '0')} às ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+}
 const dataBr = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—')
 const cent = (v: number | null) => (v == null || !Number.isFinite(v) ? '—' : v < 10 ? `R$ ${v.toFixed(2).replace('.', ',')}` : brl(v))
 const div = (a: number, b: number) => (b > 0 ? a / b : null)
@@ -54,16 +60,35 @@ interface LinhaMeta {
 }
 interface Dia { dia: string; gastoMeta: number; gastoGoogle: number; contatosMeta: number; contatosSite: number; contatos: number }
 /** Funil do CRM: contatos que chegaram → qualificados → orçamentos → vendas (RPC anuncios_crm). */
-interface Funil { contatos: number; qualificados: number; orcamentos: number; rsOrcado: number; vendas: number; rsVendido: number }
-const FUNIL0: Funil = { contatos: 0, qualificados: 0, orcamentos: 0, rsOrcado: 0, vendas: 0, rsVendido: 0 }
+interface Funil {
+  contatos: number; qualificados: number; orcamentos: number; rsOrcado: number; vendas: number; rsVendido: number
+  /** contatos que conversaram com a Ana por anúncio e nunca viraram atendimento no CRM (já somados em contatos) */
+  soAna: number
+  /** clientes que JÁ estavam no CRM e voltaram por este anúncio (não somam em contatos novos) */
+  voltaram: number
+}
+const FUNIL0: Funil = { contatos: 0, qualificados: 0, orcamentos: 0, rsOrcado: 0, vendas: 0, rsVendido: 0, soAna: 0, voltaram: 0 }
 const lerFunil = (r: Record<string, unknown> | undefined): Funil => ({
   contatos: num(r?.contatos), qualificados: num(r?.qualificados), orcamentos: num(r?.orcamentos),
-  rsOrcado: num(r?.rs_orcado), vendas: num(r?.vendas), rsVendido: num(r?.rs_vendido),
+  rsOrcado: num(r?.rs_orcado), vendas: num(r?.vendas), rsVendido: num(r?.rs_vendido), soAna: num(r?.so_ana), voltaram: num(r?.voltaram),
 })
 const somarFunil = (fs: Funil[]): Funil => fs.reduce((s, f) => ({
   contatos: s.contatos + f.contatos, qualificados: s.qualificados + f.qualificados, orcamentos: s.orcamentos + f.orcamentos,
   rsOrcado: s.rsOrcado + f.rsOrcado, vendas: s.vendas + f.vendas, rsVendido: s.rsVendido + f.rsVendido,
+  soAna: s.soAna + f.soAna, voltaram: s.voltaram + f.voltaram,
 }), { ...FUNIL0 })
+
+/** Campanha que não é de venda (vaga de emprego): fica na árvore, mas fora dos números de venda do topo. */
+const naoEhVenda = (campanha: string) => /vaga|emprego/i.test(campanha)
+
+/**
+ * Contato de landing page não passa pela Ana, então não tem o anúncio exato: liga pela origem do CRM
+ * ("LP Mini Fábrica", "LP Plástico") à campanha de cadastro correspondente.
+ */
+const LP_PARA_CAMPANHA: { origem: RegExp; campanha: RegExp }[] = [
+  { origem: /pl[aá]stico/i, campanha: /\[LEADS\].*PL[AÁ]STICO/i },
+  { origem: /./, campanha: /\[LEADS\]\s*-\s*\[LP\]/i },
+]
 
 /** Previsão do mês: o que já foi gasto até ontem + orçamento/dia das campanhas ativas × dias que faltam (com hoje). */
 function usePrevisaoMes() {
@@ -104,9 +129,9 @@ function useDados(p: Periodo) {
   const { from, to } = intervalo(p)
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
-    queryKey: ['pagina-anuncios-v2', p_from, p_to],
+    queryKey: ['pagina-anuncios-v3', p_from, p_to],
     queryFn: async () => {
-      const [meta, diario, plat, crm, google, palavras, termos] = await Promise.all([
+      const [meta, diario, plat, crm, google, palavras, termos, atual, pedSemOrc] = await Promise.all([
         supabase.rpc('anuncios_meta', { p_from, p_to }),
         supabase.rpc('anuncios_diario', { p_from, p_to }),
         supabase.rpc('dashboard_marketing_plataformas', { p_from, p_to }),
@@ -114,6 +139,8 @@ function useDados(p: Periodo) {
         supabase.rpc('anuncios_google', { p_from, p_to }),
         supabase.rpc('anuncios_google_palavras', { p_limite: 30 }),
         supabase.rpc('dashboard_marketing_termos_google', { p_limite: 20 }),
+        supabase.rpc('anuncios_atualizacao'),
+        supabase.rpc('anuncios_pedidos_sem_orcamento', { p_from, p_to }),
       ])
       const erro = [meta, diario, plat, crm].find(r => r.error)?.error
       if (erro) throw erro
@@ -135,11 +162,24 @@ function useDados(p: Periodo) {
       const canal = (c: string): Funil => lerFunil(crmL.find(f => f.tipo === 'canal' && f.chave === c))
       // funil do CRM por anúncio exato (ad_id que a Ana guarda da conversa)
       const porAd = new Map<string, Funil>(crmL.filter(f => f.tipo === 'anuncio').map(f => [String(f.chave), lerFunil(f)]))
+      const semAnuncio = (c: string): Funil => lerFunil(crmL.find(f => f.tipo === 'sem_anuncio' && f.chave === c))
+      const porLp = crmL.filter(f => f.tipo === 'origem_lp').map(f => ({ origem: String(f.chave), funil: lerFunil(f) }))
+      // vaga de emprego: fora dos números de venda do topo
+      const vaga = metaLinhas.filter(l => naoEhVenda(l.campanha))
+      const vagaSoma = { gasto: vaga.reduce((a, l) => a + l.gasto, 0), cliques: vaga.reduce((a, l) => a + l.cliques, 0),
+        impressoes: vaga.reduce((a, l) => a + l.impressoes, 0),
+        conversas: vaga.filter(l => l.resultadoTipo === 'conversas').reduce((a, l) => a + l.resultado, 0) }
+      const atualL = atual.error ? [] : linhas(atual.data)
+      const horaCarga = (pl: string) => txt(atualL.find(r => r.plataforma === pl)?.atualizado_em)
       return {
-        metaLinhas, dias, porAd,
+        metaLinhas, dias, porAd, semAnuncioMeta: semAnuncio('Meta'), porLp, vagaSoma,
+        horaMeta: horaCarga('Meta'), horaGoogle: horaCarga('Google'),
+        pedidosSemOrc: pedSemOrc.error ? [] : linhas(pedSemOrc.data),
         meta: {
-          gasto: num(totMeta?.gasto), orcDia: numN(totMeta?.orcamento_dia), conversas: num(totMeta?.resultado),
-          cliques: num(totMeta?.cliques), impressoes: num(totMeta?.impressoes), ate: txt(totMeta?.carregado_ate), crm: canal('Meta'),
+          // sem a campanha de vaga de emprego (não é de venda)
+          gasto: num(totMeta?.gasto) - vagaSoma.gasto, orcDia: numN(totMeta?.orcamento_dia), conversas: num(totMeta?.resultado) - vagaSoma.conversas,
+          cliques: num(totMeta?.cliques) - vagaSoma.cliques, impressoes: num(totMeta?.impressoes) - vagaSoma.impressoes,
+          ate: txt(totMeta?.carregado_ate), crm: canal('Meta'),
         },
         google: {
           gasto: num(totGoogle?.gasto), cliques: num(totGoogle?.cliques), impressoes: num(totGoogle?.impressoes),
@@ -203,6 +243,7 @@ function ColunasCrm({ f, gasto }: { f: Funil; gasto: number }) {
       <td className={td}>{f.orcamentos ? <>{n(f.orcamentos)} <span className="text-micro text-ink-faint">{brl(f.rsOrcado)}</span></> : (f.contatos ? '0' : '—')}</td>
       <td className={td}>{f.orcamentos ? cent(div(gasto, f.orcamentos)) : '—'}</td>
       <td className={td}>{f.vendas ? <span className="font-semibold text-success">{n(f.vendas)} · {brl(f.rsVendido)}</span> : (f.contatos ? '0' : '—')}</td>
+      <td className={td} title="Clientes que já estavam no CRM e voltaram a chamar por este anúncio (não somam em contatos novos)">{f.voltaram ? n(f.voltaram) : '—'}</td>
     </>
   )
 }
@@ -226,12 +267,17 @@ export function Anuncios() {
       const conj = new Map<string, LinhaMeta[]>()
       for (const l of cl) conj.set(l.conjunto, [...(conj.get(l.conjunto) ?? []), l])
       const funilDe = (ls: LinhaMeta[]) => somarFunil(ls.map(l => q.data?.porAd.get(l.adId) ?? FUNIL0))
+      // landing page: contatos com origem "LP …" entram na campanha de cadastro correspondente
+      const lp = (q.data?.porLp ?? []).filter(x => {
+        const regra = LP_PARA_CAMPANHA.find(r => r.origem.test(x.origem))
+        return regra ? regra.campanha.test(nome) : false
+      }).map(x => x.funil)
       return {
-        nome, linhas: cl, soma: somar(cl), funil: funilDe(cl),
+        nome, linhas: cl, soma: somar(cl), funil: somarFunil([funilDe(cl), ...lp]), viaLp: lp.length > 0,
         conjuntos: [...conj.entries()].map(([cn, al]) => ({ nome: cn, linhas: al, soma: somar(al), funil: funilDe(al) })).sort((a, b) => b.soma.gasto - a.soma.gasto),
       }
     }).sort((a, b) => b.soma.gasto - a.soma.gasto)
-  }, [q.data?.metaLinhas, q.data?.porAd, soNoAr])
+  }, [q.data?.metaLinhas, q.data?.porAd, q.data?.porLp, soNoAr])
 
   const d = q.data
   const googleLigado = !!d?.google.ate
@@ -242,7 +288,7 @@ export function Anuncios() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-ink"><Megaphone className="h-5 w-5" aria-hidden="true" />Anúncios — Meta e Google</h1>
           <p className="text-micro text-ink-faint">
-            Meta: dados até {dataBr(d?.meta.ate ?? null)} · Google: {googleLigado ? `dados até ${dataBr(d!.google.ate)}` : 'ainda não ligado'} · a página relê a cada 5 min
+            Meta: atualizado {horaBr(d?.horaMeta ?? null)} · Google: {googleLigado ? `atualizado ${horaBr(d!.horaGoogle)}` : 'ainda não ligado'} · a página relê a cada 5 min
             {q.isFetching && ' · atualizando…'}
           </p>
         </div>
@@ -285,10 +331,10 @@ export function Anuncios() {
             <Card>
               <p className="mb-2 text-body font-semibold text-ink">Meta Ads</p>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                <Kpi rotulo="Gasto" valor={brl(d.meta.gasto)} apoio={d.meta.orcDia ? `${brl(d.meta.orcDia)}/dia nas campanhas ativas` : undefined} />
+                <Kpi rotulo="Gasto (vendas)" valor={brl(d.meta.gasto)} apoio={`${d.meta.orcDia ? `${brl(d.meta.orcDia)}/dia nas campanhas ativas` : ''}${d.vagaSoma.gasto > 0 ? ` · sem a vaga de emprego (${brl(d.vagaSoma.gasto)})` : ''}`} />
                 <Kpi rotulo="Conversas iniciadas" valor={n(d.meta.conversas)} apoio={`${cent(div(d.meta.gasto, d.meta.conversas))} cada (campanhas de mensagem)`} />
                 <Kpi rotulo="Cliques" valor={n(d.meta.cliques)} apoio={`CTR ${pct(div(100 * d.meta.cliques, d.meta.impressoes), 1)} · CPC ${cent(div(d.meta.gasto, d.meta.cliques))}`} />
-                <Kpi rotulo="Contatos no CRM" valor={n(d.meta.crm.contatos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.contatos))} por contato`} />
+                <Kpi rotulo="Contatos" valor={n(d.meta.crm.contatos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.contatos))} por contato · ${n(d.meta.crm.soAna)} ficaram só com a Ana`} />
                 <Kpi rotulo="Qualificados" valor={`${n(d.meta.crm.qualificados)} · ${pct(div(100 * d.meta.crm.qualificados, d.meta.crm.contatos), 0)}`} apoio={`${cent(div(d.meta.gasto, d.meta.crm.qualificados))} por qualificado`} />
                 <Kpi rotulo="Viraram orçamento" valor={n(d.meta.crm.orcamentos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.orcamentos))} por orçamento · ${brl(d.meta.crm.rsOrcado)} orçados`} />
                 <Kpi rotulo="Vendas" valor={n(d.meta.crm.vendas)} apoio={d.meta.crm.vendas ? `${brl(d.meta.crm.rsVendido)} vendidos` : 'destes contatos, até agora'} />
@@ -355,14 +401,14 @@ export function Anuncios() {
             />
             {arvore.length === 0 ? <p className="text-body text-ink-faint">Nenhum gasto no Meta no período.</p> : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1300px] border-separate border-spacing-0">
+                <table className="w-full min-w-[1380px] border-separate border-spacing-0">
                   <thead>
                     <tr>
                       <th colSpan={9} />
-                      <th colSpan={5} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
+                      <th colSpan={6} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
                     </tr>
                     <tr>
-                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos', 'Qualificados', 'Orçamentos', 'Custo/orçamento', 'Vendas'].map((h, i) => (
+                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos', 'Qualificados', 'Orçamentos', 'Custo/orçamento', 'Vendas', 'Voltaram'].map((h, i) => (
                         <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'} ${i === 9 ? 'border-l border-border' : ''}`}>{h}</th>
                       ))}
                     </tr>
@@ -375,6 +421,8 @@ export function Anuncios() {
                           <tr className="cursor-pointer hover:bg-surface-2" onClick={() => alternar(kc)}>
                             <th scope="row" className="border-t border-border px-2 py-1.5 text-left text-body font-semibold text-ink">
                               <span className="inline-flex items-center gap-1">{ab ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}{c.nome}</span>
+                              {naoEhVenda(c.nome) && <span className="ml-2 rounded bg-surface-2 px-1 text-micro font-normal text-ink-faint">não é de venda</span>}
+                              {c.viaLp && <span className="ml-2 rounded bg-surface-2 px-1 text-micro font-normal text-ink-faint" title="Contatos da landing page ligados pela origem do CRM">contatos via LP</span>}
                             </th>
                             <td className="border-t border-border px-2 py-1.5"><Situacao s={l0.campanhaStatus} /></td>
                             <td className={td}>{l0.campanhaOrc != null ? brl(l0.campanhaOrc) : '—'}</td>
@@ -414,6 +462,15 @@ export function Anuncios() {
                         </Fragment>
                       )
                     })}
+                    {d.semAnuncioMeta.contatos > 0 && (
+                      <tr>
+                        <th scope="row" className="border-t-2 border-border px-2 py-1.5 text-left text-body font-medium text-ink-muted" title="Contatos com origem Meta que não passaram pela Ana (ou a conversa não guardou o anúncio): o CRM sabe que vieram do Meta, mas não de qual anúncio">
+                          Contatos do Meta sem anúncio identificado
+                        </th>
+                        <td className="border-t-2 border-border" colSpan={8} />
+                        <ColunasCrm f={d.semAnuncioMeta} gasto={0} />
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -422,9 +479,33 @@ export function Anuncios() {
               No CRM: o contato é ligado ao anúncio exato pela conversa da Ana (ela guarda de qual anúncio o cliente veio).
               Qualificado = a Ana passou ao vendedor, ou o vendedor marcou avanço (lead quente, follow-up, agendamento, orçamento), ou virou orçamento — e não foi marcado “não fabricamos”/“outro assunto”.
               Vendas = pedidos nascidos dos orçamentos desses contatos (venda costuma demorar: períodos curtos quase sempre mostram 0).
+              Contatos incluem quem conversou com a Ana por anúncio e nunca foi passado ao vendedor ({n(d.meta.crm.soAna)} no período) — sem eles o “% qualificados” ficava inflado.
+              “Voltaram” = clientes que já estavam no CRM e chamaram de novo pelo anúncio. Contatos de landing page entram na campanha de cadastro pela origem do CRM.
               Situação e orçamento/dia vêm do Gerenciador na última carga.
             </p>
           </Card>
+
+          {d.pedidosSemOrc.length > 0 && (
+            <Card>
+              <CardHeader title="Para corrigir: pedidos com orçamento que não existe" subtitle="O número de orçamento no pedido não bate com nenhum orçamento do sistema — essa venda não se liga ao contato nem ao anúncio. Corrigir o número no pedido." />
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] border-separate border-spacing-0">
+                  <thead><tr>{['Pedido', 'Nº de orçamento no pedido', 'Vendedor', 'Data', 'Valor'].map((h, i) => <th key={h} className={`${th} ${i < 3 ? 'text-left' : 'text-right'}`}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {d.pedidosSemOrc.map(x => (
+                      <tr key={String(x.pedido)}>
+                        <td className={`${td} text-left`}>{String(x.pedido)}</td>
+                        <td className={`${td} text-left`}>{String(x.numero_orcamento)}</td>
+                        <td className={`${td} text-left`}>{String(x.vendedor ?? '—')}</td>
+                        <td className={td}>{dataBr(txt(x.data_venda))}</td>
+                        <td className={td}>{brl(num(x.valor))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
 
           {/* Google */}
           <Card>
