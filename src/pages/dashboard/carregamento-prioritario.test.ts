@@ -37,7 +37,7 @@ function overview(primary: Record<string, unknown>, secondary: Record<string, un
       const result = hook()
       if (result.data === undefined) return result
       if (name === 'useVendedorCobertura') return { ...result, data: [] }
-      if (name === 'useDashboardExtra') return { ...result, data: { atendimentos: { hoje: 39, ontem: 70 } } }
+      if (name === 'useDashboardExtra') return { ...result, data: { atendimentos: { hoje: 39, ontem: 70 }, atendimentosTroca: { hoje: 64, hojeComVendedor: 22, hojeSoAna: 42, ontem: 109, ontemAteAgora: 49, semEspelho: [] } } }
       if (name === 'usePropostasStatus') return { ...result, data: { abertoQuente: { brl: 1000 } } }
       return result
     } }
@@ -81,6 +81,8 @@ test('dados complementares resolvidos mantêm os valores e blocos do dashboard',
   assert.match(result.html, /Vendas: 2/)
   assert.match(result.html, /Valor vendido: 67000/)
   assert.match(result.html, /AcoesPrioritarias/)
+  // régua do Daniel (21/10/2026): troca de mensagens, não lead novo
+  assert.match(result.html, /Atendimentos hoje: 64/)
 })
 
 test('falha dos complementos mantém leads disponíveis e não transforma dado ausente em zero', () => {

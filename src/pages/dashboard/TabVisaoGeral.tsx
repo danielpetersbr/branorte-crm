@@ -279,10 +279,12 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           manhã — o que é só o relógio, não o mercado.
         */}
         {(() => {
-          // Dia parcial contra ONTEM ATÉ A MESMA HORA (19/10/2026). Antes era contra o
-          // dia inteiro de ontem: às 16h dizia −44% enquanto o tile Leads, no filtro
-          // Hoje, dizia −18% para o mesmo número. E se a RPC caía, o tile sumia calado.
-          const at = extra?.atendimentos
+          // (21/10/2026, Daniel: "pra considerar um atendimento tem que ter troca de mensagem: o cliente mandou, o vendedor
+          // mandou, o cliente mandou e o vendedor mandou") RPC dashboard_atendimentos_troca: conversa com 2 idas e voltas no
+          // dia, 1 por cliente. Antes contava LEAD NOVO (49 contra 64 às 14h de 21/10; 20/10 inteiro, 77 × 109).
+          // Dia parcial contra ONTEM ATÉ A MESMA HORA (19/10/2026): contra o dia inteiro, às 16h dizia −44% quando era −18%.
+          const at = extra?.atendimentosTroca
+          const ajuda = 'Cliente com TROCA DE MENSAGENS hoje: ele mandou, alguém da Branorte respondeu, ele mandou de novo e foi respondido de novo (2 idas e voltas no mesmo dia). Conta 1 por cliente, mesmo que ele fale com a Ana e depois com o vendedor. "Com vendedor" = teve as 2 idas e voltas com um vendedor; "só com a Ana" = só com ela. Prospecção sem resposta e ligação não contam. Comparado com ONTEM ATÉ A MESMA HORA (parcial contra parcial); ignora o filtro de período do topo. Lê o espelho de mensagens do WhatsApp: conta que aparece em "sem espelho" não está sendo copiada, e os atendimentos dela ficam de fora.'
           if (!at) {
             return (
               <Metric
@@ -290,13 +292,14 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
                 valor={extraPendente ? 'Carregando…' : 'Indisponível'}
                 janela="fixo"
                 janelaLabel="hoje · parcial"
-                ajuda="Leads novos que chegaram HOJE. Não deu para carregar agora; use Atualizar dados."
+                ajuda={`${ajuda} Não deu para carregar agora; use Atualizar dados.`}
               />
             )
           }
-          const base = at.ontem_ate_agora
-          const dif = base != null ? at.hoje - base : null
-          const deltaPct = base != null && base > 0 && dif != null ? (dif / base) * 100 : null
+          const base = at.ontemAteAgora
+          const dif = at.hoje - base
+          const deltaPct = base > 0 ? (dif / base) * 100 : null
+          const nomeConta = (s: string) => s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase())
           return (
             <Metric
               label="Atendimentos hoje"
@@ -304,14 +307,16 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
               delta={deltaPct}
               janela="fixo"
               janelaLabel="hoje · parcial"
-              secundario={
-                base == null
-                  ? `ontem inteiro: ${n(at.ontem)} · dia parcial`
-                  : base > 0
-                    ? `${dif! > 0 ? '+' : ''}${n(dif!)} vs. ontem até esta hora (${n(base)}) · ontem inteiro: ${n(at.ontem)}`
-                    : `ontem até esta hora: 0 · ontem inteiro: ${n(at.ontem)}`
-              }
-              ajuda="Leads novos que chegaram HOJE, comparados com ONTEM ATÉ A MESMA HORA (parcial contra parcial). Ignora o filtro de período do topo. O total de ontem inteiro aparece só como referência."
+              secundario={<>
+                <span className="block">
+                  {base > 0 ? `${dif > 0 ? '+' : ''}${n(dif)} vs. ontem até esta hora (${n(base)})` : 'ontem até esta hora: 0'} · ontem inteiro: {n(at.ontem)}
+                </span>
+                <span className="block">{n(at.hojeComVendedor)} com vendedor · {n(at.hojeSoAna)} só com a Ana</span>
+                {at.semEspelho.length > 0 && (
+                  <span className="block text-warning">⚠ sem espelho: {at.semEspelho.map(nomeConta).join(', ')}</span>
+                )}
+              </>}
+              ajuda={ajuda}
             />
           )
         })()}
