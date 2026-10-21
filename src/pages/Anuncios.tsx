@@ -222,8 +222,8 @@ function useDados(p: Periodo) {
         },
       }
     },
-    staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
+    staleTime: 5 * 60_000,
+    refetchInterval: 15 * 60_000,
     placeholderData: prev => prev,
     retry: 1,
   })
@@ -326,7 +326,7 @@ function useProblemas() {
         .sort((a, b) => (a.gravidade === b.gravidade ? 0 : a.gravidade === 'alta' ? -1 : 1))
     },
     staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
     retry: 1,
   })
 }
@@ -468,7 +468,8 @@ export function Anuncios() {
   const probs = useProblemas()
   // "onde pôr a verba": a mesma régua da aba Marketing, no período desta página
   const iv = intervalo(periodo)
-  const rel = useMarketingRelatorioIntervalo(iv.from, iv.to, PERIODOS.find(x => x.v === periodo)?.l ?? '', periodo !== 'mes_passado')
+  // só depois dos dados principais: abrir a página disparava ~18 consultas juntas e o banco Micro engasgava (21/10)
+  const rel = useMarketingRelatorioIntervalo(iv.from, iv.to, PERIODOS.find(x => x.v === periodo)?.l ?? '', periodo !== 'mes_passado', !!q.data && !q.isFetching)
   const alternar = (k: string) => setAbertos(prev => { const s = new Set(prev); if (s.has(k)) s.delete(k); else s.add(k); return s })
 
   const arvore = useMemo(() => {
@@ -503,7 +504,7 @@ export function Anuncios() {
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-ink-faint">
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COR_META }} aria-hidden="true" />Meta atualizado {horaBr(d?.horaMeta ?? null)}</span>
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: COR_GOOGLE }} aria-hidden="true" />Google {googleLigado ? `atualizado ${horaBr(d!.horaGoogle)}` : 'ainda não ligado'}</span>
-            <span>a página relê a cada 5 min{q.isFetching && ' · atualizando…'}</span>
+            <span>a página relê a cada 15 min{q.isFetching && ' · atualizando…'}</span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
