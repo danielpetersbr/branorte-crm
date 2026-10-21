@@ -72,8 +72,8 @@ export function MetaDoMes({ compacto = false }: {
   const lidoAs = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null
 
   return (
-    <Card className={compacto ? '2xl:h-full' : ''}>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <Card className={compacto ? '2xl:h-full 2xl:p-4' : ''}>
+      <div className={`mb-4 flex flex-wrap items-start justify-between gap-3${compacto ? ' 2xl:mb-2' : ''}`}>
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-title text-ink">Meta do mês</h3>
           <JanelaBadge tipo="mes" label={mesLabel} />
@@ -105,7 +105,7 @@ export function MetaDoMes({ compacto = false }: {
       </div>
 
       {/* Barra: preenchido = vendido · marca = onde a projeção fecha */}
-      <div className="relative mt-4 h-2.5 overflow-hidden rounded-full bg-surface-2">
+      <div className={`relative mt-4 h-2.5 overflow-hidden rounded-full bg-surface-2${compacto ? ' 2xl:mt-2.5' : ''}`}>
         <div
           className={`h-full rounded-full ${corBarra} transition-all`}
           style={{ width: `${Math.min(100, Math.max(pctMeta, 0.5))}%` }}
@@ -122,7 +122,7 @@ export function MetaDoMes({ compacto = false }: {
         {cedo ? 'Cedo para projetar' : situacao}. Vendido {brlFull(vendido)} de {brlFull(meta)}, {pct(pctMeta, 0)} da meta.
       </div>
 
-      <div className={`mt-4 grid grid-cols-2 gap-3 border-t border-border pt-5 ${compacto ? 'gap-y-5' : 'lg:grid-cols-4'}`}>
+      <div className={`mt-4 grid grid-cols-2 gap-3 border-t border-border pt-5 ${compacto ? 'gap-y-5 2xl:mt-3 2xl:gap-y-2.5 2xl:pt-3' : 'lg:grid-cols-4'}`}>
         <div>
           <div className="text-label text-ink-faint">Falta</div>
           <div className="text-kpi-sm tabular-nums text-ink">{brl(falta)}</div>

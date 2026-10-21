@@ -97,14 +97,15 @@ export function Tendencia({
   const vazio = dados.length === 0 || dados.every(d => d.leads === 0 && d.qualificados === 0 && d.propostas === 0 && d.ligacoes === 0)
 
   return (
-    <Card className="h-full">
+    <Card className="h-full 2xl:p-4">
       <CardHeader
+        denso
         title="Evolução diária"
         subtitle="Quantidade por dia. Clique numa série para mostrar ou esconder."
         janela={<JanelaBadge tipo="fixo" label="últimos 30 dias" />}
       />
 
-      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Séries do gráfico">
+      <div className="mb-4 flex flex-wrap gap-2 2xl:mb-2 2xl:gap-1.5" role="group" aria-label="Séries do gráfico">
         {SERIES.map(s => {
           const ok = disponivel[s.id]
           const on = ok && ativas.includes(s.id)
@@ -117,7 +118,7 @@ export function Tendencia({
               aria-pressed={on}
               title={ok ? s.ajuda : `${s.ajuda} Indisponível agora: não carregou.`}
               className={[
-                'inline-flex min-h-[44px] md:min-h-0 items-center gap-2 rounded-full border px-3 py-2 text-micro transition-colors',
+                'inline-flex min-h-[44px] md:min-h-0 items-center gap-2 rounded-full border px-3 py-2 text-micro transition-colors 2xl:gap-1.5 2xl:px-2.5 2xl:py-1',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                 on ? 'border-border-strong bg-surface-2 text-ink' : 'border-border text-ink-faint hover:text-ink-muted',
               ].join(' ')}
@@ -134,7 +135,7 @@ export function Tendencia({
         })}
       </div>
 
-      <div className="h-[260px]">
+      <div className="h-[260px] 2xl:h-[200px]">
         {vazio ? (
           <div className="grid h-full place-items-center rounded-lg border border-dashed border-border">
             <p className="text-body text-ink-faint">Sem dados para o período.</p>

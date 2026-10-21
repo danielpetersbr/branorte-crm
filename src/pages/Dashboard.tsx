@@ -68,8 +68,10 @@ export function Dashboard() {
     <DashboardFilterProvider preset={preset} setPreset={setPreset}>
       {/* bsb-page dispara a entrada em cascata (definida no index.css).
           pb-20 reserva a faixa do botão flutuante de Feedback, pra ele nunca
-          ficar em cima do último bloco quando a página chega no fim. */}
-      <div className="bsb-page flex flex-col gap-5 p-4 pb-20 lg:p-6 lg:pb-20">
+          ficar em cima do último bloco quando a página chega no fim.
+          (21/10/2026) A partir de 2xl volta a 24 px: o Feedback saiu de botão flutuante e foi pra barra lateral, e os
+          80 px vazios faziam a Visão geral (que cabe na tela de 1920×1080) ganhar barra de rolagem só de espaço. */}
+      <div className="bsb-page flex flex-col gap-5 p-4 pb-20 lg:p-6 lg:pb-20 2xl:pb-6">
         <DashboardHeader
           preset={preset}
           setPreset={setPreset}

@@ -63,6 +63,7 @@ export function CardHeader({
   janela,
   right,
   nivel = 3,
+  denso = false,
 }: {
   title: string
   subtitle?: string
@@ -78,10 +79,15 @@ export function CardHeader({
    * quem manda no visual é `text-title`, o número aqui é só a estrutura.
    */
   nivel?: 2 | 3 | 4
+  /**
+   * (21/10/2026, Visão geral numa tela só) A partir de 2xl: margem menor e subtítulo numa linha só (o texto inteiro fica no
+   * title=, que aparece ao passar o mouse). Abaixo de 2xl nada muda.
+   */
+  denso?: boolean
 }) {
   const H = `h${nivel}` as 'h2' | 'h3' | 'h4'
   return (
-    <div className="flex items-start justify-between gap-3 mb-4">
+    <div className={`flex items-start justify-between gap-3 mb-4${denso ? ' 2xl:mb-2' : ''}`}>
       <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Heading vazio é pior que heading nenhum: entra na lista de títulos
@@ -91,7 +97,8 @@ export function CardHeader({
           {janela}
         </div>
         {subtitle ? (
-          <p className="text-label text-ink-faint mt-1" title={titleHint}>
+          <p className={`text-label text-ink-faint mt-1${denso ? ' 2xl:mt-0.5 2xl:truncate' : ''}`}
+            title={denso ? [subtitle, titleHint].filter(Boolean).join(' — ') : titleHint}>
             {subtitle}
             {titleHint && <span className="sr-only"> {titleHint}</span>}
           </p>

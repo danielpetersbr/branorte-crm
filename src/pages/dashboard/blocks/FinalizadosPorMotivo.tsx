@@ -39,8 +39,9 @@ export function FinalizadosPorMotivoView({ periodoLabel, data, pendente, erro }:
 }) {
   const maior = useMemo(() => Math.max(1, ...(data?.porMotivo ?? []).map(m => m.total)), [data])
   return (
-    <Card className="h-full">
+    <Card className="h-full 2xl:p-4">
       <CardHeader
+        denso
         title="Atendimentos finalizados"
         subtitle="Por motivo: a etiqueta de encerramento que foi colocada no WhatsApp"
         titleHint="Conta cada conversa (conta do WhatsApp + cliente) uma vez, quando a etiqueta MUDA para uma de encerramento. Releitura do WhatsApp e troca repetida por cópia duplicada da extensão não contam de novo. A parte clara da barra é da Ana."
@@ -62,7 +63,7 @@ export function FinalizadosPorMotivoView({ periodoLabel, data, pendente, erro }:
           {data.porMotivo.length === 0 ? (
             <p className="mt-4 text-body text-ink-faint">Nenhum atendimento finalizado no período.</p>
           ) : (
-            <ul className="mt-4 flex flex-col gap-2" aria-label="Atendimentos finalizados por motivo">
+            <ul className="mt-4 flex flex-col gap-2 2xl:mt-2.5 2xl:gap-1.5" aria-label="Atendimentos finalizados por motivo">
               {data.porMotivo.map(m => {
                 const vend = m.total - m.ana
                 const c = cor(m.motivo)

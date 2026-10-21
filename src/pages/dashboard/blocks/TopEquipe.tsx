@@ -53,8 +53,9 @@ export function TopEquipe({
   const mesLabel = new Date().toLocaleDateString('pt-BR', { month: 'long' })
 
   return (
-    <Card className={compacto ? 'h-full' : ''}>
+    <Card className={compacto ? 'h-full 2xl:p-4' : ''}>
       <CardHeader
+        denso={compacto}
         title="Quem está entregando"
         subtitle={metaVendedor > 0 ? `Meta individual de ${brl(metaVendedor)} no mês.` : undefined}
         janela={<JanelaBadge tipo="mes" label={mesLabel} />}
@@ -82,12 +83,26 @@ export function TopEquipe({
       ) : (
         <ol className="flex flex-col">
           {top.map((v, i) => compacto ? (
-            <li key={v.vendedor} className="flex items-start gap-3 border-b border-border/60 py-2.5 last:border-b-0">
-              <span className="w-6 shrink-0 pt-0.5 text-center text-label tabular-nums text-ink-faint" aria-hidden="true">
+            <li key={v.vendedor} className="flex items-start gap-3 border-b border-border/60 py-2.5 last:border-b-0 2xl:items-center 2xl:gap-2 2xl:py-1.5"
+              title={`${nomeExibido(v.vendedor)}: ${brl(v.valor)} · ${n(v.numVendas)} ${v.numVendas === 1 ? 'venda' : 'vendas'} · ${pct(v.pct, 0)} da meta individual`}>
+              <span className="w-6 shrink-0 pt-0.5 text-center text-label tabular-nums text-ink-faint 2xl:pt-0" aria-hidden="true">
                 {MEDALHA[i] ?? i + 1}
               </span>
               <span className="sr-only">{i + 1}º lugar:</span>
-              <div className="min-w-0 flex-1">
+              {/* 2xl (Visão geral numa tela só): uma linha — nome, barra da meta, %, valor. As vendas ficam no title. Só uma das
+                  duas versões existe por largura (a outra fica `hidden`, fora também do leitor de tela). */}
+              <div className="hidden min-w-0 flex-1 items-center gap-2 2xl:flex">
+                <span className="w-[36%] min-w-0 break-words text-body text-ink">{nomeExibido(v.vendedor)}</span>
+                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
+                  <span
+                    className={`block h-full rounded-full ${v.pct >= 100 ? 'bg-success' : 'bg-accent'}`}
+                    style={{ width: `${Math.min(100, Math.max(v.pct, 1))}%` }}
+                  />
+                </span>
+                <span className="w-9 shrink-0 text-right text-micro tabular-nums text-ink-muted">{pct(v.pct, 0)}</span>
+                <span className="w-[5.6rem] shrink-0 text-right text-label tabular-nums text-ink">{brl(v.valor)}</span>
+              </div>
+              <div className="min-w-0 flex-1 2xl:hidden">
                 <div className="flex items-baseline justify-between gap-3">
                   {/* break-words e sem truncate: nome de vendedor não pode ser cortado */}
                   <span className="min-w-0 break-words text-body text-ink">{nomeExibido(v.vendedor)}</span>
@@ -145,9 +160,13 @@ export function TopEquipe({
       )}
       {top.length > 0 && foraTop != null && Math.abs(foraTop) >= 1 && (
         // Sem isto o top 5 somava R$ 552 mil de R$ 734 mil e ninguém via onde estava o resto.
-        <p className="mt-3 border-t border-border pt-3 text-micro tabular-nums text-ink-faint">
-          Top {top.length} soma {brl(somaTop)} de {brl(totalMes!)} vendidos no mês; {brl(foraTop)} com os demais
-          vendedores e o dono (que não entra no ranking).
+        <p className={`mt-3 border-t border-border pt-3 text-micro tabular-nums text-ink-faint${compacto ? ' 2xl:mt-2 2xl:pt-2' : ''}`}
+          title={`Top ${top.length} soma ${brl(somaTop)} de ${brl(totalMes!)} vendidos no mês; ${brl(foraTop)} com os demais vendedores e o dono (que não entra no ranking).`}>
+          <span className={compacto ? '2xl:hidden' : ''}>
+            Top {top.length} soma {brl(somaTop)} de {brl(totalMes!)} vendidos no mês; {brl(foraTop)} com os demais
+            vendedores e o dono (que não entra no ranking).
+          </span>
+          {compacto && <span className="hidden 2xl:inline">Top {top.length}: {brl(somaTop)} de {brl(totalMes!)} no mês · <span className="whitespace-nowrap">{brl(foraTop)} com os demais e o dono</span></span>}
         </p>
       )}
     </Card>

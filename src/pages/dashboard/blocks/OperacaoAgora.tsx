@@ -65,8 +65,8 @@ export function OperacaoAgoraView({ periodoLabel, ab, abPendente, abErro, gasto,
   const totalEtapas = ab ? ETAPAS_ABERTAS.reduce((s, e) => s + ab.porEtapa[e.k], 0) : 0
 
   return (
-    <Card className="h-full">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+    <Card className="h-full 2xl:p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2 2xl:mb-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-title text-ink">Atendimentos em aberto</h3>
           <JanelaBadge tipo="snapshot" label="agora" />
@@ -96,7 +96,7 @@ export function OperacaoAgoraView({ periodoLabel, ab, abPendente, abErro, gasto,
 
           {totalEtapas > 0 && (
             <div
-              className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-surface-2"
+              className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-surface-2 2xl:mt-2"
               role="img"
               aria-label={ETAPAS_ABERTAS.map(e => `${e.rotulo} ${ab.porEtapa[e.k]}`).join(', ')}
             >
@@ -119,14 +119,14 @@ export function OperacaoAgoraView({ periodoLabel, ab, abPendente, abErro, gasto,
             ))}
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2" aria-label="Atendimentos em aberto por conta">
+          <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2 2xl:mt-3 2xl:grid-cols-3 2xl:gap-x-5 2xl:gap-y-1" aria-label="Atendimentos em aberto por conta">
             {contas.vendedores.map(c => <LinhaConta key={c.vendedor} c={c} maior={contas.maior} />)}
             {contas.ana && <LinhaConta c={contas.ana} maior={contas.maior} rotulo="Ana (IA)" fraco />}
           </div>
         </>
       )}
 
-      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-4 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-border pt-4 lg:grid-cols-4 2xl:mt-3 2xl:pt-3">
         <MiniProjecao titulo="Follow up" p={ab?.followUp} pendente={abPendente} erro={abErro} />
         <MiniProjecao titulo="Lead quente" p={ab?.leadQuente} pendente={abPendente} erro={abErro} />
         <Mini
