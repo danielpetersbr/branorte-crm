@@ -58,13 +58,13 @@ export function useWaVendedores() {
   })
 }
 
-export function useWaKanban(vendedor: string | null, incluirAna = true) {
+export function useWaKanban(vendedor: string | null, incluirAna = true, intervaloMs = 30_000) {
   const userId = useAuth().session?.user.id
   const todos = vendedor === TODOS
   return useQuery<WaKanban>({
     queryKey: ['wa-kanban', vendedor, userId, todos ? incluirAna : true],
     enabled: !!vendedor && !!userId,
-    refetchInterval: 30_000, // mesma cadência da extensão
+    refetchInterval: intervaloMs, // padrão = cadência da extensão; o espelho do /whatsapp lê mais vezes
     queryFn: async ({ signal }) => {
       const fora = `(${[...NOMES_FORA_DO_RANKING, ...(!incluirAna ? ['ANA'] : [])].join(',')})`
       const [etiquetas, linhasChats] = await Promise.all([
@@ -197,12 +197,13 @@ export function useWaMensagens(
   chatId: string | null,
   habilitado = true,
   limite = MSGS_PAGINA_INICIAL,
+  intervaloMs = 30_000,
 ) {
   const userId = useAuth().session?.user.id
   return useQuery<WaConversa>({
     queryKey: ['wa-mensagens', vendedor, chatId, limite, userId],
     enabled: habilitado && !!vendedor && !!chatId && !!userId,
-    refetchInterval: 30_000,
+    refetchInterval: intervaloMs,
     // mantém a página anterior visível durante o refetch/expansão (não pisca vazio)
     placeholderData: (prev, query) => query?.queryKey[1] === vendedor && query?.queryKey[2] === chatId && query?.queryKey[4] === userId ? prev : undefined,
     queryFn: async ({ signal }) => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { achatarConversas, contasDoEspelho, etiquetasDaLista, filtrarConversas, finalDoNumero, nomeEtiqueta, rotuloConta } from './whatsapp-espelho'
+import { achatarConversas, contasDoEspelho, etiquetasDaLista, filtrarConversas, finalDoNumero, historicoAtrasado, historicoGravado, nomeEtiqueta, rotuloConta } from './whatsapp-espelho'
 import type { WaChat, WaKanban } from '../hooks/useWaKanban'
 
 const chat = (over: Partial<WaChat>): WaChat => ({
@@ -84,4 +84,23 @@ test('etiqueta exibida com acento, como o vendedor escreve', () => {
   assert.equal(nomeEtiqueta('2A TENTATIVA'), '2ª TENTATIVA')
   assert.equal(nomeEtiqueta('NAO RESPONDEU MAIS'), 'NÃO RESPONDEU MAIS')
   assert.equal(nomeEtiqueta('VENDIDO'), 'VENDIDO')
+})
+
+test('histórico gravado só no funil ativo ou lead sem etiqueta das últimas 6 h (regra da extensão)', () => {
+  const agora = Date.parse('2026-10-21T17:00:00Z')
+  const base = { label_ids: ['9'], last_message_at: '2026-10-21T16:59:00Z' }
+  assert.equal(historicoGravado({ ...base, etiquetas: ['LEAD QUENTE', 'ORCAMENTO ENVIADO'] }, agora), true)
+  assert.equal(historicoGravado({ ...base, etiquetas: ['ORCAMENTO ENVIADO'] }, agora), false)
+  assert.equal(historicoGravado({ ...base, etiquetas: ['3A TENTATIVA'] }, agora), false)
+  assert.equal(historicoGravado({ ...base, etiquetas: [] }, agora), false) // etiqueta fora do catálogo ainda é etiqueta
+  assert.equal(historicoGravado({ etiquetas: [], label_ids: [], last_message_at: '2026-10-21T12:00:00Z' }, agora), true)
+  assert.equal(historicoGravado({ etiquetas: [], label_ids: [], last_message_at: '2026-10-21T10:00:00Z' }, agora), false)
+  assert.equal(historicoGravado({ etiquetas: [], label_ids: null, last_message_at: null }, agora), false)
+})
+
+test('histórico atrasado em relação à lista, com folga de um ciclo', () => {
+  assert.equal(historicoAtrasado('2026-10-21T17:00:00Z', '2026-10-21T16:59:30Z'), false)
+  assert.equal(historicoAtrasado('2026-10-21T17:00:00Z', '2026-10-21T16:55:00Z'), true)
+  assert.equal(historicoAtrasado('2026-10-21T17:00:00Z', null), true)
+  assert.equal(historicoAtrasado(null, '2026-10-21T16:55:00Z'), false)
 })
