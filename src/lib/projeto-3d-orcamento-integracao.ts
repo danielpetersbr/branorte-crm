@@ -16,12 +16,18 @@ export function resolverVinculoProjeto3D<T extends LinhaProjeto3D, P extends { n
     && precificado.preco_branorte_id === options.precoOficialId && precificado.catalogo_id === -1
   if (!original.origem_projeto3d || !Number.isFinite(precificado.valor) || precificado.valor <= 0 || (precificado.catalogo_id < 0 && !precoOficialValidado)) throw new Error('O equipamento não tem preço válido no catálogo. Confirme um valor manual para esta linha.')
   if (Number(precificado.motor_cv) > 0 && Number(precificado.motor_qtd) > 0 && !options.motorIncluso && (!Number.isFinite(precificado.motor_valor_unit) || Number(precificado.motor_valor_unit) <= 0)) throw new Error('O catálogo não tem preço válido para o motor nesta voltagem. Selecione Trifásico no orçamento ou confirme um valor manual completo.')
+  const componente = original.origem_projeto3d.componentCatalogId !== undefined && precificado.catalogo_id > 0
+  const componenteAlterado = componente && original.origem_projeto3d.componentCatalogId !== precificado.catalogo_id
   return {
     ...original, ...precificado,
-    uid: original.uid, nome: original.nome, nome_custom: original.nome_custom,
+    uid: original.uid,
+    nome: componenteAlterado ? precificado.nome ?? original.nome : original.nome,
+    nome_custom: componenteAlterado ? null : original.nome_custom,
     qtd: original.qtd,
     specs: [...new Set([...original.origem_projeto3d.sourceSpecifications, ...especificacoesMedidaProjeto3D(original, precificado.nome ?? '', precificado.specs)])],
-    origem_projeto3d: { ...original.origem_projeto3d, resolution: 'vinculado' },
+    origem_projeto3d: { ...original.origem_projeto3d, resolution: 'vinculado',
+      ...(componente ? { componentCatalogId: precificado.catalogo_id } : {}),
+    },
   } as T
 }
 

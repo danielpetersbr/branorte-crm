@@ -29,6 +29,28 @@ test('confirmação manual exige valor válido e mantém cada duplicata separada
   assert.equal(integration.temPendenciasProjeto3D([original, result[0]]), true)
 })
 
+test('troca explícita do cadastro de um componente atualiza nome, foto, preço e identidade comercial', () => {
+  const box = { ...original, nome: 'Caixa 3.900 kg', nome_custom: 'Caixa de Ração 3.900 kg', catalogo_id: 659, preco_branorte_id: 240 as number | null,
+    origem_projeto3d: { ...origin, componentCatalogId: 659, resolution: 'vinculado' as const } }
+  const current = { nome: 'Caixa de Ração 4 Ton', specs: ['Capacidade: 4 toneladas'], catalogo_id: 646,
+    valor: 22955, valor_original: 22955, preco_branorte_id: null, foto_url: '/caixa-racao-4-ton.jpg' }
+  const linked = integration!.resolverVinculoProjeto3D(box, current)
+  assert.equal(linked.nome, current.nome)
+  assert.equal(linked.nome_custom, null)
+  assert.equal(linked.catalogo_id, 646)
+  assert.equal(linked.preco_branorte_id, null)
+  assert.equal(linked.origem_projeto3d.componentCatalogId, 646)
+  assert.equal(linked.valor, 22955)
+  assert.equal(linked.foto_url, current.foto_url)
+  assert.deepEqual(linked.specs, ['Medida original', ...current.specs])
+  assert.equal(linked.uid, box.uid)
+  assert.equal(linked.qtd, 3)
+  assert.equal(linked.origem_projeto3d.sourceId, box.origem_projeto3d.sourceId)
+  assert.equal(box.origem_projeto3d.componentCatalogId, 659)
+  const repriced = integration!.resolverVinculoProjeto3D({ ...linked, nome_custom: 'Nome conferido' }, { ...current, valor: 23000 })
+  assert.equal(repriced.nome_custom, 'Nome conferido')
+})
+
 test('transportador da tabela oficial pode ser precificado sem inventar FK de catálogo', () => {
   assert.ok(integration)
   const price = { ...original, specs: ['Comprimento: 5,5 metros.'], valor: 6976, catalogo_id: -1, preco_branorte_id: 101 }

@@ -7,9 +7,9 @@ const normalizar = (value: string) => value.normalize('NFD').replace(/[\u0300-\u
 const variante = (text: string) => /\bINOX\b|\bVALVULAD[OA]S?\b|\bADAPTACAO\b/.test(text)
 const numero = (value: string) => Number(value.replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.'))
 
-function volumeCompativel(text: string): boolean {
+function volumeCompativel(text: string, litros: readonly number[] = [6000]): boolean {
   return [...normalizar(text).matchAll(/(\d+(?:[.,]\d+)*)\s*(LITROS?|L|M³|M3)(?!\w)/g)]
-    .every(value => numero(value[1]) * (value[2].startsWith('M') ? 1000 : 1) === 6000)
+    .every(value => litros.includes(numero(value[1]) * (value[2].startsWith('M') ? 1000 : 1)))
 }
 
 function candidatoPadrao(item: CatalogoItem): boolean {
@@ -17,7 +17,7 @@ function candidatoPadrao(item: CatalogoItem): boolean {
     && !variante(normalizar([item.nome_curto, item.nome_completo, item.subcategoria, ...(item.specs ?? [])].filter(Boolean).join(' ')))
 }
 
-/** This exact assembly was confirmed as a 6,000 L / 3,900 kg box plus the
+/** This exact CAD assembly was confirmed as Caixa de Ração 4 Ton plus the
  * standard bagger. Its CAD envelope is not a nominal capacity or a third item.
  * Return existing records atomically; prices, quantities and cart provenance
  * remain the responsibility of the normal quotation flow.
@@ -36,10 +36,10 @@ export function encontrarComponentesConjuntoProjeto3D(line: LinhaProjeto3D, cata
   })) return null
 
   const boxes = catalogo.filter(item => candidatoPadrao(item) && normalizar(item.categoria) === 'CAIXA'
-    && Number(item.capacidade_litros) === 6000 && Number(item.capacidade_kg) === 3900
-    && [item.nome_curto, item.nome_completo].filter(Boolean).every(name => /^CAIXA\b/.test(normalizar(name))
-      && !/[+]|\b(?:ENSACADEIRA|CHUPIM|RACAO\s+PRONTA|PICADOS)\b/.test(normalizar(name)) && volumeCompativel(name))
-    && (item.specs ?? []).every(volumeCompativel))
+    && Number(item.capacidade_litros) === 6154 && Number(item.capacidade_kg) === 4000
+    && [item.nome_curto, item.nome_completo].filter(Boolean).every(name => normalizar(name) === 'CAIXA DE RACAO 4 TON')
+    && (item.specs ?? []).every(spec => volumeCompativel(spec, [6154, 6200])
+      && !/\bSEM DIVISORIA\b|\b1\s+(?:COMPARTIMENTO|SAIDA)\b/.test(normalizar(spec))))
   const baggers = catalogo.filter(item => candidatoPadrao(item) && normalizar(item.categoria) === 'ENSACADEIRA'
     && [item.nome_curto, item.nome_completo].filter(Boolean).every(name => normalizar(name) === 'ENSACADEIRA SEMI AUTOMATICA'))
   return boxes.length === 1 && baggers.length === 1 ? [boxes[0], baggers[0]] : null

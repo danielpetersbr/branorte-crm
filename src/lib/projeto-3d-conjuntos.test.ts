@@ -13,9 +13,9 @@ const origin: OrigemProjeto3D = {
 }
 const line = (patch: Partial<OrigemProjeto3D> = {}) => ({ nome: sourceName, origem_projeto3d: { ...origin, ...patch } })
 const product = (patch: Partial<CatalogoItem>): CatalogoItem => ({
-  id: 901, categoria: 'CAIXA', subcategoria: null, nome_curto: 'Caixa 3.900 kg', nome_completo: 'Caixa 3.900 kg',
-  specs: ['Caixa com 1 divisória (2 Compartimentos)', 'Capacidade: 6.000 litros (~3.900 kg — densidade de ração pronta 0,65)'],
-  capacidade_kg: 3900, capacidade_litros: 6000, potencia_cv: null, motor_padrao_cv: null, motor_padrao_polos: null,
+  id: 901, categoria: 'CAIXA', subcategoria: null, nome_curto: 'Caixa de Ração 4 Ton', nome_completo: 'Caixa de Ração 4 Ton',
+  specs: ['Caixa com 1 divisória (2 Compartimentos)', 'Capacidade: 4 toneladas (~6,2 m³ — densidade de ração pronta 0,65)'],
+  capacidade_kg: 4000, capacidade_litros: 6154, potencia_cv: null, motor_padrao_cv: null, motor_padrao_polos: null,
   motor_padrao_qtd: 1, valor: 20301, imagem_url: null, ativo: true, ordem: 0, ocorrencias: 0, is_oficial: true,
   foto_url: '/caixa-atual.jpg', descricao: null, acessorios_relacionados_ids: [], usa_inversor: false,
   funcao_opcoes: [], tamanho_codigo: null, ocultar_funcao_no_pdf: false, motor_id: null, preco_branorte_id: 8801, motores_extras: [], ...patch,
@@ -32,10 +32,13 @@ const resolve = (source: ReturnType<typeof line>, catalog: CatalogoItem[]) => {
   return resolver.encontrarComponentesConjuntoProjeto3D(source, catalog)
 }
 
-test('conjunto verificado retorna caixa de 6000 litros e ensacadeira padrão atuais, sem chupim', () => {
+test('conjunto de 6 m³ usa a família Caixa de Ração 4 Ton confirmada e ensacadeira padrão', () => {
   const currentBox = box(), currentBagger = bagger(), source = line()
   const before = structuredClone(source)
-  const result = resolve(source, [currentBagger, product({ categoria: 'TRANSPORTADOR', id: 903 }), currentBox])
+  const result = resolve(source, [currentBagger,
+    product({ id: 659, nome_curto: 'Caixa 3.900 kg', nome_completo: 'Caixa 3.900 kg', capacidade_kg: 3900, capacidade_litros: 6000 }),
+    product({ id: 821, nome_curto: 'Caixa de Ração Pronta 4 Ton (1 saída)', nome_completo: 'Caixa de Ração Pronta 4 Ton (1 saída)' }),
+    currentBox])
   assert.deepEqual(result?.map(item => [item.id, item.preco_branorte_id, item.valor]), [[901, 8801, 20301], [902, 8802, 30102]])
   assert.equal(result?.[0], currentBox)
   assert.equal(result?.[1], currentBagger)
@@ -76,11 +79,16 @@ test('referência CAD, origem, nome e capacidade do conjunto devem continuar exa
   assert.equal(resolver!.encontrarComponentesConjuntoProjeto3D({ nome: sourceName }, [box(), bagger()]), null)
 })
 
-test('capacidade em kg, envelope do projeto ou variante da caixa não substituem 6000 litros explícitos', () => {
+test('caixa genérica, outros tamanhos e variantes não substituem a Caixa de Ração 4 Ton', () => {
   for (const patch of [
-    { capacidade_litros: null }, { capacidade_litros: 3900 }, { capacidade_litros: 8000 }, { capacidade_kg: 4000 },
+    { capacidade_litros: null }, { capacidade_litros: 3900 }, { capacidade_litros: 8000 }, { capacidade_kg: 3900 },
     { categoria: 'SILO' }, { nome_completo: 'Caixa 3.900 kg inox' }, { subcategoria: 'INOX' },
     { specs: ['Capacidade: 8.000 litros'] }, { nome_curto: 'Caixa 8 m³' },
+    { nome_curto: 'Caixa 3.900 kg', nome_completo: 'Caixa 3.900 kg', capacidade_litros: 6000, capacidade_kg: 3900 },
+    { nome_curto: 'Caixa de Ração 2 Ton', nome_completo: 'Caixa de Ração 2 Ton', capacidade_litros: 3077, capacidade_kg: 2000 },
+    { nome_curto: 'Caixa de Ração 5 Ton', nome_completo: 'Caixa de Ração 5 Ton', capacidade_litros: 7692, capacidade_kg: 5000 },
+    { nome_curto: 'Caixa de Ração Pronta 4 Ton (1 saída)', nome_completo: 'Caixa de Ração Pronta 4 Ton (1 saída)' },
+    { specs: ['Caixa com 1 compartimento único (sem divisória) — 1 saída'] },
   ]) assert.equal(resolve(line(), [product(patch), bagger()]), null, JSON.stringify(patch))
 })
 
