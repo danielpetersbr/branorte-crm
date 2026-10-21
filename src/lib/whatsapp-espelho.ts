@@ -131,3 +131,36 @@ export function etiquetasDaLista(conversas: ConversaEspelho[]): { nome: string; 
     .map(([nome, total]) => ({ nome, total }))
     .sort((a, b) => ordemDe(a.nome) - ordemDe(b.nome) || a.nome.localeCompare(b.nome, 'pt-BR'))
 }
+
+/**
+ * ⚠️ ESPELHO da regra da extensão (`sincronizarMensagensFunil` em
+ * Branorte/wa-sync-extension/background.js: MSGS_ETIQUETAS_ALVO_PILOTO e
+ * MSGS_SEM_ETIQUETA_JANELA_MS). A extensão só grava o histórico de conversa:
+ *  - com etiqueta do funil ativo (Prospecção, 2ª tentativa, Novo lead, Follow up, Lead quente);
+ *  - sem etiqueta nenhuma e com mensagem nas últimas 6 h (lead que acabou de chegar).
+ * Fora disso (Orçamento enviado sozinho, Resolvido, Branorte, Nunca respondeu…) o
+ * histórico congela onde estava, mas a LISTA continua mostrando a última mensagem.
+ * Mudou lá, muda aqui — senão a tela promete histórico que não vem.
+ */
+export const ETIQUETAS_COM_HISTORICO = ['PROSPECCAO', '2A TENTATIVA', 'NOVO LEAD', 'FOLLOW UP', 'LEAD QUENTE']
+const JANELA_LEAD_SEM_ETIQUETA_MS = 6 * 3600_000
+
+export function historicoGravado(conversa: Pick<ConversaEspelho, 'etiquetas' | 'label_ids' | 'last_message_at'>, agora = Date.now()): boolean {
+  if (conversa.etiquetas.some(e => ETIQUETAS_COM_HISTORICO.includes(e))) return true
+  if ((conversa.label_ids ?? []).length > 0) return false
+  const t = conversa.last_message_at ? Date.parse(conversa.last_message_at) : NaN
+  return Number.isFinite(t) && agora - t <= JANELA_LEAD_SEM_ETIQUETA_MS
+}
+
+/**
+ * A lista (wa_chat_labels) sabe da última mensagem antes do histórico (wa_chat_messages):
+ * as duas chegam por caminhos separados da extensão. Atrasado = a lista tem mensagem
+ * mais nova que a última gravada, com folga de 1 ciclo de sincronização.
+ */
+export function historicoAtrasado(ultimaNaLista: string | null, ultimaNoHistorico: string | null, folgaMs = 90_000): boolean {
+  if (!ultimaNaLista) return false
+  const lista = Date.parse(ultimaNaLista)
+  if (!Number.isFinite(lista)) return false
+  const historico = ultimaNoHistorico ? Date.parse(ultimaNoHistorico) : NaN
+  return !Number.isFinite(historico) || lista - historico > folgaMs
+}
