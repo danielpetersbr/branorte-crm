@@ -269,6 +269,22 @@ const NAV_GROUPS: NavGroup[] = [
 // ============================================================================
 const MARKETING_SECTIONS = [{ id: 'marketing', label: 'Marketing' }] as const
 
+/**
+ * Papel 'visualizador' = o gestor de tráfego de fora (Fabrício, 21/10/2026). Daniel: "deixa só anúncios de Meta e
+ * Leads recebidos, que é o que ele vai usar" — nada de Dashboard, Controle de Vendas, Fretes ou Agenda.
+ * O guard de rota (App.tsx) trava o resto por URL.
+ */
+const VISUALIZADOR_GROUPS: NavGroup[] = [
+  {
+    id: 'trf-anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, section: 'marketing', direto: true,
+    items: [{ to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.anuncios' }],
+  },
+  {
+    id: 'trf-leads', label: 'Leads Recebidos', icon: MessageSquare, section: 'marketing', direto: true,
+    items: [{ to: '/atendimentos', label: 'Leads Recebidos', icon: MessageSquare, countKey: 'atendimentos', permKey: 'menu.atendimentos' }],
+  },
+]
+
 const MARKETING_GROUPS: NavGroup[] = [
   {
     id: 'mkt-visao-geral', label: 'Visão geral', icon: LayoutDashboard, section: 'marketing',
@@ -469,9 +485,11 @@ export function Layout() {
     && (!item.roles || (!!profile?.role && item.roles.includes(profile.role)))
   // Marketing tem menu próprio, num bloco só (ver MARKETING_GROUPS).
   const ehMarketing = profile?.role === 'marketing'
-  const sections: ReadonlyArray<{ id: string; label: string }> = ehMarketing ? MARKETING_SECTIONS : NAV_SECTIONS
+  // Visualizador (gestor de tráfego) também: só Anúncios e Leads (ver VISUALIZADOR_GROUPS).
+  const ehVisualizador = profile?.role === 'visualizador'
+  const sections: ReadonlyArray<{ id: string; label: string }> = (ehMarketing || ehVisualizador) ? MARKETING_SECTIONS : NAV_SECTIONS
   // Grupos com itens visiveis (descarta grupos vazios pro usuario)
-  const groups = (ehMarketing ? MARKETING_GROUPS : NAV_GROUPS)
+  const groups = (ehVisualizador ? VISUALIZADOR_GROUPS : ehMarketing ? MARKETING_GROUPS : NAV_GROUPS)
     .map(g => ({ ...g, items: g.items.filter(item => !item.hidden && visible(item)) }))
     .filter(g => g.items.length > 0)
 
@@ -490,7 +508,7 @@ export function Layout() {
   }, [loc.pathname, loc.search, activeGroupId])
 
   const mobileBase = profile?.role === 'visualizador'
-    ? MOBILE_NAV.filter(l => l.to === '/' || l.to === '/atendimentos')
+    ? MOBILE_NAV.filter(l => l.to === '/atendimentos')
     : profile?.role === 'vendor'
     ? MOBILE_NAV.filter(l => l.to === '/atendimentos' || l.to === '/whatsapp' || l.to === '/orcamentos/montar')
     : ehMarketing
