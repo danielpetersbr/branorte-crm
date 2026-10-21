@@ -53,24 +53,69 @@ interface LinhaMeta {
   gasto: number; impressoes: number; cliques: number; resultado: number; resultadoTipo: string
 }
 interface Dia { dia: string; gastoMeta: number; gastoGoogle: number; contatosMeta: number; contatosSite: number; contatos: number }
-interface Crm { leads: number; orcamentos: number }
+/** Funil do CRM: contatos que chegaram → qualificados → orçamentos → vendas (RPC anuncios_crm). */
+interface Funil { contatos: number; qualificados: number; orcamentos: number; rsOrcado: number; vendas: number; rsVendido: number }
+const FUNIL0: Funil = { contatos: 0, qualificados: 0, orcamentos: 0, rsOrcado: 0, vendas: 0, rsVendido: 0 }
+const lerFunil = (r: Record<string, unknown> | undefined): Funil => ({
+  contatos: num(r?.contatos), qualificados: num(r?.qualificados), orcamentos: num(r?.orcamentos),
+  rsOrcado: num(r?.rs_orcado), vendas: num(r?.vendas), rsVendido: num(r?.rs_vendido),
+})
+const somarFunil = (fs: Funil[]): Funil => fs.reduce((s, f) => ({
+  contatos: s.contatos + f.contatos, qualificados: s.qualificados + f.qualificados, orcamentos: s.orcamentos + f.orcamentos,
+  rsOrcado: s.rsOrcado + f.rsOrcado, vendas: s.vendas + f.vendas, rsVendido: s.rsVendido + f.rsVendido,
+}), { ...FUNIL0 })
+
+/** Previsão do mês: o que já foi gasto até ontem + orçamento/dia das campanhas ativas × dias que faltam (com hoje). */
+function usePrevisaoMes() {
+  const agora = new Date()
+  const ini = new Date(agora.getFullYear(), agora.getMonth(), 1)
+  const fim = new Date(agora.getFullYear(), agora.getMonth() + 1, 1)
+  const p_from = ini.toISOString(), p_to = fim.toISOString()
+  return useQuery({
+    queryKey: ['anuncios-previsao-mes-v1', p_from],
+    queryFn: async () => {
+      const [plat, diario] = await Promise.all([
+        supabase.rpc('dashboard_marketing_plataformas', { p_from, p_to }),
+        supabase.rpc('anuncios_diario', { p_from, p_to: new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1).toISOString() }),
+      ])
+      if (plat.error) throw plat.error
+      if (diario.error) throw diario.error
+      const pl = linhas(plat.data)
+      const hojeIso = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`
+      const dias = linhas(diario.data)
+      const ateOntem = (campo: string) => dias.filter(x => String(x.dia) < hojeIso).reduce((s, x) => s + num(x[campo]), 0)
+      const restantes = Math.round((fim.getTime() - new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()).getTime()) / 86400000)
+      const orcMeta = num(pl.find(r => r.tipo === 'plataforma' && r.plataforma === 'Meta')?.orcamento_dia)
+      const orcGoogle = pl.filter(r => r.tipo === 'campanha' && r.plataforma === 'Google' && (r.status === 'ENABLED' || r.status === 'ACTIVE'))
+        .reduce((s, r) => s + num(r.orcamento_dia), 0)
+      const mk = (gasto: number, orcDia: number) => ({ gasto, orcDia, previsto: gasto + orcDia * restantes })
+      return {
+        mes: ini.toLocaleDateString('pt-BR', { month: 'long' }), restantes,
+        meta: mk(ateOntem('gasto_meta'), orcMeta), google: mk(ateOntem('gasto_google'), orcGoogle),
+      }
+    },
+    staleTime: 5 * 60_000,
+    refetchInterval: 15 * 60_000,
+    retry: 1,
+  })
+}
 
 function useDados(p: Periodo) {
   const { from, to } = intervalo(p)
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
-    queryKey: ['pagina-anuncios-v1', p_from, p_to],
+    queryKey: ['pagina-anuncios-v2', p_from, p_to],
     queryFn: async () => {
-      const [meta, diario, plat, fontes, google, palavras, termos] = await Promise.all([
+      const [meta, diario, plat, crm, google, palavras, termos] = await Promise.all([
         supabase.rpc('anuncios_meta', { p_from, p_to }),
         supabase.rpc('anuncios_diario', { p_from, p_to }),
         supabase.rpc('dashboard_marketing_plataformas', { p_from, p_to }),
-        supabase.rpc('dashboard_marketing_fontes', { p_from, p_to }),
+        supabase.rpc('anuncios_crm', { p_from, p_to }),
         supabase.rpc('anuncios_google', { p_from, p_to }),
         supabase.rpc('anuncios_google_palavras', { p_limite: 30 }),
         supabase.rpc('dashboard_marketing_termos_google', { p_limite: 20 }),
       ])
-      const erro = [meta, diario, plat, fontes].find(r => r.error)?.error
+      const erro = [meta, diario, plat, crm].find(r => r.error)?.error
       if (erro) throw erro
       const metaLinhas: LinhaMeta[] = linhas(meta.data).map(r => ({
         campanha: String(r.campanha ?? '—'), campanhaStatus: txt(r.campanha_status), campanhaOrc: numN(r.campanha_orcamento_dia),
@@ -86,17 +131,15 @@ function useDados(p: Periodo) {
       const platL = linhas(plat.data)
       const totMeta = platL.find(r => r.tipo === 'plataforma' && r.plataforma === 'Meta')
       const totGoogle = platL.find(r => r.tipo === 'plataforma' && r.plataforma === 'Google')
-      const fontesL = linhas(fontes.data)
-      const canal = (pref: string): Crm => {
-        const r = fontesL.find(f => f.tipo === 'canal' && String(f.chave).startsWith(pref))
-        return { leads: num(r?.leads), orcamentos: num(r?.com_proposta) }
-      }
-      const porCodigo = new Map<string, Crm>(fontesL.filter(f => f.tipo === 'criativo').map(f => [String(f.chave), { leads: num(f.leads), orcamentos: num(f.com_proposta) }]))
+      const crmL = linhas(crm.data)
+      const canal = (c: string): Funil => lerFunil(crmL.find(f => f.tipo === 'canal' && f.chave === c))
+      // funil do CRM por anúncio exato (ad_id que a Ana guarda da conversa)
+      const porAd = new Map<string, Funil>(crmL.filter(f => f.tipo === 'anuncio').map(f => [String(f.chave), lerFunil(f)]))
       return {
-        metaLinhas, dias, porCodigo,
+        metaLinhas, dias, porAd,
         meta: {
           gasto: num(totMeta?.gasto), orcDia: numN(totMeta?.orcamento_dia), conversas: num(totMeta?.resultado),
-          cliques: num(totMeta?.cliques), impressoes: num(totMeta?.impressoes), ate: txt(totMeta?.carregado_ate), crm: canal('Meta ADS'),
+          cliques: num(totMeta?.cliques), impressoes: num(totMeta?.impressoes), ate: txt(totMeta?.carregado_ate), crm: canal('Meta'),
         },
         google: {
           gasto: num(totGoogle?.gasto), cliques: num(totGoogle?.cliques), impressoes: num(totGoogle?.impressoes),
@@ -141,12 +184,25 @@ function Metricas({ s, tipo }: { s: Soma; tipo: string }) {
   return (
     <>
       <td className={td}>{brl(s.gasto)}</td>
-      <td className={td}>{n(s.impressoes)}</td>
       <td className={td}>{n(s.cliques)}</td>
       <td className={td}>{pct(div(100 * s.cliques, s.impressoes), 1)}</td>
       <td className={td}>{cent(div(s.gasto, s.cliques))}</td>
       <td className={td}>{n(s.resultado)} <span className="text-micro text-ink-faint">{tipo}</span></td>
       <td className={td}>{cent(div(s.gasto, s.resultado))}</td>
+    </>
+  )
+}
+
+/** Colunas do CRM numa linha da árvore: contatos → qualificados → orçamentos → vendas, e o custo por orçamento. */
+function ColunasCrm({ f, gasto }: { f: Funil; gasto: number }) {
+  const pq = div(100 * f.qualificados, f.contatos)
+  return (
+    <>
+      <td className={`${td} border-l`}>{f.contatos ? n(f.contatos) : '—'}</td>
+      <td className={td}>{f.contatos ? <>{n(f.qualificados)} <span className="text-micro text-ink-faint">{pct(pq, 0)}</span></> : '—'}</td>
+      <td className={td}>{f.orcamentos ? <>{n(f.orcamentos)} <span className="text-micro text-ink-faint">{brl(f.rsOrcado)}</span></> : (f.contatos ? '0' : '—')}</td>
+      <td className={td}>{f.orcamentos ? cent(div(gasto, f.orcamentos)) : '—'}</td>
+      <td className={td}>{f.vendas ? <span className="font-semibold text-success">{n(f.vendas)} · {brl(f.rsVendido)}</span> : (f.contatos ? '0' : '—')}</td>
     </>
   )
 }
@@ -157,6 +213,7 @@ export function Anuncios() {
   })
   const escolher = (p: Periodo) => { setPeriodo(p); try { localStorage.setItem('anuncios-periodo', p) } catch { /* sem storage */ } }
   const q = useDados(periodo)
+  const prev = usePrevisaoMes()
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [soNoAr, setSoNoAr] = useState(false)
   const alternar = (k: string) => setAbertos(prev => { const s = new Set(prev); if (s.has(k)) s.delete(k); else s.add(k); return s })
@@ -168,12 +225,13 @@ export function Anuncios() {
     return [...camps.entries()].map(([nome, cl]) => {
       const conj = new Map<string, LinhaMeta[]>()
       for (const l of cl) conj.set(l.conjunto, [...(conj.get(l.conjunto) ?? []), l])
+      const funilDe = (ls: LinhaMeta[]) => somarFunil(ls.map(l => q.data?.porAd.get(l.adId) ?? FUNIL0))
       return {
-        nome, linhas: cl, soma: somar(cl),
-        conjuntos: [...conj.entries()].map(([cn, al]) => ({ nome: cn, linhas: al, soma: somar(al) })).sort((a, b) => b.soma.gasto - a.soma.gasto),
+        nome, linhas: cl, soma: somar(cl), funil: funilDe(cl),
+        conjuntos: [...conj.entries()].map(([cn, al]) => ({ nome: cn, linhas: al, soma: somar(al), funil: funilDe(al) })).sort((a, b) => b.soma.gasto - a.soma.gasto),
       }
     }).sort((a, b) => b.soma.gasto - a.soma.gasto)
-  }, [q.data?.metaLinhas, soNoAr])
+  }, [q.data?.metaLinhas, q.data?.porAd, soNoAr])
 
   const d = q.data
   const googleLigado = !!d?.google.ate
@@ -203,6 +261,19 @@ export function Anuncios() {
         </div>
       </div>
 
+      {prev.data && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-border bg-surface px-4 py-3 text-body text-ink-muted">
+          <span className="font-semibold text-ink">Previsão de gasto em {prev.data.mes}:</span>
+          {([['Meta', prev.data.meta], ['Google', prev.data.google]] as const).map(([nome, x]) => (
+            <span key={nome} title={`${brl(x.gasto)} gastos até ontem + ${brl(x.orcDia)}/dia (campanhas ativas) × ${prev.data!.restantes} dias que faltam, com hoje`}>
+              {nome} <strong className="text-ink">{brl(x.previsto)}</strong>
+              <span className="text-micro text-ink-faint"> ({brl(x.gasto)} até ontem + {brl(x.orcDia)}/dia)</span>
+            </span>
+          ))}
+          <span>Total <strong className="text-ink">{brl(prev.data.meta.previsto + prev.data.google.previsto)}</strong></span>
+        </div>
+      )}
+
       {q.error && !d ? (
         <Card><p className="text-body text-ink-muted">Não deu para carregar os anúncios agora. Tente o botão de recarregar.</p></Card>
       ) : !d ? (
@@ -217,8 +288,10 @@ export function Anuncios() {
                 <Kpi rotulo="Gasto" valor={brl(d.meta.gasto)} apoio={d.meta.orcDia ? `${brl(d.meta.orcDia)}/dia nas campanhas ativas` : undefined} />
                 <Kpi rotulo="Conversas iniciadas" valor={n(d.meta.conversas)} apoio={`${cent(div(d.meta.gasto, d.meta.conversas))} cada (campanhas de mensagem)`} />
                 <Kpi rotulo="Cliques" valor={n(d.meta.cliques)} apoio={`CTR ${pct(div(100 * d.meta.cliques, d.meta.impressoes), 1)} · CPC ${cent(div(d.meta.gasto, d.meta.cliques))}`} />
-                <Kpi rotulo="Contatos no CRM" valor={n(d.meta.crm.leads)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.leads))} por contato`} />
-                <Kpi rotulo="Viraram orçamento" valor={n(d.meta.crm.orcamentos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.orcamentos))} por orçamento`} />
+                <Kpi rotulo="Contatos no CRM" valor={n(d.meta.crm.contatos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.contatos))} por contato`} />
+                <Kpi rotulo="Qualificados" valor={`${n(d.meta.crm.qualificados)} · ${pct(div(100 * d.meta.crm.qualificados, d.meta.crm.contatos), 0)}`} apoio={`${cent(div(d.meta.gasto, d.meta.crm.qualificados))} por qualificado`} />
+                <Kpi rotulo="Viraram orçamento" valor={n(d.meta.crm.orcamentos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.orcamentos))} por orçamento · ${brl(d.meta.crm.rsOrcado)} orçados`} />
+                <Kpi rotulo="Vendas" valor={n(d.meta.crm.vendas)} apoio={d.meta.crm.vendas ? `${brl(d.meta.crm.rsVendido)} vendidos` : 'destes contatos, até agora'} />
               </div>
             </Card>
             <Card>
@@ -228,15 +301,17 @@ export function Anuncios() {
                   <Kpi rotulo="Gasto" valor={brl(d.google.gasto)} />
                   <Kpi rotulo="Cliques" valor={n(d.google.cliques)} apoio={`CTR ${pct(div(100 * d.google.cliques, d.google.impressoes), 1)} · CPC ${cent(div(d.google.gasto, d.google.cliques))}`} />
                   <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio="o que a conta mede hoje (visualização de página)" />
-                  <Kpi rotulo="Contatos do Site no CRM" valor={n(d.google.crm.leads)} apoio={`${cent(div(d.google.gasto, d.google.crm.leads))} por contato (site inclui orgânico)`} />
-                  <Kpi rotulo="Viraram orçamento" valor={n(d.google.crm.orcamentos)} apoio={`${cent(div(d.google.gasto, d.google.crm.orcamentos))} por orçamento`} />
+                  <Kpi rotulo="Contatos do Site no CRM" valor={n(d.google.crm.contatos)} apoio={`${cent(div(d.google.gasto, d.google.crm.contatos))} por contato (site inclui orgânico)`} />
+                  <Kpi rotulo="Qualificados" valor={`${n(d.google.crm.qualificados)} · ${pct(div(100 * d.google.crm.qualificados, d.google.crm.contatos), 0)}`} apoio={`${cent(div(d.google.gasto, d.google.crm.qualificados))} por qualificado`} />
+                  <Kpi rotulo="Viraram orçamento" valor={n(d.google.crm.orcamentos)} apoio={`${cent(div(d.google.gasto, d.google.crm.orcamentos))} por orçamento · ${brl(d.google.crm.rsOrcado)} orçados`} />
+                  <Kpi rotulo="Vendas" valor={n(d.google.crm.vendas)} apoio={d.google.crm.vendas ? `${brl(d.google.crm.rsVendido)} vendidos` : 'destes contatos, até agora'} />
                 </div>
               ) : (
                 <div className="flex items-start gap-2 rounded-lg bg-surface-2 p-3 text-body text-ink-muted">
                   <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <span>
                     O Google ainda não manda dados. Falta colar o script do CRM na conta Google Ads (Ferramentas → Ações em massa → Scripts → “+”), autorizar e pôr para rodar todo dia.
-                    Enquanto isso: o Site trouxe <strong className="text-ink">{n(d.google.crm.leads)} contatos</strong> e <strong className="text-ink">{n(d.google.crm.orcamentos)} orçamentos</strong> no período.
+                    Enquanto isso: o Site trouxe <strong className="text-ink">{n(d.google.crm.contatos)} contatos</strong> e <strong className="text-ink">{n(d.google.crm.orcamentos)} orçamentos</strong> no período.
                   </span>
                 </div>
               )}
@@ -280,11 +355,15 @@ export function Anuncios() {
             />
             {arvore.length === 0 ? <p className="text-body text-ink-faint">Nenhum gasto no Meta no período.</p> : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] border-separate border-spacing-0">
+                <table className="w-full min-w-[1300px] border-separate border-spacing-0">
                   <thead>
                     <tr>
-                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Impressões', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos (código)', 'Orçamentos (código)'].map((h, i) => (
-                        <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'}`}>{h}</th>
+                      <th colSpan={9} />
+                      <th colSpan={5} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
+                    </tr>
+                    <tr>
+                      {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Cliques', 'CTR', 'CPC', 'Resultado', 'Custo/resultado', 'Contatos', 'Qualificados', 'Orçamentos', 'Custo/orçamento', 'Vendas'].map((h, i) => (
+                        <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'} ${i === 9 ? 'border-l border-border' : ''}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -300,7 +379,7 @@ export function Anuncios() {
                             <td className="border-t border-border px-2 py-1.5"><Situacao s={l0.campanhaStatus} /></td>
                             <td className={td}>{l0.campanhaOrc != null ? brl(l0.campanhaOrc) : '—'}</td>
                             <Metricas s={c.soma} tipo={l0.resultadoTipo} />
-                            <td className={td} /><td className={td} />
+                            <ColunasCrm f={c.funil} gasto={c.soma.gasto} />
                           </tr>
                           {ab && c.conjuntos.map(cj => {
                             const kj = kc + '|' + cj.nome, abj = abertos.has(kj), j0 = cj.linhas[0]
@@ -313,10 +392,10 @@ export function Anuncios() {
                                   <td className="border-t border-border px-2 py-1.5"><Situacao s={j0.conjuntoStatus} /></td>
                                   <td className={td}>{j0.conjuntoOrc != null ? brl(j0.conjuntoOrc) : '—'}</td>
                                   <Metricas s={cj.soma} tipo={j0.resultadoTipo} />
-                                  <td className={td} /><td className={td} />
+                                  <ColunasCrm f={cj.funil} gasto={cj.soma.gasto} />
                                 </tr>
                                 {abj && [...cj.linhas].sort((a, b) => b.gasto - a.gasto).map(a => {
-                                  const crm = a.codigo ? d.porCodigo.get(a.codigo) : undefined
+                                  const fa = d.porAd.get(a.adId) ?? FUNIL0
                                   return (
                                     <tr key={a.adId}>
                                       <th scope="row" className="border-t border-border py-1.5 pl-14 pr-2 text-left text-body font-normal text-ink-muted">
@@ -325,8 +404,7 @@ export function Anuncios() {
                                       <td className="border-t border-border px-2 py-1.5"><Situacao s={a.anuncioStatus} /></td>
                                       <td className={td}>—</td>
                                       <Metricas s={a} tipo={a.resultadoTipo} />
-                                      <td className={td} title="Todos os contatos com esse código no período (vários anúncios podem usar o mesmo código)">{crm ? n(crm.leads) : '—'}</td>
-                                      <td className={td}>{crm ? n(crm.orcamentos) : '—'}</td>
+                                      <ColunasCrm f={fa} gasto={a.gasto} />
                                     </tr>
                                   )
                                 })}
@@ -341,8 +419,10 @@ export function Anuncios() {
               </div>
             )}
             <p className="mt-3 text-micro text-ink-faint">
-              Contatos e orçamentos ligam pelo código &amp;NN do nome do anúncio — o mesmo código pode estar em mais de um anúncio, então o número é do código, não do anúncio.
-              Situação e orçamento vêm do Gerenciador na hora da última carga.
+              No CRM: o contato é ligado ao anúncio exato pela conversa da Ana (ela guarda de qual anúncio o cliente veio).
+              Qualificado = a Ana passou ao vendedor, ou o vendedor marcou avanço (lead quente, follow-up, agendamento, orçamento), ou virou orçamento — e não foi marcado “não fabricamos”/“outro assunto”.
+              Vendas = pedidos nascidos dos orçamentos desses contatos (venda costuma demorar: períodos curtos quase sempre mostram 0).
+              Situação e orçamento/dia vêm do Gerenciador na última carga.
             </p>
           </Card>
 
