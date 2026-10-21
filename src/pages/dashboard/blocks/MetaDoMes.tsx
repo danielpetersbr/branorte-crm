@@ -13,21 +13,23 @@ import { brl, brlFull, n, pct } from '../ui/format'
  * nenhum dos 11.583 atendimentos tem esse valor, então dava R$ 0 sempre.
  */
 export function MetaDoMes({ compacto = false }: {
-  /** (21/10/2026) metade da largura, ao lado de Operação agora: os 4 números ficam 2 × 2 */
+  /** (21/10/2026) coluna estreita ao lado de Operação agora: os 4 números ficam 2 × 2. Entre xl e 2xl tem altura
+   *  natural (o ranking "Quem está entregando" vem logo abaixo e é ele que estica); a partir de 2xl os três ficam na
+   *  mesma linha e a meta estica junto (2xl:h-full). */
   compacto?: boolean
 } = {}) {
   const { data: v, isLoading, dataUpdatedAt } = useVendasReais()
 
   if (isLoading) {
     return (
-      <Card className={compacto ? 'h-full' : ''}>
+      <Card>
         <div className="h-[132px] animate-pulse rounded-lg bg-surface-2" />
       </Card>
     )
   }
   if (!v) {
     return (
-      <Card className={compacto ? 'h-full' : ''}>
+      <Card>
         <p className="text-body text-ink-faint">Meta do mês indisponível — não deu para falar com o Controle.</p>
       </Card>
     )
@@ -70,7 +72,7 @@ export function MetaDoMes({ compacto = false }: {
   const lidoAs = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null
 
   return (
-    <Card className={compacto ? 'h-full' : ''}>
+    <Card className={compacto ? '2xl:h-full' : ''}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-title text-ink">Meta do mês</h3>

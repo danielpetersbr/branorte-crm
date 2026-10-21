@@ -97,7 +97,7 @@ export function Tendencia({
   const vazio = dados.length === 0 || dados.every(d => d.leads === 0 && d.qualificados === 0 && d.propostas === 0 && d.ligacoes === 0)
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader
         title="Evolução diária"
         subtitle="Quantidade por dia. Clique numa série para mostrar ou esconder."

@@ -185,13 +185,29 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── 1. Bato a meta? E como está a operação agora? ────────────────
+      {/* ── 1. Bato a meta? Quem está entregando? E como está a operação agora? ──
           (21/10/2026, Daniel: "diminuir a meta, puxar pra esquerda, e onde eu circulei os atendimentos em aberto…")
-          A meta fica com a metade da esquerda; a direita é Operação agora (etiquetas, follow up, lead quente,
-          anúncio e ligações). Abaixo de xl as duas empilham. */}
+          A meta fica com a coluna da esquerda; a direita é Operação agora (etiquetas, follow up, lead quente,
+          anúncio e ligações). Abaixo de xl as duas empilham.
+          (21/10/2026, Daniel: "coloca aquele gráfico de quem está entregando ao lado da meta do mês, ou junto do quadrado")
+          O top 5 do mês (era a seção 5, no fim da aba) sobe pra cá. A partir de 2xl (1536 px) fica LADO A LADO: meta, ranking
+          e Operação agora na mesma linha (3 + 3 + 6) — o `2xl:contents` desfaz a coluna da esquerda e os dois viram itens da
+          grade. Entre xl e 2xl três colunas apertariam o painel: o ranking fica embaixo da meta, na mesma coluna. */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        <div className="xl:col-span-5"><MetaDoMes compacto /></div>
-        <div className="xl:col-span-7"><OperacaoAgora /></div>
+        <div className="flex flex-col gap-5 xl:col-span-5 2xl:contents">
+          <div className="2xl:col-span-3"><MetaDoMes compacto /></div>
+          <div className="flex-1 2xl:col-span-3">
+            {vendasReaisPendente ? <div className="h-[220px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando ranking da equipe" /> : vendasReais === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O ranking está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <TopEquipe
+              compacto
+              corrida={vendasReais?.corrida}
+              metaVendedor={vendasReais?.metaVendedor ?? 0}
+              totalMes={vendasReais?.vendidoMes}
+              degradado={vendasReais?.fonte === 'mirror-fallback'}
+              onVerTodos={() => ir('equipe')}
+            />}
+          </div>
+        </div>
+        <div className="xl:col-span-7 2xl:col-span-6"><OperacaoAgora /></div>
       </div>
 
       {/* Aviso falado da troca de período: o esmaecido é só visual. Sempre montado
@@ -302,10 +318,11 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
       </section>
 
       {/* ── 3. Onde trava? ──────────────────────────────────────────────
-          (21/10/2026, Daniel: "tinha um outro ali que era pra manter junto") O funil do período e os atendimentos finalizados
-          ficam LADO A LADO: quem entrou e qualificou, e como os atendimentos terminaram. A evolução diária desce pra linha de
-          baixo, com a largura toda. Entrou / Engajou / Qualificou vêm de dashboard_funil_union, a mesma conta do card Qualificados. */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          (21/10/2026, Daniel: "eu quero os três, um do ladinho do outro") Funil do período, atendimentos finalizados e evolução
+          diária na MESMA linha a partir de 2xl (1536 px). Entre xl e 2xl os três apertariam demais o gráfico: o funil e os
+          finalizados ficam lado a lado e a evolução ocupa a linha de baixo inteira. Abaixo de xl, empilham.
+          Entrou / Engajou / Qualificou vêm de dashboard_funil_union, a mesma conta do card Qualificados. */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">
         <div className={esmaece(funilBlocoPendente || funilUnionVelho)} aria-busy={funilBlocoPendente || funilUnionVelho}>
           {funilBlocoPendente ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando funil do período" /> : orcamentosReais === undefined || vendas === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O funil está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <FunilResumo
             funil={data.funil}
@@ -318,25 +335,19 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
           />}
         </div>
         <FinalizadosPorMotivo />
+        <div className="xl:col-span-2 2xl:col-span-1">
+          <Tendencia
+            leadsPorDia={data.leadsPorDia}
+            orcamentosPorDia={extra?.orcamentos_por_dia}
+          />
+        </div>
       </div>
-      <Tendencia
-        leadsPorDia={data.leadsPorDia}
-        orcamentosPorDia={extra?.orcamentos_por_dia}
-      />
 
       {/* ── 4. O que faço hoje? ─────────────────────────────────────── */}
       <div className={esmaece(decisoesPendentes)} aria-busy={decisoesPendentes}>
         {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} vendedoresComProposta={vendedoresComProposta} onIr={ir} />}
       </div>
 
-      {/* ── 5. Quem está entregando? ────────────────────────────────── */}
-      {vendasReaisPendente ? <div className="h-[220px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando ranking da equipe" /> : vendasReais === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O ranking está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <TopEquipe
-        corrida={vendasReais?.corrida}
-        metaVendedor={vendasReais?.metaVendedor ?? 0}
-        totalMes={vendasReais?.vendidoMes}
-        degradado={vendasReais?.fonte === 'mirror-fallback'}
-        onVerTodos={() => ir('equipe')}
-      />}
 
       {drill && <DrillModal kind={drill} preset={preset} onClose={() => setDrill(null)} />}
     </div>
