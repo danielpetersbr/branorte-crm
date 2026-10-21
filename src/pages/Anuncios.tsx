@@ -142,7 +142,7 @@ function useDados(p: Periodo) {
   const { from, to } = intervalo(p)
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
-    queryKey: ['pagina-anuncios-v4', p_from, p_to],
+    queryKey: ['pagina-anuncios-v5', p_from, p_to],
     queryFn: async () => {
       const [meta, diario, plat, crm, google, palavras, termos, atual, pedSemOrc] = await Promise.all([
         supabase.rpc('anuncios_meta', { p_from, p_to }),
@@ -190,6 +190,8 @@ function useDados(p: Periodo) {
       const horaCarga = (pl: string) => txt(atualL.find(r => r.plataforma === pl)?.atualizado_em)
       return {
         metaLinhas, dias, porAd, semAnuncioMeta: semAnuncio('Meta'), porLp, vagaSoma, siteOrigem, outros: canal('Outros'),
+        // funil por campanha do Google: código do clique que o site põe na mensagem (desde 21/10)
+        porGoogleCamp: new Map<string, Funil>(crmL.filter(f => f.tipo === 'google_campanha').map(f => [String(f.chave), lerFunil(f)])),
         horaMeta: horaCarga('Meta'), horaGoogle: horaCarga('Google'),
         pedidosSemOrc: pedSemOrc.error ? [] : linhas(pedSemOrc.data),
         meta: {
@@ -311,7 +313,7 @@ function FunilCanal({ nome, cor, f, gasto, nota }: { nome: string; cor: string; 
                 </div>
               ) : <span className="flex h-full items-center px-1.5 text-[11px] text-ink-faint">0</span>}
             </div>
-            <span className="truncate whitespace-nowrap text-right tabular-nums text-ink-faint">{i > 0 && f.contatos ? pct(div(100 * e.v, f.contatos), 0) : ''}{e.extra ? ` · ${e.extra}` : ''}</span>
+            <span className="truncate whitespace-nowrap text-right tabular-nums text-ink-faint">{[i > 0 && f.contatos ? pct(div(100 * e.v, f.contatos), 0) : '', e.extra ?? ''].filter(Boolean).join(' · ')}</span>
           </div>
         ))}
       </div>
@@ -498,9 +500,9 @@ export function Anuncios() {
                 {d.outros.contatos > 0 && <FunilCanal nome="Outros (orgânico, LP, indicação…)" cor={CHART.s5} f={d.outros} gasto={null} />}
               </div>
             </Card>
-            <Card className="xl:col-span-7">
+            <Card className="flex flex-col xl:col-span-7">
               <CardHeader title="Dia a dia" subtitle="Gasto de cada plataforma (barras) e contatos que chegaram no CRM (linhas)." />
-              <div className="h-80 2xl:h-96">
+              <div className="min-h-80 flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={d.dias.map(x => ({ ...x, rotulo: x.dia.slice(8, 10) + '/' + x.dia.slice(5, 7) }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
                     <CartesianGrid stroke={CHART.grid} vertical={false} />
@@ -694,18 +696,17 @@ export function Anuncios() {
           )}
 
           {/* Google */}
-          <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-12">
-          <Card className="2xl:col-span-7">
-            <CardHeader title="Google: campanha → grupo de anúncios" subtitle="Gasto, cliques e conversões da conta BRANORTE-ADS no período." />
+          <Card>
+            <CardHeader title="Google: campanha → grupo de anúncios" subtitle="Gasto, cliques e conversões da conta BRANORTE-ADS no período. No CRM: contatos ligados à campanha pelo código do clique que o site põe na mensagem do WhatsApp (começa em 21/10)." />
             {!googleLigado ? (
               <p className="text-body text-ink-faint">Aparece assim que o script do CRM rodar na conta do Google Ads.</p>
             ) : (
-              <TabelaGoogle linhas={d.google.linhas} abertos={abertos} alternar={alternar} />
+              <TabelaGoogle linhas={d.google.linhas} abertos={abertos} alternar={alternar} porCamp={d.porGoogleCamp} />
             )}
           </Card>
 
           {googleLigado && (d.google.palavras.length > 0 || d.google.termos.length > 0) && (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:col-span-5 2xl:grid-cols-1">
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <Card>
                 <CardHeader title="Palavras-chave (30 dias)" subtitle="As que mais gastaram." />
                 <ListaGoogle itens={d.google.palavras.map(p => ({ k: `${p.palavra}|${p.grupo}|${p.correspondencia}`, nome: String(p.palavra), extra: `${String(p.correspondencia ?? '').toLowerCase()} · ${String(p.grupo ?? '')}`, cliques: num(p.cliques), gasto: num(p.gasto), conv: num(p.conversoes) }))} />
@@ -716,14 +717,22 @@ export function Anuncios() {
               </Card>
             </div>
           )}
-          </div>
         </div>
       )}
     </div>
   )
 }
 
-function TabelaGoogle({ linhas: ls, abertos, alternar }: { linhas: Record<string, unknown>[]; abertos: Set<string>; alternar: (k: string) => void }) {
+function TabelaGoogle({ linhas: ls, abertos, alternar, porCamp }: { linhas: Record<string, unknown>[]; abertos: Set<string>; alternar: (k: string) => void; porCamp: Map<string, Funil> }) {
+  const crm = (f: Funil | undefined, gasto: number) => (
+    <>
+      <td className={`${td} border-l`}>{f?.contatos ? n(f.contatos) : '—'}</td>
+      <td className={td}>{f?.contatos ? <>{n(f.qualificados)} <span className="text-micro text-ink-faint">{pct(div(100 * f.qualificados, f.contatos), 0)}</span></> : '—'}</td>
+      <td className={`${td} font-medium text-ink`}>{f?.qualificados && gasto > 0 ? cent(div(gasto, f.qualificados)) : '—'}</td>
+      <td className={td}>{f?.orcamentos ? <>{n(f.orcamentos)} <span className="text-micro text-ink-faint">{brl(f.rsOrcado)}</span></> : (f?.contatos ? '0' : '—')}</td>
+      <td className={td}>{f?.vendas ? <span className="font-semibold text-success">{n(f.vendas)} · {brl(f.rsVendido)}</span> : (f?.contatos ? '0' : '—')}</td>
+    </>
+  )
   const camps = ls.filter(l => l.nivel === 'campanha').sort((a, b) => num(b.gasto) - num(a.gasto))
   const grupos = ls.filter(l => l.nivel === 'grupo')
   const met = (l: Record<string, unknown>) => {
@@ -738,11 +747,15 @@ function TabelaGoogle({ linhas: ls, abertos, alternar }: { linhas: Record<string
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] border-separate border-spacing-0">
+      <table className="w-full min-w-[1380px] border-separate border-spacing-0">
         <thead>
           <tr>
-            {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Impressões', 'Cliques', 'CTR', 'CPC', 'Conversões', 'Custo/conversão'].map((h, i) => (
-              <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'}`}>{h}</th>
+            <th colSpan={10} />
+            <th colSpan={5} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">No CRM (contatos que chegaram no período)</th>
+          </tr>
+          <tr>
+            {['Nome', 'Situação', 'Orçamento/dia', 'Gasto', 'Impressões', 'Cliques', 'CTR', 'CPC', 'Conversões', 'Custo/conversão', 'Contatos', 'Qualificados', 'Custo/qualif.', 'Orçamentos', 'Vendas'].map((h, i) => (
+              <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'} ${i === 10 ? 'border-l border-border' : ''}`}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -759,6 +772,7 @@ function TabelaGoogle({ linhas: ls, abertos, alternar }: { linhas: Record<string
                   <td className="border-t border-border px-2 py-1.5"><Situacao s={txt(c.campanha_status)} /></td>
                   <td className={td}>{c.orcamento_dia != null ? brl(num(c.orcamento_dia)) : '—'}</td>
                   {met(c)}
+                  {crm(porCamp.get(String(c.campanha)), num(c.gasto))}
                 </tr>
                 {ab && gs.map(g => (
                   <tr key={k + String(g.grupo)}>
@@ -766,6 +780,7 @@ function TabelaGoogle({ linhas: ls, abertos, alternar }: { linhas: Record<string
                     <td className="border-t border-border px-2 py-1.5"><Situacao s={txt(g.grupo_status)} /></td>
                     <td className={td}>—</td>
                     {met(g)}
+                    <td className={`${td} border-l`} colSpan={5} />
                   </tr>
                 ))}
               </Fragment>
