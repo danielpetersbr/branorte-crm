@@ -70,6 +70,14 @@ const ROTULOS: Record<string, string> = {
   lp_plastico: 'LP Plástico',
   whatsapp_empresa: 'WhatsApp da empresa',
   link_rota: 'Link de atendimento',
+  // (21/10/2026) origens que o botão de WhatsApp do site passou a dizer (auditoria.origem_lead_ana)
+  tiktok: 'TikTok',
+  linkedin: 'LinkedIn',
+  chatgpt_ia: 'ChatGPT/IA',
+  email: 'E-mail',
+  link_whatsapp: 'Link no WhatsApp',
+  outros_buscadores: 'Outros buscadores',
+  outros_sites: 'Outros sites',
 }
 
 // "Não lembra" e "Não informado" são respostas do form, mas dizem a mesma coisa
@@ -131,6 +139,16 @@ const RASTREADA_PARA_CHAVE: Record<string, string> = {
   'lp compacta 03': 'lp_compacta_03',
   'lp compacta 3': 'lp_compacta_03',
   'lp plastico': 'lp_plastico',
+  tiktok: 'tiktok',
+  linkedin: 'linkedin',
+  'chatgpt/ia': 'chatgpt_ia',
+  chatgpt: 'chatgpt_ia',
+  'e-mail': 'email',
+  email: 'email',
+  // link do site mandado no WhatsApp: é como ele achou a empresa, não a porta (≠ whatsapp_empresa)
+  'link no whatsapp': 'link_whatsapp',
+  'outros buscadores': 'outros_buscadores',
+  'outros sites': 'outros_sites',
   'whatsapp 1144': 'whatsapp_empresa',
   'whatsapp 4502': 'whatsapp_empresa',
   'whatsapp ana': 'whatsapp_empresa',

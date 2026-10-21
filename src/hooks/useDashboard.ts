@@ -134,6 +134,8 @@ function normOrigem(v: string | null | undefined): string {
   if (/^instagram/i.test(s)) return 'Instagram'
   if (/whatsapp.*4502|wa.*4502/i.test(s)) return 'WhatsApp 4502'
   if (/whatsapp.*1144|wa.*1144/i.test(s)) return 'WhatsApp 1144'
+  // (21/10/2026) origem do botão do site: o link do site foi mandado no WhatsApp — não é a porta WhatsApp
+  if (/^link no whatsapp$/i.test(s)) return 'Link no WhatsApp'
   if (/whatsapp/i.test(s)) return 'WhatsApp'
   return s
 }
