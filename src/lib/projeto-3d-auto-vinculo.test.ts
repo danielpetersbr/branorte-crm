@@ -40,12 +40,25 @@ test('conjunto confirmado vira duas linhas reais com quantidade e origem preserv
   const box = catalogo(659, 'Caixa 3.900 kg', { categoria:'CAIXA', capacidade_litros:6000, capacidade_kg:3900, valor:16645 })
   const bagger = catalogo(78, 'ENSACADEIRA SEMI AUTOMATICA', { categoria:'ENSACADEIRA',valor:26400 })
   const result = integration!.autoVincularProjeto3D([original], [box, bagger], vincular)
-  assert.deepEqual(result.map(row => [row.nome,row.catalogo_id,row.qtd,row.origem_projeto3d.sequence]), [['Caixa 3.900 kg',659,3,4],['ENSACADEIRA SEMI AUTOMATICA',78,3,4]])
+  assert.deepEqual(result.map(row => [row.nome,row.catalogo_id,row.qtd,row.origem_projeto3d.sequence]), [['Caixa de Ração 3.900 kg',659,3,4],['ENSACADEIRA SEMI AUTOMATICA',78,3,4]])
   assert.equal(new Set(result.map(row => row.uid)).size,2)
   assert.ok(result.every(row => row.origem_projeto3d.sourceId === 'conjunto' && row.origem_projeto3d.sourceName === original.nome))
   assert.equal(result.reduce((sum,row)=>sum+row.valor*row.qtd,0),129135)
   assert.deepEqual(integration!.autoVincularProjeto3D(result, [box,bagger],vincular),result)
   assert.equal(original.origem_projeto3d.resolution,'pendente')
+})
+
+test('nome corrigido no orçamento é preservado sem trocar o cadastro, preço ou origem da caixa', () => {
+  const original = {
+    ...linha('caixa-conferida', 'Caixa 3.900 kg', 9, {
+      catalogId: 'branorte_caixa_6m3_ensacadeira_sm_chupim', resolution: 'vinculado', componentCatalogId: 659,
+    }),
+    nome_custom: 'Caixa de Ração 3.900 kg', catalogo_id: 659, valor: 16645,
+  }
+  const result = integration!.autoVincularProjeto3D([original], [], () => { throw new Error('não deve refazer um vínculo já conferido') })
+  assert.equal(result[0], original)
+  assert.equal(result[0].nome_custom, 'Caixa de Ração 3.900 kg')
+  assert.equal(result[0].valor, 16645)
 })
 
 test('falha de preço de um componente mantém o conjunto inteiro pendente sem cobrança parcial', () => {

@@ -60,7 +60,8 @@ export function autoVincularProjeto3DComDiagnostico<T extends LinhaAutoVinculo>(
         // Price every component before replacing the source row. A missing
         // price/motor leaves the entire assembly pending, without a partial bill.
         const vinculadas = componentes.map(item => vincular({
-          ...linha, uid: `${linha.uid}:componente:${item.id}`, nome: item.nome_curto,
+          ...linha, uid: `${linha.uid}:componente:${item.id}`,
+          nome: item.categoria === 'CAIXA' ? item.nome_curto.replace(/^CAIXA\b/i, 'Caixa de Ração') : item.nome_curto,
           origem_projeto3d: { ...origem, componentCatalogId: item.id },
         }, item))
         registrar({ motivo: 'vinculado', mensagem: 'Componentes do conjunto vinculados aos cadastros atuais.' })
