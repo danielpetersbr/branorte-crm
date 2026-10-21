@@ -12,19 +12,22 @@ import { brl, brlFull, n, pct } from '../ui/format'
  * useDashboard NÃO é usado aqui: ele lê status_real procurando "vendido" e
  * nenhum dos 11.583 atendimentos tem esse valor, então dava R$ 0 sempre.
  */
-export function MetaDoMes() {
+export function MetaDoMes({ compacto = false }: {
+  /** (21/10/2026) metade da largura, ao lado de Operação agora: os 4 números ficam 2 × 2 */
+  compacto?: boolean
+} = {}) {
   const { data: v, isLoading, dataUpdatedAt } = useVendasReais()
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className={compacto ? 'h-full' : ''}>
         <div className="h-[132px] animate-pulse rounded-lg bg-surface-2" />
       </Card>
     )
   }
   if (!v) {
     return (
-      <Card>
+      <Card className={compacto ? 'h-full' : ''}>
         <p className="text-body text-ink-faint">Meta do mês indisponível — não deu para falar com o Controle.</p>
       </Card>
     )
@@ -67,7 +70,7 @@ export function MetaDoMes() {
   const lidoAs = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null
 
   return (
-    <Card>
+    <Card className={compacto ? 'h-full' : ''}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-title text-ink">Meta do mês</h3>
@@ -117,7 +120,7 @@ export function MetaDoMes() {
         {cedo ? 'Cedo para projetar' : situacao}. Vendido {brlFull(vendido)} de {brlFull(meta)}, {pct(pctMeta, 0)} da meta.
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-5 lg:grid-cols-4">
+      <div className={`mt-4 grid grid-cols-2 gap-3 border-t border-border pt-5 ${compacto ? 'gap-y-5' : 'lg:grid-cols-4'}`}>
         <div>
           <div className="text-label text-ink-faint">Falta</div>
           <div className="text-kpi-sm tabular-nums text-ink">{brl(falta)}</div>
