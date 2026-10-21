@@ -171,6 +171,8 @@ export interface WaMensagem {
   duracao_seg: number | null
   media_url: string | null
   data_msg: string | null
+  /** Só na visão do espelho: 'espelho' = conversa fora do funil, texto sem mídia. */
+  origem?: 'funil' | 'espelho'
 }
 
 /** Quantas mensagens o drawer carrega de cara (cobre ~87% dos chats por inteiro). */
@@ -202,10 +204,12 @@ export function useWaMensagens(
   habilitado = true,
   limite = MSGS_PAGINA_INICIAL,
   intervaloMs = 30_000,
+  // 'wa_chat_messages_espelho_todas' = funil + texto das conversas fora do funil (só o admin lê o espelho)
+  tabela: 'wa_chat_messages' | 'wa_chat_messages_espelho_todas' = 'wa_chat_messages',
 ) {
   const userId = useAuth().session?.user.id
   return useQuery<WaConversa>({
-    queryKey: ['wa-mensagens', vendedor, chatId, limite, userId],
+    queryKey: ['wa-mensagens', vendedor, chatId, limite, userId, tabela],
     enabled: habilitado && !!vendedor && !!chatId && !!userId,
     refetchInterval: intervaloMs,
     // mantém a página anterior visível durante o refetch/expansão (não pisca vazio)
@@ -213,10 +217,12 @@ export function useWaMensagens(
     queryFn: async ({ signal }) => {
       // Busca só a janela pedida e mais uma sonda, mesmo quando ela ultrapassa
       // max_rows. Uma resposta truncada não significa fim do histórico.
+      const colunas: string = 'msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg, transcricao, transcricao_em'
+        + (tabela === 'wa_chat_messages' ? '' : ', origem')
       const data = await todasAsLinhas<WaMensagem>(async (de, ate) => {
         const { data, error, count } = await supabase
-          .from('wa_chat_messages')
-          .select('msg_id, from_me, tipo, body, duracao_seg, media_url, data_msg, transcricao, transcricao_em', { count: 'exact' })
+          .from(tabela)
+          .select(colunas, { count: 'exact' })
           .eq('vendedor_nome', vendedor!)
           .eq('chat_id', chatId!)
           .order('data_msg', { ascending: false, nullsFirst: false })
@@ -225,7 +231,7 @@ export function useWaMensagens(
           .range(de, Math.min(ate, limite))
           .abortSignal(signal)
         if (error) throw error
-        return { linhas: data ?? [], total: count == null ? null : Math.min(count, limite + 1) }
+        return { linhas: (data ?? []) as unknown as WaMensagem[], total: count == null ? null : Math.min(count, limite + 1) }
       }, Math.min(5000, limite + 1))
       // dedup + janela + ordem cronológica ficam numa função pura (testável em wa-funil.ts)
       return montarConversa<WaMensagem>(data, limite)
