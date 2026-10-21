@@ -1,27 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useDashboard, type DashboardData } from '@/hooks/useDashboard'
-import { useDashboardEtiquetas } from '@/hooks/useDashboardEtiquetas'
 import { useDashboardExtra } from '@/hooks/useDashboardExtra'
-import { useDashboardVendedorFunil } from '@/hooks/useDashboardVendedorFunil'
 import { useDashboardOrcamentos, useDashboardVendas } from '@/hooks/useDashboardOrcamentos'
 import { useOrcamentosResumo } from '@/hooks/useOrcamentosResumo'
-import { usePropostasStatus } from '@/hooks/usePropostasStatus'
-import { useVendedorCobertura, type VendedorCobertura } from '@/hooks/useVendedorCobertura'
 import { useFunilUnion } from '@/hooks/useFunilUnion'
 import { useVendasReais } from '@/hooks/useVendasReais'
 import { useJanela } from './DashboardFilterContext'
 import { irPara, useDashboardTab, type TabId } from './tabs'
 import { Metric } from './ui/Metric'
-import { brl, n, pct, primeiroNome } from './ui/format'
+import { brl, n, pct } from './ui/format'
 import { MetaDoMes } from './blocks/MetaDoMes'
 import { OperacaoAgora } from './blocks/OperacaoAgora'
 import { FunilResumo } from './blocks/FunilResumo'
 import { FinalizadosPorMotivo } from './blocks/FinalizadosPorMotivo'
 import { Tendencia } from './blocks/Tendencia'
-import { AcoesPrioritarias, type PositivoDestaques } from './blocks/AcoesPrioritarias'
 import { TopEquipe } from './blocks/TopEquipe'
 import { DrillModal } from './blocks/DrillModal'
-import { naoEhVendedor } from '@/lib/vendedores-fora-do-ranking'
 
 
 function Esqueleto() {
@@ -43,9 +37,10 @@ function Esqueleto() {
  * gerente pergunta:
  *   1. bato a meta?          → Meta do mês
  *   2. quanto entrou e saiu? → os 5 números do período + atendimentos de HOJE
- *   3. onde trava?           → funil + evolução
- *   4. o que faço hoje?      → decisões do gerente (reforçar | cobrar)
- *   5. quem tá entregando?   → top 5
+ *   3. onde trava?           → funil + finalizados + evolução
+ *   (o "4. o que faço hoje? → decisões do gerente" saiu em 21/10/2026, a pedido do Daniel; o bloco
+ *    continua em blocks/AcoesPrioritarias.tsx, sem uso)
+ *   5. quem tá entregando?   → top 5 (subiu pra junto da meta)
  *
  * O que SAIU daqui: propostas no builder e heatmap (→ Equipe), atendimentos
  * abertos e em negociação (→ Funil), os três mapas (→ Geografia), placar de
@@ -82,16 +77,14 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   const [, setTab] = useDashboardTab()
   const [drill, setDrill] = useState<null | 'orcamentos' | 'vendidos' | 'valor'>(null)
 
-  const { data: etq, isPending: etqPendente, isPlaceholderData: etqVelho } = useDashboardEtiquetas(preset)
   const { data: extra, isPending: extraPendente } = useDashboardExtra()
-  const { data: vendFunil, isPending: vendFunilPendente, isPlaceholderData: vendFunilVelho } = useDashboardVendedorFunil(preset)
   const { data: funilUnion, isPending: funilUnionPendente, isPlaceholderData: funilUnionVelho } = useFunilUnion(preset)
   const { data: orcamentosReais, isPending: orcamentosReaisPendente } = useDashboardOrcamentos(preset)
   const { data: orc, isPending: orcPendente, isPlaceholderData: orcVelho } = useOrcamentosResumo(preset)
   const { data: vendas, isPending: vendasPendente } = useDashboardVendas(preset)
   const { data: vendasReais, isPending: vendasReaisPendente } = useVendasReais()
-  const { data: propStatus, isPending: propStatusPendente, isPlaceholderData: propStatusVelho } = usePropostasStatus(preset)
-  const { data: cobertura, isPending: coberturaPendente, isPlaceholderData: coberturaVelho } = useVendedorCobertura(preset)
+  // (21/10/2026) etiquetas, funil por vendedor, status das propostas e cobertura eram só das Decisões do gerente,
+  // que saíram da aba: não são mais buscados aqui (as outras abas buscam o que usam).
 
   // TROCA DE PERÍODO (29/09/2026). O useDashboard troca de preset na hora (select
   // sobre o cache), mas os hooks por período abaixo têm key própria: na troca eles
@@ -105,69 +98,9 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   // o bloco do funil espera também a RPC da união: sem ela o Qualificou nasceria pela regra antiga e pularia ao chegar
   const funilBlocoPendente = funilPendente || funilUnionPendente
   const numerosPendentes = funilPendente || funilUnionPendente || orcPendente || funilUnionVelho || orcVelho
-  const decisoesCarregando = etqPendente || vendFunilPendente || funilUnionPendente || orcPendente || propStatusPendente || coberturaPendente
-  const decisoesPendentes = decisoesCarregando || etqVelho || vendFunilVelho || funilUnionVelho || orcVelho || propStatusVelho || coberturaVelho
-  const decisoesSemDados = [etq, vendFunil, funilUnion, orc, propStatus, cobertura].some(value => value === undefined)
   const esmaece = (pendente: boolean) => `transition-opacity duration-200 ${pendente ? 'opacity-50' : ''}`
 
   const ir = (tab: TabId, anchor?: string) => irPara(setTab, tab, anchor)
-
-  /**
-   * Metade POSITIVA das decisões do gerente — o "reforçar / dobrar".
-   *
-   * Perdida inteira no refactor do Dashboard de 3.696 linhas: o
-   * `DecisoesGerente` tinha as duas colunas e só a vermelha sobreviveu, virando
-   * `AcoesPrioritarias`. Nenhuma aba mostrava mais quem lidera em propostas,
-   * quem cobre melhor com etiqueta, nem o R$ em negociação quente.
-   *
-   * Contas idênticas às do original (linhas 423-441 do arquivo antigo).
-   */
-  const positivo = useMemo<PositivoDestaques>(() => {
-    // porVendedor já vem ordenado por R$ desc no hook — [0] é o topo.
-    const topOrc = (orc?.porVendedor ?? []).filter(v => v.vendedor !== '—' && v.brl > 0)[0] ?? null
-
-    // Merge por 1º nome mantendo o MAIOR bucket: quando o responsável tem grafia
-    // dupla ("Igor" e "IGOR" viram 2 linhas na RPC de cobertura), um Map simples
-    // ficava com a ÚLTIMA — a menor — e o vendedor aparecia com 3 de 392.
-    const porNome = new Map<string, VendedorCobertura>()
-    for (const r of cobertura ?? []) {
-      // Fora: o dono, a ANA (é a IA de atendimento, não vendedor) e quem não tem o
-      // WhatsApp lido — a % dele não mede etiquetagem, mede falta de dado.
-      if (naoEhVendedor(r.vendedor) || r.wa_capturado === false) continue
-      const k = primeiroNome(r.vendedor)
-      const cur = porNome.get(k)
-      if (!cur || (r.total_passado ?? 0) > (cur.total_passado ?? 0)) porNome.set(k, r)
-    }
-    const coberturaTop = [...porNome.values()]
-      // Abaixo de 50 clientes passados, o % é ruído: 4 de 5 vira 80% e ganha de
-      // quem etiquetou 300 de 500.
-      .filter(r => (r.total_passado ?? 0) >= 50)
-      .map(r => ({
-        nome: r.vendedor,
-        pct: r.total_passado > 0 ? Math.round((r.com_etiqueta / r.total_passado) * 100) : 0,
-        com: r.com_etiqueta,
-        total: r.total_passado,
-      }))
-      .sort((a, b) => b.pct - a.pct)[0] ?? null
-
-    return {
-      topOrc,
-      cobertura: coberturaTop,
-      rNegoc: propStatus?.abertoQuente.brl ?? 0,
-      rMontado: orc?.valorTotalBRL ?? 0,
-      qualificou: funilUnion?.qualificou ?? data?.kpiQualificados.valor ?? 0,
-      // Mesmo número do card "Clientes com proposta". `orc.geradas` deduplica por
-      // vendedor+cliente: cliente cotado por 2 vendedores contava 2× (134 × 131 em 19/10).
-      clientesComProposta: orcamentosReais ?? orc?.geradas ?? 0,
-    }
-  }, [orc, cobertura, propStatus, funilUnion, data?.kpiQualificados.valor, orcamentosReais])
-
-  const vendedoresComProposta = useMemo(
-    () => new Set((orc?.porVendedor ?? [])
-      .filter(v => v.propostasN > 0)
-      .map(v => (v.vendedor || '').trim().split(/\s+/)[0].toUpperCase())),
-    [orc],
-  )
 
   const qualificados = funilUnion?.qualificou ?? data.kpiQualificados.valor
   // Divide pelo universo da MESMA RPC: dividir pelo kpiTotal misturava a contagem
@@ -186,7 +119,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
   return (
     // (21/10/2026, Daniel: "não quero precisar rolar, quero que ao abrir a visão geral apareça tudo certinho já") A partir
     // de 2xl a aba cabe numa tela de 1920×1080 sem rolar: espaços de 16 px, cartões com padding menor, os 6 números em
-    // tile baixo e Decisões do gerente como 4ª coluna da última faixa. Notebook e celular continuam como eram.
+    // tile baixo e a última faixa com os 3 gráficos. Notebook e celular continuam como eram.
     <div className="flex flex-col gap-5 2xl:gap-4">
       {/* ── 1. Bato a meta? Quem está entregando? E como está a operação agora? ──
           (21/10/2026, Daniel: "diminuir a meta, puxar pra esquerda, e onde eu circulei os atendimentos em aberto…")
@@ -216,7 +149,7 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
       {/* Aviso falado da troca de período: o esmaecido é só visual. Sempre montado
           (vazio quando não há troca) pra região viva existir antes da mensagem. */}
       <p className="sr-only" role="status" aria-live="polite">
-        {numerosPendentes || decisoesPendentes ? `Atualizando os números para ${periodoLabel}…` : ''}
+        {numerosPendentes ? `Atualizando os números para ${periodoLabel}…` : ''}
       </p>
 
       {/* ── 2. Os 5 números ─────────────────────────────────────────── */}
@@ -332,15 +265,14 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
         })()}
       </section>
 
-      {/* ── 3. Onde trava? E o que faço hoje? ───────────────────────────
+      {/* ── 3. Onde trava? ───────────────────────────────────────────────
           (21/10/2026, Daniel: "eu quero os três, um do ladinho do outro") Funil do período, atendimentos finalizados e evolução
           diária na MESMA linha a partir de 2xl (1536 px). Entre xl e 2xl os três apertariam demais o gráfico: o funil e os
           finalizados ficam lado a lado e a evolução ocupa a linha de baixo inteira. Abaixo de xl, empilham.
-          (21/10/2026, Daniel: "não quero precisar rolar") Decisões do gerente (era a seção 4, embaixo de tudo) vira a 4ª
-          coluna desta faixa a partir de 2xl, com rolagem própria: o wrapper é `relative` e o cartão `absolute inset-0`, então
-          ele não estica a faixa — a altura é a dos outros três. Abaixo de 2xl ocupa a largura toda, como antes.
+          (21/10/2026, Daniel: "remove esse negócio de decisões do gerente… e centraliza os três gráficos") A 4ª coluna
+          (Decisões do gerente) saiu: a partir de 2xl os três dividem a faixa inteira, um terço cada.
           Entrou / Engajou / Qualificou vêm de dashboard_funil_union, a mesma conta do card Qualificados. */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-4 2xl:gap-4">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3 2xl:gap-4">
         <div className={esmaece(funilBlocoPendente || funilUnionVelho)} aria-busy={funilBlocoPendente || funilUnionVelho}>
           {funilBlocoPendente ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando funil do período" /> : orcamentosReais === undefined || vendas === undefined ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">O funil está temporariamente indisponível. Use Atualizar dados agora para tentar novamente.</p> : <FunilResumo
             funil={data.funil}
@@ -358,9 +290,6 @@ function VisaoGeralDados({ data }: { data: DashboardData }) {
             leadsPorDia={data.leadsPorDia}
             orcamentosPorDia={extra?.orcamentos_por_dia}
           />
-        </div>
-        <div className={`xl:col-span-2 2xl:relative 2xl:col-span-1 ${esmaece(decisoesPendentes)}`} aria-busy={decisoesPendentes}>
-          {decisoesCarregando ? <div className="h-[320px] animate-pulse rounded-xl bg-surface-2" aria-label="Carregando decisões do gerente" /> : decisoesSemDados ? <p className="rounded-xl bg-surface-2 p-5 text-body text-ink-muted">As decisões do gerente estão temporariamente indisponíveis. Use Atualizar dados agora para tentar novamente.</p> : <AcoesPrioritarias denso data={data} etq={etq} vendFunil={vendFunil} positivo={positivo} vendedoresComProposta={vendedoresComProposta} onIr={ir} />}
         </div>
       </div>
 

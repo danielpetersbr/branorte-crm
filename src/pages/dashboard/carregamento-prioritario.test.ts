@@ -69,7 +69,8 @@ test('falha do snapshot não dispara consultas complementares nem apresenta núm
 
 test('snapshot disponível libera os complementos e informa espera sem apresentar vendas falsas como zero', () => {
   const result = overview({ data, isLoading: false }, { isPending: true })
-  assert.equal(result.requests, 10)
+  // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente
+  assert.equal(result.requests, 6)
   assert.match(result.html, /Leads: 39/)
   assert.match(result.html, /Vendas: Carregando/)
   assert.doesNotMatch(result.html, /Vendas: 0/)
@@ -80,7 +81,11 @@ test('dados complementares resolvidos mantêm os valores e blocos do dashboard',
   const result = overview({ data }, { data: { qtd: 2, qtdLead: 1, valor: 67000, valorLead: 10000 }, isPending: false })
   assert.match(result.html, /Vendas: 2/)
   assert.match(result.html, /Valor vendido: 67000/)
-  assert.match(result.html, /AcoesPrioritarias/)
+  // (21/10/2026, Daniel) Decisões do gerente saiu; a última faixa são os 3 gráficos
+  assert.doesNotMatch(result.html, /AcoesPrioritarias/)
+  assert.match(result.html, /FinalizadosPorMotivo/)
+  assert.match(result.html, /Tendencia/)
+  assert.match(result.html, /2xl:grid-cols-3/)
   // régua do Daniel (21/10/2026): troca de mensagens, não lead novo
   assert.match(result.html, /Atendimentos hoje: 64/)
 })
@@ -89,7 +94,7 @@ test('falha dos complementos mantém leads disponíveis e não transforma dado a
   const result = overview({ data }, { isPending: false, error: new Error('falha de rede') })
   assert.match(result.html, /Leads: 39/)
   assert.match(result.html, /Vendas: Indisponível/)
-  assert.match(result.html, /decisões do gerente estão temporariamente indisponíveis/)
+  assert.match(result.html, /O funil está temporariamente indisponível/)
   assert.doesNotMatch(result.html, /Vendas: 0/)
   assert.doesNotMatch(result.html, /TopEquipe/)
 })
@@ -103,7 +108,8 @@ test('troca de período mantém o aviso de dados anteriores enquanto os compleme
 
 test('atualização em segundo plano preserva os dados e os complementos já disponíveis', () => {
   const result = overview({ data, isLoading: false, isFetching: true }, { data: { qtd: 2, valor: 67000 }, isPending: false })
-  assert.equal(result.requests, 10)
+  // (21/10/2026) eram 10: etiquetas, funil por vendedor, status das propostas e cobertura saíram com as Decisões do gerente
+  assert.equal(result.requests, 6)
   assert.match(result.html, /Leads: 39/)
   assert.match(result.html, /Vendas: 2/)
   assert.doesNotMatch(result.html, /Carregando/)
