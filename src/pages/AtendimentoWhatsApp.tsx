@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ArrowLeft, BarChart3, Check, CheckCircle2, ChevronDown, FileText, Image as ImageIcon, Info, Loader2, Lock, MessageSquare, Mic, Music, Paperclip, Plus, Reply, Search, Send, SlidersHorizontal, Square, Tag, Upload, Users, Video, X } from 'lucide-react'
 import * as Popover from '@radix-ui/react-popover'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -22,6 +23,10 @@ import { ChatAnaContext, ChatAnaTags, ChatResolutionBadge } from '@/components/c
 import { anaTagNames, chatResolution } from '@/lib/chat-ana'
 import { ChatFollowUp, ChatReplyPreview, ChatSalesPanel } from '@/components/chat/ChatProductivity'
 import { followUpState, messageCitation, waitingTime, selectChatQueue, selectChatStatus, type ChatCitation, type ChatQueue } from '@/lib/chat-productivity'
+import { ContaWhatsAppSwitcher, EspelhoWhatsApp, useEspelhoStatus } from '@/components/chat/EspelhoWhatsApp'
+import { useEspelhoContas } from '@/hooks/useWhatsAppEspelho'
+import { CONTA_ANA, rotuloConta } from '@/lib/whatsapp-espelho'
+import { tempoRelativo } from '@/lib/wa-funil'
 
 const inputClass='w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent/30'
 const buttonClass='inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed'
@@ -78,6 +83,17 @@ export function AtendimentoWhatsApp() {
   const recoveredMedia=useChatMedia(recoveredAttachment?.path??null)
   const {data:vendors=[]}=useVendors()
   const isAdmin=chat.profile?.role==='admin'
+  // Só o admin troca de conta: os vendedores aparecem como espelho só leitura (?conta=GUSTAVO).
+  const [searchParams,setSearchParams]=useSearchParams()
+  const contaPedida=searchParams.get('conta')?.trim().toUpperCase()||CONTA_ANA
+  const contas=useEspelhoContas(isAdmin)
+  const conta=isAdmin&&contaPedida!==CONTA_ANA&&(contas.data?contas.data.some(x=>x.nome===contaPedida):true)?contaPedida:CONTA_ANA
+  const espelho=conta!==CONTA_ANA
+  const espelhoStatus=useEspelhoStatus(espelho?conta:null)
+  const trocarConta=(nome:string)=>{
+    setSelected(null);setShowInfo(false)
+    setSearchParams(atual=>{const proximo=new URLSearchParams(atual);if(nome===CONTA_ANA)proximo.delete('conta');else proximo.set('conta',nome);return proximo},{replace:true})
+  }
   const c=chat.conversation
   const blocked=chat.detail.isError||chat.history.isError
   const draftDisabled=!c||sending||uncertain||blocked||preparingRecording
@@ -236,14 +252,14 @@ export function AtendimentoWhatsApp() {
   const filterLabel=queue==='waiting'?'Aguardando':queue==='overdue'?'Atrasados':status==='open'?'Abertas':status==='resolved'?'Finalizadas':'Todas'
   return <div className="flex h-[calc(100dvh-4.25rem)] md:h-dvh min-h-[500px] flex-col bg-background text-ink">
     <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3 md:px-4">
-      <div className="flex min-w-0 items-center gap-2"><MessageSquare size={18} className="shrink-0 text-accent"/><h1 className="text-sm font-semibold"><span className="sr-only">Atendimento </span>WhatsApp</h1><span className="sr-only text-[11px] text-ink-muted sm:not-sr-only">Ana · 1144</span></div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2"><MessageSquare size={18} className="shrink-0 text-accent"/><h1 className="text-sm font-semibold"><span className="sr-only">Atendimento </span>WhatsApp</h1>{isAdmin?<ContaWhatsAppSwitcher conta={conta} contas={contas.data??[]} carregando={contas.isPending} onChange={trocarConta}/>:<span className="sr-only text-[11px] text-ink-muted sm:not-sr-only">Ana · 1144</span>}</div>
+      {espelho?<span className={cn('flex shrink-0 items-center gap-1.5 text-[11px]',espelhoStatus.erro?'text-amber-500':'text-ink-muted')} title="Lista e histórico gravados pela extensão no WhatsApp do vendedor"><span className={cn('h-1.5 w-1.5 shrink-0 rounded-full',espelhoStatus.erro?'bg-amber-500':'bg-accent')}/><span className="hidden sm:inline">{espelhoStatus.erro?'Falha ao ler o espelho':`Espelho de ${rotuloConta(conta)}${espelhoStatus.ultimaSync?` · atualizado ${tempoRelativo(espelhoStatus.ultimaSync)}`:''}`}</span><span className="sm:hidden">{espelhoStatus.erro?'Falha':espelhoStatus.ultimaSync?tempoRelativo(espelhoStatus.ultimaSync):'Espelho'}</span></span>:<div className="flex shrink-0 items-center gap-3">
         <span aria-label={connectionLabel} data-realtime-event={chat.lastEventAt??''} title={connection?`Última sincronização da VPS: ${new Date(connection.last_sync).toLocaleString('pt-BR')}`:'Sem informação da VPS'} className={cn('flex items-center gap-1.5 text-[11px]',fresh&&chat.realtimeConnected?'text-accent':'text-amber-500')}><span className={cn('h-1.5 w-1.5 shrink-0 rounded-full',fresh&&chat.realtimeConnected?'bg-accent':'bg-amber-500')}/><span className="hidden sm:inline">{connectionLabel}</span><span className="sm:hidden">{!fresh?'Verificar VPS':chat.realtimeConnected?'Conectado':'Reconectando'}</span></span>
         <button type="button" aria-label="Indicadores do atendimento" aria-expanded={showSummary} aria-controls="chat-team-summary" title={showSummary?'Ocultar indicadores':'Mostrar indicadores'} onClick={()=>setShowSummary(value=>!value)} className={cn('inline-flex h-8 items-center gap-1 rounded-md border border-border px-2 text-xs text-ink-muted hover:bg-surface-2',showSummary&&'bg-surface-2 text-ink')}><BarChart3 size={15}/><span className="sr-only sm:not-sr-only">Indicadores</span><ChevronDown size={12} className={cn('transition-transform',showSummary&&'rotate-180')}/></button>
-      </div>
+      </div>}
     </header>
-    <div id="chat-team-summary" hidden={!showSummary} className="shrink-0"><ChatTeamSummary vendor={vendor} isAdmin={isAdmin} onSelectQueue={selectQueue} onSelectUnassigned={()=>{setVendor('unassigned');selectQueue('all');setStatus('open')}}/></div>
-    <div className="flex min-h-0 flex-1">
+    {!espelho&&<div id="chat-team-summary" hidden={!showSummary} className="shrink-0"><ChatTeamSummary vendor={vendor} isAdmin={isAdmin} onSelectQueue={selectQueue} onSelectUnassigned={()=>{setVendor('unassigned');selectQueue('all');setStatus('open')}}/></div>}
+    {espelho?<EspelhoWhatsApp key={conta} vendedor={conta}/>:<div className="flex min-h-0 flex-1">
       <aside className={cn('w-full shrink-0 border-r border-border bg-surface md:w-[290px] xl:w-[320px] flex-col',selected?'hidden md:flex':'flex')}>
         <div className="shrink-0 space-y-2 border-b border-border p-3">
           <div className="flex items-center gap-2"><h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Conversas <span className="ml-1 text-xs font-normal text-ink-muted">{chat.conversations.length}{chat.list.hasNextPage?'+':''}</span></h2>
@@ -343,7 +359,7 @@ export function AtendimentoWhatsApp() {
           <div><h3 className="mb-2 flex items-center gap-2 text-xs font-medium text-ink-muted"><Lock size={13}/>Notas internas</h3><textarea aria-label="Nota interna" className={cn(inputClass,'text-xs resize-none')} maxLength={4000} rows={3} placeholder="Visível à equipe responsável. Não vai para o cliente." value={note} onChange={e=>setNote(e.target.value)}/><button className={cn(buttonClass,'mt-2 w-full text-xs')} disabled={!note.trim()||chat.action.isPending} onClick={()=>act('note',{body:note.trim()}).then(ok=>{if(ok){setNote('');toast.success('Nota interna salva.')}})}>Salvar nota</button><div className="mt-3 space-y-3">{chat.detail.data?.notes.map(n=><div key={n.id} className="rounded-lg border border-amber-500/15 bg-amber-500/5 p-3"><p className="whitespace-pre-wrap break-words text-xs">{n.body}</p><p className="mt-2 text-[10px] text-ink-faint">{n.author_name} · {fmtDay(n.created_at)} {fmtTime(n.created_at)}</p></div>)}</div></div>
         </div>
       </aside>}
-    </div>
+    </div>}
     {c&&closing?.id===c.id&&closing.identity===recordContext.current&&closing.generation===chatGeneration.current&&<ChatCloseDialog conversationId={c.id} conversationName={name} userIdentity={closing.identity} open onOpenChange={open=>{if(!open)closeDialog()}} onCloseAutoFocus={()=>{if(closing.identity===recordContext.current&&closing.generation===chatGeneration.current)closeButton.current?.focus()}} onConfirm={confirmClose}/>}
     <Dialog.Root open={showNew} onOpenChange={setShowNew}>
       <Dialog.Portal>

@@ -10,7 +10,8 @@ export function ChatAvatar({name,url,className}:{name:string;url?:string|null;cl
   const [failedUrl,setFailedUrl]=useState<string|null>(null)
   useEffect(()=>setFailedUrl(null),[url])
   const src=safeUrl(url)
-  const initials=name.split(/\s+/).filter(Boolean).slice(0,2).map(n=>n[0]).join('').toUpperCase()||'?'
+  // Array.from separa por caractere, não por unidade UTF-16: nome só de emoji não vira "�".
+  const initials=name.split(/\s+/).filter(Boolean).slice(0,2).map(n=>Array.from(n)[0]).join('').toUpperCase()||'?'
   return <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent/10 text-xs font-semibold text-accent',className)}>
     {src&&src!==failedUrl?<img key={src} src={src} alt={`Foto de ${name}`} loading="lazy" referrerPolicy="no-referrer" onError={()=>setFailedUrl(src)} className="h-full w-full object-cover"/>:initials}
   </span>
