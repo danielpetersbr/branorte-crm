@@ -241,7 +241,7 @@ function ColunasCrm({ f, gasto }: { f: Funil; gasto: number }) {
       <td className={`${td} border-l`}>{f.contatos ? n(f.contatos) : '—'}</td>
       <td className={td}>{f.contatos ? <>{n(f.qualificados)} <span className="text-micro text-ink-faint">{pct(pq, 0)}</span></> : '—'}</td>
       <td className={td}>{f.orcamentos ? <>{n(f.orcamentos)} <span className="text-micro text-ink-faint">{brl(f.rsOrcado)}</span></> : (f.contatos ? '0' : '—')}</td>
-      <td className={td}>{f.orcamentos ? cent(div(gasto, f.orcamentos)) : '—'}</td>
+      <td className={td}>{f.orcamentos && gasto > 0 ? cent(div(gasto, f.orcamentos)) : '—'}</td>
       <td className={td}>{f.vendas ? <span className="font-semibold text-success">{n(f.vendas)} · {brl(f.rsVendido)}</span> : (f.contatos ? '0' : '—')}</td>
       <td className={td} title="Clientes que já estavam no CRM e voltaram a chamar por este anúncio (não somam em contatos novos)">{f.voltaram ? n(f.voltaram) : '—'}</td>
     </>
