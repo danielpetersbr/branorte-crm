@@ -3,6 +3,7 @@ import {
   Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { useLigacoesSerie } from '@/hooks/useLigacoes'
+import { useQualificadosPorDia } from '@/hooks/useQualificadosPorDia'
 import { Card, CardHeader } from '../ui/Card'
 import { JanelaBadge } from '../ui/JanelaBadge'
 import { CHART, TOOLTIP_STYLE, AXIS_TICK } from '../ui/chart-tokens'
@@ -15,9 +16,11 @@ type SerieId = 'leads' | 'qualificados' | 'propostas' | 'ligacoes'
 // 235 propostas — três números diferentes com o mesmo nome na mesma tela.
 const SERIES: { id: SerieId; label: string; cor: string; ajuda: string }[] = [
   { id: 'leads',        label: 'Leads',        cor: CHART.s2, ajuda: 'Contatos que chegaram, por dia. A soma do período bate com o card Leads.' },
-  { id: 'qualificados', label: 'Qualificados pela IA', cor: CHART.s1, ajuda: 'Leads que disseram à IA o que precisam e é algo que a Branorte fabrica — a mesma régua da etapa Qualificou do funil. O card Qualificados soma também quem tem etiqueta de avanço do vendedor, por isso dá mais.' },
+  // (21/10/2026, auditoria) a série era a régua antiga do robô (20 num dia em que o funil dizia 41); agora é a RPC
+  // dashboard_qualificados_por_dia, a mesma conta do card Qualificados e da etapa Qualificou do funil.
+  { id: 'qualificados', label: 'Qualificados', cor: CHART.s1, ajuda: 'Leads que chegaram no dia e foram qualificados: a Ana passou pro vendedor, o robô qualificou, ou o vendedor pôs etiqueta de avanço (lead quente, follow up, agendamento, orçamento, vendido). Mesma régua do card Qualificados e da etapa Qualificou do funil: a soma do período bate com eles.' },
   { id: 'propostas',    label: 'Clientes c/ proposta no dia', cor: CHART.s3, ajuda: 'Clientes distintos com orçamento montado NAQUELE dia. Cliente cotado em dois dias conta nos dois, por isso a soma do mês passa do card Clientes com proposta.' },
-  { id: 'ligacoes',     label: 'Ligações',     cor: CHART.s5, ajuda: 'Chamadas feitas pela equipe no dia (inclui o dono). É piso: só conta o que ficou registrado no histórico do WhatsApp.' },
+  { id: 'ligacoes',     label: 'Ligações',     cor: CHART.s5, ajuda: 'Chamadas feitas pela equipe no dia (inclui o dono). Ligação entre números da casa não conta. É piso: só conta o que ficou registrado no histórico do WhatsApp.' },
 ]
 
 /** Janela fixa de 30 dias, no fuso de Brasília — casa com as outras séries. */
@@ -58,10 +61,11 @@ export function Tendencia({
   // dia com zeros que não eram reais.
   const j = janela30d()
   const { data: ligacoes } = useLigacoesSerie(j, null)
+  const { data: qualificadosDia } = useQualificadosPorDia(j)
   // Série sem dado (carregando ou falhou) NÃO pode virar linha de zeros.
   const disponivel: Record<SerieId, boolean> = {
     leads: leadsPorDia !== undefined,
-    qualificados: leadsPorDia !== undefined,
+    qualificados: qualificadosDia !== undefined,
     propostas: orcamentosPorDia !== undefined,
     ligacoes: ligacoes !== undefined,
   }
@@ -71,7 +75,12 @@ export function Tendencia({
     const vazio = (dia: string): Linha => ({ dia, leads: 0, qualificados: 0, propostas: 0, ligacoes: 0 })
     const porDia = new Map<string, Linha>()
     for (const l of leadsPorDia ?? []) {
-      porDia.set(l.dia, { ...vazio(l.dia), leads: l.total, qualificados: l.qualificados })
+      porDia.set(l.dia, { ...vazio(l.dia), leads: l.total })
+    }
+    for (const q of qualificadosDia ?? []) {
+      const atual = porDia.get(q.dia) ?? vazio(q.dia)
+      atual.qualificados = q.qualificou
+      porDia.set(q.dia, atual)
     }
     for (const o of orcamentosPorDia ?? []) {
       const atual = porDia.get(o.dia) ?? vazio(o.dia)
@@ -86,7 +95,7 @@ export function Tendencia({
       porDia.set(dia, atual)
     }
     return [...porDia.values()].sort((a, b) => a.dia.localeCompare(b.dia))
-  }, [leadsPorDia, orcamentosPorDia, ligacoes])
+  }, [leadsPorDia, qualificadosDia, orcamentosPorDia, ligacoes])
 
   function alternar(id: SerieId) {
     setAtivas(prev => (prev.includes(id)
