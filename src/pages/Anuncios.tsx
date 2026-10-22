@@ -633,7 +633,7 @@ export function Anuncios() {
             return (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
                 <Tile rotulo="Investido" valor={brl(tot.gasto)} meta={brl(gm)} google={brl(gg)}
-                  rodape={metaAtrasado ? `Meta carregado até ${dataBr(d.meta.ate!)} (carga às 8h30, 12h30 e 15h30) · sem a vaga de emprego` : 'sem a vaga de emprego'} />
+                  rodape={metaAtrasado ? `Meta carregado até ${dataBr(d.meta.ate!)} (carga às 8h30, 12h30, 15h30 e 20h) · sem a vaga de emprego` : 'sem a vaga de emprego'} />
                 <Tile rotulo="Contatos" valor={n(tot.contatos)} meta={`${n(fm.contatos)} · ${custo(gm, fm.contatos)}`} google={`${n(fg.contatos)} · ${custo(gg, fg.contatos)}`} rodape={`${cent(div(tot.gasto, comGasto(fm.contatos, fg.contatos)))} por contato${voltaram ? ` · +${n(voltaram)} clientes antigos voltaram` : ''}`} />
                 <Tile destaque rotulo="Qualificados" valor={`${n(tot.qualif)} · ${pct(div(100 * tot.qualif, tot.contatos), 0)}`} meta={`${n(fm.qualificados)} · ${custo(gm, fm.qualificados)}`} google={`${n(fg.qualificados)} · ${custo(gg, fg.qualificados)}`} rodape={`${cent(div(tot.gasto, comGasto(fm.qualificados, fg.qualificados)))} por qualificado`} />
                 <Tile rotulo="Falaram c/ vendedor" valor={`${n(tot.conv)} · ${pct(div(100 * tot.conv, tot.contatos), 0)}`} meta={n(fm.conversou)} google={n(fg.conversou)} rodape="responderam no WhatsApp do vendedor" />
