@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, ArrowUpDown, CheckCircle2, ChevronDown, ChevronRight, Info, Megaphone, RefreshCw, Search } from 'lucide-react'
+import { AlertTriangle, ArrowUpDown, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Info, Megaphone, RefreshCw, Search } from 'lucide-react'
 import { Bar, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { Card, CardHeader } from './dashboard/ui/Card'
@@ -22,15 +22,30 @@ import { AnunciosVerbaCard, MotivosCard, VendedoresCard } from './dashboard/bloc
  * A página relê o banco a cada 5 minutos; o dado em si é tão novo quanto a última carga (mostrado no topo).
  */
 
-type Periodo = 'hoje' | '7d' | 'mes' | 'mes_passado' | '90d'
-const PERIODOS: { v: Periodo; l: string }[] = [
-  { v: 'hoje', l: 'Hoje' }, { v: '7d', l: '7 dias' }, { v: 'mes', l: 'Este mês' }, { v: 'mes_passado', l: 'Mês passado' }, { v: '90d', l: '90 dias' },
+type Periodo = 'hoje' | 'ontem' | '7d' | 'mes' | 'mes_passado' | '90d' | 'custom'
+const PERIODOS: { v: Exclude<Periodo, 'custom'>; l: string }[] = [
+  { v: 'hoje', l: 'Hoje' }, { v: 'ontem', l: 'Ontem' }, { v: '7d', l: '7 dias' }, { v: 'mes', l: 'Este mês' },
+  { v: 'mes_passado', l: 'Mês passado' }, { v: '90d', l: '90 dias' },
 ]
+/** Período personalizado: datas 'AAAA-MM-DD' (as duas inclusas). */
+interface Personalizado { de: string; ate: string }
+const isoDia = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const diaLocal = (iso: string) => { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d) }
+function personalizadoPadrao(): Personalizado {
+  const h = new Date()
+  return { de: isoDia(new Date(h.getFullYear(), h.getMonth(), h.getDate() - 6)), ate: isoDia(h) }
+}
 
-function intervalo(p: Periodo, agora = new Date()): { from: Date; to: Date } {
+function intervalo(p: Periodo, custom?: Personalizado, agora = new Date()): { from: Date; to: Date } {
   const y = agora.getFullYear(), m = agora.getMonth(), d = agora.getDate()
   const amanha = new Date(y, m, d + 1)
+  if (p === 'custom' && custom) {
+    const de = diaLocal(custom.de), ate = diaLocal(custom.ate)
+    const [a, b] = de <= ate ? [de, ate] : [ate, de]
+    return { from: a, to: new Date(b.getFullYear(), b.getMonth(), b.getDate() + 1) }
+  }
   if (p === 'hoje') return { from: new Date(y, m, d), to: amanha }
+  if (p === 'ontem') return { from: new Date(y, m, d - 1), to: new Date(y, m, d) }
   if (p === '7d') return { from: new Date(y, m, d - 6), to: amanha }
   if (p === 'mes_passado') return { from: new Date(y, m - 1, 1), to: new Date(y, m, 1) }
   if (p === '90d') return { from: new Date(y, m, d - 89), to: amanha }
@@ -140,8 +155,7 @@ function usePrevisaoMes() {
   })
 }
 
-function useDados(p: Periodo) {
-  const { from, to } = intervalo(p)
+function useDados(from: Date, to: Date) {
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
     queryKey: ['pagina-anuncios-v6', p_from, p_to],
@@ -457,10 +471,22 @@ function ColunasCrm({ f, gasto }: { f: Funil; gasto: number }) {
 
 export function Anuncios() {
   const [periodo, setPeriodo] = useState<Periodo>(() => {
-    try { const v = localStorage.getItem('anuncios-periodo'); return (PERIODOS.some(p => p.v === v) ? v : 'mes') as Periodo } catch { return 'mes' }
+    try { const v = localStorage.getItem('anuncios-periodo'); return (PERIODOS.some(p => p.v === v) || v === 'custom' ? v : 'mes') as Periodo } catch { return 'mes' }
   })
   const escolher = (p: Periodo) => { setPeriodo(p); try { localStorage.setItem('anuncios-periodo', p) } catch { /* sem storage */ } }
-  const q = useDados(periodo)
+  const [custom, setCustom] = useState<Personalizado>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('anuncios-personalizado') ?? 'null')
+      if (v && /^\d{4}-\d{2}-\d{2}$/.test(v.de) && /^\d{4}-\d{2}-\d{2}$/.test(v.ate)) return v as Personalizado
+    } catch { /* sem storage */ }
+    return personalizadoPadrao()
+  })
+  const mudarCustom = (c: Personalizado) => { setCustom(c); try { localStorage.setItem('anuncios-personalizado', JSON.stringify(c)) } catch { /* sem storage */ } }
+  const iv = intervalo(periodo, custom)
+  const rotuloPeriodo = periodo === 'custom'
+    ? `${dataBr(custom.de)} a ${dataBr(custom.ate)}`
+    : PERIODOS.find(x => x.v === periodo)?.l ?? ''
+  const q = useDados(iv.from, iv.to)
   const prev = usePrevisaoMes()
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [soNoAr, setSoNoAr] = useState(false)
@@ -470,9 +496,8 @@ export function Anuncios() {
   const escolherOrdem = (o: Ordem) => { setOrdem(o); try { localStorage.setItem('anuncios-ordem', o) } catch { /* sem storage */ } }
   const probs = useProblemas()
   // "onde pôr a verba": a mesma régua da aba Marketing, no período desta página
-  const iv = intervalo(periodo)
   // só depois dos dados principais: abrir a página disparava ~18 consultas juntas e o banco Micro engasgava (21/10)
-  const rel = useMarketingRelatorioIntervalo(iv.from, iv.to, PERIODOS.find(x => x.v === periodo)?.l ?? '', periodo !== 'mes_passado', !!q.data && !q.isFetching)
+  const rel = useMarketingRelatorioIntervalo(iv.from, iv.to, rotuloPeriodo, iv.to > new Date(), !!q.data && !q.isFetching)
   const alternar = (k: string) => setAbertos(prev => { const s = new Set(prev); if (s.has(k)) s.delete(k); else s.add(k); return s })
 
   const arvore = useMemo(() => {
@@ -511,14 +536,30 @@ export function Anuncios() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1" role="group" aria-label="Período">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Período">
             {PERIODOS.map(p => (
               <button key={p.v} type="button" onClick={() => escolher(p.v)} aria-pressed={periodo === p.v}
                 className={`inline-flex min-h-[44px] items-center rounded-lg px-3 py-1 text-micro md:min-h-0 ${periodo === p.v ? 'bg-accent font-semibold text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}>
                 {p.l}
               </button>
             ))}
+            <button type="button" onClick={() => escolher('custom')} aria-pressed={periodo === 'custom'}
+              className={`inline-flex min-h-[44px] items-center gap-1 rounded-lg px-3 py-1 text-micro md:min-h-0 ${periodo === 'custom' ? 'bg-accent font-semibold text-accent-fg' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}>
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />{periodo === 'custom' ? rotuloPeriodo : 'Personalizado'}
+            </button>
           </div>
+          {periodo === 'custom' && (
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2 py-1 text-micro text-ink-muted">
+              <label className="inline-flex items-center gap-1">de
+                <input type="date" value={custom.de} max={custom.ate} onChange={e => e.target.value && mudarCustom({ ...custom, de: e.target.value })}
+                  className="rounded border border-border bg-surface px-1.5 py-0.5 text-micro text-ink" />
+              </label>
+              <label className="inline-flex items-center gap-1">até
+                <input type="date" value={custom.ate} min={custom.de} max={isoDia(new Date())} onChange={e => e.target.value && mudarCustom({ ...custom, ate: e.target.value })}
+                  className="rounded border border-border bg-surface px-1.5 py-0.5 text-micro text-ink" />
+              </label>
+            </div>
+          )}
           <button type="button" onClick={() => { void q.refetch() }} className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-border px-3 py-1 text-micro text-ink-muted hover:text-ink md:min-h-0" aria-label="Recarregar agora">
             <RefreshCw className={`h-4 w-4 ${q.isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
           </button>
