@@ -126,13 +126,13 @@ function decidir(s: Soma, m: Media, nome: string): { d: Decisao; porque: string 
 const chave = (a: Anuncio, nv: Nivel) => nv === 'criativo' ? (a.codigo ?? a.nome) : nv === 'conjunto' ? `${a.campanha} › ${a.conjunto}` : nv === 'campanha' ? a.campanha : a.adId
 
 /** Variação contra o período anterior: "▼ 18%" (verde quando melhora). menorMelhor: custo cai = bom. */
-function Delta({ atual, antes, menorMelhor, min = 1 }: { atual: number | null; antes: number | null; menorMelhor?: boolean; min?: number }) {
+function Delta({ atual, antes, menorMelhor, neutro, min = 1 }: { atual: number | null; antes: number | null; menorMelhor?: boolean; neutro?: boolean; min?: number }) {
   if (atual == null || antes == null || antes < min || !Number.isFinite(atual) || !Number.isFinite(antes)) return null
   const v = (100 * (atual - antes)) / antes
   if (Math.abs(v) < 3) return <span className="text-micro text-ink-faint" title="praticamente igual ao período anterior">= ant.</span>
   const bom = menorMelhor ? v < 0 : v > 0
   return (
-    <span className={`text-micro font-semibold ${bom ? 'text-success' : 'text-danger'}`} title={`período anterior: ${antes.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`}>
+    <span className={`text-micro font-semibold ${neutro ? 'text-ink-muted' : bom ? 'text-success' : 'text-danger'}`} title={`período anterior: ${antes.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`}>
       {v > 0 ? '▲' : '▼'} {Math.abs(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%
     </span>
   )
@@ -238,8 +238,9 @@ export function AnunciosCriativos() {
   const aba = sp.get('aba') === 'google' ? 'google' : 'meta'
   const meta = useMeta(per.from, per.to, aba === 'meta')
   // período anterior de mesma duração (para ▲▼); só depois do atual, pra não disputar o banco
+  // mesma janela deslocada para trás; se o período inclui hoje, o anterior também para "na mesma hora"
   const dur = per.to.getTime() - per.from.getTime()
-  const antFrom = new Date(per.from.getTime() - dur), antTo = per.from
+  const antFrom = new Date(per.from.getTime() - dur), antTo = new Date(Math.min(per.to.getTime(), Date.now()) - dur)
   // "Hoje" não compara: o gasto do Meta vem por dia inteiro e um dia parcial é ruído
   const compara = per.periodo !== 'hoje'
   const ant = useMeta(antFrom, antTo, compara && aba === 'meta' && !!meta.data && !meta.isFetching)
@@ -342,10 +343,10 @@ function AbaMeta({ q, ant }: { q: ReturnType<typeof useMeta>; ant?: DadosMeta })
   return (
     <div className={`space-y-5 ${q.isPlaceholderData ? 'opacity-60' : ''}`}>
       {/* Resumo */}
-      {antTot && <p className="-mb-2 text-micro text-ink-faint">▲▼ = comparado com o período anterior de mesma duração (logo antes do início). Verde = melhorou.</p>}
+      {antTot && <p className="-mb-2 text-micro text-ink-faint">▲▼ = comparado com o período anterior de mesma duração (logo antes do início). Verde = melhorou, vermelho = piorou (no gasto é só informativo).</p>}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {([
-          ['Gasto', brl(tot.gasto), 'campanhas de venda', antTot && <Delta atual={tot.gasto} antes={antTot.gasto} min={50} />],
+          ['Gasto', brl(tot.gasto), 'campanhas de venda', antTot && <Delta atual={tot.gasto} antes={antTot.gasto} min={50} neutro />],
           ['Contatos', n(tot.contatos), `${cent(div(tot.gasto, tot.contatos))} cada`, antTot && <Delta atual={tot.contatos} antes={antTot.contatos} min={5} />],
           ['Qualificados', `${n(tot.qualificados)} · ${pct(m.taxaQ, 0)}`, `${cent(m.cpq)} cada`, antTot && <Delta atual={tot.qualificados} antes={antTot.qualificados} min={5} />],
           ['Custo por qualificado', cent(m.cpq), 'gasto ÷ qualificados', antTot && <Delta atual={m.cpq} antes={div(antTot.gasto, antTot.qualificados)} menorMelhor />],
