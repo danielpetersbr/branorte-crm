@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle, ArrowUpDown, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ExternalLink, Lightbulb, Megaphone, Minus, Play, Power,
-  RefreshCw, Rocket, Search, Wrench, X,
+  LayoutGrid, RefreshCw, Rocket, Search, Table2, Wrench, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Card, CardHeader } from './dashboard/ui/Card'
@@ -41,10 +41,12 @@ interface Soma {
   contatos: number; qualificados: number; conversou: number; orcamentos: number; rsOrcado: number; voltaram: number
   base: number; fechados: number; nunca: number; parou: number; semInteresse: number; preco: number; concorrente: number
   naoFab: number; outros: number; boi200: number; vendas: number; rsVendas: number
+  bovino: number; suino: number; aves: number; outroAnimal: number; consumo: number; revenda: number
 }
 const ZERO: Soma = {
   gasto: 0, cliques: 0, impressoes: 0, conversas: 0, contatos: 0, qualificados: 0, conversou: 0, orcamentos: 0, rsOrcado: 0, voltaram: 0,
   base: 0, fechados: 0, nunca: 0, parou: 0, semInteresse: 0, preco: 0, concorrente: 0, naoFab: 0, outros: 0, boi200: 0, vendas: 0, rsVendas: 0,
+  bovino: 0, suino: 0, aves: 0, outroAnimal: 0, consumo: 0, revenda: 0,
 }
 const somar = (a: Soma, b: Partial<Soma>): Soma => {
   const r = { ...a }
@@ -56,6 +58,13 @@ interface Anuncio {
   adId: string; nome: string; codigo: string | null; conjunto: string; campanha: string; status: string | null; s: Soma
   /** capa do criativo (carga do Meta) e a publicação no Facebook */
   thumb: string | null; post: string | null; video: boolean
+  /** estados (pelo DDD) de quem chegou: UF → contatos */
+  ufs: Map<string, number>
+}
+const juntarUfs = (ls: Map<string, number>[]) => {
+  const r = new Map<string, number>()
+  for (const m of ls) for (const [k, v] of m) r.set(k, (r.get(k) ?? 0) + v)
+  return [...r.entries()].sort((a, b) => b[1] - a[1])
 }
 /** O criativo para mostrar: capa + publicação */
 interface Visual { thumb: string; post: string | null; video: boolean; titulo: string }
@@ -131,7 +140,7 @@ function useMeta(from: Date, to: Date, ligado: boolean) {
         if (!a) {
           const t = thumbs.get(adId)
           a = { adId, nome: nome ?? `Anúncio ${adId.slice(-6)} (sem nome no Gerenciador)`, codigo: codigoDe(nome), conjunto: conjunto ?? '(conjunto desconhecido)', campanha: campanha ?? '(campanha desconhecida)', status, s: { ...ZERO },
-            thumb: txt(t?.thumb_url), post: txt(t?.post_id), video: String(t?.tipo_criativo ?? '').toUpperCase() === 'VIDEO' }
+            thumb: txt(t?.thumb_url), post: txt(t?.post_id), video: String(t?.tipo_criativo ?? '').toUpperCase() === 'VIDEO', ufs: new Map() }
           ads.set(adId, a)
         }
         return a
@@ -157,7 +166,12 @@ function useMeta(from: Date, to: Date, ligado: boolean) {
           base: num(r.base), fechados: num(r.fechados), nunca: num(r.nunca), parou: num(r.parou), semInteresse: num(r.sem_interesse),
           preco: num(r.preco), concorrente: num(r.concorrente), naoFab: num(r.nao_fabricamos), outros: num(r.outros), boi200: num(r.boi200),
           vendas: num(r.vendas_periodo), rsVendas: num(r.rs_vendas_periodo),
+          bovino: num(r.bovino), suino: num(r.suino), aves: num(r.aves), outroAnimal: num(r.outro_animal), consumo: num(r.consumo), revenda: num(r.revenda),
         })
+        for (const par of String(r.ufs ?? '').split(',').map(x => x.trim()).filter(Boolean)) {
+          const [uf, q] = par.split(' ')
+          if (uf && q) a.ufs.set(uf, (a.ufs.get(uf) ?? 0) + Number(q))
+        }
       }
       return { anuncios: [...ads.values()], vendasCodigo, nomesCriativo }
     },
@@ -232,6 +246,7 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
   const [ordem, setOrdem] = useState<Ordem>(() => { try { return (localStorage.getItem('criativos-ordem') as Ordem) || 'qualificados' } catch { return 'qualificados' } })
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [verCriativo, setVerCriativo] = useState<Visual | null>(null)
+  const [visao, setVisao] = useState<'galeria' | 'tabela'>(() => { try { return localStorage.getItem('criativos-visao') === 'tabela' ? 'tabela' : 'galeria' } catch { return 'galeria' } })
   const guardar = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* sem storage */ } }
 
   const dados = useMemo(() => {
@@ -272,7 +287,7 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
         const conj = [...new Set(x.ads.map(a => a.conjunto))], camps = [...new Set(x.ads.map(a => a.campanha))]
         x.sub = nv === 'criativo' ? `${x.ads.length} anúncio${x.ads.length === 1 ? '' : 's'} · ${conj.length} conjunto${conj.length === 1 ? '' : 's'}`
           : nv === 'conjunto' ? x.ads[0]?.campanha ?? '' : nv === 'campanha' ? `${conj.length} conjunto${conj.length === 1 ? '' : 's'}` : `${x.ads[0]?.conjunto ?? ''} · ${camps[0] ?? ''}`
-        return { ...x, visual, dec: decidir(x.s, m, nv === 'criativo' ? (x.ads[0]?.campanha ?? '') : nv === 'campanha' ? x.nome : x.ads[0]?.campanha ?? '') }
+        return { ...x, visual, ufs: juntarUfs(x.ads.map(a => a.ufs)), dec: decidir(x.s, m, nv === 'criativo' ? (x.ads[0]?.campanha ?? '') : nv === 'campanha' ? x.nome : x.ads[0]?.campanha ?? '') }
       })
     }
     const ord = (l: ReturnType<typeof agrupar>) => [...l].sort((a, b) => {
@@ -320,10 +335,18 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
       {/* Tabela */}
       <Card>
         <CardHeader
-          title="Detalhe — funil e motivos"
+          title={visao === 'galeria' ? 'Criativos — cartões' : 'Detalhe — funil e motivos'}
           subtitle={NIVEIS.find(x => x.v === nivel)?.ajuda ?? ''}
           right={
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex gap-1" role="group" aria-label="Visualização">
+                {([['galeria', 'Cartões', LayoutGrid], ['tabela', 'Tabela', Table2]] as const).map(([v, l, Icon]) => (
+                  <button key={v} type="button" aria-pressed={visao === v} onClick={() => { setVisao(v); guardar('criativos-visao', v) }}
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-micro ${visao === v ? 'bg-ink font-semibold text-surface' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}>
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />{l}
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-1" role="group" aria-label="Ver por">
                 {NIVEIS.map(x => (
                   <button key={x.v} type="button" aria-pressed={nivel === x.v} onClick={() => { setNivel(x.v); guardar('criativos-nivel', x.v) }}
@@ -339,17 +362,23 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
             </div>
           }
         />
+        {visao === 'galeria' ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {dados.linhas.map(l => <CartaoCriativo key={l.chave} g={l} m={m} ver={setVerCriativo} />)}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1700px] border-separate border-spacing-0">
+          <table className="w-full min-w-[1800px] border-separate border-spacing-0">
             <thead>
               <tr>
                 <th colSpan={3} />
                 <th colSpan={6} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">Funil no CRM</th>
                 <th colSpan={7} className="border-l border-border px-2 pb-1 text-left text-micro font-semibold uppercase tracking-wide text-ink-faint">Por que fecharam (% das conversas da Ana)</th>
+                <th />
               </tr>
               <tr>
                 {['Nome', 'Decisão', 'Gasto', 'Contatos', 'Qualificados', 'Custo/qualif.', 'Falou c/ vendedor', 'Orçamentos', 'Vendas no período',
-                  'Nunca respondeu', 'Parou', 'Só preço', 'Não fabricamos', 'Outros assuntos', 'Sem interesse', 'Gado 200+'].map((h, i) => (
+                  'Nunca respondeu', 'Parou', 'Só preço', 'Não fabricamos', 'Outros assuntos', 'Sem interesse', 'Gado 200+', 'Perfil'].map((h, i) => (
                   <th key={h} scope="col" className={`${th} ${i < 2 ? 'text-left' : 'text-right'} ${i === 3 || i === 9 ? 'border-l border-border' : ''}`}>{h}</th>
                 ))}
               </tr>
@@ -360,11 +389,11 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
                 const podeAbrir = nivel !== 'anuncio' && l.ads.length > 1
                 return (
                   <Fragment key={l.chave}>
-                    <Linha s={l.s} m={m} nome={l.nome} sub={l.sub} dec={l.dec} forte visual={l.visual} ver={setVerCriativo}
+                    <Linha s={l.s} m={m} nome={l.nome} sub={l.sub} dec={l.dec} forte visual={l.visual} ver={setVerCriativo} ufs={l.ufs}
                       abrir={podeAbrir ? { aberto: ab, alternar: () => setAbertos(p => { const x = new Set(p); if (x.has(l.chave)) x.delete(l.chave); else x.add(l.chave); return x }) } : undefined} />
                     {ab && [...l.ads].sort((a, b) => b.s.gasto - a.s.gasto).map(a => (
                       <Linha key={a.adId} s={a.s} m={m} nome={a.nome} sub={nivel === 'conjunto' ? a.codigo ?? '' : `${a.conjunto}`} dec={decidir(a.s, m, a.campanha)} recuo
-                        visual={a.thumb ? { thumb: a.thumb, post: a.post, video: a.video, titulo: a.nome } : null} ver={setVerCriativo} />
+                        visual={a.thumb ? { thumb: a.thumb, post: a.post, video: a.video, titulo: a.nome } : null} ver={setVerCriativo} ufs={juntarUfs([a.ufs])} />
                     ))}
                   </Fragment>
                 )
@@ -372,12 +401,14 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
             </tbody>
           </table>
         </div>
+        )}
         <details className="mt-3 text-micro text-ink-faint">
           <summary className="cursor-pointer select-none text-ink-muted hover:text-ink">Como ler e como a decisão é tomada</summary>
           <div className="mt-2 space-y-1 leading-relaxed">
             <p><b>Contatos</b> = cliente novo no CRM que chegou pela conversa da Ana daquele anúncio. <b>Qualificados</b> = a Ana passou ao vendedor, ou o vendedor marcou avanço, ou virou orçamento (e não é “não fabricamos/outro assunto”). <b>Falou c/ vendedor</b> = o cliente respondeu ou deu informação no WhatsApp do vendedor.</p>
             <p><b>Vendas no período</b> = pedidos fechados no período cujo cliente veio por este anúncio (conversa da Ana) ou por este criativo (código &NN no CRM), em qualquer data até 365 dias antes — o contato leva ~1 mês para virar pedido. Na visão por conjunto/campanha só entra a venda com anúncio exato.</p>
             <p><b>Por que fecharam</b> = etiqueta que o vendedor pôs ao encerrar, sobre todas as conversas da Ana vindas do anúncio no período (inclui cliente antigo que voltou). Em vermelho: 10 pontos acima da média com 20+ conversas.</p>
+            <p><b>Perfil</b> = espécie e finalidade (consumo próprio × revenda) que o cliente informou à Ana, e os estados pelo DDD do telefone — sobre as conversas da Ana vindas do anúncio.</p>
             <p><b>Decisão</b> (comparada à média do Meta no período, custo por qualificado {cent(m.cpq)}): <b>Escalar</b> = custo por qualificado 25% abaixo da média, ou na média com 2+ orçamentos ou venda. <b>Desativar</b> = R$ 500+ sem nenhum qualificado, ou o dobro da média sem orçamento nem venda. <b>Melhorar</b> = custo 30% acima da média, ou “nunca respondeu”/fora do perfil muito acima da média (o motivo aparece ao passar o mouse). <b>Pouco volume</b> = menos de R$ {VOL_GASTO} e {VOL_CONTATOS} contatos.</p>
           </div>
         </details>
@@ -386,9 +417,9 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
   )
 }
 
-function Linha({ s, m, nome, sub, dec, forte, recuo, abrir, visual, ver }: {
+function Linha({ s, m, nome, sub, dec, forte, recuo, abrir, visual, ver, ufs }: {
   s: Soma; m: Media; nome: string; sub: string; dec: { d: Decisao; porque: string }; forte?: boolean; recuo?: boolean
-  abrir?: { aberto: boolean; alternar: () => void }; visual?: Visual | null; ver?: (v: Visual) => void
+  abrir?: { aberto: boolean; alternar: () => void }; visual?: Visual | null; ver?: (v: Visual) => void; ufs?: [string, number][]
 }) {
   const ui = DEC_UI[dec.d]
   const alto = (v: number | null, media: number | null) => s.base >= 20 && v != null && media != null && v >= media + 10
@@ -431,7 +462,103 @@ function Linha({ s, m, nome, sub, dec, forte, recuo, abrir, visual, ver }: {
       <td className={td}>{s.base ? pct(pctBase(s.outros, s), 0) : '—'}</td>
       <td className={td}>{s.base ? pct(pctBase(s.semInteresse + s.concorrente, s), 0) : '—'}</td>
       <td className={td}>{s.boi200 ? n(s.boi200) : '—'}</td>
+      <td className={`${td} text-left text-micro`}>{perfilTexto(s, ufs ?? [])}</td>
     </tr>
+  )
+}
+
+/** "Bovino 33 · Aves 11 · consumo 51/revenda 9 · BA, PE, MA" */
+function perfilTexto(s: Soma, ufs: [string, number][]) {
+  const esp = ([['Bovino', s.bovino], ['Suíno', s.suino], ['Aves', s.aves], ['Outros', s.outroAnimal]] as const).filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]).map(([l, v]) => `${l} ${v}`)
+  const fin = s.consumo || s.revenda ? `consumo ${s.consumo} / revenda ${s.revenda}` : ''
+  const uf = ufs.slice(0, 3).map(([u]) => u).join(', ')
+  return [esp.join(' · '), fin, uf].filter(Boolean).join(' · ') || '—'
+}
+
+const CORES_MOTIVO: { campo: keyof Soma; l: string; cor: string }[] = [
+  { campo: 'nunca', l: 'Nunca respondeu', cor: '#94a3b8' },
+  { campo: 'parou', l: 'Parou de responder', cor: '#cbd5e1' },
+  { campo: 'preco', l: 'Só preço', cor: '#f59e0b' },
+  { campo: 'naoFab', l: 'Não fabricamos', cor: '#ef4444' },
+  { campo: 'outros', l: 'Outros assuntos', cor: '#fca5a5' },
+  { campo: 'semInteresse', l: 'Sem interesse', cor: '#64748b' },
+  { campo: 'concorrente', l: 'Comprou do concorrente', cor: '#8b5cf6' },
+]
+
+type Grupo = { chave: string; nome: string; sub: string; ads: Anuncio[]; s: Soma; dec: { d: Decisao; porque: string }; visual?: Visual | null; ufs?: [string, number][] }
+
+function CartaoCriativo({ g, m, ver }: { g: Grupo; m: Media; ver: (v: Visual) => void }) {
+  const s = g.s, ui = DEC_UI[g.dec.d]
+  const cpq = div(s.gasto, s.qualificados)
+  const max = Math.max(1, s.contatos)
+  const etapas: [string, number][] = [['Contatos', s.contatos], ['Qualificados', s.qualificados], ['Falou c/ vendedor', s.conversou], ['Orçamentos', s.orcamentos]]
+  const comCor = cpq != null && m.cpq != null ? (cpq <= 0.75 * m.cpq ? 'text-success' : cpq >= 1.3 * m.cpq ? 'text-danger' : 'text-ink') : 'text-ink'
+  const esp = ([['🐄 Bovino', s.bovino], ['🐖 Suíno', s.suino], ['🐔 Aves', s.aves], ['Outros', s.outroAnimal]] as const).filter(([, v]) => v > 0)
+  const infor = s.bovino + s.suino + s.aves + s.outroAnimal
+  return (
+    <article className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface">
+      <button type="button" disabled={!g.visual} onClick={() => g.visual && ver(g.visual)} className="relative block h-48 w-full bg-surface-2 text-left" aria-label={g.visual ? `Ver o criativo ${g.nome}` : undefined}>
+        {g.visual ? <img src={g.visual.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+          : <span className="flex h-full items-center justify-center text-micro text-ink-faint">sem imagem</span>}
+        {g.visual?.video && <Play className="absolute inset-0 m-auto h-10 w-10 fill-white/90 text-white drop-shadow-lg" aria-hidden="true" />}
+        <span className={`absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-micro font-semibold backdrop-blur ${ui.cls}`} title={g.dec.porque}>
+          <ui.Icon className="h-3 w-3" aria-hidden="true" />{ui.l}
+        </span>
+        {s.vendas > 0 && <span className="absolute right-2 top-2 rounded-full bg-success px-2 py-0.5 text-micro font-semibold text-white">{n(s.vendas)} venda{s.vendas > 1 ? 's' : ''} · {brl(s.rsVendas)}</span>}
+      </button>
+      <div className="flex flex-1 flex-col gap-3 p-3">
+        <div>
+          <p className="text-body font-semibold leading-snug text-ink">{g.nome}</p>
+          {g.sub && <p className="text-micro text-ink-faint">{g.sub}</p>}
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Gasto</p><p className="text-body font-semibold tabular-nums text-ink">{s.gasto ? brl(s.gasto) : '—'}</p></div>
+          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Qualificados</p><p className="text-body font-semibold tabular-nums text-ink">{n(s.qualificados)}<span className="text-micro font-normal text-ink-faint"> /{n(s.contatos)}</span></p></div>
+          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Custo/qualif.</p><p className={`text-body font-semibold tabular-nums ${comCor}`}>{cpq != null && s.gasto ? cent(cpq) : '—'}</p></div>
+        </div>
+        <div className="space-y-1">
+          {etapas.map(([l, v], i) => (
+            <div key={l} className="grid grid-cols-[6.5rem_1fr_2.5rem] items-center gap-2 text-micro">
+              <span className="text-ink-muted">{l}</span>
+              <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
+                <div className="h-full rounded-full bg-accent" style={{ width: `${v ? Math.max(4, (100 * v) / max) : 0}%`, opacity: 1 - i * 0.18 }} />
+              </div>
+              <span className="text-right tabular-nums text-ink">{n(v)}</span>
+            </div>
+          ))}
+          {s.orcamentos > 0 && <p className="text-micro text-ink-faint">{brl(s.rsOrcado)} orçados{s.gasto ? ` · ${cent(div(s.gasto, s.orcamentos))} por orçamento` : ''}</p>}
+        </div>
+        {s.base > 0 && (
+          <div>
+            <p className="mb-1 text-micro font-semibold text-ink-muted">Por que fecharam <span className="font-normal text-ink-faint">({n(s.base)} conversas da Ana)</span></p>
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
+              {CORES_MOTIVO.map(c => (s[c.campo] as number) > 0 ? <div key={c.l} style={{ width: `${(100 * (s[c.campo] as number)) / s.base}%`, background: c.cor }} title={`${c.l}: ${s[c.campo]}`} /> : null)}
+            </div>
+            <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-micro text-ink-muted">
+              {CORES_MOTIVO.filter(c => (s[c.campo] as number) > 0).map(c => {
+                const v = pctBase(s[c.campo] as number, s)
+                const alto = (c.campo === 'nunca' && v != null && m.nunca != null && v >= m.nunca + 10 && s.base >= 20)
+                  || ((c.campo === 'naoFab' || c.campo === 'outros') && v != null && v >= 12 && s.base >= 20)
+                return (
+                  <li key={c.l} className={`inline-flex items-center gap-1 ${alto ? 'font-semibold text-danger' : ''}`}>
+                    <span className="h-2 w-2 rounded-sm" style={{ background: c.cor }} aria-hidden="true" />{c.l} {pct(v, 0)}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+        {(infor > 0 || (g.ufs?.length ?? 0) > 0) && (
+          <div className="flex flex-wrap gap-1 text-micro">
+            {esp.map(([l, v]) => <span key={l} className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">{l} {pct(div(100 * v, infor), 0)}</span>)}
+            {(s.consumo > 0 || s.revenda > 0) && <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-muted">consumo {s.consumo} · revenda {s.revenda}</span>}
+            {(g.ufs ?? []).slice(0, 4).map(([u, v]) => <span key={u} className="rounded-full border border-border px-2 py-0.5 text-ink-faint">{u} {v}</span>)}
+          </div>
+        )}
+        <p className="mt-auto border-t border-border pt-2 text-micro leading-snug text-ink-faint">{g.dec.porque}</p>
+      </div>
+    </article>
   )
 }
 
@@ -459,8 +586,6 @@ function ModalCriativo({ v, fechar }: { v: Visual; fechar: () => void }) {
 }
 
 // ───────────────────────── conclusão ─────────────────────────
-type Grupo = { chave: string; nome: string; sub: string; ads: Anuncio[]; s: Soma; dec: { d: Decisao; porque: string } }
-
 function Conclusao({ criativos, conjuntos, m }: { criativos: Grupo[]; conjuntos: Grupo[]; m: Media }) {
   const julg = (l: Grupo[]) => l.filter(x => x.dec.d !== 'esperar' && x.dec.d !== 'fora')
   const cpq = (s: Soma) => div(s.gasto, s.qualificados)
@@ -474,11 +599,16 @@ function Conclusao({ criativos, conjuntos, m }: { criativos: Grupo[]; conjuntos:
   const vendeu = [...criativos].filter(x => x.s.vendas > 0).sort((a, b) => b.s.rsVendas - a.s.rsVendas).slice(0, 5)
   const orcou = [...criativos].filter(x => x.s.orcamentos > 0).sort((a, b) => b.s.orcamentos - a.s.orcamentos || (cpq(a.s) ?? 0) - (cpq(b.s) ?? 0)).slice(0, 5)
 
-  const item = (g: Grupo, extra?: string) => <><b className="text-ink">{g.nome}</b>{g.sub && <span className="text-ink-faint"> ({g.sub})</span>} — {extra ?? g.dec.porque}</>
+  const item = (g: Grupo, extra?: string) => (
+    <span className="inline-flex items-start gap-2">
+      {g.visual ? <img src={g.visual.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-9 w-9 shrink-0 rounded object-cover" /> : null}
+      <span><b className="text-ink">{g.nome}</b>{g.sub && <span className="text-ink-faint"> ({g.sub})</span>} — {extra ?? g.dec.porque}</span>
+    </span>
+  )
   const Bloco = ({ titulo, Icon, cor, itens, vazio }: { titulo: string; Icon: typeof Rocket; cor: string; itens: ReactNode[]; vazio: string }) => (
     <div className="rounded-lg border border-border/60 bg-surface-2 p-3">
       <p className={`mb-1.5 flex items-center gap-1.5 text-body font-semibold ${cor}`}><Icon className="h-4 w-4" aria-hidden="true" />{titulo}</p>
-      {itens.length ? <ul className="space-y-1 text-micro leading-snug text-ink-muted">{itens.map((x, i) => <li key={i}>• {x}</li>)}</ul>
+      {itens.length ? <ul className="space-y-1.5 text-micro leading-snug text-ink-muted">{itens.map((x, i) => <li key={i}>{x}</li>)}</ul>
         : <p className="text-micro text-ink-faint">{vazio}</p>}
     </div>
   )

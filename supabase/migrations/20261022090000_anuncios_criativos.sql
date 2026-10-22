@@ -7,6 +7,7 @@
 --     + vendas do período atribuídas ao anúncio exato (ver abaixo) + nome do anúncio/conjunto/campanha
 --   tipo 'codigo' (chave = &NN): vendas do período atribuídas só pelo código do criativo (sem anúncio exato)
 --   tipo 'nome'   (chave = &NN): nome oficial do criativo (auditoria.criativos), na coluna anuncio
+--   perfil (22/10): espécie e finalidade (consumo/revenda) informadas à Ana, e os estados pelo DDD (top 4) de quem chegou
 -- Venda do período: cada pedido fechado no período é atribuído UMA vez, pela 1ª evidência até 365 dias antes:
 --   conversa com a Ana vinda de um anúncio (ad_id) → senão contato no CRM com código de criativo &NN.
 set lock_timeout = '5s';
@@ -14,7 +15,8 @@ drop function if exists public.anuncios_criativos(timestamptz, timestamptz);
 create function public.anuncios_criativos(p_from timestamptz, p_to timestamptz)
 returns table(tipo text, chave text, base int, fechados int, nunca int, parou int, sem_interesse int, preco int, concorrente int,
               nao_fabricamos int, outros int, boi200 int, vendas_periodo int, rs_vendas_periodo numeric,
-              anuncio text, conjunto text, campanha text, anuncio_status text)
+              anuncio text, conjunto text, campanha text, anuncio_status text,
+              bovino int, suino int, aves int, outro_animal int, consumo int, revenda int, ufs text)
 language plpgsql stable security definer
 set search_path to 'public', 'auditoria'
 set enable_nestloop to 'off'
@@ -61,14 +63,40 @@ begin
       and public.fone_canon(a.telefone_norm) in (select fc from base where fc is not null)
       and btrim(coalesce(a.quantos_animais, '')) ~ '^[0-9]{1,7}$' and btrim(a.quantos_animais)::int >= 200
   ),
+  perfil as materialized (
+    select distinct on (fc) public.fone_canon(a.telefone_norm) fc, lower(coalesce(a.qual_animal, '')) animal, lower(coalesce(a.finalidade_fabrica, '')) fin
+    from auditoria.atendimentos_por_cliente a
+    where a.telefone_norm like '55%' and length(a.telefone_norm) between 12 and 13
+      and public.fone_canon(a.telefone_norm) in (select fc from base where fc is not null)
+    order by public.fone_canon(a.telefone_norm), (coalesce(a.qual_animal, '') <> '') desc, a.data desc
+  ),
+  ddd(ddd, uf) as (values
+    ('11','SP'),('12','SP'),('13','SP'),('14','SP'),('15','SP'),('16','SP'),('17','SP'),('18','SP'),('19','SP'),
+    ('21','RJ'),('22','RJ'),('24','RJ'),('27','ES'),('28','ES'),('31','MG'),('32','MG'),('33','MG'),('34','MG'),('35','MG'),
+    ('37','MG'),('38','MG'),('41','PR'),('42','PR'),('43','PR'),('44','PR'),('45','PR'),('46','PR'),('47','SC'),('48','SC'),
+    ('49','SC'),('51','RS'),('53','RS'),('54','RS'),('55','RS'),('61','DF'),('62','GO'),('63','TO'),('64','GO'),('65','MT'),
+    ('66','MT'),('67','MS'),('68','AC'),('69','RO'),('71','BA'),('73','BA'),('74','BA'),('75','BA'),('77','BA'),('79','SE'),
+    ('81','PE'),('82','AL'),('83','PB'),('84','RN'),('85','CE'),('86','PI'),('87','PE'),('88','CE'),('89','PI'),('91','PA'),
+    ('92','AM'),('93','PA'),('94','PA'),('95','RR'),('96','AP'),('97','AM'),('98','MA'),('99','MA')
+  ),
+  ufs as (
+    select z.ad_id, string_agg(z.uf || ' ' || z.n, ', ' order by z.n desc, z.uf) ufs
+    from (select b.ad_id, d.uf, count(*) n, row_number() over (partition by b.ad_id order by count(*) desc, d.uf) rk
+            from base b join ddd d on d.ddd = left(b.fc, 2) group by b.ad_id, d.uf) z
+    where z.rk <= 4 group by z.ad_id
+  ),
   mot as (
     select b.ad_id, count(*)::int base,
       count(*) filter (where e.nunca or e.parou or e.sem_int or e.preco or e.conc or e.nfab or e.fora)::int fechados,
       count(*) filter (where e.nunca)::int nunca, count(*) filter (where e.parou and not coalesce(e.nunca, false))::int parou,
       count(*) filter (where e.sem_int)::int sem_int, count(*) filter (where e.preco)::int preco, count(*) filter (where e.conc)::int conc,
       count(*) filter (where e.nfab)::int nfab, count(*) filter (where e.fora)::int fora,
-      count(*) filter (where b.fc in (select fc from boi))::int boi200
-    from base b left join etq e on e.pm = b.pm
+      count(*) filter (where b.fc in (select fc from boi))::int boi200,
+      count(*) filter (where pf.animal ~ 'bovin')::int bovino, count(*) filter (where pf.animal ~ 'su[ií]n')::int suino,
+      count(*) filter (where pf.animal ~ '\mave')::int aves,
+      count(*) filter (where pf.animal <> '' and pf.animal !~ '(bovin|su[ií]n|\mave)' and pf.animal ~ '[a-z]')::int outro_animal,
+      count(*) filter (where pf.fin ~ 'consumo')::int consumo, count(*) filter (where pf.fin ~ '(vend|revenda)')::int revenda
+    from base b left join etq e on e.pm = b.pm left join perfil pf on pf.fc = b.fc
     group by b.ad_id
   ),
   pv as materialized (
@@ -103,18 +131,21 @@ begin
   select 'anuncio'::text tipo, coalesce(m.ad_id, v.ad_id) chave, coalesce(m.base, 0) base, coalesce(m.fechados, 0), coalesce(m.nunca, 0), coalesce(m.parou, 0),
          coalesce(m.sem_int, 0), coalesce(m.preco, 0), coalesce(m.conc, 0), coalesce(m.nfab, 0), coalesce(m.fora, 0),
          coalesce(m.boi200, 0), coalesce(v.n, 0), coalesce(v.v, 0),
-         coalesce(an.nome, nm.anuncio) anuncio, coalesce(an.conjunto, nm.conjunto) conjunto, coalesce(mc.nome, nm.campanha) campanha, an.status anuncio_status
+         coalesce(an.nome, nm.anuncio) anuncio, coalesce(an.conjunto, nm.conjunto) conjunto, coalesce(mc.nome, nm.campanha) campanha, an.status anuncio_status,
+         coalesce(m.bovino, 0) bovino, coalesce(m.suino, 0) suino, coalesce(m.aves, 0) aves, coalesce(m.outro_animal, 0) outro_animal,
+         coalesce(m.consumo, 0) consumo, coalesce(m.revenda, 0) revenda, u.ufs
   from mot m full join vend_ad v on v.ad_id = m.ad_id
+  left join ufs u on u.ad_id = coalesce(m.ad_id, v.ad_id)
   left join public.meta_anuncio an on an.ad_id = coalesce(m.ad_id, v.ad_id)
   left join public.meta_campanha mc on mc.campanha_id = an.campanha_id
   left join nomes nm on nm.ad_id = coalesce(m.ad_id, v.ad_id)
   )
   select * from ads_out
   union all
-  select 'codigo', c.cod, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, c.n, c.v, null, null, null, null from vend_cod c
+  select 'codigo', c.cod, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, c.n, c.v, null, null, null, null, 0, 0, 0, 0, 0, 0, null from vend_cod c
   union all
   -- nome oficial do criativo (cadastro auditoria.criativos) para cada código que aparece
-  select 'nome', cr.codigo, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0::numeric, coalesce(nullif(btrim(cr.nome_oficial), ''), cr.headline), null, null, null
+  select 'nome', cr.codigo, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0::numeric, coalesce(nullif(btrim(cr.nome_oficial), ''), cr.headline), null, null, null, 0, 0, 0, 0, 0, 0, null
   from auditoria.criativos cr
   where cr.codigo in (select substring(o.anuncio from '&[0-9]{1,3}') from ads_out o union select cod from vend_cod
                       union select substring(g.anuncio from '&[0-9]{1,3}') from public.meta_gasto_anuncio_dia g
