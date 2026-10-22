@@ -123,6 +123,21 @@ function decidir(s: Soma, m: Media, nome: string): { d: Decisao; porque: string 
   return { d: 'manter', porque: `dentro da média${cpq != null ? ` (custo por qualificado ${cent(cpq)})` : ''}` }
 }
 
+const chave = (a: Anuncio, nv: Nivel) => nv === 'criativo' ? (a.codigo ?? a.nome) : nv === 'conjunto' ? `${a.campanha} › ${a.conjunto}` : nv === 'campanha' ? a.campanha : a.adId
+
+/** Variação contra o período anterior: "▼ 18%" (verde quando melhora). menorMelhor: custo cai = bom. */
+function Delta({ atual, antes, menorMelhor, min = 1 }: { atual: number | null; antes: number | null; menorMelhor?: boolean; min?: number }) {
+  if (atual == null || antes == null || antes < min || !Number.isFinite(atual) || !Number.isFinite(antes)) return null
+  const v = (100 * (atual - antes)) / antes
+  if (Math.abs(v) < 3) return <span className="text-micro text-ink-faint" title="praticamente igual ao período anterior">= ant.</span>
+  const bom = menorMelhor ? v < 0 : v > 0
+  return (
+    <span className={`text-micro font-semibold ${bom ? 'text-success' : 'text-danger'}`} title={`período anterior: ${antes.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}`}>
+      {v > 0 ? '▲' : '▼'} {Math.abs(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%
+    </span>
+  )
+}
+
 // ───────────────────────── dados ─────────────────────────
 function useMeta(from: Date, to: Date, ligado: boolean) {
   const p_from = from.toISOString(), p_to = to.toISOString()
@@ -222,6 +237,10 @@ export function AnunciosCriativos() {
   const [sp] = useSearchParams()
   const aba = sp.get('aba') === 'google' ? 'google' : 'meta'
   const meta = useMeta(per.from, per.to, aba === 'meta')
+  // período anterior de mesma duração (para ▲▼); só depois do atual, pra não disputar o banco
+  const dur = per.to.getTime() - per.from.getTime()
+  const antFrom = new Date(per.from.getTime() - dur), antTo = per.from
+  const ant = useMeta(antFrom, antTo, aba === 'meta' && !!meta.data && !meta.isFetching)
   const google = useGoogle(per.from, per.to, aba === 'google')
   const q = aba === 'meta' ? meta : google
 
@@ -240,13 +259,14 @@ export function AnunciosCriativos() {
         </div>
       </div>
       <AbasAnuncios />
-      {aba === 'meta' ? <AbaMeta q={meta} /> : <AbaGoogle q={google} />}
+      {aba === 'meta' ? <AbaMeta q={meta} ant={ant.data && !ant.isPlaceholderData ? ant.data : undefined} /> : <AbaGoogle q={google} />}
     </div>
   )
 }
 
 // ───────────────────────── Meta ─────────────────────────
-function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
+type DadosMeta = NonNullable<ReturnType<typeof useMeta>['data']>
+function AbaMeta({ q, ant }: { q: ReturnType<typeof useMeta>; ant?: DadosMeta }) {
   const [nivel, setNivel] = useState<Nivel>(() => { try { return (localStorage.getItem('criativos-nivel') as Nivel) || 'criativo' } catch { return 'criativo' } })
   const [ordem, setOrdem] = useState<Ordem>(() => { try { return (localStorage.getItem('criativos-ordem') as Ordem) || 'qualificados' } catch { return 'qualificados' } })
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
@@ -265,7 +285,6 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
       cpq: div(tot.gasto, tot.qualificados), taxaQ: div(100 * tot.qualificados, tot.contatos), nunca: pctBase(tot.nunca, tot),
       fora: pctBase(foraDe(tot), tot), preco: pctBase(tot.preco, tot), orc100: div(100 * tot.orcamentos, tot.contatos),
     }
-    const chave = (a: Anuncio, nv: Nivel) => nv === 'criativo' ? (a.codigo ?? a.nome) : nv === 'conjunto' ? `${a.campanha} › ${a.conjunto}` : nv === 'campanha' ? a.campanha : a.adId
     const agrupar = (nv: Nivel) => {
       const g = new Map<string, { chave: string; nome: string; sub: string; ads: Anuncio[]; s: Soma }>()
       for (const a of ads) {
@@ -305,30 +324,37 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
       }
       return val(t) - val(s) || t.gasto - s.gasto
     })
-    return { m, tot: totV, linhas: ord(agrupar(nivel)), criativos: agrupar('criativo'), conjuntos: agrupar('conjunto') }
-  }, [q.data, nivel, ordem])
+    // período anterior: as mesmas somas por chave, só pra mostrar ▲▼
+    const antAds = (ant?.anuncios ?? []).filter(a => !naoEhVenda(a.campanha))
+    const antTot = antAds.reduce((t, a) => somar(t, a.s), { ...ZERO })
+    const antPor = new Map<string, Soma>()
+    for (const a of ant?.anuncios ?? []) { const k = chave(a, nivel); antPor.set(k, somar(antPor.get(k) ?? { ...ZERO }, a.s)) }
+    const linhas = ord(agrupar(nivel)).map(l => ({ ...l, ant: antPor.get(l.chave) }))
+    return { m, tot: totV, linhas, criativos: agrupar('criativo'), conjuntos: agrupar('conjunto'), antTot: ant ? antTot : null }
+  }, [q.data, nivel, ordem, ant])
 
   if (q.error && !q.data) return <Card><p className="text-body text-ink-muted">Não deu para carregar agora. Tente recarregar.</p></Card>
   if (!q.data) return <Card><div className="h-40 animate-pulse rounded-lg bg-surface-2" /></Card>
-  const { m, tot } = dados
+  const { m, tot, antTot } = dados
 
   return (
     <div className={`space-y-5 ${q.isPlaceholderData ? 'opacity-60' : ''}`}>
       {/* Resumo */}
+      {antTot && <p className="-mb-2 text-micro text-ink-faint">▲▼ = comparado com o período anterior de mesma duração (logo antes do início). Verde = melhorou.</p>}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        {[
-          ['Gasto', brl(tot.gasto), 'campanhas de venda'],
-          ['Contatos', n(tot.contatos), `${cent(div(tot.gasto, tot.contatos))} cada`],
-          ['Qualificados', `${n(tot.qualificados)} · ${pct(m.taxaQ, 0)}`, `${cent(m.cpq)} cada`],
-          ['Orçamentos', n(tot.orcamentos), `${cent(div(tot.gasto, tot.orcamentos))} cada · ${brl(tot.rsOrcado)}`],
-          ['Vendas no período', n(tot.vendas), tot.rsVendas ? brl(tot.rsVendas) : 'cliente veio por anúncio'],
-          ['Nunca respondeu', pct(m.nunca, 0), `${n(tot.nunca)} de ${n(tot.base)} conversas da Ana`],
-          ['Fora do perfil', pct(m.fora, 0), 'não fabricamos + outros assuntos + sem interesse'],
-          ['Só preço', pct(m.preco, 0), 'achou caro / fora do orçamento'],
-        ].map(([r, v, a]) => (
+        {([
+          ['Gasto', brl(tot.gasto), 'campanhas de venda', antTot && <Delta atual={tot.gasto} antes={antTot.gasto} min={50} />],
+          ['Contatos', n(tot.contatos), `${cent(div(tot.gasto, tot.contatos))} cada`, antTot && <Delta atual={tot.contatos} antes={antTot.contatos} min={5} />],
+          ['Qualificados', `${n(tot.qualificados)} · ${pct(m.taxaQ, 0)}`, `${cent(m.cpq)} cada`, antTot && <Delta atual={tot.qualificados} antes={antTot.qualificados} min={5} />],
+          ['Custo por qualificado', cent(m.cpq), 'gasto ÷ qualificados', antTot && <Delta atual={m.cpq} antes={div(antTot.gasto, antTot.qualificados)} menorMelhor />],
+          ['Orçamentos', n(tot.orcamentos), `${cent(div(tot.gasto, tot.orcamentos))} cada · ${brl(tot.rsOrcado)}`, antTot && <Delta atual={tot.orcamentos} antes={antTot.orcamentos} min={2} />],
+          ['Vendas no período', n(tot.vendas), tot.rsVendas ? brl(tot.rsVendas) : 'cliente veio por anúncio', null],
+          ['Nunca respondeu', pct(m.nunca, 0), `${n(tot.nunca)} de ${n(tot.base)} conversas da Ana`, antTot && <Delta atual={m.nunca} antes={pctBase(antTot.nunca, antTot)} menorMelhor min={0.5} />],
+          ['Fora do perfil', pct(m.fora, 0), 'não fabricamos + outros + sem interesse', antTot && <Delta atual={m.fora} antes={pctBase(foraDe(antTot), antTot)} menorMelhor min={0.5} />],
+        ] as [string, string, string, ReactNode][]).map(([r, v, a, d]) => (
           <div key={r} className="rounded-xl border border-border bg-surface p-3">
             <p className="text-micro font-semibold uppercase tracking-wide text-ink-faint">{r}</p>
-            <p className="mt-1 text-title font-semibold tabular-nums text-ink">{v}</p>
+            <p className="mt-1 flex items-baseline gap-2 text-title font-semibold tabular-nums text-ink">{v}{d}</p>
             <p className="text-micro text-ink-muted">{a}</p>
           </div>
         ))}
@@ -369,7 +395,7 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
         />
         {visao === 'galeria' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {dados.linhas.map(l => <CartaoCriativo key={l.chave} g={l} m={m} ver={setVerCriativo} />)}
+            {dados.linhas.map(l => <CartaoCriativo key={l.chave} g={l} m={m} ver={setVerCriativo} ant={l.ant} />)}
           </div>
         ) : (
         <div className="overflow-x-auto">
@@ -493,7 +519,7 @@ const CORES_MOTIVO: { campo: keyof Soma; l: string; cor: string }[] = [
 
 type Grupo = { chave: string; nome: string; sub: string; ads: Anuncio[]; s: Soma; dec: { d: Decisao; porque: string }; visual?: Visual | null; ufs?: [string, number][] }
 
-function CartaoCriativo({ g, m, ver }: { g: Grupo; m: Media; ver: (v: Visual) => void }) {
+function CartaoCriativo({ g, m, ver, ant }: { g: Grupo; m: Media; ver: (v: Visual) => void; ant?: Soma }) {
   const s = g.s, ui = DEC_UI[g.dec.d]
   const cpq = div(s.gasto, s.qualificados)
   const max = Math.max(1, s.contatos)
@@ -519,8 +545,8 @@ function CartaoCriativo({ g, m, ver }: { g: Grupo; m: Media; ver: (v: Visual) =>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Gasto</p><p className="text-body font-semibold tabular-nums text-ink">{s.gasto ? brl(s.gasto) : '—'}</p></div>
-          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Qualificados</p><p className="text-body font-semibold tabular-nums text-ink">{n(s.qualificados)}<span className="text-micro font-normal text-ink-faint"> /{n(s.contatos)}</span></p></div>
-          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Custo/qualif.</p><p className={`text-body font-semibold tabular-nums ${comCor}`}>{cpq != null && s.gasto ? cent(cpq) : '—'}</p></div>
+          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Qualificados</p><p className="text-body font-semibold tabular-nums text-ink">{n(s.qualificados)}<span className="text-micro font-normal text-ink-faint"> /{n(s.contatos)}</span></p>{ant && <Delta atual={s.qualificados} antes={ant.qualificados} min={3} />}</div>
+          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Custo/qualif.</p><p className={`text-body font-semibold tabular-nums ${comCor}`}>{cpq != null && s.gasto ? cent(cpq) : '—'}</p>{ant && ant.gasto >= 50 && <Delta atual={cpq} antes={div(ant.gasto, ant.qualificados)} menorMelhor />}</div>
         </div>
         <div className="space-y-1">
           {etapas.map(([l, v], i) => (
