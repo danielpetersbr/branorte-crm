@@ -2,8 +2,8 @@ import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  AlertTriangle, ArrowUpDown, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Lightbulb, Megaphone, Minus, Power,
-  RefreshCw, Rocket, Search, Wrench,
+  AlertTriangle, ArrowUpDown, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ExternalLink, Lightbulb, Megaphone, Minus, Play, Power,
+  RefreshCw, Rocket, Search, Wrench, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { Card, CardHeader } from './dashboard/ui/Card'
@@ -29,6 +29,8 @@ const div = (a: number, b: number) => (b > 0 ? a / b : null)
 const cent = (v: number | null) => (v == null || !Number.isFinite(v) ? '—' : v < 10 ? `R$ ${v.toFixed(2).replace('.', ',')}` : brl(v))
 const naoEhVenda = (campanha: string) => /vaga|emprego/i.test(campanha)
 const codigoDe = (nome: string | null) => (nome ? (nome.match(/&\d{1,3}/)?.[0] ?? null) : null)
+/** "MINI FÁBRICA DE RAÇÃO" → "Mini fábrica de ração" */
+const titulo = (t: string) => (t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t)
 
 const th = 'whitespace-nowrap px-2 py-2 text-micro font-semibold text-ink-muted'
 const td = 'whitespace-nowrap border-t border-border px-2 py-1.5 text-body tabular-nums text-ink-muted text-right'
@@ -50,7 +52,13 @@ const somar = (a: Soma, b: Partial<Soma>): Soma => {
   return r
 }
 
-interface Anuncio { adId: string; nome: string; codigo: string | null; conjunto: string; campanha: string; status: string | null; s: Soma }
+interface Anuncio {
+  adId: string; nome: string; codigo: string | null; conjunto: string; campanha: string; status: string | null; s: Soma
+  /** capa do criativo (carga do Meta) e a publicação no Facebook */
+  thumb: string | null; post: string | null; video: boolean
+}
+/** O criativo para mostrar: capa + publicação */
+interface Visual { thumb: string; post: string | null; video: boolean; titulo: string }
 
 type Nivel = 'criativo' | 'conjunto' | 'campanha' | 'anuncio'
 const NIVEIS: { v: Nivel; l: string; ajuda: string }[] = [
@@ -108,18 +116,22 @@ function useMeta(from: Date, to: Date, ligado: boolean) {
     queryKey: ['anuncios-criativos-meta-v1', p_from, p_to],
     enabled: ligado,
     queryFn: async () => {
-      const [meta, crm, cri] = await Promise.all([
+      const [meta, crm, cri, th] = await Promise.all([
         supabase.rpc('anuncios_meta', { p_from, p_to }),
         supabase.rpc('anuncios_crm', { p_from, p_to }),
         supabase.rpc('anuncios_criativos', { p_from, p_to }),
+        supabase.rpc('anuncios_thumbs'),
       ])
+      const thumbs = new Map((th.error ? [] : linhas(th.data)).map(r => [String(r.ad_id), r]))
       const erro = [meta, crm, cri].find(r => r.error)?.error
       if (erro) throw erro
       const ads = new Map<string, Anuncio>()
       const pegar = (adId: string, nome: string | null, conjunto: string | null, campanha: string | null, status: string | null) => {
         let a = ads.get(adId)
         if (!a) {
-          a = { adId, nome: nome ?? `Anúncio ${adId.slice(-6)} (sem nome no Gerenciador)`, codigo: codigoDe(nome), conjunto: conjunto ?? '(conjunto desconhecido)', campanha: campanha ?? '(campanha desconhecida)', status, s: { ...ZERO } }
+          const t = thumbs.get(adId)
+          a = { adId, nome: nome ?? `Anúncio ${adId.slice(-6)} (sem nome no Gerenciador)`, codigo: codigoDe(nome), conjunto: conjunto ?? '(conjunto desconhecido)', campanha: campanha ?? '(campanha desconhecida)', status, s: { ...ZERO },
+            thumb: txt(t?.thumb_url), post: txt(t?.post_id), video: String(t?.tipo_criativo ?? '').toUpperCase() === 'VIDEO' }
           ads.set(adId, a)
         }
         return a
@@ -135,8 +147,10 @@ function useMeta(from: Date, to: Date, ligado: boolean) {
         else pegar(String(r.chave), null, null, null, null).s = somar({ ...ZERO }, s)
       }
       const vendasCodigo: { codigo: string; vendas: number; rs: number }[] = []
+      const nomesCriativo = new Map<string, string>()
       for (const r of linhas(cri.data)) {
         if (r.tipo === 'codigo') { vendasCodigo.push({ codigo: String(r.chave), vendas: num(r.vendas_periodo), rs: num(r.rs_vendas_periodo) }); continue }
+        if (r.tipo === 'nome') { if (r.anuncio) nomesCriativo.set(String(r.chave), String(r.anuncio)); continue }
         const a = ads.get(String(r.chave)) ?? pegar(String(r.chave), txt(r.anuncio), txt(r.conjunto), txt(r.campanha), txt(r.anuncio_status))
         if (!a.codigo) a.codigo = codigoDe(txt(r.anuncio))
         a.s = somar(a.s, {
@@ -145,7 +159,7 @@ function useMeta(from: Date, to: Date, ligado: boolean) {
           vendas: num(r.vendas_periodo), rsVendas: num(r.rs_vendas_periodo),
         })
       }
-      return { anuncios: [...ads.values()], vendasCodigo }
+      return { anuncios: [...ads.values()], vendasCodigo, nomesCriativo }
     },
     staleTime: 5 * 60_000,
     placeholderData: prev => prev,
@@ -217,6 +231,7 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
   const [nivel, setNivel] = useState<Nivel>(() => { try { return (localStorage.getItem('criativos-nivel') as Nivel) || 'criativo' } catch { return 'criativo' } })
   const [ordem, setOrdem] = useState<Ordem>(() => { try { return (localStorage.getItem('criativos-ordem') as Ordem) || 'qualificados' } catch { return 'qualificados' } })
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
+  const [verCriativo, setVerCriativo] = useState<Visual | null>(null)
   const guardar = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* sem storage */ } }
 
   const dados = useMemo(() => {
@@ -237,7 +252,9 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
         const k = chave(a, nv)
         let x = g.get(k)
         if (!x) {
-          const nome = nv === 'criativo' ? (a.codigo ? `${a.codigo} · ${a.nome.replace(/^\s*AD\d*\s*-?\s*/i, '').replace(a.codigo, '').replace(/[-—·\s]+$/,'').replace(/^[-—·\s]+/, '') || a.codigo}` : a.nome)
+          const oficial = a.codigo ? q.data?.nomesCriativo.get(a.codigo) : undefined
+          const limpo = a.nome.replace(/^\s*AD\d*\s*-?\s*/i, '').replace(a.codigo ?? '', '').replace(/[—-]\s*c[óo]pia/gi, '').replace(/[-—·\s]+$/, '').replace(/^[-—·\s]+/, '')
+          const nome = nv === 'criativo' ? (a.codigo ? `${a.codigo} · ${titulo(oficial ?? (limpo || 'criativo'))}` : a.nome)
             : nv === 'conjunto' ? a.conjunto : nv === 'campanha' ? a.campanha : a.nome
           x = { chave: k, nome, sub: '', ads: [], s: { ...ZERO } }
           g.set(k, x)
@@ -250,10 +267,12 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
         else g.set(v.codigo, { chave: v.codigo, nome: `${v.codigo} (sem gasto/contato no período)`, sub: '', ads: [], s: somar({ ...ZERO }, { vendas: v.vendas, rsVendas: v.rs }) })
       }
       return [...g.values()].map(x => {
+        const comImg = [...x.ads].sort((a, b) => b.s.gasto - a.s.gasto).find(a => a.thumb)
+        const visual: Visual | null = comImg?.thumb ? { thumb: comImg.thumb, post: comImg.post, video: comImg.video, titulo: x.nome } : null
         const conj = [...new Set(x.ads.map(a => a.conjunto))], camps = [...new Set(x.ads.map(a => a.campanha))]
         x.sub = nv === 'criativo' ? `${x.ads.length} anúncio${x.ads.length === 1 ? '' : 's'} · ${conj.length} conjunto${conj.length === 1 ? '' : 's'}`
           : nv === 'conjunto' ? x.ads[0]?.campanha ?? '' : nv === 'campanha' ? `${conj.length} conjunto${conj.length === 1 ? '' : 's'}` : `${x.ads[0]?.conjunto ?? ''} · ${camps[0] ?? ''}`
-        return { ...x, dec: decidir(x.s, m, nv === 'criativo' ? (x.ads[0]?.campanha ?? '') : nv === 'campanha' ? x.nome : x.ads[0]?.campanha ?? '') }
+        return { ...x, visual, dec: decidir(x.s, m, nv === 'criativo' ? (x.ads[0]?.campanha ?? '') : nv === 'campanha' ? x.nome : x.ads[0]?.campanha ?? '') }
       })
     }
     const ord = (l: ReturnType<typeof agrupar>) => [...l].sort((a, b) => {
@@ -296,6 +315,7 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
       </div>
 
       <Conclusao criativos={dados.criativos} conjuntos={dados.conjuntos} m={m} />
+      {verCriativo && <ModalCriativo v={verCriativo} fechar={() => setVerCriativo(null)} />}
 
       {/* Tabela */}
       <Card>
@@ -340,10 +360,11 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
                 const podeAbrir = nivel !== 'anuncio' && l.ads.length > 1
                 return (
                   <Fragment key={l.chave}>
-                    <Linha s={l.s} m={m} nome={l.nome} sub={l.sub} dec={l.dec} forte
+                    <Linha s={l.s} m={m} nome={l.nome} sub={l.sub} dec={l.dec} forte visual={l.visual} ver={setVerCriativo}
                       abrir={podeAbrir ? { aberto: ab, alternar: () => setAbertos(p => { const x = new Set(p); if (x.has(l.chave)) x.delete(l.chave); else x.add(l.chave); return x }) } : undefined} />
                     {ab && [...l.ads].sort((a, b) => b.s.gasto - a.s.gasto).map(a => (
-                      <Linha key={a.adId} s={a.s} m={m} nome={a.nome} sub={nivel === 'conjunto' ? a.codigo ?? '' : `${a.conjunto}`} dec={decidir(a.s, m, a.campanha)} recuo />
+                      <Linha key={a.adId} s={a.s} m={m} nome={a.nome} sub={nivel === 'conjunto' ? a.codigo ?? '' : `${a.conjunto}`} dec={decidir(a.s, m, a.campanha)} recuo
+                        visual={a.thumb ? { thumb: a.thumb, post: a.post, video: a.video, titulo: a.nome } : null} ver={setVerCriativo} />
                     ))}
                   </Fragment>
                 )
@@ -365,9 +386,9 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
   )
 }
 
-function Linha({ s, m, nome, sub, dec, forte, recuo, abrir }: {
+function Linha({ s, m, nome, sub, dec, forte, recuo, abrir, visual, ver }: {
   s: Soma; m: Media; nome: string; sub: string; dec: { d: Decisao; porque: string }; forte?: boolean; recuo?: boolean
-  abrir?: { aberto: boolean; alternar: () => void }
+  abrir?: { aberto: boolean; alternar: () => void }; visual?: Visual | null; ver?: (v: Visual) => void
 }) {
   const ui = DEC_UI[dec.d]
   const alto = (v: number | null, media: number | null) => s.base >= 20 && v != null && media != null && v >= media + 10
@@ -381,6 +402,14 @@ function Linha({ s, m, nome, sub, dec, forte, recuo, abrir }: {
       <th scope="row" className={`border-t border-border py-1.5 pr-2 text-left text-body ${recuo ? 'pl-8 font-normal text-ink-muted' : 'pl-2'} ${forte ? 'font-semibold text-ink' : ''}`}>
         <span className="inline-flex items-start gap-1">
           {abrir && (abrir.aberto ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />)}
+          {visual ? (
+            <button type="button" onClick={e => { e.stopPropagation(); ver?.(visual) }} title="Ver o criativo"
+              className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border bg-surface-2">
+              <img src={visual.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+              {visual.video && <Play className="absolute inset-0 m-auto h-5 w-5 fill-white text-white drop-shadow" aria-hidden="true" />}
+              <span className="sr-only">Ver o criativo de {nome}</span>
+            </button>
+          ) : <span className="h-12 w-12 shrink-0 rounded-md border border-dashed border-border" aria-hidden="true" />}
           <span className="max-w-[22rem] whitespace-normal">{nome}{sub && <span className="block text-micro font-normal text-ink-faint">{sub}</span>}</span>
         </span>
       </th>
@@ -403,6 +432,29 @@ function Linha({ s, m, nome, sub, dec, forte, recuo, abrir }: {
       <td className={td}>{s.base ? pct(pctBase(s.semInteresse + s.concorrente, s), 0) : '—'}</td>
       <td className={td}>{s.boi200 ? n(s.boi200) : '—'}</td>
     </tr>
+  )
+}
+
+function ModalCriativo({ v, fechar }: { v: Visual; fechar: () => void }) {
+  return (
+    <div role="dialog" aria-modal="true" aria-label={`Criativo ${v.titulo}`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={fechar}>
+      <div className="max-h-full w-full max-w-lg overflow-auto rounded-xl border border-border bg-surface p-4" onClick={e => e.stopPropagation()}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <p className="text-body font-semibold text-ink">{v.titulo}</p>
+          <button type="button" onClick={fechar} className="rounded-md p-1 text-ink-muted hover:text-ink" aria-label="Fechar"><X className="h-5 w-5" aria-hidden="true" /></button>
+        </div>
+        <div className="relative">
+          <img src={v.thumb} alt={`Criativo ${v.titulo}`} referrerPolicy="no-referrer" className="w-full rounded-lg border border-border" />
+          {v.video && <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded bg-black/70 px-2 py-0.5 text-micro text-white"><Play className="h-3 w-3 fill-white" aria-hidden="true" />vídeo — capa</span>}
+        </div>
+        {v.post && (
+          <a href={`https://www.facebook.com/${v.post}`} target="_blank" rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-body font-semibold text-accent-fg">
+            <ExternalLink className="h-4 w-4" aria-hidden="true" />{v.video ? 'Assistir o vídeo no Facebook' : 'Abrir a publicação no Facebook'}
+          </a>
+        )}
+      </div>
+    </div>
   )
 }
 

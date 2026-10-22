@@ -6,6 +6,7 @@
 --     motivos = etiqueta de encerramento (mesma régua do dashboard_marketing_fontes); boi200 = informou 200+ cabeças
 --     + vendas do período atribuídas ao anúncio exato (ver abaixo) + nome do anúncio/conjunto/campanha
 --   tipo 'codigo' (chave = &NN): vendas do período atribuídas só pelo código do criativo (sem anúncio exato)
+--   tipo 'nome'   (chave = &NN): nome oficial do criativo (auditoria.criativos), na coluna anuncio
 -- Venda do período: cada pedido fechado no período é atribuído UMA vez, pela 1ª evidência até 365 dias antes:
 --   conversa com a Ana vinda de um anúncio (ad_id) → senão contato no CRM com código de criativo &NN.
 set lock_timeout = '5s';
@@ -98,17 +99,25 @@ begin
     -- nome do anúncio: o cadastro atual, ou o último gasto carregado (anúncio que já saiu do Gerenciador)
     select distinct on (g.ad_id) g.ad_id, g.anuncio, g.conjunto, g.campanha from public.meta_gasto_anuncio_dia g
     where g.ad_id in (select ad_id from mot union select ad_id from vend_ad) order by g.ad_id, g.data desc
-  )
-  select 'anuncio', coalesce(m.ad_id, v.ad_id), coalesce(m.base, 0), coalesce(m.fechados, 0), coalesce(m.nunca, 0), coalesce(m.parou, 0),
+  ), ads_out as (
+  select 'anuncio'::text tipo, coalesce(m.ad_id, v.ad_id) chave, coalesce(m.base, 0) base, coalesce(m.fechados, 0), coalesce(m.nunca, 0), coalesce(m.parou, 0),
          coalesce(m.sem_int, 0), coalesce(m.preco, 0), coalesce(m.conc, 0), coalesce(m.nfab, 0), coalesce(m.fora, 0),
          coalesce(m.boi200, 0), coalesce(v.n, 0), coalesce(v.v, 0),
-         coalesce(an.nome, nm.anuncio), coalesce(an.conjunto, nm.conjunto), coalesce(mc.nome, nm.campanha), an.status
+         coalesce(an.nome, nm.anuncio) anuncio, coalesce(an.conjunto, nm.conjunto) conjunto, coalesce(mc.nome, nm.campanha) campanha, an.status anuncio_status
   from mot m full join vend_ad v on v.ad_id = m.ad_id
   left join public.meta_anuncio an on an.ad_id = coalesce(m.ad_id, v.ad_id)
   left join public.meta_campanha mc on mc.campanha_id = an.campanha_id
   left join nomes nm on nm.ad_id = coalesce(m.ad_id, v.ad_id)
+  )
+  select * from ads_out
   union all
   select 'codigo', c.cod, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, c.n, c.v, null, null, null, null from vend_cod c
+  union all
+  -- nome oficial do criativo (cadastro auditoria.criativos) para cada código que aparece
+  select 'nome', cr.codigo, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0::numeric, coalesce(nullif(btrim(cr.nome_oficial), ''), cr.headline), null, null, null
+  from auditoria.criativos cr
+  where cr.codigo in (select substring(o.anuncio from '&[0-9]{1,3}') from ads_out o union select cod from vend_cod)
+    and coalesce(nullif(btrim(cr.nome_oficial), ''), cr.headline) is not null
   $q$ using p_from, p_to;
 end $$;
 revoke all on function public.anuncios_criativos(timestamptz, timestamptz) from public, anon;
