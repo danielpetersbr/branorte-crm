@@ -108,6 +108,11 @@ function decidir(s: Soma, m: Media, nome: string): { d: Decisao; porque: string 
   if (cpq != null && m.cpq != null && cpq >= 2 * m.cpq && s.orcamentos === 0 && s.vendas === 0)
     return { d: 'desativar', porque: `custo por qualificado ${cent(cpq)} — o dobro da média (${cent(m.cpq)}) — e nenhum orçamento` }
   const nunca = pctBase(s.nunca, s), fora = pctBase(foraDe(s), s)
+  // escalar só quando o barato vira negócio: com 50+ contatos tem que ter orçamento ou venda, e sem trazer gente fora do perfil
+  const foraAlto = s.base >= 20 && fora != null && m.fora != null && fora >= m.fora + 8
+  const semNegocio = s.contatos >= 50 && s.orcamentos === 0 && s.vendas === 0
+  if (cpq != null && m.cpq != null && cpq <= 0.75 * m.cpq && (semNegocio || foraAlto))
+    return { d: 'melhorar', porque: `qualifica barato (${cent(cpq)}, média ${cent(m.cpq)}) mas ${semNegocio ? `${n(s.contatos)} contatos e nenhum orçamento` : ''}${semNegocio && foraAlto ? ' e ' : ''}${foraAlto ? `${pct(fora, 0)} fora do perfil (média ${pct(m.fora, 0)})` : ''} — o qualificado não vira negócio` }
   if (cpq != null && m.cpq != null && (cpq <= 0.75 * m.cpq || ((s.orcamentos >= 2 || s.vendas >= 1) && cpq <= m.cpq)))
     return { d: 'escalar', porque: `custo por qualificado ${cent(cpq)} (média ${cent(m.cpq)})${s.orcamentos ? ` · ${n(s.orcamentos)} orçamento${s.orcamentos > 1 ? 's' : ''}` : ''}${s.vendas ? ` · ${n(s.vendas)} venda${s.vendas > 1 ? 's' : ''}` : ''}` }
   const problemas: string[] = []
@@ -409,7 +414,7 @@ function AbaMeta({ q }: { q: ReturnType<typeof useMeta> }) {
             <p><b>Vendas no período</b> = pedidos fechados no período cujo cliente veio por este anúncio (conversa da Ana) ou por este criativo (código &NN no CRM), em qualquer data até 365 dias antes — o contato leva ~1 mês para virar pedido. Na visão por conjunto/campanha só entra a venda com anúncio exato.</p>
             <p><b>Por que fecharam</b> = etiqueta que o vendedor pôs ao encerrar, sobre todas as conversas da Ana vindas do anúncio no período (inclui cliente antigo que voltou). Em vermelho: 10 pontos acima da média com 20+ conversas.</p>
             <p><b>Perfil</b> = espécie e finalidade (consumo próprio × revenda) que o cliente informou à Ana, e os estados pelo DDD do telefone — sobre as conversas da Ana vindas do anúncio.</p>
-            <p><b>Decisão</b> (comparada à média do Meta no período, custo por qualificado {cent(m.cpq)}): <b>Escalar</b> = custo por qualificado 25% abaixo da média, ou na média com 2+ orçamentos ou venda. <b>Desativar</b> = R$ 500+ sem nenhum qualificado, ou o dobro da média sem orçamento nem venda. <b>Melhorar</b> = custo 30% acima da média, ou “nunca respondeu”/fora do perfil muito acima da média (o motivo aparece ao passar o mouse). <b>Pouco volume</b> = menos de R$ {VOL_GASTO} e {VOL_CONTATOS} contatos.</p>
+            <p><b>Decisão</b> (comparada à média do Meta no período, custo por qualificado {cent(m.cpq)}): <b>Escalar</b> = custo por qualificado 25% abaixo da média, ou na média com 2+ orçamentos ou venda — mas com 50+ contatos tem que ter orçamento ou venda e não trazer gente fora do perfil acima da média (senão vira “Melhorar”: qualifica barato e não vira negócio). <b>Desativar</b> = R$ 500+ sem nenhum qualificado, ou o dobro da média sem orçamento nem venda. <b>Melhorar</b> = custo 30% acima da média, ou “nunca respondeu”/fora do perfil muito acima da média (o motivo aparece ao passar o mouse). <b>Pouco volume</b> = menos de R$ {VOL_GASTO} e {VOL_CONTATOS} contatos.</p>
           </div>
         </details>
       </Card>
