@@ -240,7 +240,9 @@ export function AnunciosCriativos() {
   // período anterior de mesma duração (para ▲▼); só depois do atual, pra não disputar o banco
   const dur = per.to.getTime() - per.from.getTime()
   const antFrom = new Date(per.from.getTime() - dur), antTo = per.from
-  const ant = useMeta(antFrom, antTo, aba === 'meta' && !!meta.data && !meta.isFetching)
+  // "Hoje" não compara: o gasto do Meta vem por dia inteiro e um dia parcial é ruído
+  const compara = per.periodo !== 'hoje'
+  const ant = useMeta(antFrom, antTo, compara && aba === 'meta' && !!meta.data && !meta.isFetching)
   const google = useGoogle(per.from, per.to, aba === 'google')
   const q = aba === 'meta' ? meta : google
 
@@ -259,7 +261,7 @@ export function AnunciosCriativos() {
         </div>
       </div>
       <AbasAnuncios />
-      {aba === 'meta' ? <AbaMeta q={meta} ant={ant.data && !ant.isPlaceholderData ? ant.data : undefined} /> : <AbaGoogle q={google} />}
+      {aba === 'meta' ? <AbaMeta q={meta} ant={compara && ant.data && !ant.isPlaceholderData ? ant.data : undefined} /> : <AbaGoogle q={google} />}
     </div>
   )
 }
@@ -545,8 +547,8 @@ function CartaoCriativo({ g, m, ver, ant }: { g: Grupo; m: Media; ver: (v: Visua
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Gasto</p><p className="text-body font-semibold tabular-nums text-ink">{s.gasto ? brl(s.gasto) : '—'}</p></div>
-          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Qualificados</p><p className="text-body font-semibold tabular-nums text-ink">{n(s.qualificados)}<span className="text-micro font-normal text-ink-faint"> /{n(s.contatos)}</span></p>{ant && <Delta atual={s.qualificados} antes={ant.qualificados} min={3} />}</div>
-          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Custo/qualif.</p><p className={`text-body font-semibold tabular-nums ${comCor}`}>{cpq != null && s.gasto ? cent(cpq) : '—'}</p>{ant && ant.gasto >= 50 && <Delta atual={cpq} antes={div(ant.gasto, ant.qualificados)} menorMelhor />}</div>
+          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Qualificados</p><p className="text-body font-semibold tabular-nums text-ink">{n(s.qualificados)}<span className="text-micro font-normal text-ink-faint"> /{n(s.contatos)}</span></p>{ant && s.contatos >= 5 && <Delta atual={s.qualificados} antes={ant.qualificados} min={5} />}</div>
+          <div className="rounded-lg bg-surface-2 p-1.5"><p className="text-micro text-ink-faint">Custo/qualif.</p><p className={`text-body font-semibold tabular-nums ${comCor}`}>{cpq != null && s.gasto ? cent(cpq) : '—'}</p>{ant && ant.gasto >= 50 && ant.qualificados >= 3 && s.qualificados >= 3 && <Delta atual={cpq} antes={div(ant.gasto, ant.qualificados)} menorMelhor />}</div>
         </div>
         <div className="space-y-1">
           {etapas.map(([l, v], i) => (
