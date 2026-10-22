@@ -8,6 +8,7 @@ import { brl, n, pct } from './dashboard/ui/format'
 import { CHART, TOOLTIP_STYLE } from './dashboard/ui/chart-tokens'
 import { situacaoCampanha } from '@/lib/marketing-relatorio'
 import { useMarketingRelatorioIntervalo } from '@/hooks/useMarketingRelatorio'
+import { AbasAnuncios } from './anuncios/compartilhado'
 import { AnunciosVerbaCard, MotivosCard, VendedoresCard } from './dashboard/blocks/RelatorioMarketing'
 
 /**
@@ -570,6 +571,8 @@ export function Anuncios() {
           </button>
         </div>
       </div>
+
+      <AbasAnuncios />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         {prev.data && (
