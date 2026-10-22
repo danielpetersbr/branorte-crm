@@ -71,6 +71,8 @@ const horaBr = (iso: string | null) => {
 const dataBr = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—')
 const cent = (v: number | null) => (v == null || !Number.isFinite(v) ? '—' : v < 10 ? `R$ ${v.toFixed(2).replace('.', ',')}` : brl(v))
 const div = (a: number, b: number) => (b > 0 ? a / b : null)
+/** Custo por unidade: plataforma sem gasto no período (ex.: o Meta antes da carga do dia) mostra "—", não R$ 0,00. */
+const custo = (gasto: number, q: number) => (gasto > 0 ? cent(div(gasto, q)) : '—')
 
 interface LinhaMeta {
   campanha: string; campanhaStatus: string | null; campanhaOrc: number | null; objetivo: string | null
@@ -158,9 +160,9 @@ function usePrevisaoMes() {
 function useDados(from: Date, to: Date) {
   const p_from = from.toISOString(), p_to = to.toISOString()
   return useQuery({
-    queryKey: ['pagina-anuncios-v6', p_from, p_to],
+    queryKey: ['pagina-anuncios-v7', p_from, p_to],
     queryFn: async () => {
-      const [meta, diario, plat, crm, google, palavras, termos, atual, pedSemOrc, vendOrig] = await Promise.all([
+      const [meta, diario, plat, crm, google, palavras, termos, atual, pedSemOrc, vendOrig, volt] = await Promise.all([
         supabase.rpc('anuncios_meta', { p_from, p_to }),
         supabase.rpc('anuncios_diario', { p_from, p_to }),
         supabase.rpc('dashboard_marketing_plataformas', { p_from, p_to }),
@@ -171,6 +173,8 @@ function useDados(from: Date, to: Date) {
         supabase.rpc('anuncios_atualizacao'),
         supabase.rpc('anuncios_pedidos_sem_orcamento', { p_from, p_to }),
         supabase.rpc('anuncios_vendas_origem', { p_from, p_to }),
+        // clientes que já estavam no CRM e voltaram a falar no período (régua do "voltaram" de /atendimentos), por canal
+        supabase.rpc('anuncios_voltaram', { p_from, p_to }),
       ])
       const erro = [meta, diario, plat, crm].find(r => r.error)?.error
       if (erro) throw erro
@@ -213,6 +217,7 @@ function useDados(from: Date, to: Date) {
         // funil por campanha do Google: código do clique que o site põe na mensagem (desde 21/10)
         porGoogleCamp: new Map<string, Funil>(crmL.filter(f => f.tipo === 'google_campanha').map(f => [String(f.chave), lerFunil(f)])),
         horaMeta: horaCarga('Meta'), horaGoogle: horaCarga('Google'),
+        voltaram: Object.fromEntries(['Meta', 'Site', 'Outros'].map(c => [c, num((volt.error ? [] : linhas(volt.data)).find(r => r.canal === c)?.voltaram)])) as Record<'Meta' | 'Site' | 'Outros', number>,
         pedidosSemOrc: pedSemOrc.error ? [] : linhas(pedSemOrc.data),
         // vendas DO período e de onde veio cada cliente (chegou em qualquer data) — RPC anuncios_vendas_origem
         vendas: (vendOrig.error ? [] : linhas(vendOrig.data)).map(r => ({
@@ -618,18 +623,26 @@ export function Anuncios() {
           {(() => {
             const fm = d.meta.crm, fg = d.google.crm, gm = d.meta.gasto, gg = d.google.gasto
             const tot = { gasto: gm + gg, contatos: fm.contatos + fg.contatos, qualif: fm.qualificados + fg.qualificados, conv: fm.conversou + fg.conversou, orc: fm.orcamentos + fg.orcamentos, rsOrc: fm.rsOrcado + fg.rsOrcado, vendas: fm.vendas + fg.vendas, rsVend: fm.rsVendido + fg.rsVendido }
+            // custo do total: só entra quem teve gasto no período (antes da carga do dia o Meta está em R$ 0 e os contatos dele
+            // baratearam o Google: 22/10 cedo dava "R$ 4,36 por contato" = gasto do Google ÷ contatos do Meta)
+            const comGasto = (m: number, g: number) => (gm > 0 ? m : 0) + (gg > 0 ? g : 0)
+            // a carga do Meta roda 8h30, 12h30 e 15h30: o fim do período pode ainda não ter gasto
+            const ultimoDia = isoDia(new Date(iv.to.getTime() - 1))
+            const metaAtrasado = !!d.meta.ate && d.meta.ate < ultimoDia
+            const voltaram = d.voltaram.Meta + d.voltaram.Site
             return (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-                <Tile rotulo="Investido" valor={brl(tot.gasto)} meta={brl(gm)} google={brl(gg)} rodape="sem a vaga de emprego" />
-                <Tile rotulo="Contatos" valor={n(tot.contatos)} meta={`${n(fm.contatos)} · ${cent(div(gm, fm.contatos))}`} google={`${n(fg.contatos)} · ${cent(div(gg, fg.contatos))}`} rodape={`${cent(div(tot.gasto, tot.contatos))} por contato`} />
-                <Tile destaque rotulo="Qualificados" valor={`${n(tot.qualif)} · ${pct(div(100 * tot.qualif, tot.contatos), 0)}`} meta={`${n(fm.qualificados)} · ${cent(div(gm, fm.qualificados))}`} google={`${n(fg.qualificados)} · ${cent(div(gg, fg.qualificados))}`} rodape={`${cent(div(tot.gasto, tot.qualif))} por qualificado`} />
+                <Tile rotulo="Investido" valor={brl(tot.gasto)} meta={brl(gm)} google={brl(gg)}
+                  rodape={metaAtrasado ? `Meta carregado até ${dataBr(d.meta.ate!)} (carga às 8h30, 12h30 e 15h30) · sem a vaga de emprego` : 'sem a vaga de emprego'} />
+                <Tile rotulo="Contatos" valor={n(tot.contatos)} meta={`${n(fm.contatos)} · ${custo(gm, fm.contatos)}`} google={`${n(fg.contatos)} · ${custo(gg, fg.contatos)}`} rodape={`${cent(div(tot.gasto, comGasto(fm.contatos, fg.contatos)))} por contato${voltaram ? ` · +${n(voltaram)} clientes antigos voltaram` : ''}`} />
+                <Tile destaque rotulo="Qualificados" valor={`${n(tot.qualif)} · ${pct(div(100 * tot.qualif, tot.contatos), 0)}`} meta={`${n(fm.qualificados)} · ${custo(gm, fm.qualificados)}`} google={`${n(fg.qualificados)} · ${custo(gg, fg.qualificados)}`} rodape={`${cent(div(tot.gasto, comGasto(fm.qualificados, fg.qualificados)))} por qualificado`} />
                 <Tile rotulo="Falaram c/ vendedor" valor={`${n(tot.conv)} · ${pct(div(100 * tot.conv, tot.contatos), 0)}`} meta={n(fm.conversou)} google={n(fg.conversou)} rodape="responderam no WhatsApp do vendedor" />
-                <Tile rotulo="Orçamentos" valor={n(tot.orc)} meta={`${n(fm.orcamentos)} · ${cent(div(gm, fm.orcamentos))}`} google={`${n(fg.orcamentos)} · ${cent(div(gg, fg.orcamentos))}`} rodape={`${brl(tot.rsOrc)} orçados`} />
+                <Tile rotulo="Orçamentos" valor={n(tot.orc)} meta={`${n(fm.orcamentos)} · ${custo(gm, fm.orcamentos)}`} google={`${n(fg.orcamentos)} · ${custo(gg, fg.orcamentos)}`} rodape={`${brl(tot.rsOrc)} orçados`} />
                 {(() => {
                   const vm = d.vendas.filter(v => v.canal === 'Meta').reduce((a, v) => a + v.valor, 0)
                   const vg = d.vendas.filter(v => v.canal === 'Google / Site').reduce((a, v) => a + v.valor, 0)
                   return <Tile rotulo="Vendido por anúncio" valor={brl(vm + vg)} meta={`${brl(vm)} · ${vezes(div(vm, gm))}`} google={`${brl(vg)} · ${vezes(div(vg, gg))}`}
-                    rodape={`retorno ${vezes(div(vm + vg, tot.gasto))} no período · pedidos do período`} />
+                    rodape={`retorno ${vezes(div(comGasto(vm, vg), tot.gasto))} no período · pedidos do período`} />
                 })()}
               </div>
             )
@@ -640,9 +653,10 @@ export function Anuncios() {
             <Card className="xl:col-span-5">
               <CardHeader title="Funil por canal" subtitle="Dos contatos que chegaram no período: quantos qualificaram, falaram com o vendedor, viraram orçamento e venda." />
               <div className="space-y-5">
-                <FunilCanal nome="Meta Ads" cor={COR_META} f={d.meta.crm} gasto={d.meta.gasto} />
+                <FunilCanal nome="Meta Ads" cor={COR_META} f={d.meta.crm} gasto={d.meta.gasto}
+                  nota={d.voltaram.Meta ? `+${n(d.voltaram.Meta)} clientes antigos do Meta voltaram a falar no período (não somam nos contatos).` : undefined} />
                 <FunilCanal nome="Google Ads / Site" cor={COR_GOOGLE} f={d.google.crm} gasto={d.google.gasto}
-                  nota={d.siteOrigem.length ? `Origem: ${d.siteOrigem.map(x => `${x.origem} ${n(x.funil.contatos)}`).join(' · ')}. Desde 21/10 o site diz de onde veio a visita (Google Ads, busca, Instagram, YouTube, ChatGPT, e-mail…).` : undefined} />
+                  nota={d.siteOrigem.length ? `Origem: ${d.siteOrigem.map(x => `${x.origem} ${n(x.funil.contatos)}`).join(' · ')}. Desde 21/10 o site diz de onde veio a visita (Google Ads, busca, Instagram, YouTube, ChatGPT, e-mail…).${d.voltaram.Site ? ` +${n(d.voltaram.Site)} clientes antigos do site voltaram a falar.` : ''}` : undefined} />
                 {d.outros.contatos > 0 && <FunilCanal nome="Outros (orgânico, LP, indicação…)" cor={CHART.s5} f={d.outros} gasto={null} />}
               </div>
             </Card>
@@ -676,11 +690,11 @@ export function Anuncios() {
               <div className="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-4">
                 <Kpi rotulo="Gasto (vendas)" valor={brl(d.meta.gasto)} apoio={`${d.meta.orcDia ? `${brl(d.meta.orcDia)}/dia nas campanhas ativas` : ''}${d.vagaSoma.gasto > 0 ? ` · sem a vaga de emprego (${brl(d.vagaSoma.gasto)})` : ''}`} />
                 <Kpi rotulo="Conversas iniciadas" valor={n(d.meta.conversas)} apoio={`${cent(div(d.meta.gastoConversas, d.meta.conversas))} cada (gasto só das campanhas de mensagem)`} />
-                <Kpi rotulo="Cliques" valor={n(d.meta.cliques)} apoio={`CTR ${pct(div(100 * d.meta.cliques, d.meta.impressoes), 1)} · CPC ${cent(div(d.meta.gasto, d.meta.cliques))}`} />
-                <Kpi rotulo="Contatos" valor={n(d.meta.crm.contatos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.contatos))} por contato · ${n(d.meta.crm.soAna)} ficaram só com a Ana`} />
-                <Kpi rotulo="Qualificados" valor={`${n(d.meta.crm.qualificados)} · ${pct(div(100 * d.meta.crm.qualificados, d.meta.crm.contatos), 0)}`} apoio={`${cent(div(d.meta.gasto, d.meta.crm.qualificados))} por qualificado`} />
+                <Kpi rotulo="Cliques" valor={n(d.meta.cliques)} apoio={`CTR ${pct(div(100 * d.meta.cliques, d.meta.impressoes), 1)} · CPC ${custo(d.meta.gasto, d.meta.cliques)}`} />
+                <Kpi rotulo="Contatos" valor={n(d.meta.crm.contatos)} apoio={`${custo(d.meta.gasto, d.meta.crm.contatos)} por contato · ${n(d.meta.crm.soAna)} ficaram só com a Ana`} />
+                <Kpi rotulo="Qualificados" valor={`${n(d.meta.crm.qualificados)} · ${pct(div(100 * d.meta.crm.qualificados, d.meta.crm.contatos), 0)}`} apoio={`${custo(d.meta.gasto, d.meta.crm.qualificados)} por qualificado`} />
                 <Kpi rotulo="Falaram com o vendedor" valor={`${n(d.meta.crm.conversou)} · ${pct(div(100 * d.meta.crm.conversou, d.meta.crm.contatos), 0)}`} apoio="responderam ou deram informação no WhatsApp do vendedor" />
-                <Kpi rotulo="Viraram orçamento" valor={n(d.meta.crm.orcamentos)} apoio={`${cent(div(d.meta.gasto, d.meta.crm.orcamentos))} por orçamento · ${brl(d.meta.crm.rsOrcado)} orçados`} />
+                <Kpi rotulo="Viraram orçamento" valor={n(d.meta.crm.orcamentos)} apoio={`${custo(d.meta.gasto, d.meta.crm.orcamentos)} por orçamento · ${brl(d.meta.crm.rsOrcado)} orçados`} />
                 <Kpi rotulo="Vendas" valor={n(d.meta.crm.vendas)} apoio={d.meta.crm.vendas ? `${brl(d.meta.crm.rsVendido)} vendidos` : 'destes contatos, até agora'} />
               </div>
             </Card>
@@ -689,12 +703,12 @@ export function Anuncios() {
               {googleLigado ? (
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-4">
                   <Kpi rotulo="Gasto" valor={brl(d.google.gasto)} />
-                  <Kpi rotulo="Cliques" valor={n(d.google.cliques)} apoio={`CTR ${pct(div(100 * d.google.cliques, d.google.impressoes), 1)} · CPC ${cent(div(d.google.gasto, d.google.cliques))}`} />
+                  <Kpi rotulo="Cliques" valor={n(d.google.cliques)} apoio={`CTR ${pct(div(100 * d.google.cliques, d.google.impressoes), 1)} · CPC ${custo(d.google.gasto, d.google.cliques)}`} />
                   <Kpi rotulo="Conversões do Google" valor={n(d.google.conversoes)} apoio={`${n(d.google.conversoes - d.google.conversoesYoutube)} da pesquisa (clique no WhatsApp do site, formulário e outras)${d.google.conversoesYoutube ? ` · ${n(d.google.conversoesYoutube)} do YouTube (inscrição/engajamento)` : ''}`} />
-                  <Kpi rotulo="Contatos do Site no CRM" valor={n(d.google.crm.contatos)} apoio={`${cent(div(d.google.gasto, d.google.crm.contatos))} por contato (site inclui orgânico)`} />
-                  <Kpi rotulo="Qualificados" valor={`${n(d.google.crm.qualificados)} · ${pct(div(100 * d.google.crm.qualificados, d.google.crm.contatos), 0)}`} apoio={`${cent(div(d.google.gasto, d.google.crm.qualificados))} por qualificado · lido na conversa`} />
+                  <Kpi rotulo="Contatos do Site no CRM" valor={n(d.google.crm.contatos)} apoio={`${custo(d.google.gasto, d.google.crm.contatos)} por contato (site inclui orgânico)`} />
+                  <Kpi rotulo="Qualificados" valor={`${n(d.google.crm.qualificados)} · ${pct(div(100 * d.google.crm.qualificados, d.google.crm.contatos), 0)}`} apoio={`${custo(d.google.gasto, d.google.crm.qualificados)} por qualificado · lido na conversa`} />
                   <Kpi rotulo="Resposta do vendedor" valor={d.google.crm.respMedH != null ? horas(d.google.crm.respMedH) : '—'} apoio={`até a 1ª mensagem (mediana)${d.google.crm.semResposta ? ` · ${n(d.google.crm.semResposta)} sem resposta` : ' · todos respondidos'}`} />
-                  <Kpi rotulo="Viraram orçamento" valor={n(d.google.crm.orcamentos)} apoio={`${cent(div(d.google.gasto, d.google.crm.orcamentos))} por orçamento · ${brl(d.google.crm.rsOrcado)} orçados`} />
+                  <Kpi rotulo="Viraram orçamento" valor={n(d.google.crm.orcamentos)} apoio={`${custo(d.google.gasto, d.google.crm.orcamentos)} por orçamento · ${brl(d.google.crm.rsOrcado)} orçados`} />
                   <Kpi rotulo="Vendas" valor={n(d.google.crm.vendas)} apoio={d.google.crm.vendas ? `${brl(d.google.crm.rsVendido)} vendidos` : 'destes contatos, até agora'} />
                 </div>
               ) : (
