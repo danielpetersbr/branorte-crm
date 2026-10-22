@@ -239,8 +239,12 @@ export function AnunciosCriativos() {
   const meta = useMeta(per.from, per.to, aba === 'meta')
   // período anterior de mesma duração (para ▲▼); só depois do atual, pra não disputar o banco
   // mesma janela deslocada para trás; se o período inclui hoje, o anterior também para "na mesma hora"
-  const dur = per.to.getTime() - per.from.getTime()
-  const antFrom = new Date(per.from.getTime() - dur), antTo = new Date(Math.min(per.to.getTime(), Date.now()) - dur)
+  // (a hora é fixada quando o período muda — Date.now() a cada render mudaria a chave da consulta sem parar)
+  const tFrom = per.from.getTime(), tTo = per.to.getTime()
+  const [antFrom, antTo] = useMemo(() => {
+    const dur = tTo - tFrom
+    return [new Date(tFrom - dur), new Date(Math.min(tTo, Date.now()) - dur)]
+  }, [tFrom, tTo])
   // "Hoje" não compara: o gasto do Meta vem por dia inteiro e um dia parcial é ruído
   const compara = per.periodo !== 'hoje'
   const ant = useMeta(antFrom, antTo, compara && aba === 'meta' && !!meta.data && !meta.isFetching)
