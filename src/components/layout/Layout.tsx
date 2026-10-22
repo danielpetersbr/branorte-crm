@@ -124,7 +124,8 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/controle/rastreio', label: 'Rastreio de Origem', icon: Route, permKey: 'menu.controle' },
       { to: '/ligacoes', label: 'Controle de Ligações', icon: PhoneCall, permKey: 'menu.ligacoes' },
       { to: '/controle/vendas', label: 'Controle de Vendas', icon: BarChart2, permKey: 'menu.financeiro' },
-      { to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.campanhas' },
+      { to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.campanhas', end: true },
+      { to: '/anuncios/criativos', label: 'Criativos do Meta', icon: Megaphone, permKey: 'menu.campanhas' },
       { to: '/campanhas', label: 'Análise de Campanhas', icon: TrendingUp, permKey: 'menu.campanhas' },
       { to: '/orcamentos/conversao', label: 'Conversão (KPIs)', icon: TrendingUp, permKey: 'menu.orcamentos_avancado', hidden: true },
     ],
@@ -277,7 +278,11 @@ const MARKETING_SECTIONS = [{ id: 'marketing', label: 'Marketing' }] as const
 const VISUALIZADOR_GROUPS: NavGroup[] = [
   {
     id: 'trf-anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, section: 'marketing', direto: true,
-    items: [{ to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.anuncios' }],
+    items: [{ to: '/anuncios', label: 'Anúncios Meta e Google', icon: Megaphone, permKey: 'menu.anuncios', end: true }],
+  },
+  {
+    id: 'trf-criativos', label: 'Criativos do Meta', icon: Megaphone, section: 'marketing', direto: true,
+    items: [{ to: '/anuncios/criativos', label: 'Criativos do Meta', icon: Megaphone, permKey: 'menu.anuncios' }],
   },
   {
     id: 'trf-leads', label: 'Leads Recebidos', icon: MessageSquare, section: 'marketing', direto: true,
@@ -311,7 +316,11 @@ const MARKETING_GROUPS: NavGroup[] = [
   },
   {
     id: 'mkt-anuncios', label: 'Análise Meta e Google', icon: Megaphone, section: 'marketing', direto: true,
-    items: [{ to: '/anuncios', label: 'Análise Meta e Google', icon: Megaphone }],
+    items: [{ to: '/anuncios', label: 'Análise Meta e Google', icon: Megaphone, end: true }],
+  },
+  {
+    id: 'mkt-criativos', label: 'Criativos do Meta', icon: Megaphone, section: 'marketing', direto: true,
+    items: [{ to: '/anuncios/criativos', label: 'Criativos do Meta', icon: Megaphone }],
   },
   {
     id: 'mkt-campanhas', label: 'Análise de campanhas', icon: TrendingUp, section: 'marketing', direto: true,

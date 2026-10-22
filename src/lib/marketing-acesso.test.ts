@@ -14,7 +14,7 @@ function rotasDoMenuMarketing(): string[] {
 
 test('todo item do menu do marketing abre (menu e guard concordam)', () => {
   const rotas = rotasDoMenuMarketing()
-  assert.equal(rotas.length, 15)   // 5 + 1 + 2 + 1 + 1 + 3 + 2
+  assert.equal(rotas.length, 16)   // 5 + 1 + 2 + 1 + 1 (Criativos do Meta) + 1 + 3 + 2
   for (const to of rotas) {
     assert.equal(rotaMarketingPermitida(to.split('?')[0]), true, `item do menu bloqueado pelo guard: ${to}`)
   }

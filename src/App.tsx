@@ -33,6 +33,7 @@ const Pendente = lazy(() => import('@/pages/Pendente').then(m => ({ default: m.P
 const Analytics = lazy(() => import('@/pages/Analytics').then(m => ({ default: m.Analytics })))
 const Campanhas = lazy(() => import('@/pages/Campanhas').then(m => ({ default: m.Campanhas })))
 const Anuncios = lazy(() => import('@/pages/Anuncios').then(m => ({ default: m.Anuncios })))
+const AnunciosCriativos = lazy(() => import('@/pages/AnunciosCriativos').then(m => ({ default: m.AnunciosCriativos })))
 const Contacts = lazy(() => import('@/pages/Contacts').then(m => ({ default: m.Contacts })))
 const Consulta = lazy(() => import('@/pages/Consulta').then(m => ({ default: m.Consulta })))
 const ConsultaHistorico = lazy(() => import('@/pages/ConsultaHistorico').then(m => ({ default: m.ConsultaHistorico })))
@@ -398,7 +399,7 @@ function AppRoutes() {
   // Visualizador: acesso restrito a Dashboard + Atendimentos. Bloqueia URL direta
   // pra qualquer outra rota (o menu já esconde; isto trava o acesso por link).
   // 21/10/2026: o visualizador é o gestor de tráfego (Fabrício) — só Anúncios Meta e Google e Leads Recebidos.
-  const VIEWER_PATHS = new Set(['/anuncios', '/atendimentos', '/perfil'])
+  const VIEWER_PATHS = new Set(['/anuncios', '/anuncios/criativos', '/atendimentos', '/perfil'])
   if (loc.pathname === '/conversao-comercial' && (!['admin', 'vendor'].includes(profile.role) || !can('menu.vendidos'))) {
     return <Navigate to={profile.role === 'vendor' ? '/atendimentos' : '/'} replace />
   }
@@ -602,6 +603,7 @@ function AppRoutes() {
         <Route path="/analytics" element={<Analytics />} />
         {can('menu.campanhas') && <Route path="/campanhas" element={<Campanhas />} />}
         {(can('menu.campanhas') || can('menu.anuncios')) && <Route path="/anuncios" element={<Anuncios />} />}
+        {(can('menu.campanhas') || can('menu.anuncios')) && <Route path="/anuncios/criativos" element={<AnunciosCriativos />} />}
         <Route path="/contatos" element={<Contacts />} />
         {can('due_diligence.consultar') && (
           <>

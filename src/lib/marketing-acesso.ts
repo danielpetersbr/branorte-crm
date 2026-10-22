@@ -16,7 +16,7 @@
 // /controle/novo-pedido etc.; /funil não libera /funil/manual e /funil/relatorio.
 const EXATAS = new Set([
   '/', '/dashboard', '/funil', '/controle', '/controle/rastreio', '/controle/vendas',
-  '/controle/pedidos', '/vendidos', '/anuncios', '/campanhas', '/mapa-visual', '/perfil',
+  '/controle/pedidos', '/vendidos', '/anuncios', '/anuncios/criativos', '/campanhas', '/mapa-visual', '/perfil',
 ])
 
 // Rota com filhos: o detalhe de um atendimento, as páginas de cada guia e o
