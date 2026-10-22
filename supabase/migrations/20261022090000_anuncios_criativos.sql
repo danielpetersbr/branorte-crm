@@ -116,7 +116,9 @@ begin
   -- nome oficial do criativo (cadastro auditoria.criativos) para cada código que aparece
   select 'nome', cr.codigo, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0::numeric, coalesce(nullif(btrim(cr.nome_oficial), ''), cr.headline), null, null, null
   from auditoria.criativos cr
-  where cr.codigo in (select substring(o.anuncio from '&[0-9]{1,3}') from ads_out o union select cod from vend_cod)
+  where cr.codigo in (select substring(o.anuncio from '&[0-9]{1,3}') from ads_out o union select cod from vend_cod
+                      union select substring(g.anuncio from '&[0-9]{1,3}') from public.meta_gasto_anuncio_dia g
+                       where g.data >= ($1 at time zone 'America/Sao_Paulo')::date and g.data < ($2 at time zone 'America/Sao_Paulo')::date + 1)
     and coalesce(nullif(btrim(cr.nome_oficial), ''), cr.headline) is not null
   $q$ using p_from, p_to;
 end $$;
